@@ -1,5 +1,6 @@
 import { memo, useRef, useEffect, useState, useCallback, Suspense } from "react";
 import { C, F, gr } from "@/theme";
+import { buildSampleNote, type SampleNote } from "./sampleNote";
 import { InfraOverlay } from "./InfraOverlay";
 import { SelectedAptCard } from "./SelectedAptCard";
 import {
@@ -53,6 +54,8 @@ export const KakaoMapView = memo(function KakaoMapView({
   const [markerCount, setMarkerCount] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<"point" | "choropleth">("point");
+  // 색칠 지도에서 표본 부족 칸을 눌러 들어온 경우의 안내 (null = 안내 없음)
+  const [sampleNote, setSampleNote] = useState<SampleNote | null>(null);
   const [mapInstance, setMapInstance] = useState<unknown>(null);
 
   // ── 마커 재생성 억제·분할 추가 (세션 486 성능) ────────────────────────────
@@ -397,16 +400,19 @@ export const KakaoMapView = memo(function KakaoMapView({
   // 여기서는 **일부러 안 받는다** — 화면 이동은 폴리곤 쪽에서 setBounds 로 이미 끝내고,
   // 이 함수는 모드만 바꾸기 때문이다. 이름이 넘어오니 쓰이겠거니 오해하지 말 것.
   //
-  // 다만 그래서 "이 칸은 단지가 적어 평균을 믿기 어렵다"는 표본 가드(MIN_MAP_SAMPLE)의
-  // 신호가 점 보기로 넘어오면서 사라진다. 지도 한 장에서만 정직한 셈이다.
-  // 도착 화면이 그 평균을 다시 보여주지는 않아 거짓은 아니지만, 경고는 잃는다.
-  // → 표본 부족 지역을 눌렀을 때 안내를 이어 주는 것은 후속 과제(BACKLOG).
-  const handleSidoClick = useCallback(() => {
+  // 표본 신호 잇기(세션554) — 점선 칸을 눌러 점 보기로 넘어오면 "단지가 적어 평균을
+  // 믿기 어렵다"는 경고가 사라지던 자리다. 이제 폴리곤이 표본 수를 함께 넘겨주므로,
+  // 표본이 모자랐을 때만 그 사실을 띠로 이어 말한다(충분하면 아무것도 띄우지 않는다).
+  const handleSidoClick = useCallback((_dbName: string, sample?: { count: number; enough: boolean }) => {
     setMode("point");
+    setSampleNote(buildSampleNote(_dbName, sample));
   }, []);
 
   // 모드 토글 버튼 — point→color 전환 시 마커/선택 즉시 정리 (color→point 는 useEffect 가 재생성)
   const handleModeToggle = useCallback(() => {
+    // 손님이 직접 모드를 바꾸면 앞서 눌렀던 칸의 표본 안내는 더 이상 그 화면 얘기가 아니다.
+    // (렌더 가드만 두면 색칠로 갔다 돌아왔을 때 옛 안내가 되살아난다.)
+    setSampleNote(null);
     setMode((m) => {
       if (m === "point") clearMarkersAndSelection();
       return m === "point" ? "choropleth" : "point";
@@ -544,6 +550,50 @@ export const KakaoMapView = memo(function KakaoMapView({
           </button>
         )}
       </div>
+      {/* 표본 부족 안내 띠(세션554) — 점선 칸을 눌러 넘어왔을 때만 뜬다.
+          지도에서 본 "믿기 어렵다"는 경고를 점 보기에서도 이어 말해 준다.
+          모드 토글·닫기로 사라지며, 표본이 충분했던 칸에서는 애초에 안 뜬다. */}
+      {sampleNote && mode === "point" && (
+        <div
+          data-testid="map-sample-note"
+          role="status"
+          style={{
+            position: "absolute",
+            top: 44,
+            left: 8,
+            right: 8,
+            zIndex: 10,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            background: "rgba(255,255,255,0.94)",
+            border: `1px solid ${C.amber}`,
+            borderRadius: 8,
+            padding: "6px 10px",
+            fontSize: F.xs,
+            fontWeight: 700,
+            color: C.text,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+          }}
+        >
+          <span style={{ flex: 1 }}>{sampleNote.text}</span>
+          <button
+            onClick={() => setSampleNote(null)}
+            aria-label="표본 안내 닫기"
+            style={{
+              background: "transparent",
+              border: "none",
+              cursor: "pointer",
+              color: C.muted,
+              fontSize: F.xs,
+              fontWeight: 700,
+              padding: "2px 4px",
+            }}
+          >
+            ✕
+          </button>
+        </div>
+      )}
       {/* 색칠 모드: ChoroplethView lazy 렌더 */}
       {mode === "choropleth" && (
         <Suspense fallback={null}>

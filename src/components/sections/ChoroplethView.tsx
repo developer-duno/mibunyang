@@ -167,7 +167,10 @@ export const ChoroplethView = memo(function ChoroplethView({
           const bounds = new kakao.LatLngBounds();
           path.forEach((latlng: any) => bounds.extend(latlng));
           (mapInstance as any).setBounds(bounds);
-          if (onSidoClick) onSidoClick(dbName);
+          // 표본 정보를 함께 넘긴다(세션554) — 점선 칸을 눌러 점 보기로 넘어가면
+          // "단지가 적어 평균을 믿기 어렵다"는 경고가 사라지던 자리를 잇는다.
+          // 색칠에 쓴 stat 을 그대로 넘겨 지도와 도착 화면이 같은 수를 말하게 한다.
+          if (onSidoClick) onSidoClick(dbName, { count: stat?.count ?? 0, enough: !!stat?.enough });
         });
         // hover 는 baseOpacity 기준으로 올린다(데이터 없는 회색 칸이 과하게 진해지지 않게).
         // 표본 가드가 테두리로 옮겨간 뒤로는 hover 가 가드를 지울 수 없다 — 테두리는 그대로다.
