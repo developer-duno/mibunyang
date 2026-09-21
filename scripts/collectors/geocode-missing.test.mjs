@@ -159,6 +159,13 @@ describe("미확정(notFound) 집계 — 실패로 새지 않는다", () => {
     expect(SRC).toMatch(/좌표 null 유지[\s\S]{0,80}notFound\+\+/);
   });
 
+  // 세션555: 대상이 0 일 때 skip 까지 0 으로 두면 monitor ② 의 `ok===0 && skip===0` 에 걸려
+  // 매일 거짓 경보가 나간다(실측: 엿새 연속). skip=1 이 "돌았고 할 일이 없었다" 를 표현한다.
+  // 쌍둥이 `reverse-geocode.mjs` 에 같은 가드가 있다 — 한쪽만 고치면 다른 쪽이 계속 운다.
+  it("★ 대상 0건 조기반환은 skip 을 1 로 남긴다 (monitor ② 거짓 경보 차단)", () => {
+    expect(SRC).toMatch(/모든 단지에 좌표 있음[\s\S]{0,600}?ok:\s*0,\s*fail:\s*0,\s*skip:\s*1\b/);
+  });
+
   it("★ notFound 를 failed 에 합산하지 않는다", () => {
     expect(SRC).not.toMatch(/failed\s*\+=\s*notFound/);
     expect(SRC).not.toMatch(/notFound\s*\+=\s*failed/);

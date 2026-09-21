@@ -227,4 +227,11 @@ describe("region 검증 배선 — 표준 17개가 아니면 쓰지 않는다 (�
   it("건너뛴 수를 실패가 아니라 skip 으로 집계한다", () => {
     expect(src).toMatch(/skip:\s*invalidRegion/);
   });
+
+  // 세션555: 대상이 0 일 때 skip 까지 0 으로 두면 monitor ② 의 `ok===0 && skip===0` 에 걸려
+  // 매일 거짓 경보가 나간다(실측: 엿새 연속). skip=1 이 "돌았고 할 일이 없었다" 를 표현한다.
+  // 쌍둥이 `geocode-missing.mjs` 에 같은 가드가 있다 — 한쪽만 고치면 다른 쪽이 계속 운다.
+  it("★ 대상 0건 조기반환은 skip 을 1 로 남긴다 (monitor ② 거짓 경보 차단)", () => {
+    expect(src).toMatch(/모든 단지에 (?:법정동코드|주소) 있음[\s\S]{0,600}?ok:\s*0,\s*fail:\s*0,\s*skip:\s*1\b/);
+  });
 });

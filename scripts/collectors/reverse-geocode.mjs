@@ -166,8 +166,12 @@ async function main() {
     log(PHASE, scope === "null-bjd" ? "모든 단지에 법정동코드 있음" : "모든 단지에 주소 있음");
     // 할 일이 0건이어도 기록은 남긴다 — 안 남기면 "돌았는데 할 일이 없었다" 와
     // "아예 안 돌았다" 가 구분되지 않아 미발화 감시가 무력해진다(세션 503 실거래 사고).
+    // ⚠️ skip=1 인 이유(세션555): monitor ② 는 `ok===0 && skip===0` 일 때만 운다.
+    // 여기서 skip 까지 0 으로 두면 "대상이 없어 안 했다" 가 "아무것도 못 했다" 와 같은 신호가 되어
+    // 매일 거짓 경보가 나간다(실측: 2026-09-21 까지 엿새 연속). `geocode-missing.mjs` 와 쌍둥이 —
+    // 한쪽만 고치면 다른 쪽이 계속 운다.
     await recordCollectorRun(PHASE, {
-      ok: 0, fail: 0, skip: 0,
+      ok: 0, fail: 0, skip: 1,
       elapsed: ((Date.now() - startedMs) / 1000).toFixed(1),
       startedAt,
       status: "success",
