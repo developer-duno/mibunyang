@@ -117,8 +117,22 @@ describe("키워드 폴백 배선 — 검증 없는 1위 채택으로 되돌아�
 
   // 세션541 오케스트레이터 뮤테이션 M-E: `gu` 를 빼도(→ `gu: null`) 22건 전부 초록이었다.
   // gu 가 빠지면 시군구 게이트가 조용히 사라지고 시도만 남는다(55km 오탐이 났던 자리) — 인자 형태를 고정한다.
+  //
+  // ⚠️ 세션556 정정: 이 정규식이 `shortRegion(region)`(gu 없음)을 **정확히 고정**하고 있어
+  //    **결함을 지키는 가드**가 돼 있었다. 통합 시도(`전남광주통합특별시`)는 시군구 없이는
+  //    못 갈라 `shortRegion` 이 null 을 주고, `geocodeApartmentByName` 이 `!sido` 로 조기
+  //    return 해 그 단지가 좌표를 영영 못 받는다. 이제 **양쪽 인자에 gu 가 가는지**를 본다.
+  //    (같은 패턴: `INFRA_KAKAO_COLUMNS` 의 `toHaveLength(9)` 가 빠진 8컬럼을 고정하고 있었다 — #542)
   it("★ 호출부가 sido·gu 를 둘 다 넘긴다 (시군구 게이트가 조용히 빠지지 않게)", () => {
-    expect(SRC).toMatch(/geocodeApartmentByName\(\s*\{ name: apt\.name, sido: shortRegion\(region\), gu \}/);
+    expect(SRC).toMatch(/geocodeApartmentByName\(\s*\{ name: apt\.name, sido: shortRegion\(region, gu\), gu \}/);
+  });
+
+  // ⚠️ 뮤테이션 대상 — `shortRegion(region, gu)` 에서 `, gu` 를 지우면 red.
+  //    위 단언과 겹쳐 보이지만 목적이 다르다: 위는 **객체 전체 형태**, 이건 **통합 시도 판정에
+  //    필요한 인자**가 살아 있는지. 위 정규식만 있으면 `shortRegion` 안쪽이 바뀌어도 안 잡힌다.
+  it("★ shortRegion 에 gu 를 넘긴다 — 통합 시도는 시군구로만 갈린다 (세션556)", () => {
+    expect(SRC).toMatch(/shortRegion\(region,\s*gu\)/);
+    expect(SRC).not.toMatch(/shortRegion\(region\)/);
   });
 
   it("★ 무검증 키워드 함수(geocodeKeyword)가 부활하지 않았다", () => {
