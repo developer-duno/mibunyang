@@ -80,6 +80,20 @@ export async function fetchSidoData(sido, coordMap) {
 
 /**
  * 단지별 최근접 측정소 매칭
+ *
+ * ## `stationDist` 는 **m** 단위다 (세션556 신설)
+ *
+ * `haversine`(= `haversineKm`)은 **km** 를 준다. 이 저장소의 다른 거리 컬럼
+ * (`police_dist`·`noxious_dist`·`subway_dist` …)은 전부 **m** 이고, 자매 레포
+ * `naver-estate-web` 의 `MbEnvironmentSection.tsx:137` 도 `infra.air_station_dist` 를
+ * **`(…m)` 으로 표시**한다. 그래서 여기서 곱해 m 로 맞춘다.
+ *
+ * ⚠️ 이 값이 없던 동안 `infra.air_station_dist` 에는 **km 숫자가 m 로 표시**되고 있었다 —
+ * 제주 단지가 실제 503km 인데 자매 화면에 `(503m)` = "바로 옆 관측소" 로 보였다
+ * (세션556 실측: 값 있는 2,602곳 중 **1,347곳이 50km 초과**, 중앙값 52.6km).
+ * 그 값이 어느 경로로 들어갔는지는 코드에 남아 있지 않다(이 수집기는 `apartments.air_quality`
+ * JSON 만 쓰고 `infra` 는 안 건드렸다) — 옛 일회성 스크립트의 잔재로 보인다.
+ *
  * @param {AirQualityAptRow} apt
  * @param {StationData[]} stations
  */
@@ -95,6 +109,8 @@ export function matchNearestStation(apt, stations) {
   return {
     pm10: nearest.pm10, pm25: nearest.pm25, o3: nearest.o3,
     grade: nearest.grade, station: nearest.station,
+    // km → m. 다른 거리 컬럼·자매 화면과 같은 단위로 맞춘다(위 주석).
+    stationDist: Number.isFinite(minDist) ? Math.round(minDist * 1000) : null,
     collected_at: today(), // KST 고정
   };
 }
@@ -141,12 +157,21 @@ async function main() {
       const aq = matchNearestStation(apt, allStations);
       if (!aq) { rpt.skip(1); continue; }
       if (dryRun) {
-        log(PHASE, `  [DRY] ${apt.name}: PM2.5=${aq.pm25} PM10=${aq.pm10} ${aq.grade} (${aq.station})`);
+        log(PHASE, `  [DRY] ${apt.name}: PM2.5=${aq.pm25} PM10=${aq.pm10} ${aq.grade} (${aq.station} ${aq.stationDist ?? "?"}m)`);
         rpt.success(1);
         continue;
       }
       const { error: uErr } = await sb.from("apartments").update({ air_quality: aq }).eq("id", apt.id);
-      if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); }
+      if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); continue; }
+      // `infra.air_station_name`·`air_station_dist` 도 함께 맞춘다 — **자매 레포가 읽는 자리**다
+      // (`naver-estate-web` `MbEnvironmentSection.tsx:132·137`). 이 수집기가 `apartments.air_quality`
+      // JSON 만 쓰던 동안 그 두 컬럼은 옛 값(km 숫자)이 m 로 표시되고 있었다(세션556).
+      // ⚠️ `infra` 는 5개 수집기가 컬럼을 나눠 쓰는 행이라 **소유한 두 칸만** 갱신한다(행 덮어쓰기 금지).
+      const { error: iErr } = await sb
+        .from("infra")
+        .update({ air_station_name: aq.station, air_station_dist: aq.stationDist })
+        .eq("apartment_id", apt.id);
+      if (iErr) { logError(PHASE, `${apt.name} infra: ${iErr.message}`); rpt.fail(1); }
       else rpt.success(1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
