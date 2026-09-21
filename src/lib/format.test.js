@@ -11,6 +11,7 @@ import {
   fmtRecruitDate,
   fmtCompetitionRate,
   fmtUnsoldRate,
+  fmtAddress,
 } from "./format";
 
 describe("fmtUnsoldRate — 100% 캡 (세션 444)", () => {
@@ -272,5 +273,50 @@ describe("fmtCompetitionRate", () => {
   it('null/undefined → "미수집"', () => {
     expect(fmtCompetitionRate(null)).toBe("미수집");
     expect(fmtCompetitionRate(undefined)).toBe("미수집");
+  });
+});
+
+describe("fmtAddress — 시도 접두 축약 (세션556)", () => {
+  // DB 실측(2026-09-21): apartments.address 에 다섯 표기가 공존한다.
+  // 광주 52 · 전남 33 · 전라남도 13 · 전남광주통합특별시 3 · 광주광역시 1
+  it("통합 시도명 → 짧은 이름 (화면 윗줄 region 과 같아진다)", () => {
+    expect(fmtAddress("전남광주통합특별시 광산구 월계동 870-1")).toBe("광주 광산구 월계동 870-1");
+  });
+  it("정식 시도명 → 짧은 이름", () => {
+    expect(fmtAddress("광주광역시 광산구 임방울대로 816")).toBe("광주 광산구 임방울대로 816");
+    expect(fmtAddress("전라남도 광양시 황금동 519")).toBe("전남 광양시 황금동 519");
+  });
+  it("이미 짧은 표기는 그대로", () => {
+    expect(fmtAddress("광주 북구 운암동 1789")).toBe("광주 북구 운암동 1789");
+    expect(fmtAddress("전남 여수시 미평동 671")).toBe("전남 여수시 미평동 671");
+  });
+
+  // ⚠️ 이 함수는 **분류가 아니라 글자 줄이기**다. 표에 없는 시도는 손대지 않는다 —
+  // `fmtCompletion` 과 같은 원칙(우리가 못 읽는 값을 읽은 척 꾸미지 않는다).
+  it("표에 없는 시도는 원문 그대로", () => {
+    expect(fmtAddress("경기도 성남시 분당구 대장동 596")).toBe("경기도 성남시 분당구 대장동 596");
+    expect(fmtAddress("서울특별시 강북구 솔샘로 265")).toBe("서울특별시 강북구 솔샘로 265");
+    expect(fmtAddress("인천 부평구 청천동 456")).toBe("인천 부평구 청천동 456");
+  });
+
+  // 첫 토큰만 본다 — 뒤쪽에 같은 글자가 나와도 건드리지 않는다.
+  it("첫 토큰만 치환한다 (뒤쪽 동명 보존)", () => {
+    expect(fmtAddress("경기 광주시 초월읍 지월리 1")).toBe("경기 광주시 초월읍 지월리 1");
+    expect(fmtAddress("전남광주통합특별시 광산구 광주여대길 1")).toBe("광주 광산구 광주여대길 1");
+  });
+
+  it("공백 없는 한 덩어리는 그대로", () => {
+    expect(fmtAddress("전남광주통합특별시")).toBe("전남광주통합특별시");
+  });
+
+  it("빈값·null·비문자열은 빈 문자열", () => {
+    expect(fmtAddress(null)).toBe("");
+    expect(fmtAddress(undefined)).toBe("");
+    expect(fmtAddress("")).toBe("");
+    expect(fmtAddress("   ")).toBe("");
+  });
+
+  it("앞뒤 공백은 다듬는다", () => {
+    expect(fmtAddress("  전라남도 여수시 소호로 267  ")).toBe("전남 여수시 소호로 267");
   });
 });

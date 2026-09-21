@@ -3,6 +3,23 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook, act } from "@testing-library/react";
 import { useShare } from "./useShare";
 
+// ## 이 테스트는 `.env.local` 에 흔들리지 않는다 — 실측 근거 (세션556)
+//
+// `useShare.ts:5-6` 은 `VITE_KAKAO_JS_KEY`·`VITE_KAKAO_CHANNEL_ID` 를 **모듈 최상위 상수**로
+// 읽는다. 최상위라 `vi.stubEnv` 로 덮을 수 없어서 "개발자 PC 의 `.env.local` 이 테스트 결과를
+// 바꾸는 잠복 아니냐" 는 지적이 있었다(세션555 검사관). 실측해 보니 **아니다.**
+//
+// 모듈 상수를 직접 `"DUMMY_KEY"` 와 `""` 로 바꿔 각각 돌렸고 **양쪽 다 10건 통과**했다.
+// 이유는 아래 `beforeEach` 가 `isInitialized` 를 항상 `true` 로 모킹하기 때문이다.
+// 키를 읽는 자리는 **두 곳**인데 조건이 같다 — `useShare.ts:25`(공유 시점 재시도)와
+// `useShare.ts:94`(마운트 useEffect) 둘 다
+// `if (KAKAO_JS_KEY && window.Kakao && !window.Kakao.isInitialized())` 라서
+// `!true` 로 막혀 **키를 읽는 줄에 애초에 도달하지 않는다.**
+// 아래 "defer 로드 대응" 테스트도 같은 `kakao` 객체를 다시 붙이므로 마찬가지다.
+//
+// ⚠️ 그래서 이 안전은 **`isInitialized: true` 모킹에 의존한다.** 그 모킹을 바꾸거나
+//    `init` 분기를 지나는 테스트를 새로 넣으면 그때부터는 키에 흔들린다 —
+//    그 경우 `vi.mock("./useShare", …)` 이나 주입 방식으로 격리해야 한다.
 describe("useShare", () => {
   /** @type {import('vitest').Mock} */
   let showToast;
