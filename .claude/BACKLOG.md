@@ -13,6 +13,14 @@
 > 큰 순서는 세션510 사장님 결정 그대로: **① 수집기·데이터 → ② 점수 분별력 → ③ 화면 재설계**. ①② 가 상당히 정리돼 ③ 재개 여부가 결정 대기다.
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
+- 🔴 **자매 PR [#556](https://github.com/developer-duno/naver-estate-web/pull/556) 머지 후 첫 수집 회차** — `infra.air_station_name` 의 **관측소 종류가 8종에서 늘었는지** 확인.
+  현재 **3,068단지에 8종류**뿐이고 제주 "남원읍" 한 곳에 **2,007곳**(서울·수원 아파트 포함)이 붙어 있다.
+  전국 측정소는 600곳이 넘는다. 원인 = 자매 `wgs84_to_tm` 의 false northing 누락 + Bessel 근사(세션556 확정).
+  ⚠️ **이미 저장된 값은 안 고쳐진다** — 수집기가 덮어써야 한다. `air_quality_stations` 표도 **8행 + lat/lng 전부 NULL**.
+  확인: `select air_station_name, count(*) from infra group by 1 order by 2 desc` 로 종류 수. **기대: 8종 → 수십~수백 종.**
+  다르면(여전히 8종) 자매 수집기가 안 돌았거나 갱신 조건에 막힌 것 — `env_air.py` 의 skip 조건부터 읽는다.
+- 🟠 **`notification_logs` 표 생성** — 사장님이 Supabase Dashboard 에서 SQL 1회. 안내문 = `artifacts/notification-logs-적용안내.md`.
+  **구독자 0명이라 급하지 않다.** CLI 는 다른 조직 로그인이라 마이그레이션은 Dashboard 만(세션489 확인).
 - ~~**오늘** — 세종 VIEW SQL 적용~~ ✅ **완료(세션551, 2026-09-20 21:4x KST, 사장님 Dashboard)**. 회귀 0 확인(총 2,443행 · 비세종 fertilityRate 2,408 / housingPrice 2,393 / doctorsPer1k 2,408 / hospitalBedsPer1k 2,406 전부 불변) + 세종 35곳 fertility·housing 0→35. `data-audit` 세종 수치를 다시 기준선으로 써도 된다.
 - ~~**09-21(월) 05:30** — `lhzone-status` 첫 자동 발화~~ ✅ **완료(세션555 실측)**: 2026-09-20T20:30Z(=09-21 05:30 KST) `success` · `ok=1144 fail=0` — 08-21 회차와 동일한 수치다.
 - ~~**09-21(월) 08:00 이후** — 네이버 파이프라인 완주 확인 / `--max-minutes` 도입~~ ✅ **해소(세션555 실측)**: `--max-minutes` 는 **이미 도입돼 있다**(`naver-collect.py:372` 기본 90, `run-naver-local.bat:37` 이 `--max-minutes=120` 으로 호출). 그래서 `naver-collect` 가 매 회차 정확히 120분에 `partial` 로 끊기는 것은 **고장이 아니라 설계**다 — bat 주석 그대로 *"1단계를 제한해 2~6단계가 항상 돌도록"*, 남은 단지는 다음 실행이 resume 한다(`naver-collect.py:496`). 최근 5회 전부 `partial`/120분/`fail=0`(ok 7,603~13,531, skip 409~469).
