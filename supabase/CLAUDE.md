@@ -95,15 +95,27 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 
 ### 테이블 소유권
 
+> ⚠️ **이 표는 세션556 에 자매 레포를 직접 훑어 다시 썼다.** 그 전 판은 두 군데가 틀렸다 —
+> `infra` 를 "쓰기는 mibunyang 만" 이라 했지만 **자매도 쓰고**, "mibunyang 전용" 목록의 표
+> 대부분은 자매가 **읽고 있었다**. 실측 방법(자매 레포에서):
+> `grep -rn "__tablename__" backend/db/mb_models.py` (자매가 아는 우리 표 17개) +
+> 그 심볼을 import 하는 파일에서 `db.add(`·`commit()` 여부.
+
 | 소유 | 테이블 | 쓰기 |
 |------|--------|------|
 | **공용** | complexes | 양쪽 upsert (컬럼 분리: mibunyang→nearby_apartment_ids, naver-estate-web→cortar/detail) |
 | **공용** | articles | 양쪽 upsert |
 | **공용** | complex_price_history | 양쪽 upsert |
-| **공용** | trades | mibunyang만 |
-| **mibunyang 쓰기 · 자매 읽기** | infra | **쓰기는 mibunyang 만**인데 `naver-estate-web` 이 읽는다 (세션556 발견) |
-| **mibunyang 전용** | apartments, prices, unsold_history, schools, transport, builders, regions, trade_stats, consults, api_quota_log | mibunyang만 |
-| **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details 등 | naver-estate-web만 |
+| **공용 (컬럼 분리)** | **infra** | **양쪽 쓰기.** mibunyang = kakao 계열 17컬럼(8종×2 + `subway_dist`) + `updated_at` / 자매 = `air_*`·`crime_*`·`childcare_*`·`emergency_*` (`env_air.py`·`env_crime.py`·`env_childcare.py`·`env_emergency.py` 가 `db.add(infra)`) |
+| **공용** | air_quality_stations | **자매만 쓴다**(`env_air.py`). mibunyang 은 안 건드린다 |
+| **공용** | presale_schedule_official, applyhome_unit_supply, rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | **양쪽 쓰기** — 자매 `service_applyhome_officetel.py`·`service_applyhome_rental.py` 가 오피스텔·임대를 넣는다 |
+| **mibunyang 쓰기 · 자매 읽기** | apartments, prices, unsold_history, schools, transport, builders, regions, trades, trade_stats | 쓰기는 mibunyang 만. **자매가 `mb_models.py` 로 읽으므로 컬럼 삭제·이름 변경 금지** |
+| **mibunyang 전용** | consults, api_quota_log, collector_runs 등 | mibunyang만 |
+| **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details, crawl_jobs, payments, billing_keys 등 | naver-estate-web만 |
+
+**읽기도 계약이다.** "자매가 안 쓰니 마음대로 바꿔도 된다" 가 성립하는 표는 마지막
+`mibunyang 전용` 줄뿐이다. 그 위 표들은 **컬럼을 지우거나 이름을 바꾸면 자매가 깨진다** —
+쓰기 주체가 우리뿐이어도 마찬가지다.
 
 ### 컬럼명 정규화
 
@@ -122,7 +134,11 @@ DB는 naver-estate-web 기준 컬럼명으로 정규화됨:
 
 ## 마이그레이션 체크리스트
 
-공용 테이블(complexes/articles/complex_price_history/trades) 변경 시:
+⚠️ 대상은 위 소유권 표의 **`mibunyang 전용` 줄을 뺀 전부**다(세션556 정정). 옛 판은
+`complexes/articles/complex_price_history/trades` 4개만 적었지만, 자매는 `apartments`·
+`regions`·`infra`·`schools`·`transport` 등 **17개 표를 읽고 그중 여럿에 쓴다.**
+
+해당 테이블 변경 시:
 
 1. 상대 프로젝트의 SELECT 쿼리 / ORM 모델 검색
 2. 양쪽 CLAUDE.md에 변경 내역 기록
