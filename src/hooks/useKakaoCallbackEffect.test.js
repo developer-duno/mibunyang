@@ -128,6 +128,15 @@ describe("useKakaoCallbackEffect", () => {
   });
 
   // 세션 469: VITE_FEATURE_HOME=true 여도 pendingTab="map" 이 홈 착지를 이긴다
+  //
+  // ⚠️ 이 테스트가 지키는 것은 **분기 순서**(map 우선)이지 깃발 ON 경로가 아니다 (세션556 정정).
+  //    `useKakaoCallbackEffect.ts:66` 이 `pendingTab === "map"` 을 먼저 보고 return 하므로
+  //    `isFeatureHome()` 은 else 안에서만 읽힌다 — 즉 아래 stubEnv 를 "true"/""/삭제 어느 쪽으로
+  //    바꿔도 결과가 같다(그래서 깃발에 대해서는 항진명제다). stub 을 남겨 둔 이유는 "깃발이
+  //    켜져도 map 이 이긴다" 는 **의도를 문서로 남기기 위해서**이고, 실제 가드는 아래 두 단언
+  //    (map 호출 O · home 호출 X)이 `if/else` 순서가 뒤집히면 red 를 내는 것이다.
+  //    깃발 ON 경로 자체는 아래 "VITE_FEATURE_HOME=true 면 user 로그인 착지가 home 이다"
+  //    (pendingTab 없음)가 검증한다.
   it("VITE_FEATURE_HOME=true + pendingTab='map' → 홈이 아니라 지도 탭", async () => {
     vi.stubEnv("VITE_FEATURE_HOME", "true");
     const args = makeArgs({ ok: true, token: "t", role: "user", pendingTab: "map" });
