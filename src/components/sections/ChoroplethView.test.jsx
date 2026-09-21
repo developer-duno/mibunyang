@@ -257,7 +257,50 @@ describe("ChoroplethView", () => {
     expect(clickListener).toBeDefined();
     clickListener.handler();
     expect(mapInstance.setBounds).toHaveBeenCalled();
-    expect(onSidoClick).toHaveBeenCalledWith("서울");
+    expect(onSidoClick).toHaveBeenCalledWith("서울", { count: 3, enough: true });
+  });
+
+  // 표본 신호 이어주기 (세션554) — 흐린(점선) 칸을 눌러 점 보기로 넘어가면
+  // "단지가 적어 평균을 믿기 어렵다"는 경고가 사라지던 자리(세션553 적대검증 지적).
+  // 클릭 때 표본 수를 함께 넘겨 도착 화면이 안내를 이어받을 수 있게 한다.
+  it("표본 부족 시도 click → onSidoClick 이 표본 정보를 함께 넘긴다", async () => {
+    const { eventListeners, mapInstance } = setupKakao();
+    const onSidoClick = vi.fn();
+    render(
+      <ChoroplethView
+        mapInstance={mapInstance}
+        ready={true}
+        filtered={/** @type {any} */ ([{ apt: { region: "서울" }, res: { total: 80 } }])}
+        onSidoClick={onSidoClick}
+      />
+    );
+    await flushPromises();
+    const clickListener = eventListeners.find((l) => l.type === "click");
+    clickListener.handler();
+    // 단지 1곳 = MIN_MAP_SAMPLE(3) 미만 → enough:false 와 실제 개수를 함께
+    expect(onSidoClick).toHaveBeenCalledWith("서울", { count: 1, enough: false });
+  });
+
+  it("표본 충분한 시도 click → enough:true 로 넘긴다", async () => {
+    const { eventListeners, mapInstance } = setupKakao();
+    const onSidoClick = vi.fn();
+    render(
+      <ChoroplethView
+        mapInstance={mapInstance}
+        ready={true}
+        filtered={
+          /** @type {any} */ ([
+            { apt: { region: "서울" }, res: { total: 80 } },
+            { apt: { region: "서울" }, res: { total: 70 } },
+            { apt: { region: "서울" }, res: { total: 60 } },
+          ])
+        }
+        onSidoClick={onSidoClick}
+      />
+    );
+    await flushPromises();
+    eventListeners.find((l) => l.type === "click").handler();
+    expect(onSidoClick).toHaveBeenCalledWith("서울", { count: 3, enough: true });
   });
 
   it("폴리곤 mouseover → fillOpacity 0.85", async () => {

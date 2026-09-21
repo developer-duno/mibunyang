@@ -1027,4 +1027,85 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
       expect(screen.getByText("2028년 12월")).toBeInTheDocument();
     });
   });
+
+  // PC 두 칸 + 고정 레일 (세션554, 원장 D2) — 데스크톱(≥1024)에서만.
+  // 지금까지 점수·판정은 "종합" 탭 안에만 있어 시세·입지·금융 탭으로 가면 사라졌다.
+  // 레일로 옮기면 어느 탭을 보든 "몇 점인가·무슨 등급인가·상담하기"가 옆에 남는다.
+  describe("PC 고정 레일", () => {
+    it("데스크톱이면 레일이 뜬다", () => {
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true })} />);
+      expect(screen.getByTestId("detail-rail")).toBeTruthy();
+    });
+
+    it("모바일·태블릿에서는 레일이 없다 (지금 모양 그대로)", () => {
+      render(<DetailModal {...makeProps({ isPC: false, isDesktop: false })} />);
+      expect(screen.queryByTestId("detail-rail")).toBeNull();
+    });
+
+    it("태블릿(isPC 이지만 데스크톱 아님)에서도 레일이 없다", () => {
+      // 768~1023 은 손가락으로 쓰는 폭이라 한 칸을 유지한다(사장님 결정).
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: false })} />);
+      expect(screen.queryByTestId("detail-rail")).toBeNull();
+    });
+
+    it("레일에 점수와 판정이 함께 있다", () => {
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true })} />);
+      const rail = screen.getByTestId("detail-rail");
+      // 종합 점수(makeScoredItem 기본)와 판정 문장이 레일 안에 있어야 한다
+      expect(rail.textContent).toMatch(/등급/);
+    });
+
+    it("레일에 상담 버튼이 있다", () => {
+      const onConsult = vi.fn();
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true, onConsult })} />);
+      const rail = screen.getByTestId("detail-rail");
+      const btn = /** @type {HTMLElement} */ (rail).querySelector('[data-testid="rail-consult"]');
+      expect(btn).toBeTruthy();
+      fireEvent.click(/** @type {HTMLElement} */ (btn));
+      expect(onConsult).toHaveBeenCalled();
+    });
+
+    it("레일이 뜨면 아래쪽 CTA 바는 중복으로 뜨지 않는다", () => {
+      // 같은 버튼이 한 화면에 두 번 있으면 손님이 어느 쪽이 진짜인지 헷갈린다.
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true, onConsult: vi.fn() })} />);
+      expect(screen.queryByTestId("detail-cta-bar")).toBeNull();
+    });
+
+    it("모바일에서는 아래쪽 CTA 바가 그대로 있다", () => {
+      render(<DetailModal {...makeProps({ isPC: false, isDesktop: false, onConsult: vi.fn() })} />);
+      expect(screen.getByTestId("detail-cta-bar")).toBeTruthy();
+    });
+
+    it("레일이 있으면 종합 탭 본문에 점수·판정을 또 그리지 않는다", () => {
+      // 라이브 화면 실측(세션554): 같은 66점 원과 같은 판정 문장이 본문과 레일에 나란히 떠
+      // 손님이 "둘이 다른 건가" 하게 된다. 레일이 상위 자리이므로 본문 쪽을 접는다.
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true })} />);
+      const body = screen.getByTestId("detail-scroll-body");
+      expect(body.querySelector('[data-testid="overview-score"]')).toBeNull();
+    });
+
+    it("모바일에서는 종합 탭 본문에 점수·판정이 그대로 있다", () => {
+      render(<DetailModal {...makeProps({ isPC: false, isDesktop: false })} />);
+      const body = screen.getByTestId("detail-scroll-body");
+      expect(body.querySelector('[data-testid="overview-score"]')).toBeTruthy();
+    });
+
+    // 인쇄 회귀 가드 (세션554 적대검증 🔴) — main 에서는 CTA 블록에 data-no-print 가 0건이라
+    // 인쇄물에 점수·버튼이 찍혔다. 레일로 옮기며 data-no-print 를 붙이면 데스크톱 인쇄물에서
+    // 행동 영역이 통째로 사라진다(App.tsx print CSS: [data-no-print]{display:none!important}).
+    // 관리자 인쇄(AdminScoreBreakdown 의 window.print)는 데스크톱에서 하는 일이라 실제 경로다.
+    it("레일에 data-no-print 를 붙이지 않는다 (인쇄물에서 점수·버튼이 사라지지 않게)", () => {
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true, onConsult: vi.fn() })} />);
+      const rail = screen.getByTestId("detail-rail");
+      expect(rail.hasAttribute("data-no-print")).toBe(false);
+    });
+
+    it("다른 탭으로 옮겨도 레일의 점수·판정은 남는다", () => {
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true })} />);
+      const before = screen.getByTestId("detail-rail").textContent;
+      fireEvent.click(screen.getByRole("tab", { name: /시세/ }));
+      const after = screen.getByTestId("detail-rail").textContent;
+      expect(after).toBe(before);
+    });
+  });
 });

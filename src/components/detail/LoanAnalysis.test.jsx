@@ -94,6 +94,35 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("LTV한도")).toBeTruthy();
   });
 
+  // 거래 건수 노출 (세션554) — 갭투자액·월이자는 이 건수 위에서 계산된다.
+  // 실측(2026-09-21, apartments_flat 2,458행): 면적 구간의 8.8%가 거래 1건, 21.4%가 5건 미만.
+  // 형제 화면 PriceTable 은 이미 "건수" 열을 보여주는데 여기만 숨겨 한 모달이 서로 다른 말을 했다.
+  it("면적별 표에 거래 건수를 함께 보여준다", () => {
+    const apt = makeApt({
+      price: 50000,
+      area: 84,
+      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 3 }],
+      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
+    });
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("거래")).toBeTruthy();
+    expect(screen.getByText("3건")).toBeTruthy();
+  });
+
+  // 건수가 적으면 눈에 띄게 — 5건 미만은 경고색으로 "믿을 만한가"를 말해 준다.
+  it("거래 5건 미만이면 주의 표시를 함께 준다", () => {
+    const apt = makeApt({
+      price: 50000,
+      area: 84,
+      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 1 }],
+      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
+    });
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    const cell = screen.getByTestId("loan-trade-count-84");
+    expect(cell.textContent).toContain("1건");
+    expect(cell.getAttribute("data-few")).toBe("true");
+  });
+
   // priceByArea가 null이면 상세 테이블 미표시
   it("priceByArea가 null이면 상세 테이블을 표시하지 않는다", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000, priceByArea: null }));

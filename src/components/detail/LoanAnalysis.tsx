@@ -8,6 +8,14 @@ import { LoanRatesSection } from "./LoanRatesSection";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
 import type { PriceAreaRow } from "@/types/detail";
 
+/**
+ * 거래 건수가 이보다 적으면 "이 시세를 그대로 믿기 어렵다"고 알린다.
+ * 5 = 형제 화면(PriceTable)이 쓰는 "비슷한 면적" 강조와 같은 자릿수의 실무 기준이며,
+ * 실측(2026-09-21, apartments_flat 2,458행 / 면적구간 72,595개)에서 1건 8.8% · 5건 미만 21.4% 라
+ * 다섯 칸 중 한 칸꼴로 경고가 붙는다(전부 붙지도, 아무 데도 안 붙지도 않는 자리).
+ */
+const FEW_TRADES_MAX = 5;
+
 export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }: LoanAnalysisProps) {
   const [showLegal, setShowLegal] = useState(false);
   const { rates: rentRates, loading: rentLoading } = useRentLoanRates() as {
@@ -47,7 +55,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         const ltv = calcLTV(p.min, zone);
         const monthlyInterest =
           gap != null && gap > 0 && rentMinRate ? Math.round((gap * rentMinRate) / 100 / 12) : null;
-        return { area: p.area, min: p.min, rentAvg: rent?.avg, gap, ltv, monthlyInterest };
+        return { area: p.area, min: p.min, rentAvg: rent?.avg, gap, ltv, monthlyInterest, count: p.count };
       })
     : [];
 
@@ -143,6 +151,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
                   <th style={thStyle}>전세평균</th>
                   <th style={thStyle}>갭투자액</th>
                   <th style={thStyle}>월이자</th>
+                  <th style={{ ...thStyle, textAlign: "right" }}>거래</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>LTV한도</th>
                 </tr>
               </thead>
@@ -161,6 +170,27 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
                     </td>
                     <td style={{ ...tdStyle, color: r.monthlyInterest != null ? C.amber : C.muted }}>
                       {r.monthlyInterest != null ? `${fmtPrice(r.monthlyInterest)}/월` : rentLoading ? "…" : "-"}
+                    </td>
+                    {/* 거래 건수 — 위 갭투자액·월이자가 "몇 건으로 낸 값"인지 말해 준다.
+                        실측(2026-09-21, apartments_flat 2,458행): 8.8%가 1건, 21.4%가 5건 미만이라
+                        건수를 숨기면 한 건짜리 시세가 확정값처럼 보인다. 형제 표(PriceTable)와 같은 표기.
+                        FEW_TRADES_MAX 미만은 경고색 — 색만으로 뜻이 갈리지 않게 title 도 함께 둔다. */}
+                    <td
+                      data-testid={`loan-trade-count-${r.area}`}
+                      data-few={r.count != null && r.count < FEW_TRADES_MAX ? "true" : "false"}
+                      title={
+                        r.count != null && r.count < FEW_TRADES_MAX
+                          ? `거래 ${r.count}건뿐이라 시세를 그대로 믿기 어렵습니다`
+                          : undefined
+                      }
+                      style={{
+                        ...tdStyle,
+                        textAlign: "right",
+                        color: r.count != null && r.count < FEW_TRADES_MAX ? C.amber : C.muted,
+                        fontWeight: r.count != null && r.count < FEW_TRADES_MAX ? 700 : 400,
+                      }}
+                    >
+                      {r.count != null ? `${r.count}건` : "-"}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>
                       {fmtPrice(r.ltv)}

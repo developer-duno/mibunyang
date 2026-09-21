@@ -61,12 +61,21 @@ test.describe("상세 모달", () => {
     await expect(modal).toBeVisible({ timeout: 5000 });
   });
 
-  // CTA sticky 바 (세션 407) — 콘텐츠 길이·스크롤 위치와 무관하게 모달 열린 직후 화면 안에 있어야 함.
-  test("CTA 바 — 모달 열린 직후 스크롤 없이 화면 안 (sticky bottom)", async ({ page }) => {
+  // CTA — 모달 열린 직후 스크롤 없이 화면 안에 있어야 한다(세션 407).
+  //
+  // ⚠️ 세션554(PR-6)부터 자리가 폭에 따라 갈린다: 데스크톱(≥1024)은 오른쪽 고정 레일,
+  // 그 아래는 기존 하단 sticky 바. 이 프로젝트의 chromium 은 Desktop Chrome(1280)이라
+  // 레일 쪽이다. 어느 쪽이든 **상담 버튼이 첫 화면에 보인다**는 것이 지켜야 할 약속이므로,
+  // testid 하나에 못 박지 않고 폭에 맞는 자리를 골라 검사한다.
+  test("CTA — 모달 열린 직후 스크롤 없이 화면 안", async ({ page }) => {
     await firstCard(page).click();
     const modal = page.locator('[role="dialog"]');
     await expect(modal).toBeVisible({ timeout: 5000 });
-    await expect(modal.getByTestId("detail-cta-bar")).toBeInViewport();
+    const width = page.viewportSize()?.width ?? 0;
+    const target = width >= 1024 ? modal.getByTestId("detail-rail") : modal.getByTestId("detail-cta-bar");
+    await expect(target).toBeInViewport();
+    // 자리와 무관하게 "이 매물 상담하기"가 첫 화면에 보여야 한다.
+    await expect(modal.getByRole("button", { name: "이 매물 상담하기" })).toBeInViewport();
   });
 
   test("모달에 단지 정보 섹션 렌더링", async ({ page }) => {
