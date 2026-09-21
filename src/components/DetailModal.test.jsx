@@ -1090,6 +1090,16 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
       expect(body.querySelector('[data-testid="overview-score"]')).toBeTruthy();
     });
 
+    // 인쇄 회귀 가드 (세션554 적대검증 🔴) — main 에서는 CTA 블록에 data-no-print 가 0건이라
+    // 인쇄물에 점수·버튼이 찍혔다. 레일로 옮기며 data-no-print 를 붙이면 데스크톱 인쇄물에서
+    // 행동 영역이 통째로 사라진다(App.tsx print CSS: [data-no-print]{display:none!important}).
+    // 관리자 인쇄(AdminScoreBreakdown 의 window.print)는 데스크톱에서 하는 일이라 실제 경로다.
+    it("레일에 data-no-print 를 붙이지 않는다 (인쇄물에서 점수·버튼이 사라지지 않게)", () => {
+      render(<DetailModal {...makeProps({ isPC: true, isDesktop: true, onConsult: vi.fn() })} />);
+      const rail = screen.getByTestId("detail-rail");
+      expect(rail.hasAttribute("data-no-print")).toBe(false);
+    });
+
     it("다른 탭으로 옮겨도 레일의 점수·판정은 남는다", () => {
       render(<DetailModal {...makeProps({ isPC: true, isDesktop: true })} />);
       const before = screen.getByTestId("detail-rail").textContent;

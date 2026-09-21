@@ -426,7 +426,10 @@ export const DetailModal = memo(function DetailModal({
         {/* 하단 패딩은 CTA sticky 바가 자체 패딩으로 담당 (바닥 밀착을 위해 스크롤러 하단 패딩 0) */}
         {/* 데스크톱 두 칸(원장 D2): 본문 스크롤러 + 오른쪽 고정 레일.
             모바일·태블릿은 레일이 없어 이 래퍼가 한 칸이라 지금 모양 그대로다. */}
-        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
+        {/* 인쇄에서는 두 칸을 풀어 세로로 잇는다(data-print-stack). print CSS 가 본문을
+            width:100% 로 펴는데 레일이 옆에 남으면 종이 밖으로 밀린다 — 세로로 쌓아
+            본문 뒤에 점수·판정·버튼이 이어 찍히게 한다(세션554 적대검증 후속). */}
+        <div data-print-stack style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
           <div
             ref={bodyRef}
             data-testid="detail-scroll-body"
@@ -1069,11 +1072,13 @@ export const DetailModal = memo(function DetailModal({
               레일은 탭과 무관하게 같은 자리에 머물러 "몇 점인가·무슨 등급인가·상담하기"를 잡아 둔다.
 
               ⚠️ DOM 순서상 본문 **뒤**에 둔다 — CTA 가 모달의 마지막 포커서블이어야
-              포커스 트랩이 display:none 패널 안쪽을 경계로 잡지 않는다(기존 불변식 유지). */}
+              포커스 트랩이 display:none 패널 안쪽을 경계로 잡지 않는다(기존 불변식 유지).
+              ⚠️ 레일에 `data-no-print` 를 붙이면 안 된다(세션554 적대검증) — App.tsx print CSS 의
+              `[data-no-print]{display:none}` 가 데스크톱 인쇄물에서 점수·판정·버튼을 통째로 지운다.
+              main 에서는 CTA 블록에 그 표시가 없어 인쇄물에 찍혔고, 그 동작을 유지한다. */}
           {isDesktop && (
             <aside
               data-testid="detail-rail"
-              data-no-print
               aria-label="단지 요약과 실행"
               style={{
                 width: RAIL_WIDTH,

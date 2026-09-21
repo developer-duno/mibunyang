@@ -36,6 +36,21 @@ describe("buildSampleNote — 표본 안내 문구", () => {
     expect(note?.text).toContain("인천");
   });
 
+  // 시군구 오버레이는 "경기|용인시" 꼴 키를 넘긴다(geoSigunguToByGuKey).
+  // 세션554 적대검증: 그대로 쓰면 "'경기|용인시' 지역은…" 이 되어 손님이 못 읽는다.
+  it("시군구 키는 사람이 읽는 이름만 남긴다", () => {
+    const note = buildSampleNote("경기|용인시", { count: 2, enough: false });
+    expect(note?.name).toBe("용인시");
+    expect(note?.text).toContain("용인시");
+    expect(note?.text).not.toContain("|");
+  });
+
+  it("시도 이름은 그대로 둔다", () => {
+    expect(buildSampleNote("경기", { count: 2, enough: false })?.name).toBe("경기");
+  });
+
+  // ⚠️ 이건 "정보를 못 받았을 때의 안전한 기본값"이지 **시군구 면책이 아니다**.
+  // 세션554 적대검증이 이 테스트를 근거로 시군구 무전달이 정상처럼 보였던 자리.
   it("sample 이 없으면(정보 미전달) 안내하지 않는다", () => {
     expect(buildSampleNote("서울", undefined)).toBeNull();
   });

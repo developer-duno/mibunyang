@@ -254,6 +254,25 @@ describe("ChoroplethSigunguOverlay", () => {
     expect(stillDashed).toHaveLength(0);
   });
 
+  // 세션554 적대검증 🔴 — 시군구는 인자 1개만 넘겨 표본 경고가 **조용히** 끊겼다.
+  // 문턱 3이 가장 많이 걸리는 층이 시군구라 여기가 끊기면 기능의 대부분이 죽는다.
+  it("표본 부족 시군구 click → 표본 정보를 함께 넘긴다", async () => {
+    const { eventListeners } = setupKakao();
+    const onGuClick = vi.fn();
+    const one = /** @type {any} */ ([{ apt: { region: "서울", gu: "강남구" }, res: { total: 70 } }]);
+    render(
+      <ChoroplethSigunguOverlay
+        mapInstance={{ setBounds: vi.fn() }}
+        ready={true}
+        filtered={one}
+        onGuClick={onGuClick}
+      />
+    );
+    await flushPromises();
+    eventListeners.find((l) => l.type === "click").handler();
+    expect(onGuClick).toHaveBeenCalledWith("서울|강남구", { count: 1, enough: false });
+  });
+
   it("데이터 없는 칸은 점선이 아니다 (표본 부족과 구분)", async () => {
     const { polygons } = setupKakao();
     render(
@@ -291,7 +310,9 @@ describe("ChoroplethSigunguOverlay", () => {
     firstClick.handler();
     expect(mapInstance.setBounds).toHaveBeenCalled();
     // 첫 feature = 강남구
-    expect(onGuClick).toHaveBeenCalledWith("서울|강남구");
+    // 세션554: 표본 정보를 함께 넘긴다(시군구도 시도와 같은 계약).
+    // filtered=[] 이라 그 칸은 데이터 자체가 없다 → count 0 (안내는 buildSampleNote 가 막는다).
+    expect(onGuClick).toHaveBeenCalledWith("서울|강남구", { count: 0, enough: false });
   });
 
   it("fetch 실패 → role=alert", async () => {

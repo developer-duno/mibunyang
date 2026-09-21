@@ -408,6 +408,13 @@ export const KakaoMapView = memo(function KakaoMapView({
     setSampleNote(buildSampleNote(_dbName, sample));
   }, []);
 
+  // 지역·필터가 바뀌면 앞서 눌렀던 칸의 표본 안내는 더 이상 그 화면 얘기가 아니다(세션554 적대검증).
+  // 지도 탭에도 필터 바가 함께 뜨므로(App.tsx: tab==="list"||tab==="map") 손님이 띠를 띄운 채
+  // 지역을 바꿀 수 있다 — 그대로 두면 "경남 1곳" 안내가 서울 목록 위에 남는다.
+  useEffect(() => {
+    setSampleNote(null);
+  }, [deferredRegion, deferredGu, filtered]);
+
   // 모드 토글 버튼 — point→color 전환 시 마커/선택 즉시 정리 (color→point 는 useEffect 가 재생성)
   const handleModeToggle = useCallback(() => {
     // 손님이 직접 모드를 바꾸면 앞서 눌렀던 칸의 표본 안내는 더 이상 그 화면 얘기가 아니다.

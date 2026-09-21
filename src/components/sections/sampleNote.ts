@@ -13,14 +13,25 @@
 export type SampleInfo = { count: number; enough: boolean };
 export type SampleNote = { name: string; count: number; text: string };
 
+/**
+ * 시군구 오버레이는 `"경기|용인시"` 처럼 **구분자로 이은 키**를 넘긴다(geoSigunguToByGuKey).
+ * 그대로 문장에 넣으면 `'경기|용인시' 지역은…` 이 되어 손님이 읽을 수 없다.
+ * 사람이 읽는 이름만 남긴다 — 시군구면 뒤쪽(구·시), 시도면 그대로.
+ */
+function humanName(raw: string): string {
+  const i = raw.lastIndexOf("|");
+  return i >= 0 ? raw.slice(i + 1) : raw;
+}
+
 export function buildSampleNote(name: string, sample?: SampleInfo): SampleNote | null {
   if (!sample) return null;
   if (sample.enough) return null;
   // 자료가 아예 없는 칸 — 표본이 적은 것과는 다른 사실이라 말하지 않는다.
   if (!(sample.count > 0)) return null;
+  const label = humanName(name);
   return {
-    name,
+    name: label,
     count: sample.count,
-    text: `'${name}' 지역은 단지 ${sample.count}곳만 있어서 지역 평균을 그대로 믿기 어려워요`,
+    text: `'${label}' 지역은 단지 ${sample.count}곳만 있어서 지역 평균을 그대로 믿기 어려워요`,
   };
 }

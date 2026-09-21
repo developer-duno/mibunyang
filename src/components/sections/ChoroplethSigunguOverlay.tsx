@@ -11,7 +11,13 @@ type ChoroplethSigunguOverlayProps = {
   mapInstance: unknown;
   ready: boolean;
   filtered: Array<{ apt: Apt; res: ScoringResult }>;
-  onGuClick?: (_key: string) => void;
+  /**
+   * 시군구 클릭. 두 번째 인자 = 그 칸을 칠할 때 쓴 표본 정보(세션554 적대검증).
+   * 이게 없으면 점 보기로 넘어갈 때 "단지가 적어 평균을 믿기 어렵다"는 경고가
+   * **조용히** 끊긴다(buildSampleNote 가 sample 없으면 null 을 준다) — 시도만 되고
+   * 시군구는 안 되는 비대칭이 된다. 문턱 3이 가장 많이 걸리는 층이 여기다.
+   */
+  onGuClick?: (_key: string, _sample: { count: number; enough: boolean }) => void;
 };
 
 /**
@@ -124,7 +130,8 @@ export const ChoroplethSigunguOverlay = memo(function ChoroplethSigunguOverlay({
           const bounds = new kakao.LatLngBounds();
           path.forEach((latlng: any) => bounds.extend(latlng));
           (mapInstance as any).setBounds(bounds);
-          if (onGuClick) onGuClick(key);
+          // 색칠에 쓴 stat 을 그대로 넘겨 지도와 도착 화면이 같은 수를 말하게 한다.
+          if (onGuClick) onGuClick(key, { count: stat?.count ?? 0, enough: !!stat?.enough });
         });
         // hover 도 baseOpacity 기준으로 올린다 — 고정값이면 흐린 칸이 마우스만 올려도
         // 진해져서 표본 가드가 무력해진다.
