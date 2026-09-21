@@ -13,6 +13,56 @@
 > 큰 순서는 세션510 사장님 결정 그대로: **① 수집기·데이터 → ② 점수 분별력 → ③ 화면 재설계**. ①② 가 상당히 정리돼 ③ 재개 여부가 결정 대기다.
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
+- 🟡 **자매 PR [#556](https://github.com/developer-duno/naver-estate-web/pull/556)(머지 완료) 후속** — `air_quality_stations` 표만 남았다.
+  ⚠️ **정정(세션556 말미 실측, 2026-09-22): `infra.air_station_name` 은 이미 정상이다.**
+  세션 초반에 "3,068단지에 8종류 · 제주 남원읍 2,007곳" 이라 적었는데 **그 수치가 틀렸다.**
+  전수 재측정 = **측정소 392종 · 3,068행 전부 채움 · 거리 중앙값 1,585m**
+  (최다가 동대문구 51곳). 지역 교차 확인도 정상 — 서울 강남구→"강남대로"(1,957m) ·
+  부산 해운대구→"좌동"(1,232m) · 제주 제주시→"연동"(1,064m) · 강원 춘천시→"온의동"(947m).
+  `updated_at` 범위 = 2026-09-21T20:30~20:34Z(= 09-22 05:30 KST, **내 수정 전**)이므로
+  **옛 코드로 돌았는데도 결과가 정상**이었다. 좌표 수정 자체는 옳지만(옛 공식은 false northing 이 없다)
+  **"현재 피해 3,068단지" 는 사실이 아니다.**
+  - 🟠 **남은 진짜 결함 = `air_quality_stations` 캐시가 갱신되지 않는다**(세션556 실측 확정).
+    `env_air.py` 는 측정소를 찾을 때마다 `_upsert_station` 을 부른다. 그런데:
+
+    | 실측 | 값 |
+    |---|---|
+    | `infra` 가 쓰는 측정소 이름 | **392종** |
+    | `air_quality_stations` 행 수 | **8행** |
+    | infra 에 있는데 캐시엔 없는 것 | **387종** |
+    | 캐시에만 있고 infra 엔 없는 것 | 고산리 · 가거도 · 저구리 |
+    | 09-21 회차(100단지)가 본 측정소 | **72종** — 그중 캐시에 반영된 것 **0** |
+
+    캐시 8행은 전부 **제주·거제·가거도** 계열이고 `updated_at` 이 17:00 인데,
+    같은 날 대기질 수집은 다른 시각에 돌았다. **옛 결함 시절의 화석**으로 보인다.
+    `lat`/`lng` 는 애초에 아무도 안 쓴다(`_upsert_station` 은 이름·주소·시각만 넣는다).
+    → 자매 레포에서 `_do_upsert(db, AirQualityStation, …)` 가 실제로 커밋되는지 확인 필요.
+    ⚠️ **이 표를 읽는 곳이 있는지 먼저 본다** — 없으면 급하지 않다.
+
+  - 참고(정상 확인): 대기질은 **하루 100단지 순환**이 설계다(단지당 API 1콜이라 쿼터 보호).
+    09-17~21 각 100건 정확히 시도됨. 전 단지 한 바퀴 ≈ 30일. `infra.updated_at` 20:30 은
+    **우리 `infra-kakao` 수집기**가 찍은 것이지 대기질이 아니다 — 대기질 시각은 `air_updated_at`.
+  - ★ 교훈: **"현재 피해 규모" 를 적을 땐 그 수치를 언제 쟀는지 함께 적는다.** 세션 중에
+    수집기가 돌면 뒤집힌다 — 이번엔 내가 옛 측정값을 현재형으로 써서 후속 확인 항목이
+    **이미 해결된 것을 기다리라고** 적힐 뻔했다.
+- 🟠 **`notification_logs` 표 생성** — 사장님이 Supabase Dashboard 에서 SQL 1회. 안내문 = `artifacts/notification-logs-적용안내.md`.
+  **구독자 0명이라 급하지 않다.** CLI 는 다른 조직 로그인이라 마이그레이션은 Dashboard 만(세션489 확인).
+- ★★ **다음 세션 주 작업 — 공유 DB 전체 나노정밀조사** (사장님 지정, 세션556).
+  **범위 실측 완료(2026-09-22): 22개 표 · 약 300만 행.**
+  `articles` 1,536,657 · `trades` 929,442 · `complex_price_history` 396,214 · `complexes` 64,162 ·
+  `applyhome_unit_supply` 15,906 · `prices` 13,716 · `unsold_history` 4,915 · `officetel_unit_supply` 3,211 ·
+  `apartments`/`schools`/`transport`/`infra`/`trade_stats` 각 3,068 · `regions` 2,359 ·
+  `presale_schedule_official` 1,947 · `collector_runs` 1,496 · `rental_unit_supply` 1,012 ·
+  `officetel_presale_schedule` 620 · `rental_schedule_official` 186 · `builders` 32 ·
+  `air_quality_stations` **8** · `consults` 0.
+  - ⚠️ **`data-audit.mjs` 는 `apartments_flat` VIEW **하나만** 본다**(세션556 확인). 그 VIEW 가 조인하는 것은
+    `apartments`·`prices`·`infra`·`schools`·`transport`·`builders`·`regions`·`trade_stats`·`applyhome_events` **뿐**이라,
+    **나머지 13개 표는 정기 감사를 아예 안 받는다** — `articles`(153만) · `complexes`(6.4만) ·
+    `complex_price_history`(39.6만) · 청약홈·오피스텔·임대 6표 · `air_quality_stations` · `unsold_history` · `trades`.
+    이게 이번 조사의 **출발점**이다.
+  - 조사 축 4개: ①소유권(어느 레포가 쓰고 읽나) ②채움률(컬럼별 NULL, sentinel 주의) ③손님 도달(화면·점수에 닿나) ④신선도(그 수집기 주기 안인가)
+  - 먼저 읽을 것: `~/.claude/projects/f--mibunyang/memory/reference_shared_db_ownership_probe.md` · `supabase/CLAUDE.md`(세션556 전면 개정)
+  - ⚠️ 큰 표는 **고유키 커서**(`selectAll(fn, sb, 'id')`) — `.range()` 반복은 정렬 없으면 **에러 없이 행을 잃는다**(세션514: 거래량이 원본의 8%)
 - ~~**오늘** — 세종 VIEW SQL 적용~~ ✅ **완료(세션551, 2026-09-20 21:4x KST, 사장님 Dashboard)**. 회귀 0 확인(총 2,443행 · 비세종 fertilityRate 2,408 / housingPrice 2,393 / doctorsPer1k 2,408 / hospitalBedsPer1k 2,406 전부 불변) + 세종 35곳 fertility·housing 0→35. `data-audit` 세종 수치를 다시 기준선으로 써도 된다.
 - ~~**09-21(월) 05:30** — `lhzone-status` 첫 자동 발화~~ ✅ **완료(세션555 실측)**: 2026-09-20T20:30Z(=09-21 05:30 KST) `success` · `ok=1144 fail=0` — 08-21 회차와 동일한 수치다.
 - ~~**09-21(월) 08:00 이후** — 네이버 파이프라인 완주 확인 / `--max-minutes` 도입~~ ✅ **해소(세션555 실측)**: `--max-minutes` 는 **이미 도입돼 있다**(`naver-collect.py:372` 기본 90, `run-naver-local.bat:37` 이 `--max-minutes=120` 으로 호출). 그래서 `naver-collect` 가 매 회차 정확히 120분에 `partial` 로 끊기는 것은 **고장이 아니라 설계**다 — bat 주석 그대로 *"1단계를 제한해 2~6단계가 항상 돌도록"*, 남은 단지는 다음 실행이 resume 한다(`naver-collect.py:496`). 최근 5회 전부 `partial`/120분/`fail=0`(ok 7,603~13,531, skip 409~469).
@@ -23,6 +73,12 @@
   ⚠️ **`jeonse_rate` 는 애초에 "모구 승계 4종" 에 없었다**(승계 대상 = `fertility_rate`·`doctors_per_1k`·
   `hospital_beds_per_1k`·`housing_price`). 그 4종은 **여전히 승계 상태**다 — 세션556 실측에서
   서해구·검단구가 넷 다 같은 값(0.936 / 2.2 / 10 / 294 = 옛 서구)으로 확인됐다. 그쪽은 아래 🟠 항목 소관.
+  ⚠️ **정정(세션556 재실측, 2026-09-22): 승계는 두 구가 아니라 새 4구 전부다.**
+  영종구 = 옛 중구 값(0.92 / 3.8 / 13.3) · 제물포구 = 옛 동구 값(0.84 / 3.1 / 11) ·
+  서해구·검단구 = 옛 서구 값(0.936 / 2.2 / 10). `housing_price` 는 새 4구에만 값이 있고(242/221/294/294)
+  **모구 3곳은 2026-06 행에서 null** — 즉 새 구 행이 모구보다 최신이다.
+  다음 세션 확인법: 위 7개 구를 `recorded_at desc` 로 한 번에 뽑아 **모구와 값이 같은지** 본다.
+  같으면 아직 승계, 달라지면 원천이 새 구를 주기 시작한 것이다.
 - ✅ **완료(세션556, #534) — `.env.local` 의존 env 키 2종: 실측하니 문제가 아니었다.**
   모듈 상수를 `"DUMMY_KEY"` 와 `""` 로 직접 바꿔 각각 돌렸고 **양쪽 다 10건 통과**했다.
   `useShare.test.js` 의 `beforeEach` 가 `isInitialized` 를 항상 `true` 로 모킹해, 키를 읽는 **두 자리**

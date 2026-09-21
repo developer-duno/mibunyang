@@ -140,3 +140,9 @@ __pycache__/
 
 # 로컬 러너가 마지막 처리일을 남기는 자리 (세션521 catch-up). 유실돼도 사고 아님 — 소급만 못 함.
 .kosis-local-runner-state.json
+
+# 세션별 조사 산출물·되돌리기용 백업 (세션556). 46MB 이고 커밋 대상이 아니다.
+# ⚠️ **지우지 말 것** — regions-backup-2026-01-to-05.json(1,378행)·orphan-trades-backup.json(57건)
+#    ·coord-backup-8-before.json(8건)은 운영 DB 를 고치기 전 상태 그대로라 **되돌리기의 유일한 근거**다.
+#    .gitignore 에 넣는 이유는 "필요 없어서" 가 아니라 `git add .` 에 41MB 가 딸려 들어가지 않게 하려는 것.
+artifacts/
