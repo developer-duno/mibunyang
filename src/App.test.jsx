@@ -444,8 +444,10 @@ describe("App 통합 테스트", () => {
   describe("VITE_FEATURE_HOME flag ON", () => {
     beforeEach(() => {
       // 깃발이 켜지면 App 이 /api/upcoming fetch 를 실행 — 실 fetch reject 의 act 밖 setState flaky 방지.
-      // (옛 주석은 "CI 가 VITE_FEATURE_UPCOMING=true" 라 했으나 ci.yml 의 Test 스텝에 env 주입은
-      //  0 건이다. 이제 기본값은 setup.js 가 OFF 로 고정한다 — 세션555)
+      // (옛 주석은 "CI 가 VITE_FEATURE_UPCOMING=true" 라 했으나 **vitest 를 돌리는 `ci.yml` 의 Test
+      //  스텝에는 env 주입이 0 건**이다. 이제 그 기본값은 setup.js 가 OFF 로 고정한다 — 세션555.
+      //  ⚠️ 별개로 `e2e.yml:59~60` 은 두 깃발을 "true" 로 주입한다. Playwright 는 vitest setup 을
+      //  안 타므로 충돌하지 않지만, "CI 는 언제나 OFF" 로 읽지 말 것.)
       vi.stubGlobal(
         "fetch",
         vi.fn().mockResolvedValue({
