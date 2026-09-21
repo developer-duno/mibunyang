@@ -443,7 +443,9 @@ describe("App 통합 테스트", () => {
   // 8. 통합 홈 (VITE_FEATURE_HOME ON) — OFF 경로는 위 기존 테스트 전체가 회귀 가드
   describe("VITE_FEATURE_HOME flag ON", () => {
     beforeEach(() => {
-      // CI 는 VITE_FEATURE_UPCOMING=true 라 App 이 /api/upcoming fetch 실행 — 실 fetch reject 의 act 밖 setState flaky 방지
+      // 깃발이 켜지면 App 이 /api/upcoming fetch 를 실행 — 실 fetch reject 의 act 밖 setState flaky 방지.
+      // (옛 주석은 "CI 가 VITE_FEATURE_UPCOMING=true" 라 했으나 ci.yml 의 Test 스텝에 env 주입은
+      //  0 건이다. 이제 기본값은 setup.js 가 OFF 로 고정한다 — 세션555)
       vi.stubGlobal(
         "fetch",
         vi.fn().mockResolvedValue({
