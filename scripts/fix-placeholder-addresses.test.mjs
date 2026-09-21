@@ -127,6 +127,63 @@ describe("shortRegion — 시도 표기 약칭화", () => {
     expect(shortRegion("")).toBe(null);
     expect(shortRegion(null)).toBe(null);
   });
+
+  // ⚠️ 뮤테이션 대상 — MERGED_SIDO_RE 분기를 지우면 red.
+  //    `"전남광주통합특별시".slice(0,2)` = "전남" 이라 **광주가 전남으로 라벨**됐다(세션556 발견).
+  //    그 값이 cityKey 로 흘러가면 METRO_REGIONS.has("전남") 이 거짓이라 구 분기를 안 타
+  //    광주 단지가 **null** 이 되어 이름매칭에서 조용히 탈락한다.
+  describe("통합 시도는 앞 2글자로 자르지 않는다 (세션556)", () => {
+    it("시군구로 광주/전남을 가른다", () => {
+      expect(shortRegion("전남광주통합특별시", "광산구")).toBe("광주");
+      expect(shortRegion("전남광주통합특별시", "북구")).toBe("광주");
+      expect(shortRegion("전남광주통합특별시", "장성군")).toBe("전남");
+      expect(shortRegion("전남광주통합특별시", "순천시")).toBe("전남");
+    });
+
+    it("시군구가 없으면 null — 조용히 한쪽에 붙이지 않는다", () => {
+      expect(shortRegion("전남광주통합특별시")).toBe(null);
+      expect(shortRegion("전남광주통합특별시", null)).toBe(null);
+    });
+
+    it("시군구가 아닌 토큰도 null (지구·블록 표기)", () => {
+      expect(shortRegion("전남광주통합특별시", "첨단3지구")).toBe(null);
+      expect(shortRegion("전남광주통합특별시", "A7블록")).toBe(null);
+    });
+
+    it("통합이 아닌 시도는 gu 를 무시한다", () => {
+      expect(shortRegion("서울특별시", "장성군")).toBe("서울");
+      expect(shortRegion("서울시", "아무거나")).toBe("서울");
+    });
+  });
+});
+
+describe("cityKey·complexKey — 통합 시도 표기 (세션556)", () => {
+  // 세션556 에 라펜트힐 5곳의 address 가 카카오 표기로 저장되며 이 입력이 실제로 생겼다.
+  // ⚠️ 뮤테이션 대상 — cityKey/complexKey/stripSidoToken 의 gu 전달을 지우면 red.
+  it("광주: 통합 표기와 옛 표기가 같은 키를 낸다", () => {
+    expect(cityKey("전남광주통합특별시 광산구 월계동 870-1", "전남광주통합특별시")).toBe("광주 광산구");
+    expect(cityKey("광주 광산구 월계동 870-1", "광주")).toBe("광주 광산구");
+    expect(complexKey("전남광주통합특별시", "광산구")).toBe("광주 광산구");
+    expect(complexKey("광주", "광산구")).toBe("광주 광산구");
+  });
+
+  it("전남: 통합 표기와 옛 표기가 같은 키를 낸다", () => {
+    // ⚠️ 이 단언이 세션556 의 **1차 수정에서 회귀**했다 — stripSidoToken 이 shortRegion 을
+    //    gu 없이 불러 시도 토큰이 안 떨어지고 "전남광주통합특별시" 가 통째로 키가 됐다.
+    expect(cityKey("전남광주통합특별시 장성군 진원면 학림리 641", "전남광주통합특별시")).toBe("장성군");
+    expect(cityKey("전남 장성군 진원면 학림리 641", "전남")).toBe("장성군");
+    expect(complexKey("전남광주통합특별시", "장성군")).toBe("장성군");
+    expect(complexKey("전남", "장성군")).toBe("장성군");
+  });
+
+  it("apartments 키와 complexes 키가 서로 맞는다 (매칭의 전제)", () => {
+    for (const [addr, sgg] of [
+      ["전남광주통합특별시 광산구 월계동 870-1", "광산구"],
+      ["전남광주통합특별시 장성군 진원면 학림리 641", "장성군"],
+    ]) {
+      expect(cityKey(addr, "전남광주통합특별시")).toBe(complexKey("전남광주통합특별시", sgg));
+    }
+  });
 });
 
 describe("cityKey / complexKey — 지역 키 (오탐 330km 를 막는 자리)", () => {

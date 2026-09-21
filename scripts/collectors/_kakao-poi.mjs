@@ -37,21 +37,22 @@
  *
  * ⚠️ `_` 접두 = 라이브러리. graceful/exit-quota/orphan 감사가 자동 제외한다(`_molit-api.mjs` 선례).
  */
-import { stringSimilarity, REGION_MAP, resolveRegionName, sleep, fetchWithRetry, logError } from "./_shared.mjs";
+import {
+  stringSimilarity,
+  REGION_MAP,
+  resolveRegionName,
+  MERGED_SIDO_RE,
+  sleep,
+  fetchWithRetry,
+  logError,
+} from "./_shared.mjs";
 
 const PHASE = "kakao-poi";
 const KAKAO_KEYWORD_URL = "https://dapi.kakao.com/v2/local/search/keyword.json";
 /** 시도 자체가 시(市)라 `gu` 가 없는 곳 — 시도 게이트만으로 시군구 게이트를 거친 것과 같다. */
 const NO_GU_SIDO = new Set(["세종"]);
-/**
- * 두 시도가 한 이름을 쓰는 **통합 시도** — 첫 토큰만으로는 어느 쪽인지 못 가른다(세션549).
- *
- * ⚠️ `_shared.mjs resolveRegionName` 의 내부 판정(`/^전남광주통합/`)과 **같은 패턴**이다.
- *    한쪽만 바꾸면 여기서 "통합" 으로 보내 놓고 저쪽이 못 갈라 전부 false 가 되거나(전 지역 거부),
- *    반대로 여기서 안 보내 startsWith 로 새어 나간다. 바꿀 땐 둘을 함께 본다.
- *    이름을 열거하지 않는 이유 = 규칙 §3("이름을 열거하지 말 것" — 표기가 한 글자만 달라도 샌다).
- */
-const MERGED_SIDO_RE = /^전남광주통합/;
+// 두 시도가 한 이름을 쓰는 **통합 시도** 판정은 `_shared.mjs` 의 `MERGED_SIDO_RE` 가 정본이다.
+// 세션549~556 동안 여기에 같은 패턴의 사본이 있었고, 한쪽만 고치면 조용히 어긋났다(세션556 통합).
 
 /** 카카오 POI 후보로 인정하는 최소 이름 유사도. */
 export const KAKAO_MIN_SIM = 0.7;
@@ -182,14 +183,36 @@ export function blockConflict(aName, bName) {
 
 /**
  * 시도 표기를 약칭으로. `REGION_MAP` 에 없으면 앞 2글자(예: "서울시" → "서울").
- * @param {unknown} r
+ *
+ * ## ⚠️ 통합 시도는 앞 2글자로 자르면 **틀린다** (세션556 정정)
+ *
+ * `"전남광주통합특별시".slice(0,2)` = `"전남"` 이라 **광주가 전남으로 라벨**됐다. 그 값이
+ * `cityKey`/`complexKey` 로 흘러가면:
+ *
+ * | 입력 | 정상 | 고치기 전 |
+ * |---|---|---|
+ * | 광산구 (apartments) | `"광주 광산구"` | **`null`** — `METRO_REGIONS.has("전남")` 이 거짓이라 구 분기를 안 탄다 |
+ * | 광산구 (complexes) | `"광주 광산구"` | **`"광산구"`** — 위와 안 맞아 매칭 실패, 게다가 "남구·중구" 는 여러 광역시에 있어 오탐 위험 |
+ *
+ * 즉 **광주 단지만 이름매칭(C 출처)에서 조용히 탈락**한다. 세션556 에 라펜트힐 5곳의
+ * `address` 가 카카오 표기(`전남광주통합특별시 …`)로 저장되면서 이 입력이 실제로 생겼다.
+ *
+ * 판정은 `_shared.mjs resolveRegionName` 이 독점한다 — 시군구 이름을 양쪽 명단에 대조해
+ * 광주/전남을 가른다. **`gu` 를 넘기면** 그 판정을 쓰고, 못 가르면 `null` 을 준다
+ * (조용히 한쪽에 붙이지 않는다 — [[admin-district-code-reform]] §3).
+ *
+ * @param {unknown} r 시도 표기
+ * @param {unknown} [gu] 시군구 표기. 통합 시도일 때만 쓰인다(없으면 통합 시도는 null).
  * @returns {string | null}
  */
-export function shortRegion(r) {
+export function shortRegion(r, gu = null) {
   const s = String(r ?? "").trim();
   if (!s) return null;
   const mapped = /** @type {Record<string, string>} */ (REGION_MAP)[s];
-  return mapped ?? s.slice(0, 2);
+  if (mapped) return mapped;
+  // 통합 시도 — 앞 2글자로 자르면 한쪽으로 오라벨된다. 시군구로만 가를 수 있다.
+  if (MERGED_SIDO_RE.test(s)) return resolveRegionName(s, gu == null ? null : String(gu));
+  return s.slice(0, 2);
 }
 
 /** 아파트로 인정하는 카테고리. */
