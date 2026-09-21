@@ -58,7 +58,8 @@ async function main() {
     }
     console.log(``);
     console.log(`정정: backfill-new-apartments.yml matrix 에서 위 collector 제거.`);
-    console.log(`답습: .claude/rules/workflows/timeout-rootcause-policy.md §"세션 307 안티 패턴 11 일꾼 정정"`);
+    // 그 절은 문서 다이어트(#506)로 이력 폴더로 옮겨졌다 — 규칙 파일에는 없다(세션556 정정).
+    console.log(`답습: .claude/rules-history/workflows/timeout-rootcause-policy.md §"세션 307 안티 패턴 11 일꾼 정정"`);
     process.exit(1);
   }
 

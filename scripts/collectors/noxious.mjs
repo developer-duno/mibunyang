@@ -327,4 +327,9 @@ if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message 
 // `NOXIOUS_KEYWORDS` 도 함께 연다 — 이 수집기가 만드는 카테고리와 점수표(`brands.ts NOXIOUS_PENALTY`)가
 // 어긋나면 화면은 경고를 띄우는데 점수는 안 깎이는 사고가 난다(세션510 실측: 1,119곳 중 감점 56곳뿐).
 // `noxious-penalty-sync.test.mjs` 가 두 목록을 대조한다.
-export { haversineM, NOXIOUS_KEYWORDS };
+//
+// `searchNearby` 는 **한 단지만 다시 재는 도구**가 쓴다(세션556 — 좌표를 정정한 단지의 값이
+// 옛 좌표 기준으로 남는데, 이 수집기는 월 1회라 다음 회차까지 기다릴 수 없고 `noxious` 를
+// null 로 비우면 그동안 감점이 **0** 이 되어 점수가 거꾸로 부풀기 때문이다).
+// 손으로 값을 만들지 않고 이 함수를 그대로 쓰게 해서 수집기와 같은 결과를 보장한다.
+export { haversineM, NOXIOUS_KEYWORDS, searchNearby };
