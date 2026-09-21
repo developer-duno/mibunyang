@@ -1002,6 +1002,121 @@ export function checkOrphanGuPairs(aptPairs, regionRows, opts = {}) {
   return issues;
 }
 
+// ── ⑧ 지역×월 거래 0건 (세션556) ────────────────────────────
+
+/** 0건 판정에 쓰는 직전 개월 수. */
+export const TRADE_GAP_LOOKBACK = 3;
+/** 직전 평균이 이 값 미만이면 "원래 거래가 드문 곳" 으로 보고 넘어간다. */
+export const TRADE_GAP_MIN_BASELINE = 10;
+/** 경보 한 건에 넣는 최대 줄 수. */
+const TRADE_GAP_LINE_LIMIT = 8;
+
+/**
+ * `region × deal_month` 격자에서 **직전 N개월엔 거래가 있었는데 이번 달만 0건**인 칸을 찾는다.
+ *
+ * ## 왜 필요한가 (세션545 사고)
+ *
+ * 전남광주 코드 전환(46/29 → 12) 때 옛 코드로 계속 조회해 **전남 202606~08 이 3개월간 0건**
+ * 이었는데 아무 알림도 없었다. 외부 API 가 옛 코드에 **에러 대신 0건**을 주기 때문이다 —
+ * `collector_runs` 는 success, 수집기 로그는 "0건 수집", 신선도 검사(⑤)는 수집기가 매 회차
+ * 잘 도니까 침묵. [[admin-district-code-reform]] §4 가 말하는 그 사각이다.
+ *
+ * ## 마지막 달은 검사하지 않는다 (거짓 경보 차단)
+ *
+ * 실거래가는 신고 기한이 있어 **가장 최근 달은 아직 차오르는 중**이다. 세션556 실측:
+ * 서울 202607 13,715건 → 202608 8,777건(마지막 달이라 64%). 이 달을 검사하면 매달 경보가 난다.
+ * 그래서 `months` 의 **마지막 하나는 제외**한다 — 0건 사고는 한 달 늦게 잡혀도 잡힌다.
+ *
+ * ⚠️ 0건인 칸이 **연속**이면 경보를 하나로 접는다. 전남 3개월 사고처럼 같은 원인이
+ * 여러 달에 걸치는 게 정상이라, 달마다 따로 울리면 dedup 에 먹혀 오히려 묻힌다.
+ *
+ * @param {Array<{ region?: string|null, deal_month?: string|number|null }>} rows `trades` 행
+ * @param {{ lookback?: number, minBaseline?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkTradeMonthGaps(rows, opts = {}) {
+  const lookback = opts.lookback ?? TRADE_GAP_LOOKBACK;
+  const minBaseline = opts.minBaseline ?? TRADE_GAP_MIN_BASELINE;
+
+  /** @type {Map<string, number>} */
+  const grid = new Map();
+  /** @type {Set<string>} */
+  const monthSet = new Set();
+  /** @type {Set<string>} */
+  const regionSet = new Set();
+  for (const r of rows) {
+    const region = r?.region;
+    const month = r?.deal_month == null ? "" : String(r.deal_month);
+    if (!region || !month) continue;
+    grid.set(`${region}|${month}`, (grid.get(`${region}|${month}`) ?? 0) + 1);
+    monthSet.add(month);
+    regionSet.add(region);
+  }
+  const months = [...monthSet].sort();
+  const regions = [...regionSet].sort();
+  // 마지막 달은 아직 차오르는 중 — 검사 대상에서 뺀다(위 주석).
+  const checkable = months.slice(0, -1);
+  if (checkable.length <= lookback) return [];
+
+  /** @type {Array<{ region: string, months: string[], baseline: number }>} */
+  const gaps = [];
+  for (const region of regions) {
+    /** @type {string[]} */
+    let run = [];
+    let runBaseline = 0;
+    const flush = () => {
+      if (run.length) gaps.push({ region, months: [...run], baseline: runBaseline });
+      run = [];
+      runBaseline = 0;
+    };
+    for (let i = lookback; i < checkable.length; i++) {
+      const cur = grid.get(`${region}|${checkable[i]}`) ?? 0;
+      if (cur > 0) {
+        flush();
+        continue;
+      }
+      // 직전 lookback 개월 평균. 연속 0 구간에서는 **그 구간 직전**의 값이 기준이 되게
+      // 이미 0 으로 센 달도 그대로 넣는다 — 평균이 내려가 minBaseline 밑으로 떨어지면
+      // 그 시점부터는 "원래 드문 곳" 과 구분이 안 되므로 run 을 끊는다.
+      const prev = [];
+      for (let d = 1; d <= lookback; d++) prev.push(grid.get(`${region}|${checkable[i - d]}`) ?? 0);
+      const avg = prev.reduce((a, b) => a + b, 0) / lookback;
+      if (avg < minBaseline) {
+        flush();
+        continue;
+      }
+      if (run.length === 0) runBaseline = avg;
+      run.push(checkable[i]);
+    }
+    flush();
+  }
+
+  if (gaps.length === 0) return [];
+  const sorted = gaps.sort((a, b) => b.months.length - a.months.length || b.baseline - a.baseline);
+  /** @type {string[]} */
+  const lines = [
+    `직전 ${lookback}개월엔 거래가 있었는데 **이번 달만 0건**인 지역이 있습니다 — 외부 API 가 옛 지역코드에 에러 대신 0건을 주는 사고의 전형입니다.`,
+  ];
+  for (const g of sorted.slice(0, TRADE_GAP_LINE_LIMIT)) {
+    lines.push(`  · ${g.region} ${g.months.join(",")} — 직전 ${lookback}개월 평균 ${g.baseline.toFixed(0)}건`);
+  }
+  const rest = sorted.length - TRADE_GAP_LINE_LIMIT;
+  if (rest > 0) lines.push(`  · 외 ${rest}건`);
+  lines.push("[조치 1] `.claude/rules/collectors/admin-district-code-reform.md` §1 — 소비처마다 옛/새 코드를 raw 1회씩 대조");
+  lines.push("[조치 2] 그 지역의 LAWD_CD 로 실거래가 API 직접 호출 — 0건이면 코드표, >0 이면 수집기 결함");
+  lines.push("[조치 3] 코드표를 고쳤으면 끊긴 기간은 `--months=N --only=<region>` 백필이 필요하다(앞으로만 정상이 된다)");
+
+  return [
+    {
+      kind: "nulls",
+      // dedupKey 는 `kind|collector|at` — 지역·달 지문을 넣어 다른 사고가 첫 경보에 먹히지 않게.
+      collector: `지역×월 거래 0건 (${sorted.map((g) => `${g.region}:${g.months.join("/")}`).join(",")})`,
+      detail: `${sorted.length}개 지역에서 거래 0건 — 가장 긴 구간 ${sorted[0].region} ${sorted[0].months.length}개월`,
+      lines,
+    },
+  ];
+}
+
 // ── I/O 래퍼 (실제 API·DB 호출) ─────────────────────────────
 
 /**
@@ -1175,6 +1290,25 @@ async function fetchRegionColumnStats() {
     stats.push({ column, total, filled: filled ?? 0, nullSurge });
   }
   return stats;
+}
+
+/**
+ * ⑧ 이 쓸 `trades` 의 `region`·`deal_month`.
+ *
+ * ⚠️ 93만 행이라 **고유키 커서**가 필수다 — 무정렬 OFFSET 페이징은 큰 표에서 에러 없이
+ *    행을 잃고, 그러면 **있는 거래가 0건으로 보여 거짓 경보**가 난다
+ *    (`.claude/rules/collectors/unordered-pagination-loses-rows.md`).
+ *
+ * @param {any} [sbArg] 테스트 주입용. 생략하면 getSupabase().
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
+export async function fetchTradeMonthRows(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  return await selectAll(
+    (s) => s.from("trades").select(["id", "region", "deal_month"].join(", ")),
+    sb,
+    "id",
+  );
 }
 
 /**
@@ -1604,6 +1738,17 @@ async function main() {
       issues = issues.concat(orphanIssues);
     } catch (err) {
       console.log(`[monitor] ⑦ 시군구 짝 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // ⑧ 지역×월 거래 0건 — 외부 API 가 옛 지역코드에 **에러 대신 0건**을 주는 사고(세션545 전남 3개월).
+    //    ⑤ 신선도는 수집기가 매 회차 잘 돌면 침묵하므로 이 격자를 따로 본다. ⑦ 과 같이 fail-open.
+    try {
+      const tradeRows = await fetchTradeMonthRows();
+      const gapIssues = checkTradeMonthGaps(tradeRows);
+      console.log(`[monitor] ⑧ 지역×월 거래 점검: trades ${tradeRows.length}행 → 이상 ${gapIssues.length}건`);
+      issues = issues.concat(gapIssues);
+    } catch (err) {
+      console.log(`[monitor] ⑧ 지역×월 거래 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // ★ 매일 아침 현황 브리핑 (세션 478) — 이상 유무 무관 daily 마다 1통. L1138 early-return 앞에서

@@ -23,6 +23,7 @@ const {
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   checkOrphanGuPairs, GU_JOIN_COLUMNS, fetchGuPairStats,
+  checkTradeMonthGaps, TRADE_GAP_LOOKBACK, TRADE_GAP_MIN_BASELINE,
   dedupKey, filterUnsent, hasGithubApiAuth,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
@@ -1827,4 +1828,101 @@ describe("크론(DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 동기화 — po
       ).toBe(true);
     });
   }
+});
+
+describe("checkTradeMonthGaps — ⑧ 지역×월 거래 0건 (세션556)", () => {
+  /**
+   * 한 지역의 월별 건수를 trades 행 배열로 편다.
+   * @param {string} region
+   * @param {Record<string, number>} byMonth
+   */
+  const rows = (region, byMonth) =>
+    Object.entries(byMonth).flatMap(([m, n]) =>
+      Array(n).fill(0).map(() => ({ region, deal_month: m })),
+    );
+  /** 검사 대상이 되려면 마지막 달 하나가 더 필요하다(마지막 달은 제외되므로). */
+  const MONTHS = ["202601", "202602", "202603", "202604", "202605", "202606"];
+
+  it("직전 3개월 평균이 충분한데 0건이면 경보", () => {
+    // 202605 만 0건 — 202606 은 '마지막 달' 이라 검사 대상 밖
+    const issues = checkTradeMonthGaps([
+      ...rows("전남", { 202601: 100, 202602: 100, 202603: 100, 202604: 100, 202606: 100 }),
+      ...rows("서울", { 202601: 500, 202602: 500, 202603: 500, 202604: 500, 202605: 500, 202606: 500 }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toContain("전남");
+    expect(issues[0].collector).toContain("202605");
+    expect(issues[0].collector).not.toContain("서울");
+  });
+
+  // ⚠️ 뮤테이션 대상 — `months.slice(0, -1)` 을 `months` 로 바꾸면 red.
+  //    실거래가는 신고 기한이 있어 **가장 최근 달은 아직 차오르는 중**이다. 세션556 실측:
+  //    서울 202607 13,715건 → 202608 8,777건. 마지막 달을 검사하면 매달 거짓 경보가 난다.
+  it("가장 최근 달은 검사하지 않는다 (아직 차오르는 중)", () => {
+    const issues = checkTradeMonthGaps(
+      rows("전남", { 202601: 100, 202602: 100, 202603: 100, 202604: 100, 202605: 100 }).concat(
+        // 202606 이 아예 없다 = 마지막 달이 0건인 상황
+        rows("서울", { 202601: 1, 202602: 1, 202603: 1, 202604: 1, 202605: 1, 202606: 1 }),
+      ),
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  // ⚠️ 뮤테이션 대상 — minBaseline 검사를 지우면 red.
+  it("원래 거래가 드문 곳은 넘어간다", () => {
+    const issues = checkTradeMonthGaps([
+      ...rows("제주", { 202601: 2, 202602: 3, 202603: 2, 202606: 3 }), // 평균 2.3 < 10
+      ...rows("서울", { 202601: 500, 202602: 500, 202603: 500, 202604: 500, 202605: 500, 202606: 500 }),
+    ]);
+    expect(issues).toHaveLength(0);
+  });
+
+  // ⚠️ 뮤테이션 대상 — 연속 접기(run/flush)를 지우면 지역당 달마다 1건씩 나와 red.
+  it("연속 0건은 경보 하나로 접는다 (전남 3개월 사고 재현)", () => {
+    const issues = checkTradeMonthGaps([
+      // 202604·05 연속 0건 (202606 은 마지막 달이라 제외)
+      ...rows("전남", { 202601: 200, 202602: 200, 202603: 200, 202606: 200 }),
+      ...rows("서울", { 202601: 500, 202602: 500, 202603: 500, 202604: 500, 202605: 500, 202606: 500 }),
+    ]);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toContain("202604/202605");
+    expect(issues[0].detail).toContain("2개월");
+  });
+
+  it("정상 격자에서는 조용하다", () => {
+    const issues = checkTradeMonthGaps(
+      MONTHS.flatMap((m) => [...rows("서울", { [m]: 500 }), ...rows("전남", { [m]: 100 })]),
+    );
+    expect(issues).toHaveLength(0);
+  });
+
+  it("달이 lookback 보다 적으면 판정하지 않는다", () => {
+    const issues = checkTradeMonthGaps(rows("서울", { 202601: 500, 202602: 500 }));
+    expect(issues).toHaveLength(0);
+  });
+
+  it("region 이나 deal_month 가 비면 무시한다", () => {
+    expect(() =>
+      checkTradeMonthGaps([{ region: null, deal_month: "202601" }, { region: "서울", deal_month: null }, {}]),
+    ).not.toThrow();
+    expect(checkTradeMonthGaps([{ region: null, deal_month: null }])).toHaveLength(0);
+  });
+
+  it("경보에 조치 안내가 들어간다", () => {
+    // ⚠️ 달 목록은 **전체 입력**에서 만들어지므로, 0건인 달(202605)을 다른 지역이 채워 줘야
+    //    그 달이 격자에 존재한다. 전남만 넣으면 202605 가 아예 없는 달이 되어 검사 대상 밖이다.
+    const issues = checkTradeMonthGaps([
+      ...rows("전남", { 202601: 100, 202602: 100, 202603: 100, 202604: 100, 202606: 100 }),
+      ...rows("서울", { 202601: 500, 202602: 500, 202603: 500, 202604: 500, 202605: 500, 202606: 500 }),
+    ]);
+    const text = (issues[0]?.lines ?? []).join("\n");
+    expect(text).toContain("admin-district-code-reform");
+    expect(text).toContain("백필");
+    expect(issues[0].kind).toBe("nulls");
+  });
+
+  it("상수가 뜻대로다", () => {
+    expect(TRADE_GAP_LOOKBACK).toBe(3);
+    expect(TRADE_GAP_MIN_BASELINE).toBe(10);
+  });
 });
