@@ -72,6 +72,21 @@
   "시군구 1" 은 SigunguOverlay 가 아니라 `ChoroplethView.tsx` 의 수치다). 수치 자체는 살아 있다.
 
 ### C. 문서·개발환경
+
+0. 🟢 **[세션556 관찰] main push CI 가 한 머지에서만 안 돌았다 — 원인 미확정, 위험은 없었다**
+   **관측(확실)**: PR [#537](https://github.com/developer-duno/mibunyang/pull/537) squash 머지 `0583b1f7` 에 대해
+   CI 가 **10분 넘게 0건**. 같은 조건의 직전 머지 `dcdb9c42`(#536)는 `event=push` 로 정상 실행.
+   Actions 는 살아 있었고(같은 시각 다른 워크플로 success), `workflow_dispatch` 가 없어 수동 실행 불가.
+   **추정(미확정)**: 두 머지의 유일한 차이는 #537 에만 `.claude/BACKLOG.md` 가 섞인 것.
+   `ci.yml` `paths-ignore` 에 `.claude/**` 가 있지만, **공식 문서는 "하나라도 밖이면 실행"** 이라
+   (`scripts/` 7개가 밖) 설정대로면 돌았어야 한다 — 즉 **설정 문제로 단정하지 못한다.**
+   **위험 없음(확실)**: `0583b1f7` 의 트리 해시가 PR 마지막 커밋 `6ae72ef2`(16:53 CI success)와
+   **완전히 동일**(`2c624e988689`) = 검사된 내용과 main 내용이 같다. 추가로 로컬에서 CI 와 같은
+   16종(lint·format·typecheck 3종·audit 11종)을 돌려 전부 exit 0 확인.
+   **다음에 할 것**: ① 같은 일이 또 나면 **트리 해시를 먼저 대조**(같으면 위험 0) ② 재현되면
+   `paths-ignore` 에서 `.claude/**` 를 빼 보고 관찰 ③ `ci.yml` 에 `workflow_dispatch` 추가 검토
+   (지금은 머지 후 검사를 되돌릴 수단이 없다).
+
 1. ✅ **규칙 문서 다이어트 2단계 완료(세션551, PR #516 = `ce85105f`)** — 22개 중 8개에 `paths` 부착, 14개 상시 유지.
    세션당 상시 로드 **179,076B → 106,776B(−40.4%)**, 커밋 통계 **삭제 0줄 / 추가 85줄**. 루트 CLAUDE.md 에 색인 절(105줄).
    상시로 남긴 판단: `admin-district-code-reform`·`placeholder-coordinates-truth-sources` 는 **파일을 안 읽고 DB 만 만질 때 필요**
