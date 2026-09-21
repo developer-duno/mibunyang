@@ -18,6 +18,10 @@
 - ~~**09-21(월) 08:00 이후** — 네이버 파이프라인 완주 확인 / `--max-minutes` 도입~~ ✅ **해소(세션555 실측)**: `--max-minutes` 는 **이미 도입돼 있다**(`naver-collect.py:372` 기본 90, `run-naver-local.bat:37` 이 `--max-minutes=120` 으로 호출). 그래서 `naver-collect` 가 매 회차 정확히 120분에 `partial` 로 끊기는 것은 **고장이 아니라 설계**다 — bat 주석 그대로 *"1단계를 제한해 2~6단계가 항상 돌도록"*, 남은 단지는 다음 실행이 resume 한다(`naver-collect.py:496`). 최근 5회 전부 `partial`/120분/`fail=0`(ok 7,603~13,531, skip 409~469).
   ⚠️ 다음 세션이 `partial` 을 사고로 오판하지 말 것. 진짜 이상 신호는 **`fail_count > 0`** 이거나 **`ok_count` 가 연속으로 급락**하는 경우다.
 - **09-22(화) 01:30 이후** — 인천 새 4구 `regions.jeonse_rate` 채움. 월 1회 = 새 4구 승계값 재점검. (grep `모구 승계값`)
+- ✅ **monitor "geocode·reverse-geocode 0건" 경보는 오탐 — 조사 반복 금지** (세션555 실측, 2026-09-21).
+  `apartments` 3,068곳 중 **lat 없음 0곳 · lat 있고 address 없음 0곳** = 두 수집기의 **대상이 0** 이라 0건이 정상이다(엿새 연속 `success`/`fail=0`).
+  세션539~545 좌표 정정 트랙이 끝나 채울 게 없어진 결과. ⚠️ 진짜 이상 신호는 `fail_count > 0` 이거나 **대상 수가 0이 아닌데 ok=0** 인 경우다 —
+  경보를 받으면 로그부터 읽지 말고 위 두 개수를 먼저 센다. monitor ②(단발 0건)의 구조적 오탐이라 예외 등재는 후속 검토.
 - ✅ **고아 워크트리 9개(693MB) 정리** — 세션555. `git worktree list` 는 1개인데 `.claude/worktrees/` 에 세션549~552 잔재 9개가 `.git` 없는 껍데기로 남아 있었다. 삭제 전 전수 대조로 **"고아에만 있는 src 파일 0개"**(5개 폴더 전부)·차이 방향이 전부 "main 이 더 최신"임을 확인. `.claude/` 693MB+ → **14MB**. ⚠️ 워크트리를 쓰면 **등록 해제만으로는 폴더가 안 지워진다** — 다음에도 `ls .claude/worktrees/` 와 `git worktree list` 개수를 대조할 것.
 - **10-06 저녁** — 로컬 러너 상태 파일 `.kosis-local-runner-state.json` 의 `lastProcessed` 가 `2026-10-06` 인가. ⚠️ `MAX_CATCHUP_PER_RUN = 1` 이라 **PC 가 2일 이상 꺼져 있으면 10-06(market-stats·molit-units·collect-trades)이 통째로 건너뛰어진다**(시뮬 실측: 10-04→10-07 이면 처리 목록이 10-05·10-07 로 10-06 이 빠진다). 모니터는 `stale_days 38` 이라 한 달 넘게 지나야 운다. (grep `MAX_CATCHUP`)
 - **10-07** — `migration.mjs` 첫 자연 실행(exit 0 · `중복 키 — 경남|창원시` ERROR 1줄은 정상). (grep `창원시`)
@@ -63,7 +67,27 @@
    ③ 글로벌은 **적용 안 함**(세션551 실측: 22개 중 20개가 이미 이력 분리 완료, 미분리 2개 합 1.4KB, 잔여 사건성 2~24%).
    글로벌 최대 덩어리는 **OMC 플러그인 블록 4,803B/63줄**(CLAUDE.md 의 24%)인데 OMC 가 실제 활성이라 스킬 자동발동 의존 여부 조사가 먼저 — 미착수 후보.
    기법 정본 = 글로벌 스킬 `doc-diet`(어느 레포든 자동 발동).
-2. dependabot 메이저 4건(#373 typescript 7 · #495 eslint 10 · #496 vitest 5 · #497 js-yaml 5) — 코드 수정이 필요해 기존 방침대로 보류.
+2. **dependabot 메이저 3건 — 세션555 실측 재분류**(옛 "#496·#497" 은 닫힘, 번호가 바뀐다. **PR 번호 말고 패키지 이름으로 grep 할 것**).
+   실패 로그·상류 peer 범위를 직접 읽어 원인을 갈랐다. **셋 다 우리 코드 결함이 아니다** — 하나는 봇의 반쪽 판올림, 둘은 상류 미지원.
+
+   | 대상 | 진짜 원인(실측) | 지금 되나 |
+   |---|---|---|
+   | **vitest 5**(현 #524) | 봇이 `vitest` 만 올려 `@vitest/coverage-v8`(peer `vitest@4.1.11` 고정)와 충돌 → **`npm ci` 자체가 ERESOLVE 로 실패**(그래서 e2e 가 11초에 죽고 ci 는 통과처럼 보인다) | ✅ **된다** |
+   | **eslint 10**(현 #495) | `eslint-plugin-react` 가 `eslint: ^3‖…‖^9.7` 까지만 — 10 에서 `contextOrFilename.getFilename is not a function` 런타임 크래시 | ❌ 상류 대기 |
+   | **typescript 7**(현 #373) | `@typescript-eslint/parser` 가 `typescript: >=4.8.4 <6.1.0` — `Error: typescript-eslint does not support TS 7.0` | ❌ 상류 대기 |
+
+   **① vitest 5 — 착수 가능. 봇 PR 을 머지하지 말고 우리 브랜치로 한다**(봇은 짝꿍을 같이 못 올린다).
+   `npm i -D vitest@5 @vitest/coverage-v8@5` **둘을 한 번에**. 세션555 가 실제로 해보고 **7,076/7,076 통과**를 확인한 뒤 원복해 뒀다.
+   ⚠️ 검사 도구 교체라 **머지 뒤 첫 세션이 "테스트 수가 그대로인가"를 봐야 한다**(줄었으면 수집 누락 = 조용한 회귀). 커버리지 임계 설정이 있으면 함께 확인.
+   ⚠️ `npm ci` 는 이 PC 에서 `ENOTEMPTY`(node 프로세스가 `node_modules` 를 잡음)로 실패할 수 있다 — **`npm install` 로 되돌린다**(153줄 세션471 선례와 같은 자리).
+
+   **②③ eslint 10 · typescript 7 — 기다린다. 재확인은 아래 두 줄이면 끝난다**(매번 로그 다시 읽지 말 것):
+   ```bash
+   npm view eslint-plugin-react@latest peerDependencies.eslint      # '^10' 이 보이면 해소
+   npm view @typescript-eslint/parser@latest peerDependencies.typescript  # '<7' 이상으로 넓어지면 해소
+   ```
+   eslint 10 의 상세 분석은 **610줄**(세션471)에 이미 있다 — 그쪽이 정본, 여기 복사하지 않는다.
+   ⚠️ 둘 다 **린트 단계에서만** 죽는다. 빌드·테스트·운영과 무관하므로 **급하지 않다.**
 
 ### D. 화면 재설계 (③) — **PR-1~6 완료, D2 의 PC 원칙 3/3**(세션554 PR [#525](https://github.com/developer-duno/mibunyang/pull/525) main `b1a0bef0` + 세션555 "점수 3열" 뜻 확정)
 - 결정 원장 = [`docs/superpowers/specs/2026-08-09-three-screen-redesign-decisions.md`](../docs/superpowers/specs/2026-08-09-three-screen-redesign-decisions.md)(승인 목업 2종·방향3). 완료 = PR-1 규제 진실화(#364) · PR-2 값 성격 분리(#365) · PR-3 상세 팝업 탭별 재배치(#369·#377) · PR-4 카드 계층화(세션510).
@@ -607,7 +631,7 @@ PostgREST 가 **INSERT 를 선시도**하기 때문이고, 그대로 바꿨으�
     VIEW 2개 `ALTER VIEW SET (security_invoker=on)` + 함수 2개 `SET search_path=''`.
     live 검증 — JOIN 9테이블 `USING(true)` 정책+GRANT 보유로 anon 무영향.
 
-- 🔴 **차단: `eslint 10` 본 적용 (dependabot #203 OPEN 유지)** — ⚠️ **진짜 원인 = peer 경고 아님, plugin 런타임 크래시** (세션 471 실패 로그 실측 정정)
+- 🔴 **차단: `eslint 10` 본 적용 (dependabot PR 은 번호가 바뀐다 — #203 → #495, 2026-09-21 기준)** — ⚠️ **진짜 원인 = peer 경고 아님, plugin 런타임 크래시** (세션 471 실패 로그 실측 정정 / 세션555 재확인: 같은 `getFilename` 크래시 그대로, `eslint-plugin-react` 최신도 7.37.5 로 불변)
   - 실패 로그(run 28682719274): `eslint-plugin-react/lib/util/version.js` → `TypeError: contextOrFilename.getFilename is not a function` (exit 2). eslint 10 이 구식 `context.getFilename()` 제거 → plugin 이 옛 API 호출 → **Lint 스텝 런타임 크래시**. `--legacy-peer-deps`(우리 CI 설치)로도 못 넘김 (설치는 되나 실행 깨짐). peer `^9.7` 은 증상.
   - 실측(세션 471): `eslint-plugin-react` latest=7.37.5 · 전 버전 · beta(`next`=7.8.0-rc.0) 전부 eslint 10 지원판 **없음**. `@eslint/js` 도 10 공동 bump 필요(dependabot 은 eslint 만 bump).
   - **결정(세션 471, 사장님) = #203 그대로 열어둠** = 방치 아니라 업스트림 대기. 프로젝트 영향 0 (eslint 9.39.4 정상 동작).
