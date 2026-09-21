@@ -424,6 +424,19 @@ export const RETIRED_GU = {
 };
 
 // ── 전남광주통합특별시 (2026-07-01 출범) ───────────────────────
+
+/**
+ * **통합 시도 판정의 정본** — 두 시도가 한 이름을 쓰는 시도를 알아본다.
+ *
+ * ⚠️ 이 상수를 **복사하지 마라.** 세션549~556 동안 `_kakao-poi.mjs` 에 같은 패턴의 사본이
+ * 있었고, 한쪽만 고치면 "여기서 통합으로 보내 놓고 저쪽이 못 갈라 전 지역 거부" 또는
+ * "여기서 안 보내 `startsWith` 로 샘" 이 된다. 세션556 에 한 자리로 모았다.
+ *
+ * ⚠️ 이름을 **열거하지 않는다** — 표기가 한 글자만 달라도("전남광주특별시") 새어 나간다
+ * ([[admin-district-code-reform]] §3 "모호하면 포기" 원칙). 접두만 본다.
+ */
+export const MERGED_SIDO_RE = /^전남광주통합/;
+
 /**
  * 옛 시군구 5자리 → 새 5자리. 광주 5구(29→12) + 전남 22 시군(46→12) = 27항목.
  *
@@ -473,7 +486,7 @@ export function resolveRegionName(sidoFull, gu = null) {
   if (!sidoFull) return null;
   const direct = REGION_MAP[sidoFull];
   if (direct) return direct;
-  if (!/^전남광주통합/.test(sidoFull)) return null;
+  if (!MERGED_SIDO_RE.test(sidoFull)) return null;
   // 통합 시도 — 시군구 첫 공백 토큰을 **양쪽 명단에 대조**한다("북구" → 광주 / "순천시" → 전남).
   const head = String(gu ?? "").trim().split(/\s+/)[0] ?? "";
   if (!head) return null; // 시도 단위 합계행은 못 가른다 — 호출자가 처리

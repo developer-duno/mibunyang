@@ -259,7 +259,10 @@ const DEPLOY_META_URL = "https://xn--hg3bi2ac4o1ig57cnoa.com/data/meta.json";
 function stripSidoToken(addr, short) {
   if (!short) return addr;
   const parts = addr.trim().split(/\s+/);
-  if (parts.length > 1 && shortRegion(parts[0]) === short) return parts.slice(1).join(" ");
+  // ⚠️ 둘째 토큰(시군구)을 함께 넘긴다 — 통합 시도는 그것 없이는 못 갈라 null 이 되고,
+  //    그러면 비교가 실패해 시도 토큰이 안 떨어진다("전남광주통합특별시 장성군 …" 이
+  //    통째로 키가 되던 세션556 회귀).
+  if (parts.length > 1 && shortRegion(parts[0], parts[1] ?? null) === short) return parts.slice(1).join(" ");
   return addr;
 }
 
@@ -275,8 +278,11 @@ function stripSidoToken(addr, short) {
  * @returns {string | null}
  */
 export function cityKey(address, region) {
-  const short = shortRegion(region);
-  const addr = stripSidoToken(String(address ?? ""), short);
+  // ⚠️ 통합 시도(`전남광주통합특별시`)는 시군구 없이는 못 가른다 — 주소의 둘째 토큰을 함께 넘긴다.
+  //    안 넘기면 `shortRegion` 이 앞 2글자로 잘라 **광주를 전남으로** 라벨했다(세션556 정정).
+  const raw = String(address ?? "");
+  const short = shortRegion(region, raw.trim().split(/\s+/)[1] ?? null);
+  const addr = stripSidoToken(raw, short);
   if (short === "세종") return "세종";
   if (short && METRO_REGIONS.has(short)) {
     const m = addr.match(/(\S+?[구군])(?=\s|$)/);
@@ -293,8 +299,9 @@ export function cityKey(address, region) {
  * @returns {string | null}
  */
 export function complexKey(sido, sigungu) {
-  const short = shortRegion(sido);
   const sgg = String(sigungu ?? "").trim();
+  // 통합 시도는 시군구로만 가른다(위 cityKey 주석 참조).
+  const short = shortRegion(sido, sgg.split(/\s+/)[0] ?? null);
   if (short === "세종") return "세종";
   if (short && METRO_REGIONS.has(short)) {
     const m = sgg.match(/(\S+?[구군])(?=\s|$)/);
