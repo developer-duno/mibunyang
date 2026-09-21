@@ -226,9 +226,21 @@ export const METRO_REGIONS = new Set(["서울", "부산", "대구", "인천", "�
 /** `--apply` 가 실제로 반영하는 등급. */
 export const APPLY_TIERS = new Set(["A2", "B_apply", "B_kakao_strong"]);
 
-/** infra-kakao 가 소유한 컬럼 — purge 시 이 컬럼만 null(행 삭제 금지). */
+/**
+ * `infra-kakao` 가 소유한 시설 종류 — purge 시 **개수와 거리 둘 다** 비운다.
+ *
+ * ⚠️ 세션556 실사고: 옛 `INFRA_KAKAO_COLUMNS` 는 개수 컬럼(`hospital`·`mart` …)만 담고 있어
+ * **짝인 `hospital_dist`·`mart_dist` 가 안 지워졌다**(실측: 8곳 × 8종 = 64칸 중 **62칸 잔존**).
+ * 그러면 다음 재수집이 개수만 채우고 **거리는 옛 좌표 기준으로 남는다** — 좌표를 3km 옮긴
+ * 단지가 "병원까지 171m" 를 그대로 들고 있게 된다. `_dist` 는 점수에도 쓰인다.
+ */
+export const INFRA_KAKAO_KINDS = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"];
+
+/** purge 시 null 로 만들 `infra` 컬럼 — 종류별 개수 + 거리, 그리고 단독 컬럼(`subway_dist`). */
 export const INFRA_KAKAO_COLUMNS = [
-  "hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park", "subway_dist",
+  ...INFRA_KAKAO_KINDS,
+  ...INFRA_KAKAO_KINDS.map((k) => `${k}_dist`),
+  "subway_dist",
 ];
 /** 단일 소유 테이블 — purge 시 행 삭제 가능. */
 export const SOLE_OWNER_TABLES = ["transport", "schools"];

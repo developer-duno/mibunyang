@@ -59,6 +59,7 @@ import {
   PLANNED_POI_RE,
   APPLY_TIERS,
   INFRA_KAKAO_COLUMNS,
+  INFRA_KAKAO_KINDS,
   ID_CHUNK,
   chunkIds,
 } from "./fix-placeholder-addresses.mjs";
@@ -784,12 +785,33 @@ describe("인자 파싱", () => {
 });
 
 describe("infra 컬럼 소유권 (세션539 실사고 — 행 통째 삭제 금지)", () => {
-  it("★ infra-kakao 소유 9컬럼만 비운다 — childcare/police/emergency 는 목록에 없다", () => {
-    expect(INFRA_KAKAO_COLUMNS).toHaveLength(9);
+  it("★ infra-kakao 소유만 비운다 — childcare/police/emergency 는 목록에 없다", () => {
     for (const c of ["childcare", "childcare_dist", "police", "police_dist", "emergency", "emergency_name"]) {
       expect(INFRA_KAKAO_COLUMNS).not.toContain(c);
     }
     expect(INFRA_KAKAO_COLUMNS).toContain("subway_dist");
+  });
+
+  // ⚠️ 세션556 실사고 — 이 검사가 **없어서** 결함이 살아남았다.
+  //    옛 목록은 개수 컬럼(`hospital`·`mart` …)만 담아 **짝인 `_dist` 가 안 지워졌다**
+  //    (실측: 8곳 × 8종 = 64칸 중 **62칸 잔존**). 그러면 다음 재수집이 개수만 채우고
+  //    **거리는 옛 좌표 기준으로 남는다** — 3km 옮긴 단지가 "병원까지 171m" 를 그대로 들고 있게 된다.
+  //    옛 테스트는 `toHaveLength(9)` 로 **그 결함을 오히려 고정**하고 있었다.
+  //
+  //    교훈: 소유권 검사는 **두 방향**이 필요하다 — "남의 것을 안 건드린다"(위)와
+  //    "내 것을 빠짐없이 비운다"(아래). 옛 테스트는 앞쪽만 봤다.
+  it("★ 종류마다 개수와 거리를 **짝으로** 비운다 (세션556)", () => {
+    expect(INFRA_KAKAO_KINDS.length).toBeGreaterThan(0);
+    for (const kind of INFRA_KAKAO_KINDS) {
+      expect(INFRA_KAKAO_COLUMNS).toContain(kind);
+      expect(INFRA_KAKAO_COLUMNS).toContain(`${kind}_dist`);
+    }
+    // 종류 × 2 + subway_dist(단독)
+    expect(INFRA_KAKAO_COLUMNS).toHaveLength(INFRA_KAKAO_KINDS.length * 2 + 1);
+  });
+
+  it("목록에 중복이 없다", () => {
+    expect(new Set(INFRA_KAKAO_COLUMNS).size).toBe(INFRA_KAKAO_COLUMNS.length);
   });
 });
 
