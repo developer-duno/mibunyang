@@ -127,7 +127,11 @@ async function main() {
 
       // 단지명 키워드 — 게이트(카테고리·시도+시군구·이름 유사도)를 통과한 후보만.
       const byName = await geocodeApartmentByName(
-        { name: apt.name, sido: shortRegion(region), gu }, // 이름 정리(괄호·회차어)는 안에서 한다
+        // ⚠️ `shortRegion` 에 **gu 를 함께 넘긴다** — 통합 시도(`전남광주통합특별시`)는 시군구
+        //    없이는 못 갈라 null 이 되고, 그러면 `geocodeApartmentByName` 이 `!sido` 로 조기
+        //    return 해 **카카오를 한 번도 안 부르고** 그 단지가 좌표를 영영 못 받는다(세션556).
+        //    같은 사고를 #537 이 `fix-placeholder-addresses` 쪽에서만 고쳤고 여기가 남아 있었다.
+        { name: apt.name, sido: shortRegion(region, gu), gu }, // 이름 정리(괄호·회차어)는 안에서 한다
         { fetchDocs: (q) => fetchKakaoKeywordDocs(q, KAKAO_KEY) },
       );
 

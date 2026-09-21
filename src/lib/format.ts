@@ -146,7 +146,8 @@ export const fmtCompetitionRate = (v: number | null | undefined): string => {
  * ## 이 함수가 하지 않는 것 (중요)
  *
  * ⚠️ **주소 문자열로 지역을 판정하지 않는다.** 이건 분류가 아니라 **글자 줄이기**다.
- * `_shared.mjs:458` 의 `REGION_MAP` 주석이 경고하듯 통합 시도명은 한 약칭으로 접을 수 없다
+ * `_shared.mjs` 의 `resolveRegionName` 주석(`REGION_MAP` 은 같은 파일에 정의)이 경고하듯
+ * 통합 시도명은 한 약칭으로 접을 수 없다
  * ("전남광주통합특별시" 를 "전남" 으로 접으면 광주 5구가 전남으로 오라벨된다). 지역 분류는
  * 이미 `apartments.region` 이 따로 갖고 있으므로(광주 57 / 전남 48 로 정상), 여기서는
  * **주소의 첫 토큰만** 치환하고 그 뒤(시군구·동·지번)는 손대지 않는다.

@@ -1573,7 +1573,10 @@ async function main() {
     done++;
     if (done % 50 === 0) log(PHASE, `  진행 ${done}/${targets.length}`);
     const name = cleanName(apt.name);
-    const sidoPrefix = shortRegion(apt.region);
+    // ⚠️ gu 를 함께 넘긴다 — 통합 시도는 시군구 없이는 못 갈라 null 이 되고, 그러면
+    //    `pickKakaoCandidate` 가 `!sido` 로 조기 return 해 **카카오 POI 출처(K)가 통째로 탈락**한다
+    //    (세션556: 같은 파일 L296·L316 은 #537 에서 고쳤는데 이 줄만 남아 있었다).
+    const sidoPrefix = shortRegion(apt.region, apt.gu);
 
     // ── C: complexes 이름매칭 (보조) ──
     /** @type {{lat:number,lng:number,solo:boolean}|null} */
