@@ -13,7 +13,7 @@ import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
 import { TransportCard } from "./detail/TransportCard";
-import { fmtPrice, fmtMoveIn } from "@/lib/format";
+import { fmtPrice, fmtMoveIn, fmtAddress } from "@/lib/format";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
@@ -411,7 +411,10 @@ export const DetailModal = memo(function DetailModal({
               </div>
               {apt.address ? (
                 <div style={{ fontSize: F.sm, color: C.muted, marginTop: 2 }}>
-                  {String(apt.address)}
+                  {/* 행정구역 개편기에는 옛/새 시도 표기가 공존한다 — 저장값은 출처가 준 그대로
+                      두고(수집 단계에서 통일하지 않는다), 보여줄 때만 윗줄 `region` 과 같은 길이로
+                      줄인다. 자세한 근거는 `fmtAddress` 주석 (세션556). */}
+                  {fmtAddress(String(apt.address))}
                   {apt.district ? ` (${String(apt.district)})` : ""}
                 </div>
               ) : null}

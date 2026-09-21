@@ -125,3 +125,48 @@ export const fmtCompetitionRate = (v: number | null | undefined): string => {
   const rate = v >= 1000 ? Math.round(v).toLocaleString("ko-KR") : v.toFixed(1);
   return `${rate}:1`;
 };
+
+/**
+ * 주소 **표시용** 시도 접두 축약 — 저장값은 건드리지 않는다.
+ *
+ * ## 왜 필요한가 (세션556 실측)
+ *
+ * 행정구역 개편은 소비처마다 전환 시점이 달라서 옛/새 표기가 **한동안 공존한다**
+ * (`.claude/rules/collectors/admin-district-code-reform.md` §1 — 실거래가·행안부·네이버는
+ * 새 코드만, 학교알리미는 둘 다, KOSIS 는 두 달 뒤에도 옛 코드). 그래서 수집 단계에서
+ * 한쪽으로 통일하지 않고 **출처가 준 표기를 그대로 저장한다**(사장님 결정, 2026-09-21).
+ *
+ * 그 결과 `apartments.address` 에 다섯 표기가 섞여 있다(실측):
+ * `광주 …` 52 · `전남 …` 33 · `전라남도 …` 13 · `전남광주통합특별시 …` 3 · `광주광역시 …` 1.
+ *
+ * 화면(`DetailModal`)은 바로 윗줄에 `region gu dong`(= "광주 광산구 월계동")을 보여주므로,
+ * 아랫줄 주소만 "전남광주통합특별시 광산구 월계동 870-1" 이면 같은 곳이 달라 보인다.
+ * **저장은 그대로, 보여줄 때만 줄인다.**
+ *
+ * ## 이 함수가 하지 않는 것 (중요)
+ *
+ * ⚠️ **주소 문자열로 지역을 판정하지 않는다.** 이건 분류가 아니라 **글자 줄이기**다.
+ * `_shared.mjs:458` 의 `REGION_MAP` 주석이 경고하듯 통합 시도명은 한 약칭으로 접을 수 없다
+ * ("전남광주통합특별시" 를 "전남" 으로 접으면 광주 5구가 전남으로 오라벨된다). 지역 분류는
+ * 이미 `apartments.region` 이 따로 갖고 있으므로(광주 57 / 전남 48 로 정상), 여기서는
+ * **주소의 첫 토큰만** 치환하고 그 뒤(시군구·동·지번)는 손대지 않는다.
+ *
+ * 표에 없는 표기는 **원문 그대로 통과**시킨다 — `fmtCompletion` 과 같은 원칙으로,
+ * 우리가 못 읽는 값을 읽은 척 꾸미지 않는다.
+ */
+const ADDR_SIDO_SHORT: Record<string, string> = {
+  전남광주통합특별시: "광주",
+  광주광역시: "광주",
+  전라남도: "전남",
+};
+
+export const fmtAddress = (v: string | null | undefined): string => {
+  if (!v || typeof v !== "string") return "";
+  const s = v.trim();
+  if (!s) return "";
+  const sp = s.indexOf(" ");
+  if (sp <= 0) return s;
+  const head = s.slice(0, sp);
+  const shortHead = ADDR_SIDO_SHORT[head];
+  return shortHead ? `${shortHead}${s.slice(sp)}` : s;
+};

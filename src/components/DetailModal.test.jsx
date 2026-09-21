@@ -1109,3 +1109,25 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     });
   });
 });
+
+// ⚠️ 이 블록은 **화면 적용**을 지킨다 — `fmtAddress` 단위 테스트(format.test.js)가 통과해도
+//    DetailModal 이 그 함수를 안 쓰면 손님 화면은 그대로다. 세션508·512 에서 두 번 난 사고
+//    (순수 함수는 고쳤는데 실전 경로가 안 지나감)를 같은 방식으로 막는다.
+describe("DetailModal — 주소 시도 표기 축약 (세션556)", () => {
+  // ⚠️ `makeItem` 은 첫 인자(단지 정보)를 `{}` 로 고정해 두므로 address 를 못 넣는다.
+  //    `makeScoredItem(aptOverrides, resOverrides)` 를 직접 부른다(factories.js:108).
+  /** @param {string} address */
+  const withAddress = (address) => makeScoredItem({ address }, makeItem().res);
+
+  it("통합 시도명을 짧게 보여준다 (저장값은 그대로, 표시만)", () => {
+    render(<DetailModal {...makeProps({ item: withAddress("전남광주통합특별시 광산구 월계동 870-1") })} />);
+    expect(screen.getByText(/광주 광산구 월계동 870-1/)).toBeInTheDocument();
+    // 긴 원문이 화면에 그대로 남아 있으면 적용이 안 된 것이다
+    expect(screen.queryByText(/전남광주통합특별시/)).not.toBeInTheDocument();
+  });
+
+  it("표에 없는 시도는 원문 그대로 보여준다", () => {
+    render(<DetailModal {...makeProps({ item: withAddress("경기도 성남시 분당구 대장동 596") })} />);
+    expect(screen.getByText(/경기도 성남시 분당구 대장동 596/)).toBeInTheDocument();
+  });
+});
