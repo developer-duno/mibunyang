@@ -101,7 +101,8 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 | **공용** | articles | 양쪽 upsert |
 | **공용** | complex_price_history | 양쪽 upsert |
 | **공용** | trades | mibunyang만 |
-| **mibunyang 전용** | apartments, prices, unsold_history, infra, schools, transport, builders, regions, trade_stats, consults, api_quota_log | mibunyang만 |
+| **mibunyang 쓰기 · 자매 읽기** | infra | **쓰기는 mibunyang 만**인데 `naver-estate-web` 이 읽는다 (세션556 발견) |
+| **mibunyang 전용** | apartments, prices, unsold_history, schools, transport, builders, regions, trade_stats, consults, api_quota_log | mibunyang만 |
 | **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details 등 | naver-estate-web만 |
 
 ### 컬럼명 정규화
