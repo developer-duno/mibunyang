@@ -124,6 +124,13 @@ const DM_S = {
   actionRow: { display: "flex", gap: 8 },
 };
 
+/**
+ * 데스크톱 오른쪽 고정 레일의 폭(원장 D2).
+ * 300 = 점수 원(96) + 판정 두어 줄 + 버튼이 줄바꿈 없이 들어가는 최소치.
+ * 본문은 나머지를 flex:1 로 가져간다(1100 - 300 - 패딩 ≈ 750, 표가 눌리지 않는 폭).
+ */
+const RAIL_WIDTH = 300;
+
 export const DetailModal = memo(function DetailModal({
   item,
   onClose,
@@ -372,7 +379,9 @@ export const DetailModal = memo(function DetailModal({
           background: C.card,
           borderRadius: isPC ? 20 : "20px 20px 0 0",
           width: "100%",
-          maxWidth: isDesktop ? 760 : isPC ? 640 : 520,
+          // 데스크톱은 본문 + 오른쪽 레일 두 칸이라 더 넓힌다(원장 D2).
+          // 1100 = 본문 가독폭 + 레일(300) + 여백. 좁은 화면은 width:100% 가 먼저 걸린다.
+          maxWidth: isDesktop ? 1100 : isPC ? 640 : 520,
           maxHeight: isPC ? "92dvh" : "95dvh",
           overflow: "hidden",
           display: "flex",
@@ -415,103 +424,114 @@ export const DetailModal = memo(function DetailModal({
         </div>
         {/* data-print-content: 관리자 인쇄 시 App print CSS 가 스크롤 해제·전체 펼침 (세션 405) */}
         {/* 하단 패딩은 CTA sticky 바가 자체 패딩으로 담당 (바닥 밀착을 위해 스크롤러 하단 패딩 0) */}
-        <div
-          ref={bodyRef}
-          data-testid="detail-scroll-body"
-          data-print-content
-          style={{
-            flex: 1,
-            minHeight: 0,
-            overflowY: "auto",
-            position: "relative",
-            padding: isDesktop ? "0 24px" : "0 16px",
-          }}
-        >
-          <StickyJumpNav
-            sections={sections}
-            activeId={activeTab}
-            // 목차바 우측 "종합 NN" 배지도 같은 종합점수다 — 여기를 안 막으면 뿌옇게 만든 원 바로
-            // 위에 숫자가 그대로 떠서 블라인드가 무의미해진다. null = 배지 자체 미렌더
-            // (StickyJumpNav 의 `totalScore != null` 가드 재사용, 그쪽 파일 무변경).
-            totalScore={blind ? null : res.total}
-            onJump={handleTabChange}
-            isMounted={isPanelMounted}
-            isDesktop={isDesktop}
-            noPrint
-          />
-          {/* 탭 전환 페이드 keyframes — 게이트 밖 항상 렌더 위치 1회 주입 (세션 410 D3) */}
-          <style>{FADE_KEYFRAMES}</style>
+        {/* 데스크톱 두 칸(원장 D2): 본문 스크롤러 + 오른쪽 고정 레일.
+            모바일·태블릿은 레일이 없어 이 래퍼가 한 칸이라 지금 모양 그대로다. */}
+        <div style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "row" }}>
+          <div
+            ref={bodyRef}
+            data-testid="detail-scroll-body"
+            data-print-content
+            style={{
+              flex: 1,
+              minWidth: 0,
+              minHeight: 0,
+              overflowY: "auto",
+              position: "relative",
+              padding: isDesktop ? "0 24px" : "0 16px",
+            }}
+          >
+            <StickyJumpNav
+              sections={sections}
+              activeId={activeTab}
+              // 목차바 우측 "종합 NN" 배지도 같은 종합점수다 — 여기를 안 막으면 뿌옇게 만든 원 바로
+              // 위에 숫자가 그대로 떠서 블라인드가 무의미해진다. null = 배지 자체 미렌더
+              // (StickyJumpNav 의 `totalScore != null` 가드 재사용, 그쪽 파일 무변경).
+              totalScore={blind ? null : res.total}
+              onJump={handleTabChange}
+              isMounted={isPanelMounted}
+              isDesktop={isDesktop}
+              noPrint
+            />
+            {/* 탭 전환 페이드 keyframes — 게이트 밖 항상 렌더 위치 1회 주입 (세션 410 D3) */}
+            <style>{FADE_KEYFRAMES}</style>
 
-          {/* §1 종합 탭 — ScoreBadge + 핵심지표 + 카테고리 미니카드 6 + 혜택칩 + 재공고배지 (세션 409 D2b: 레이더 제거) */}
-          {isPanelMounted("sec-overview") && (
-            <section
-              id="sec-overview"
-              role="tabpanel"
-              aria-labelledby="tab-sec-overview"
-              data-tab-panel
-              style={panelStyle("sec-overview")}
-            >
-              {/* 종합 판정 한 줄 (세션508 PR-3a A1) — ScoreBadge 보다 먼저. ProfileWeightBar 의
+            {/* §1 종합 탭 — ScoreBadge + 핵심지표 + 카테고리 미니카드 6 + 혜택칩 + 재공고배지 (세션 409 D2b: 레이더 제거) */}
+            {isPanelMounted("sec-overview") && (
+              <section
+                id="sec-overview"
+                role="tabpanel"
+                aria-labelledby="tab-sec-overview"
+                data-tab-panel
+                style={panelStyle("sec-overview")}
+              >
+                {/* 종합 판정 한 줄 (세션508 PR-3a A1) — ScoreBadge 보다 먼저. ProfileWeightBar 의
             "강점/보완" 요약을 대체한다(ProfileWeightBar 는 profile && !blind 일 때만 떠서
             비로그인·프로필 미선택 손님은 결론 문장을 못 봤다 — 이 한 줄이 상위 개념). blind 는
             점수 파생값이라 등급·카테고리 대신 "로그인 후" 안내로 교체한다. verdict 가 null
             (슬림 catsCache 등)이면 아무것도 렌더하지 않는다 — NaN·"—등급" 표시 금지. */}
-              {blind ? (
-                <div style={DM_S.verdictBlind}>점수는 로그인 후 볼 수 있어요</div>
-              ) : (
-                verdict && <div style={DM_S.verdictLine}>{verdict}</div>
-              )}
+                {/* 데스크톱은 같은 점수·판정이 오른쪽 레일에 더 크게 있다 — 라이브 실측에서
+                    같은 66점 원과 같은 문장이 나란히 떠 "둘이 다른 값인가" 싶게 보였다.
+                    레일이 상위 자리이므로 본문 쪽을 접는다(모바일은 레일이 없어 그대로 둔다). */}
+                {!isDesktop && (
+                  <div data-testid="overview-score">
+                    {blind ? (
+                      <div style={DM_S.verdictBlind}>점수는 로그인 후 볼 수 있어요</div>
+                    ) : (
+                      verdict && <div style={DM_S.verdictLine}>{verdict}</div>
+                    )}
 
-              <div style={DM_S.scoreBadgeWrap}>
-                {blind ? <BlindScoreBadge size={80} /> : <ScoreBadge score={res.total} size={80} />}
-              </div>
+                    <div style={DM_S.scoreBadgeWrap}>
+                      {blind ? <BlindScoreBadge size={80} /> : <ScoreBadge score={res.total} size={80} />}
+                    </div>
+                  </div>
+                )}
 
-              {/* 핵심 지표 — 세션 409 D2b: 6각형 레이더 제거(카테고리 점수는 아래 미니카드와 이중 노출 → 루즈
+                {/* 핵심 지표 — 세션 409 D2b: 6각형 레이더 제거(카테고리 점수는 아래 미니카드와 이중 노출 → 루즈
             해소, 사장님 지시). 미니카드가 카테고리 시각화+진입 역할을 모두 흡수. 핵심지표는 전폭.
             세션 505: 8행 → 4행(지역·분양가는 헤더, 전세가율·미분양률은 편차 스트립과 겹쳐 뺌).
             세션508 PR-3a A2: 4행 → 2행. 규제현황·LTV한도는 금융 탭이 이미 배지+3칸으로 갖고
             있다(A3) — 같은 값을 두 곳에서 또 읽게 하지 않는다(정보 손실 0). */}
-              <div style={{ marginBottom: 12 }}>
-                <div>
-                  <div style={DM_S.metricsHead}>핵심 지표</div>
-                  {[
-                    {
-                      l: "적정가 괴리",
-                      // ⚠️ `fairPrice > 0` 이 "가격 데이터 보유"의 정직한 판별자다 — 데이터 부재 분기만
-                      //    fairPrice=0 + deviation="0.0"(scorePrice.ts:256)을 내므로, deviation 만으로는
-                      //    진짜 0% 괴리와 부재를 구분 못 해 부재가 "0.0%"로 표시됐다(catVerdict/cardChips 규약).
-                      v:
-                        Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
-                          ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`
-                          : "—",
-                      // 색은 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 — 추정 오차보다
-                      // 작은 차이로 방향을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
-                      c:
-                        Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
-                          ? Number(res.cats.price.deviation) > DEV_NEUTRAL_BAND_PCT
-                            ? C.green
-                            : Number(res.cats.price.deviation) < -DEV_NEUTRAL_BAND_PCT
-                              ? C.red
-                              : C.muted
-                          : C.muted,
-                      hint: "이 단지와 비슷한 평형의 실거래가로 계산한 '적정가'와 실제 분양가를 비교한 거예요(그런 실거래가 부족한 곳은 더 넓은 지역 평균으로 대신 계산해요). +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
-                    },
-                    { l: "입주", v: fmtMoveIn(apt.completion, apt.presaleMoveIn as string | null | undefined) },
-                  ].map((r, i) => (
-                    <div key={i} style={DM_S.metricsRow}>
-                      <span style={{ ...DM_S.metricsLabel, display: "flex", alignItems: "center" }}>
-                        {r.l}
-                        {(r as { hint?: string }).hint && (
-                          <HelpHint text={(r as { hint?: string }).hint as string} label={r.l} />
-                        )}
-                      </span>
-                      <span style={{ fontSize: F.base, fontWeight: 600, color: r.c || C.text }}>{r.v}</span>
-                    </div>
-                  ))}
+                <div style={{ marginBottom: 12 }}>
+                  <div>
+                    <div style={DM_S.metricsHead}>핵심 지표</div>
+                    {[
+                      {
+                        l: "적정가 괴리",
+                        // ⚠️ `fairPrice > 0` 이 "가격 데이터 보유"의 정직한 판별자다 — 데이터 부재 분기만
+                        //    fairPrice=0 + deviation="0.0"(scorePrice.ts:256)을 내므로, deviation 만으로는
+                        //    진짜 0% 괴리와 부재를 구분 못 해 부재가 "0.0%"로 표시됐다(catVerdict/cardChips 규약).
+                        v:
+                          Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
+                            ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`
+                            : "—",
+                        // 색은 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 — 추정 오차보다
+                        // 작은 차이로 방향을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
+                        c:
+                          Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
+                            ? Number(res.cats.price.deviation) > DEV_NEUTRAL_BAND_PCT
+                              ? C.green
+                              : Number(res.cats.price.deviation) < -DEV_NEUTRAL_BAND_PCT
+                                ? C.red
+                                : C.muted
+                            : C.muted,
+                        hint: "이 단지와 비슷한 평형의 실거래가로 계산한 '적정가'와 실제 분양가를 비교한 거예요(그런 실거래가 부족한 곳은 더 넓은 지역 평균으로 대신 계산해요). +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
+                      },
+                      { l: "입주", v: fmtMoveIn(apt.completion, apt.presaleMoveIn as string | null | undefined) },
+                    ].map((r, i) => (
+                      <div key={i} style={DM_S.metricsRow}>
+                        <span style={{ ...DM_S.metricsLabel, display: "flex", alignItems: "center" }}>
+                          {r.l}
+                          {(r as { hint?: string }).hint && (
+                            <HelpHint text={(r as { hint?: string }).hint as string} label={r.l} />
+                          )}
+                        </span>
+                        <span style={{ fontSize: F.base, fontWeight: 600, color: r.c || C.text }}>{r.v}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              </div>
 
-              {/* 카테고리 요약 미니카드 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
+                {/* 카테고리 요약 미니카드 (세션 409 D2b) — 점수+등급+결론, 탭하면 점수 탭 해당 카테고리 자동 펼침.
             ⚠️ 옛 주석은 "레이더(위)가 한눈 비교, 미니카드는 결론+진입"이라 했으나 레이더는 세션 409 에
             이미 제거됐다(현재 코드에 없음). 세션508 PR-3a A4: 편차 스트립을 미니카드 뒤로 옮겼다 —
             스트립(231px)이 미니카드 앞을 막으면 "카드를 첫 화면 안으로"라는 목표 자체가 무효화된다.
@@ -519,518 +539,638 @@ export const DetailModal = memo(function DetailModal({
             benefit 제외 6→5개 (2026-08-11) — PROFILES 5개 전부 가중치 0 이 되어 더 이상 "점수
             카테고리"가 아니다(constants/profiles.ts 근거 주석 참조). 실제 혜택 금액은 지우지
             않고 아래 별도 사실 라벨("총 혜택 약 N만원")로 옮겼다 — 점수 그리드와 섞이면 안 된다. */}
-              {(() => {
-                const overviewTopCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
-                return (
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: isPC ? "repeat(3, 1fr)" : "repeat(2, 1fr)",
-                      gap: 8,
-                      margin: "12px 0",
-                    }}
-                  >
-                    {orderedCatEntries(res.cats as unknown as Record<string, Res>)
-                      .filter(([k]) => k !== "benefit")
-                      .map(([k, c]) => (
-                        <CategoryMiniCard
-                          key={k}
-                          k={k}
-                          cat={c}
-                          emphasized={overviewTopCats.includes(k)}
-                          onJump={() => handleCategoryJump(k)}
-                          blind={blind}
-                        />
-                      ))}
-                  </div>
-                );
-              })()}
+                {(() => {
+                  const overviewTopCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
+                  return (
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: isPC ? "repeat(3, 1fr)" : "repeat(2, 1fr)",
+                        gap: 8,
+                        margin: "12px 0",
+                      }}
+                    >
+                      {orderedCatEntries(res.cats as unknown as Record<string, Res>)
+                        .filter(([k]) => k !== "benefit")
+                        .map(([k, c]) => (
+                          <CategoryMiniCard
+                            key={k}
+                            k={k}
+                            cat={c}
+                            emphasized={overviewTopCats.includes(k)}
+                            onJump={() => handleCategoryJump(k)}
+                            blind={blind}
+                          />
+                        ))}
+                    </div>
+                  );
+                })()}
 
-              {/* 프로필 가중치 막대 — "왜 이 점수인지" 새 정보축 (세션 434 점수 근거 투명화 A+B).
+                {/* 프로필 가중치 막대 — "왜 이 점수인지" 새 정보축 (세션 434 점수 근거 투명화 A+B).
             ⚠️ 옛 주석은 "상세 모달은 로그인 전제(useDetailModal 단일 진입)라 블라인드 무관"이라 했으나
             그 전제는 이미 깨졌다 — 2-A 로 블라인드를 넣었고 세션 503(2-B)이 게이트를 없애 비로그인도
             상세를 연다. 비로그인엔 아예 안 그린다 —
             가중치는 "내 프로필"이 있어야 성립하는 값이라 뿌옇게 남기는 것보다 없는 편이 정직하다.
             세션508 PR-3a A1: 강점/보완 요약 줄은 위 판정 한 줄로 이관 — 이제 막대만 그린다. */}
-              {profile && !blind && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
+                {profile && !blind && <ProfileWeightBar weights={PROFILES[profile].w} cats={res.cats} />}
 
-              {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
+                {/* 요약 시각화 — "이 단지 vs 같은 지역 한가운데 값" 8줄 (세션 487 PR-4).
                   카드의 3줄과 같은 컴포넌트라 읽는 법이 그대로 이어진다. 트랙만 넓다.
                   세션508 PR-3a A4: 미니카드 뒤로 이동(위 주석 참조). apt 는 raw(mergedApt 아님) —
                   detail 버킷(staticDataApi.ts:63-73)에 이 컴포넌트가 읽는 필드가 없어 값이 안
                   바뀐다(전수 grep 확인, v1 의 "PresaleInfo 만 raw" 단정은 오류였다). */}
-              {showDeviation && (
-                <DeviationStrip
-                  apt={apt}
-                  fields={OVERVIEW_DEVIATION_FIELDS}
-                  regionStats={regionStats}
-                  compact={false}
-                />
-              )}
+                {showDeviation && (
+                  <DeviationStrip
+                    apt={apt}
+                    fields={OVERVIEW_DEVIATION_FIELDS}
+                    regionStats={regionStats}
+                    compact={false}
+                  />
+                )}
 
-              {/* 혜택 사실 라벨 (2026-08-11) — benefit 이 점수 카테고리에서 빠지면서(위 미니카드 참조)
+                {/* 혜택 사실 라벨 (2026-08-11) — benefit 이 점수 카테고리에서 빠지면서(위 미니카드 참조)
               생긴 자리. 점수가 아니라 "총 혜택 약 N만원" 금액 사실만 보여준다 — 점수 그리드와
               떨어뜨리려 미니카드 뒤(여기)에 둔다. AptCard.tsx 의 같은 문구·조건(totalWon > 0)을
               그대로 답습(그쪽은 건드리지 않음, 다른 브랜치 충돌 회피) — 카드에서 본 문구가 상세에서도
               똑같이 읽혀야 한다. `apt.benefits`(정성적 혜택 목록 칩)는 운영 실측 채움 0%(0/1,646)라
               사실상 항상 비어 있지만, 데이터가 채워지면 자동 노출되도록 조건은 그대로 둔다. */}
-              {(() => {
-                // totalWon/rate 는 subs 와 달리 슬림 res(목록 응답)에도 이미 있다(AptCard.tsx:96 이
-                // 같은 res.cats.benefit?.totalWon 을 버킷 없이 그대로 씀) — mergedRes 대기 불필요.
-                const benefitWon = res.cats.benefit?.totalWon ?? 0;
-                const benefitRate = res.cats.benefit?.rate ?? 0;
-                const benefitsList = (mergedApt ?? apt).benefits;
-                const hasBenefitsList = Array.isArray(benefitsList) && (benefitsList as unknown[]).length > 0;
-                if (!(benefitWon > 0) && !hasBenefitsList) return null;
-                return (
-                  <div style={DM_S.benefitsBox}>
-                    {benefitWon > 0 && (
-                      <div style={DM_S.benefitsHead}>
-                        {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
-                      </div>
-                    )}
-                    {hasBenefitsList && (
-                      <div style={DM_S.benefitsChipRow}>
-                        {(benefitsList as string[]).map((b: string, i: number) => (
-                          <span key={i} style={DM_S.benefitsChip}>
-                            {b}
-                          </span>
-                        ))}
-                      </div>
-                    )}
+                {(() => {
+                  // totalWon/rate 는 subs 와 달리 슬림 res(목록 응답)에도 이미 있다(AptCard.tsx:96 이
+                  // 같은 res.cats.benefit?.totalWon 을 버킷 없이 그대로 씀) — mergedRes 대기 불필요.
+                  const benefitWon = res.cats.benefit?.totalWon ?? 0;
+                  const benefitRate = res.cats.benefit?.rate ?? 0;
+                  const benefitsList = (mergedApt ?? apt).benefits;
+                  const hasBenefitsList = Array.isArray(benefitsList) && (benefitsList as unknown[]).length > 0;
+                  if (!(benefitWon > 0) && !hasBenefitsList) return null;
+                  return (
+                    <div style={DM_S.benefitsBox}>
+                      {benefitWon > 0 && (
+                        <div style={DM_S.benefitsHead}>
+                          {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
+                        </div>
+                      )}
+                      {hasBenefitsList && (
+                        <div style={DM_S.benefitsChipRow}>
+                          {(benefitsList as string[]).map((b: string, i: number) => (
+                            <span key={i} style={DM_S.benefitsChip}>
+                              {b}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
+                  <div style={DM_S.republishBadge}>
+                    재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회
                   </div>
-                );
-              })()}
+                )}
 
-              {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
-                <div style={DM_S.republishBadge}>재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회</div>
-              )}
-
-              {/* 건물 정보 카드 (세션508 PR-3c C4) — 최고층·구조·용적률·향 7필드. 기본 접힘 —
+                {/* 건물 정보 카드 (세션508 PR-3c C4) — 최고층·구조·용적률·향 7필드. 기본 접힘 —
                   TransportCard·BuilderCard 패턴 답습. layout 은 카드 자체가 점수 접미어 없는
                   전용 포맷을 쓴다(FIELD_META.layout.fmt 는 점수를 문자열에 박아 재사용 금지). */}
-              <BuildingInfoCard apt={mergedApt ?? apt} />
+                <BuildingInfoCard apt={mergedApt ?? apt} />
 
-              {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
-              {OVERVIEW_SECTIONS.map((s) => (
-                <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-              ))}
+                {/* 단지 기본정보 (핵심지표 중복 4필드 제외 — 세션 408 D2a) */}
+                {OVERVIEW_SECTIONS.map((s) => (
+                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
+                ))}
 
-              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-overview" />
+                <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-overview" />
 
-              {/* 잠금 자리 CTA (단계 2-A) — 종합 탭 하단 1곳. 점수 탭 잠금 패널의 것과 같은 문구. */}
-              {blind && <LoginCta onRequestLogin={onRequestLogin} />}
+                {/* 잠금 자리 CTA (단계 2-A) — 종합 탭 하단 1곳. 점수 탭 잠금 패널의 것과 같은 문구. */}
+                {blind && <LoginCta onRequestLogin={onRequestLogin} />}
 
-              {/* 출처 footer — 전 탭 공통 데이터 출처 (종합 탭 1회 고정, 세션 408 D2a) */}
-              <div style={DM_S.sourceFooter}>
-                출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)
-              </div>
-            </section>
-          )}
+                {/* 출처 footer — 전 탭 공통 데이터 출처 (종합 탭 1회 고정, 세션 408 D2a) */}
+                <div style={DM_S.sourceFooter}>
+                  출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)
+                </div>
+              </section>
+            )}
 
-          {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
-          {isPanelMounted("sec-price") && (
-            <section
-              id="sec-price"
-              role="tabpanel"
-              aria-labelledby="tab-sec-price"
-              data-tab-panel
-              style={panelStyle("sec-price")}
-            >
-              {/* 적정가 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), 0 중앙.
+            {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
+            {isPanelMounted("sec-price") && (
+              <section
+                id="sec-price"
+                role="tabpanel"
+                aria-labelledby="tab-sec-price"
+                data-tab-panel
+                style={panelStyle("sec-price")}
+              >
+                {/* 적정가 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), 0 중앙.
                   ⚠️ 옛 이름 "주변 시세 대비"는 거짓이었다 — 이 값은 `scorePrice.ts` 가 낸 **적정가와의 괴리**이지
                   주변 단지 비교가 아니다(세션 487 에 카드 배지는 정정했는데 이 게이지만 옛 이름이 남아 있었다).
                   ⚠️ 눈금 끝을 손으로 ±30 에 박아 두었더니 **점수가 이미 만점·최하인 지점과 어긋났다**(세션531).
                   이제 양 끝 = 점수가 더는 안 움직이는 지점(만점 경계 / 0점 도달 지점)이라, 게이지가 꽉 찼다는 건
                   "이 축에서 더 좋아질 게 없다"는 뜻이 된다. 상수를 바꾸면 눈금이 따라온다. */}
-              {/* ⚠️ `fairPrice > 0` 게이트 — 데이터 부재(fairPrice=0 + deviation="0.0")면 게이지를 아예
+                {/* ⚠️ `fairPrice > 0` 게이트 — 데이터 부재(fairPrice=0 + deviation="0.0")면 게이지를 아예
                   안 그린다. 그리면 부재가 "적정가와 비슷"(한가운데 마커)으로 둔갑한다(SC1). */}
-              {Number(res.cats.price?.fairPrice) > 0 &&
-                res.cats.price?.deviation != null &&
-                (() => {
-                  const dev = Number(res.cats.price.deviation);
-                  if (!Number.isFinite(dev)) return null;
-                  const pct =
-                    dev >= 0
-                      ? 50 + (Math.min(dev, DEV_FULL_MIN_PCT) / DEV_FULL_MIN_PCT) * 50
-                      : 50 - (Math.min(-dev, DEV_ZERO_AT_PCT) / DEV_ZERO_AT_PCT) * 50;
-                  // 색·문구는 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기(SC0) — 추정 오차보다
-                  // 작은 차이로 "저렴/비쌈"을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
-                  // ⚠️ pct(마커 위치) 계산은 손대지 않는다 — 색·문구만 밴드 기준으로 바꾼다.
-                  const tone =
-                    dev > DEV_NEUTRAL_BAND_PCT ? "cheap" : dev < -DEV_NEUTRAL_BAND_PCT ? "expensive" : "fair";
-                  const toneColor = tone === "cheap" ? C.green : tone === "expensive" ? C.red : C.muted;
-                  return (
-                    <div
-                      style={{
-                        background: C.bg,
-                        borderRadius: 10,
-                        padding: "12px 14px",
-                        marginBottom: 10,
-                        border: `1px solid ${C.border}`,
-                      }}
-                    >
-                      <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>
-                        적정가 대비 위치
-                      </div>
+                {Number(res.cats.price?.fairPrice) > 0 &&
+                  res.cats.price?.deviation != null &&
+                  (() => {
+                    const dev = Number(res.cats.price.deviation);
+                    if (!Number.isFinite(dev)) return null;
+                    const pct =
+                      dev >= 0
+                        ? 50 + (Math.min(dev, DEV_FULL_MIN_PCT) / DEV_FULL_MIN_PCT) * 50
+                        : 50 - (Math.min(-dev, DEV_ZERO_AT_PCT) / DEV_ZERO_AT_PCT) * 50;
+                    // 색·문구는 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기(SC0) — 추정 오차보다
+                    // 작은 차이로 "저렴/비쌈"을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
+                    // ⚠️ pct(마커 위치) 계산은 손대지 않는다 — 색·문구만 밴드 기준으로 바꾼다.
+                    const tone =
+                      dev > DEV_NEUTRAL_BAND_PCT ? "cheap" : dev < -DEV_NEUTRAL_BAND_PCT ? "expensive" : "fair";
+                    const toneColor = tone === "cheap" ? C.green : tone === "expensive" ? C.red : C.muted;
+                    return (
                       <div
                         style={{
-                          position: "relative",
-                          height: 12,
-                          background: C.slate100,
-                          borderRadius: 6,
-                          margin: "4px 0 6px",
+                          background: C.bg,
+                          borderRadius: 10,
+                          padding: "12px 14px",
+                          marginBottom: 10,
+                          border: `1px solid ${C.border}`,
                         }}
                       >
+                        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+                          적정가 대비 위치
+                        </div>
                         <div
                           style={{
-                            position: "absolute",
-                            left: "50%",
-                            top: 0,
-                            width: 2,
-                            height: "100%",
-                            background: C.muted,
-                            transform: "translateX(-1px)",
+                            position: "relative",
+                            height: 12,
+                            background: C.slate100,
+                            borderRadius: 6,
+                            margin: "4px 0 6px",
                           }}
-                        />
+                        >
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: "50%",
+                              top: 0,
+                              width: 2,
+                              height: "100%",
+                              background: C.muted,
+                              transform: "translateX(-1px)",
+                            }}
+                          />
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: `${pct}%`,
+                              top: "50%",
+                              width: 14,
+                              height: 14,
+                              borderRadius: "50%",
+                              background: toneColor,
+                              border: `2px solid ${C.card}`,
+                              transform: "translate(-50%,-50%)",
+                            }}
+                          />
+                        </div>
                         <div
-                          style={{
-                            position: "absolute",
-                            left: `${pct}%`,
-                            top: "50%",
-                            width: 14,
-                            height: 14,
-                            borderRadius: "50%",
-                            background: toneColor,
-                            border: `2px solid ${C.card}`,
-                            transform: "translate(-50%,-50%)",
-                          }}
-                        />
+                          style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted }}
+                        >
+                          <span>{DEV_ZERO_AT_PCT}% 비쌈</span>
+                          <span style={{ fontWeight: 700, color: toneColor }}>
+                            {tone === "cheap"
+                              ? `+${Math.round(dev)}% 저렴`
+                              : tone === "expensive"
+                                ? `${Math.abs(Math.round(dev))}% 비쌈`
+                                : "적정가와 비슷"}
+                          </span>
+                          <span>{DEV_FULL_MIN_PCT}% 저렴</span>
+                        </div>
                       </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted }}>
-                        <span>{DEV_ZERO_AT_PCT}% 비쌈</span>
-                        <span style={{ fontWeight: 700, color: toneColor }}>
-                          {tone === "cheap"
-                            ? `+${Math.round(dev)}% 저렴`
-                            : tone === "expensive"
-                              ? `${Math.abs(Math.round(dev))}% 비쌈`
-                              : "적정가와 비슷"}
-                        </span>
-                        <span>{DEV_FULL_MIN_PCT}% 저렴</span>
-                      </div>
-                    </div>
-                  );
-                })()}
-              {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
+                    );
+                  })()}
+                {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
                   유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
-              <AreaPriceScatter
-                priceByArea={(mergedApt ?? apt).priceByArea}
-                aptPrice={(apt.price as number | null) ?? null}
-                aptArea={(apt.area as number | null) ?? null}
-              />
-              <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
-              <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
-              <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
+                <AreaPriceScatter
+                  priceByArea={(mergedApt ?? apt).priceByArea}
+                  aptPrice={(apt.price as number | null) ?? null}
+                  aptArea={(apt.area as number | null) ?? null}
+                />
+                <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
+                <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
+                <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
 
-              {/* 두 출처 대조 (세션 507 PR-2) — 옛 "네이버 교차검증" 표를 대체한다.
+                {/* 두 출처 대조 (세션 507 PR-2) — 옛 "네이버 교차검증" 표를 대체한다.
                   우리 값과 네이버 값이 다른 표 두 개에 흩어져 있어 정작 비교가 안 되던 자리라,
                   같은 줄에 나란히 놓고 폴백(우리 값이 없어 네이버 값을 빌려 쓴 경우)은
                   "미수집"으로 갈라 거짓 상호검증을 막는다. */}
-              <SourceComparison apt={mergedApt ?? apt} />
+                <SourceComparison apt={mergedApt ?? apt} />
 
-              {/* 이 동네 거래 시세 + 층별가 (세션 408 D2a, 세션 507 에 섹션 1개로 축소) */}
-              {PRICE_SECTIONS.map((s) => (
-                <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-              ))}
-              <PriceByFloorBlock apt={mergedApt ?? apt} />
-              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-price" />
-            </section>
-          )}
+                {/* 이 동네 거래 시세 + 층별가 (세션 408 D2a, 세션 507 에 섹션 1개로 축소) */}
+                {PRICE_SECTIONS.map((s) => (
+                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
+                ))}
+                <PriceByFloorBlock apt={mergedApt ?? apt} />
+                <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-price" />
+              </section>
+            )}
 
-          {/* §3 입지 탭 — SchoolInfo + NearbyChildcare */}
-          {isPanelMounted("sec-location") && (
-            <section
-              id="sec-location"
-              role="tabpanel"
-              aria-labelledby="tab-sec-location"
-              data-tab-panel
-              style={panelStyle("sec-location")}
-            >
-              {/* 입지 한 줄 요약 (세션508 PR-3b B4) — catVerdict + 상위 서브 1개. A1(종합 탭
+            {/* §3 입지 탭 — SchoolInfo + NearbyChildcare */}
+            {isPanelMounted("sec-location") && (
+              <section
+                id="sec-location"
+                role="tabpanel"
+                aria-labelledby="tab-sec-location"
+                data-tab-panel
+                style={panelStyle("sec-location")}
+              >
+                {/* 입지 한 줄 요약 (세션508 PR-3b B4) — catVerdict + 상위 서브 1개. A1(종합 탭
                   판정 한 줄)과 같은 blind/슬림 catsCache 가드 패턴. getHighlights 는 CatPanel.tsx
                   에서 export 했다(플랜 §"v1 에서 틀렸던 것" #8 — 모듈 비공개라 그냥 쓰면 TS2305). */}
-              {blind ? (
-                <div style={DM_S.verdictBlind}>입지 점수는 로그인 후 볼 수 있어요</div>
-              ) : (
-                (() => {
-                  const locCat = res.cats.location;
-                  if (!locCat) return null;
-                  const top = getHighlights(locCat.subs, "location")[0];
-                  return (
-                    <div style={DM_S.verdictLine}>
-                      {catVerdict("location", locCat)}
-                      {top && ` · ${top.name} ${top.info ?? ""}`}
-                    </div>
-                  );
-                })()
-              )}
+                {blind ? (
+                  <div style={DM_S.verdictBlind}>입지 점수는 로그인 후 볼 수 있어요</div>
+                ) : (
+                  (() => {
+                    const locCat = res.cats.location;
+                    if (!locCat) return null;
+                    const top = getHighlights(locCat.subs, "location")[0];
+                    return (
+                      <div style={DM_S.verdictLine}>
+                        {catVerdict("location", locCat)}
+                        {top && ` · ${top.name} ${top.info ?? ""}`}
+                      </div>
+                    );
+                  })()
+                )}
 
-              {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
+                {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
                   세션 505 에 개수까지 라벨에 병기해("병원 3곳") 아래 "생활인프라" 표를 흡수했다.
                   KTX·IC(km 단위라 m 축과 안 맞음)·혐오시설(멀수록 좋아 방향이 반대)은 여전히 제외. */}
-              <DistanceDots apt={mergedApt ?? apt} />
+                <DistanceDots apt={mergedApt ?? apt} />
 
-              {/* 교통 상세 카드 (세션508 PR-3b B1) — LOCATION_SECTIONS 의 옛 "교통 상세" 격자를
+                {/* 교통 상세 카드 (세션508 PR-3b B1) — LOCATION_SECTIONS 의 옛 "교통 상세" 격자를
                   전용 카드로 승격. 기본 접힘 — 입지 판단 1차 신호는 위 DistanceDots 그림이 준다. */}
-              <TransportCard apt={mergedApt ?? apt} />
+                <TransportCard apt={mergedApt ?? apt} />
 
-              <SchoolInfo apt={mergedApt ?? apt} />
+                <SchoolInfo apt={mergedApt ?? apt} />
 
-              <NearbyChildcareSection apt={mergedApt ?? apt} />
+                <NearbyChildcareSection apt={mergedApt ?? apt} />
 
-              {/* 치안/환경 (세션 408 D2a — 입지 탭 빈약 해소. 세션508 PR-3b: "교통 상세" 는
+                {/* 치안/환경 (세션 408 D2a — 입지 탭 빈약 해소. 세션508 PR-3b: "교통 상세" 는
                   위 TransportCard 로 승격돼 LOCATION_SECTIONS 에서 빠졌다) */}
-              {LOCATION_SECTIONS.map((s) => (
-                <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-              ))}
-              <NearbyFacilitiesBlock apt={mergedApt ?? apt} />
-              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-location" />
-            </section>
-          )}
+                {LOCATION_SECTIONS.map((s) => (
+                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
+                ))}
+                <NearbyFacilitiesBlock apt={mergedApt ?? apt} />
+                <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-location" />
+              </section>
+            )}
 
-          {/* §4 분양 탭 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
-          {isPanelMounted("sec-presale") && (
-            <section
-              id="sec-presale"
-              role="tabpanel"
-              aria-labelledby="tab-sec-presale"
-              data-tab-panel
-              style={panelStyle("sec-presale")}
-            >
-              <PresaleTimeline
-                stage={(mergedApt ?? apt).presaleStage as string | null}
-                minPrice={(mergedApt ?? apt).presaleMinPrice as number | null}
-                maxPrice={(mergedApt ?? apt).presaleMaxPrice as number | null}
-                aptPrice={(apt.price as number | null) ?? null}
-                competitionRate={(mergedApt ?? apt).competitionRate as number | null}
-                competitionSupply={(mergedApt ?? apt).competitionSupply as number | null}
-                competitionApplicants={(mergedApt ?? apt).competitionApplicants as number | null}
-              />
-              {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일. ⚠️ 다만 **값이 바뀌지는 않는다** —
+            {/* §4 분양 탭 — PresaleInfo + MarketStatsCharts(KOSIS 지역 거시통계) */}
+            {isPanelMounted("sec-presale") && (
+              <section
+                id="sec-presale"
+                role="tabpanel"
+                aria-labelledby="tab-sec-presale"
+                data-tab-panel
+                style={panelStyle("sec-presale")}
+              >
+                <PresaleTimeline
+                  stage={(mergedApt ?? apt).presaleStage as string | null}
+                  minPrice={(mergedApt ?? apt).presaleMinPrice as number | null}
+                  maxPrice={(mergedApt ?? apt).presaleMaxPrice as number | null}
+                  aptPrice={(apt.price as number | null) ?? null}
+                  competitionRate={(mergedApt ?? apt).competitionRate as number | null}
+                  competitionSupply={(mergedApt ?? apt).competitionSupply as number | null}
+                  competitionApplicants={(mergedApt ?? apt).competitionApplicants as number | null}
+                />
+                {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일. ⚠️ 다만 **값이 바뀌지는 않는다** —
                   이 컴포넌트가 읽는 건 presale* 계열인데 detail 버킷(staticDataApi.ts:63-73)엔 그 필드가
                   하나도 없다(버킷 10키는 catsCache·nearby*·priceBy* 계열뿐이고 id 는 저장 시 떼어낸다).
                   분양 값은 목록 응답에 실려 온다. 즉 통일은 "형태를 같게" 하려는 것이지 버킷 도착을
                   기다리는 게 아니다. 초안 주석("버킷에 있어 버킷 도착 후 갱신돼야 한다")은 자기가 인용한
                   파일과 어긋났다 — 세션509 적대검증에서 정정(같은 파일 아래 AdminUnitSupply 주석이
                   같은 형식의 **참인** 예다). */}
-              <PresaleInfo apt={mergedApt ?? apt} />
+                <PresaleInfo apt={mergedApt ?? apt} />
 
-              {/* 추가 모집(무순위 공고) 이력 카드 (세션508 PR-3c C1) — ah- 단지만 그린다. */}
-              <UnsoldEventCard apt={mergedApt ?? apt} />
+                {/* 추가 모집(무순위 공고) 이력 카드 (세션508 PR-3c C1) — ah- 단지만 그린다. */}
+                <UnsoldEventCard apt={mergedApt ?? apt} />
 
-              {/* 시공사 카드 (세션508 PR-3c C2) — builder·builderCreditGrade·builderDebtRatio. */}
-              <BuilderCard apt={mergedApt ?? apt} />
+                {/* 시공사 카드 (세션508 PR-3c C2) — builder·builderCreditGrade·builderDebtRatio. */}
+                <BuilderCard apt={mergedApt ?? apt} />
 
-              {/* 계약해제율 (세션 408 D2a, 세션508 PR-3c C3: 청약경쟁 3필드는 위 진행 그림으로 이동) */}
-              {PRESALE_SECTIONS.map((s) => (
-                <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-              ))}
-              <AnnouncementLink apt={mergedApt ?? apt} />
+                {/* 계약해제율 (세션 408 D2a, 세션508 PR-3c C3: 청약경쟁 3필드는 위 진행 그림으로 이동) */}
+                {PRESALE_SECTIONS.map((s) => (
+                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
+                ))}
+                <AnnouncementLink apt={mergedApt ?? apt} />
 
-              {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
+                {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
 
-              {/* 이 지역 통계 (세션 507 PR-2) — 시세 탭 표에 단지 값과 섞여 있던 인구·의료·
+                {/* 이 지역 통계 (세션 507 PR-2) — 시세 탭 표에 단지 값과 섞여 있던 인구·의료·
                   거래량 7종을 지역 시장 추이 그래프와 한 서랍에 모았다. 그래프 자체는
                   `MarketStatsCharts` 무변경 재사용(RegionStats 안에서 그린다). */}
-              <RegionStats apt={mergedApt ?? apt} />
-              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />
-            </section>
-          )}
+                <RegionStats apt={mergedApt ?? apt} />
+                <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />
+              </section>
+            )}
 
-          {/* §5 금융 탭 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
-          {isPanelMounted("sec-finance") && (
-            <section
-              id="sec-finance"
-              role="tabpanel"
-              aria-labelledby="tab-sec-finance"
-              data-tab-panel
-              style={panelStyle("sec-finance")}
-            >
-              <LoanStack
-                price={(apt.price as number | null) ?? null}
-                region={apt.region as string | null}
-                gu={apt.gu as string | null}
-                dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
-              />
-              <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
-              <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />
-            </section>
-          )}
+            {/* §5 금융 탭 — LoanAnalysis (이 단지 대출 시뮬레이션) */}
+            {isPanelMounted("sec-finance") && (
+              <section
+                id="sec-finance"
+                role="tabpanel"
+                aria-labelledby="tab-sec-finance"
+                data-tab-panel
+                style={panelStyle("sec-finance")}
+              >
+                <LoanStack
+                  price={(apt.price as number | null) ?? null}
+                  region={apt.region as string | null}
+                  gu={apt.gu as string | null}
+                  dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
+                />
+                <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
+                <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />
+              </section>
+            )}
 
-          {/* §6 점수 탭 — CatPanel×5 순수 점수만 (세션 409 D2b: 관리자 인사이트는 sec-admin 탭으로 이동).
+            {/* §6 점수 탭 — CatPanel×5 순수 점수만 (세션 409 D2b: 관리자 인사이트는 sec-admin 탭으로 이동).
             jumpSeqs[k] key = 종합 탭 미니카드 클릭 시 해당 카테고리 1개만 리마운트(defaultExpanded 펼침).
             benefit 제외 6→5개 (2026-08-11) — 위 미니카드와 동일 근거(가중치 0, 더 이상 점수 카테고리 아님). */}
-          {isPanelMounted("sec-score") && (
-            <section
-              id="sec-score"
-              role="tabpanel"
-              aria-labelledby="tab-sec-score"
-              data-tab-panel
-              style={panelStyle("sec-score")}
-            >
-              {/* 비로그인 = 패널 6개를 통째로 잠금 안내로 교체 (단계 2-A). CatPanel 은 서브지표 41개까지
+            {isPanelMounted("sec-score") && (
+              <section
+                id="sec-score"
+                role="tabpanel"
+                aria-labelledby="tab-sec-score"
+                data-tab-panel
+                style={panelStyle("sec-score")}
+              >
+                {/* 비로그인 = 패널 6개를 통째로 잠금 안내로 교체 (단계 2-A). CatPanel 은 서브지표 41개까지
                   펼치는 곳이라 부분 가리기가 성립하지 않는다 — 문을 통째로 닫고 왜 닫혔는지만 알린다. */}
-              {blind && <ScoreLockPanel onRequestLogin={onRequestLogin} />}
-              {!blind &&
-                (() => {
-                  const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
-                  // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
-                  return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>)
-                    .filter(([k]) => k !== "benefit")
-                    .map(([k, c]) => {
-                      const seq = jumpSeqs[k] ?? 0;
-                      return (
-                        <CatPanel
-                          key={`${k}#${seq}`}
-                          cat={c}
-                          k={k}
-                          emphasized={topCats.includes(k)}
-                          defaultExpanded={seq > 0}
-                        />
-                      );
-                    });
-                })()}
-            </section>
-          )}
+                {blind && <ScoreLockPanel onRequestLogin={onRequestLogin} />}
+                {!blind &&
+                  (() => {
+                    const topCats = profile ? (getTopCats(PROFILES[profile].w) as string[]) : [];
+                    // mergedRes = 버킷 도착 시 full subs 로 복원된 res, 미도착 시 슬림 res(subs[0]만).
+                    return orderedCatEntries((mergedRes ?? res).cats as unknown as Record<string, Res>)
+                      .filter(([k]) => k !== "benefit")
+                      .map(([k, c]) => {
+                        const seq = jumpSeqs[k] ?? 0;
+                        return (
+                          <CatPanel
+                            key={`${k}#${seq}`}
+                            cat={c}
+                            k={k}
+                            emphasized={topCats.includes(k)}
+                            defaultExpanded={seq > 0}
+                          />
+                        );
+                      });
+                  })()}
+              </section>
+            )}
 
-          {/* §7 관리자 탭 — 점수 산출 과정 + 동/호수·평형 공급 + 141필드 검수 (세션 409 D2b: 점수·분양 탭에서
+            {/* §7 관리자 탭 — 점수 산출 과정 + 동/호수·평형 공급 + 141필드 검수 (세션 409 D2b: 점수·분양 탭에서
             분리, adminLoggedIn 시에만 칩·패널 노출). data-tab-panel = App print CSS 가 인쇄 시 펼침.
             isPanelMounted(adminLoggedIn)=즉시 마운트 → 현행 "전체 펼쳐 인쇄" 동선 보존. */}
-          {adminLoggedIn && isPanelMounted("sec-admin") && (
-            <section
-              id="sec-admin"
-              role="tabpanel"
-              aria-labelledby="tab-sec-admin"
-              data-tab-panel
-              style={panelStyle("sec-admin")}
-            >
-              <Suspense
-                fallback={<div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>}
+            {adminLoggedIn && isPanelMounted("sec-admin") && (
+              <section
+                id="sec-admin"
+                role="tabpanel"
+                aria-labelledby="tab-sec-admin"
+                data-tab-panel
+                style={panelStyle("sec-admin")}
               >
-                <AdminScoreBreakdown apt={mergedApt ?? apt} res={mergedRes ?? res} profile={profile} />
-              </Suspense>
-              <Suspense
-                fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}
-              >
-                {/* 세션508 PR-3a A5: 의도적으로 raw apt 유지 — 동/호수·평형 공급 표(usePresaleDetail
+                <Suspense
+                  fallback={
+                    <div style={{ padding: 16, fontSize: F.sm, color: C.muted }}>점수 산출 과정 로딩 중...</div>
+                  }
+                >
+                  <AdminScoreBreakdown apt={mergedApt ?? apt} res={mergedRes ?? res} profile={profile} />
+                </Suspense>
+                <Suspense
+                  fallback={<div style={{ padding: 12, fontSize: F.sm, color: C.muted }}>평형별 공급 로딩 중...</div>}
+                >
+                  {/* 세션508 PR-3a A5: 의도적으로 raw apt 유지 — 동/호수·평형 공급 표(usePresaleDetail
                     units)가 읽는 필드는 detail 버킷(staticDataApi.ts:63-73)에 없어 mergedApt 로
                     바꿔도 값이 안 바뀐다(전수 grep 확인). */}
-                <AdminUnitSupply apt={apt} />
-              </Suspense>
-              <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />
-            </section>
-          )}
+                  <AdminUnitSupply apt={apt} />
+                </Suspense>
+                <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />
+              </section>
+            )}
 
-          {/* CTA 공통 영역 — 탭 무관 항상 노출 + sticky bottom (사장님 결정 2026-06-13 ×2).
+            {/* CTA 공통 영역 — 탭 무관 항상 노출 + sticky bottom (사장님 결정 2026-06-13 ×2).
             sticky 기본 동작 = 콘텐츠가 화면보다 길면 하단에 반투명으로 겹쳐 떠 있고, 짧으면 콘텐츠 끝
             제자리 — 길이 측정 분기 없이 두 경우 자동. 좌우 negative margin = 스크롤러 패딩 전폭 덮기
             (StickyJumpNav 패턴). 포커스 트랩 불변식: 이 블록이 모달 내 마지막 포커서블 + 항상 가시 —
             트랩(위 handleKey)이 display:none 패널 내부 요소를 경계로 잡아 탈출하는 것을 DOM 순서로 차단. */}
-          <div
-            data-testid="detail-cta-bar"
-            style={{
-              position: "sticky",
-              bottom: 0,
-              zIndex: 10,
-              margin: `12px ${isDesktop ? -24 : -16}px 0`,
-              padding: `10px ${isDesktop ? 24 : 16}px calc(12px + env(safe-area-inset-bottom, 0px))`,
-              background: `${C.card}EB`,
-              backdropFilter: "blur(8px)",
-              WebkitBackdropFilter: "blur(8px)",
-              borderTop: `1px solid ${C.border}`,
-            }}
-          >
-            {onConsult && (
-              <button
-                onClick={() => onConsult(apt.id as string)}
+            {/* 데스크톱은 같은 버튼이 오른쪽 레일에 있다 — 한 화면에 두 번 뜨면
+              손님이 어느 쪽이 진짜인지 헷갈리므로 여기서는 감춘다.
+              모바일·태블릿은 레일이 없으니 이 sticky 바가 그대로 유일한 CTA 다. */}
+            {!isDesktop && (
+              <div
+                data-testid="detail-cta-bar"
                 style={{
-                  width: "100%",
-                  background: C.blue,
-                  color: C.white,
-                  border: "none",
-                  borderRadius: 8,
-                  padding: "12px 0",
-                  fontSize: F.base,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  minHeight: 44,
-                  marginBottom: 8,
-                  transition: "all .15s",
+                  position: "sticky",
+                  bottom: 0,
+                  zIndex: 10,
+                  margin: `12px ${isDesktop ? -24 : -16}px 0`,
+                  padding: `10px ${isDesktop ? 24 : 16}px calc(12px + env(safe-area-inset-bottom, 0px))`,
+                  background: `${C.card}EB`,
+                  backdropFilter: "blur(8px)",
+                  WebkitBackdropFilter: "blur(8px)",
+                  borderTop: `1px solid ${C.border}`,
                 }}
               >
-                이 매물 상담하기
-              </button>
+                {onConsult && (
+                  <button
+                    onClick={() => onConsult(apt.id as string)}
+                    style={{
+                      width: "100%",
+                      background: C.blue,
+                      color: C.white,
+                      border: "none",
+                      borderRadius: 8,
+                      padding: "12px 0",
+                      fontSize: F.base,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      minHeight: 44,
+                      marginBottom: 8,
+                      transition: "all .15s",
+                    }}
+                  >
+                    이 매물 상담하기
+                  </button>
+                )}
+                <div style={DM_S.actionRow}>
+                  <button
+                    onClick={() => onFav(apt.id as string)}
+                    style={{
+                      flex: 1,
+                      background: isFav ? C.redLight : C.slate100,
+                      color: isFav ? C.red : C.muted,
+                      border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent",
+                      borderRadius: 8,
+                      padding: isDesktop ? "12px 0" : "10px 0",
+                      fontSize: isDesktop ? F.md : F.base,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      minHeight: 44,
+                      transition: "all .15s",
+                    }}
+                  >
+                    {isFav ? "관심 등록됨" : "관심매물 추가"}
+                  </button>
+                  <button
+                    onClick={() => onComp(apt.id as string)}
+                    style={{
+                      flex: 1,
+                      background: isComp ? C.indigo : "transparent",
+                      color: isComp ? C.white : C.indigo,
+                      border: `1.5px solid ${C.indigo}`,
+                      borderRadius: 8,
+                      padding: isDesktop ? "12px 0" : "10px 0",
+                      fontSize: isDesktop ? F.md : F.base,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                      minHeight: 44,
+                      transition: "all .15s",
+                    }}
+                  >
+                    {isComp ? "비교 중" : "비교 추가"}
+                  </button>
+                  {onShare && (
+                    <button
+                      onClick={() => onShare(apt.id as string)}
+                      aria-label="이 단지 공유하기"
+                      style={{
+                        flex: 1,
+                        background: C.slate100,
+                        color: C.slate600,
+                        border: "1.5px solid transparent",
+                        borderRadius: 8,
+                        padding: isDesktop ? "12px 0" : "10px 0",
+                        fontSize: isDesktop ? F.md : F.base,
+                        fontWeight: 700,
+                        cursor: "pointer",
+                        minHeight: 44,
+                        transition: "all .15s",
+                      }}
+                    >
+                      공유
+                    </button>
+                  )}
+                </div>
+              </div>
             )}
-            <div style={DM_S.actionRow}>
-              <button
-                onClick={() => onFav(apt.id as string)}
-                style={{
-                  flex: 1,
-                  background: isFav ? C.redLight : C.slate100,
-                  color: isFav ? C.red : C.muted,
-                  border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent",
-                  borderRadius: 8,
-                  padding: isDesktop ? "12px 0" : "10px 0",
-                  fontSize: isDesktop ? F.md : F.base,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  minHeight: 44,
-                  transition: "all .15s",
-                }}
-              >
-                {isFav ? "관심 등록됨" : "관심매물 추가"}
-              </button>
-              <button
-                onClick={() => onComp(apt.id as string)}
-                style={{
-                  flex: 1,
-                  background: isComp ? C.indigo : "transparent",
-                  color: isComp ? C.white : C.indigo,
-                  border: `1.5px solid ${C.indigo}`,
-                  borderRadius: 8,
-                  padding: isDesktop ? "12px 0" : "10px 0",
-                  fontSize: isDesktop ? F.md : F.base,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  minHeight: 44,
-                  transition: "all .15s",
-                }}
-              >
-                {isComp ? "비교 중" : "비교 추가"}
-              </button>
-              {onShare && (
+          </div>
+          {/* 오른쪽 고정 레일 (원장 D2, 세션554) — 데스크톱에서만.
+              여기 있기 전에는 점수·판정이 "종합" 탭 안에만 있어 시세·입지·금융 탭으로
+              넘어가면 사라졌다(목차바의 작은 "종합 NN" 숫자만 남았다).
+              레일은 탭과 무관하게 같은 자리에 머물러 "몇 점인가·무슨 등급인가·상담하기"를 잡아 둔다.
+
+              ⚠️ DOM 순서상 본문 **뒤**에 둔다 — CTA 가 모달의 마지막 포커서블이어야
+              포커스 트랩이 display:none 패널 안쪽을 경계로 잡지 않는다(기존 불변식 유지). */}
+          {isDesktop && (
+            <aside
+              data-testid="detail-rail"
+              data-no-print
+              aria-label="단지 요약과 실행"
+              style={{
+                width: RAIL_WIDTH,
+                flexShrink: 0,
+                borderLeft: `1px solid ${C.border}`,
+                padding: "16px 20px",
+                overflowY: "auto",
+                display: "flex",
+                flexDirection: "column",
+                gap: 12,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "center" }}>
+                {blind ? <BlindScoreBadge size={96} /> : <ScoreBadge score={res.total} size={96} />}
+              </div>
+              {blind ? (
+                <div style={DM_S.verdictBlind}>점수는 로그인 후 볼 수 있어요</div>
+              ) : (
+                verdict && <div style={DM_S.verdictLine}>{verdict}</div>
+              )}
+              {onConsult && (
                 <button
-                  onClick={() => onShare(apt.id as string)}
-                  aria-label="이 단지 공유하기"
+                  data-testid="rail-consult"
+                  onClick={() => onConsult(apt.id as string)}
                   style={{
-                    flex: 1,
-                    background: C.slate100,
-                    color: C.slate600,
-                    border: "1.5px solid transparent",
+                    width: "100%",
+                    background: C.blue,
+                    color: C.white,
+                    border: "none",
                     borderRadius: 8,
-                    padding: isDesktop ? "12px 0" : "10px 0",
-                    fontSize: isDesktop ? F.md : F.base,
+                    padding: "12px 0",
+                    fontSize: F.base,
                     fontWeight: 700,
                     cursor: "pointer",
                     minHeight: 44,
-                    transition: "all .15s",
+                  }}
+                >
+                  이 매물 상담하기
+                </button>
+              )}
+              <div style={DM_S.actionRow}>
+                <button
+                  onClick={() => onFav(apt.id as string)}
+                  style={{
+                    flex: 1,
+                    background: isFav ? C.redLight : C.slate100,
+                    color: isFav ? C.red : C.muted,
+                    border: isFav ? `1.5px solid ${C.red}` : "1.5px solid transparent",
+                    borderRadius: 8,
+                    padding: "12px 0",
+                    fontSize: F.md,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    minHeight: 44,
+                  }}
+                >
+                  {isFav ? "관심 중" : "관심매물"}
+                </button>
+                <button
+                  onClick={() => onComp(apt.id as string)}
+                  style={{
+                    flex: 1,
+                    background: isComp ? C.indigo : "transparent",
+                    color: isComp ? C.white : C.indigo,
+                    border: `1.5px solid ${C.indigo}`,
+                    borderRadius: 8,
+                    padding: "12px 0",
+                    fontSize: F.md,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    minHeight: 44,
+                  }}
+                >
+                  {isComp ? "비교 중" : "비교 추가"}
+                </button>
+              </div>
+              {onShare && (
+                <button
+                  onClick={() => onShare(apt.id as string)}
+                  style={{
+                    width: "100%",
+                    background: "transparent",
+                    color: C.muted,
+                    border: `1px solid ${C.border}`,
+                    borderRadius: 8,
+                    padding: "10px 0",
+                    fontSize: F.sm,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                    minHeight: 40,
                   }}
                 >
                   공유
                 </button>
               )}
-            </div>
-          </div>
+            </aside>
+          )}
         </div>
       </div>
     </div>
