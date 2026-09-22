@@ -108,7 +108,14 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   roadAddress: { label: "도로명 주소", section: "개요", fmt: (v) => v || "—" },
   district: { label: "개발구역", section: "개요", fmt: (v) => v || "—" },
   avgMaintenanceCost: {
-    label: "평균 관리비",
+    // ⚠️ 이 값은 **네이버 활성 매물에 적힌 관리비의 평균**이다(총관리비 — 경비·청소·수선충당금 포함).
+    //    공식 API(`collect-maintenance.mjs`)가 넣는 5개 항목 합계(난방·온수·가스·전기·수도)와는
+    //    **재는 범위가 다르다** — 실측(2026-09-23, 950곳): 공식 합계 중앙 8만원 vs 저장값 중앙 11만원.
+    //    공식 쪽이 더 정확한 게 아니라 **더 좁다**(공용관리비가 빠져 손님이 실제 내는 돈보다 작다).
+    //    그래서 사장님 확정(2026-09-23)으로 **네이버 총관리비를 유지**한다.
+    //    다만 "평균"이 무엇의 평균인지 밝히지 않으면 손님이 오해하므로 라벨에 근거를 적는다
+    //    ([[name-is-not-content]] — `unsold` 가 매물 수였던 것과 같은 결).
+    label: "평균 관리비(매물 기준)",
     section: "개요",
     unit: "만원",
     fmt: (v) => (v != null && v > 0 ? `${v.toLocaleString("ko-KR")}만원` : "미수집"),
