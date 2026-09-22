@@ -49,6 +49,11 @@ export const ALLOWLIST = new Set([
   // ⚠️ 단지 쪽 측정소 배정이 바뀌면(`collect-air-quality` 가 더 가까운 측정소를 잡는 경우)
   //    재실행이 필요한데, 그 경우에도 멱등이라 안전하다(`needsUpdate` 가 같은 값이면 건너뛴다).
   "air-annual-attach",
+  // 세션560: 좌표를 남의 단지와 공유하는 행에 `coord_shared` 표시를 다는 도구.
+  // 입력이 `fix-placeholder-addresses.mjs --out=<덤프>` 의 결과 JSON 이라(판정을 그 도구에
+  // 위임한다 — 직접 구현하다 세 번 틀렸다) **그 도구를 사람이 돌린 직후**에만 돌릴 일이 생긴다.
+  // 그 도구 자체가 20분짜리 외부 API 순회라 cron 으로 묶을 성질이 아니다.
+  "flag-shared-coords",
   // apartments_flat VIEW 를 훑는 진단 리포트 도구. docstring 사용법이 "콘솔 리포트 /
   // --json / --region=" 등 사람이 손으로 실행하는 형태로만 적혀 있다. data-fill.mjs 가
   // computeAudit/fetchAllFromView 를 **함수로 import** 해 판단 근거로 쓰지만 그건
