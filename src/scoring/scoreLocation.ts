@@ -235,7 +235,10 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
           apt._noView && apt._noNoise && apt._noSunlight
             ? "정보 없음"
             : `${view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${sunlight}`}${apt._noNoise ? "" : ` ${noise}dB`}${airBand ? ` 대기:${airBand}` : ""}`,
-        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airBand || "미수집"}(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? " /PM10" : ""}${o3Sc != null ? " /O3" : ""})${airQuality?.grade ? ` 오늘:${airQuality.grade}` : ""}`,
+        // ⚠️ 3년 평균이 없는 단지(실측 76곳)는 그냥 "미수집"이 아니라 **중립 점수를 받고 있다**.
+        //    그걸 숨기면 "미수집인데 왜 점수가 있지?"가 된다 — `FieldTable` 의 "추정값·기본값임을
+        //    숨기지 않는다" 원칙과 같은 자리다(세션560 맹점 검사관 적발).
+        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`}(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? " /PM10" : ""}${o3Sc != null ? " /O3" : ""})${airQuality?.grade ? ` 오늘:${airQuality.grade}(참고)` : ""}`,
       },
       {
         name: "혐오시설",

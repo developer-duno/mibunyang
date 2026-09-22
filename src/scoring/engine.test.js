@@ -1534,8 +1534,14 @@ describe("대기질 3년 평균 경계·문구 (세션560)", () => {
     expect(airAnnualBand(26.03)).toBe("나쁨"); // 실측 최대 — 상한 밖으로 새면 안 된다
   });
   it("범례는 경계에서 파생된다 (손으로 적으면 경계와 어긋난다)", () => {
-    expect(AIR_ANNUAL_LEGEND).toContain("15↓");
-    expect(AIR_ANNUAL_LEGEND).toContain("19↓");
+    expect(AIR_ANNUAL_LEGEND).toContain("15 이하");
+    expect(AIR_ANNUAL_LEGEND).toContain("19 이하");
+  });
+  it("⚠️ 범례가 경계값을 양쪽에 걸치지 않는다 — 판정은 `<=` 다", () => {
+    // 옛 표기 `나쁨 19↑` 는 19 도 나쁨처럼 읽혔다. 실제 `airAnnualBand(19)` 는 "보통"이다.
+    expect(airAnnualBand(19)).toBe("보통");
+    expect(AIR_ANNUAL_LEGEND).toContain("19 초과");
+    expect(AIR_ANNUAL_LEGEND).not.toContain("19↑");
   });
 
   // === 시간축 — 여기가 이 작업의 본체다 ===
@@ -1576,6 +1582,16 @@ describe("대기질 3년 평균 경계·문구 (세션560)", () => {
   it("3년 평균이 없으면 등급을 '미수집' 으로 — 오늘 값으로 메우지 않는다", () => {
     const r = scoreLocation(makeApt({ airQuality: { grade: "좋음", pm25: 5 } }));
     expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain("대기질:미수집");
+  });
+  it("⚠️ '미수집' 이어도 중립 점수를 받고 있다는 사실을 숨기지 않는다", () => {
+    // 세션560 맹점 검사관: 76곳이 "미수집"으로 보이는데 실제로는 14점을 받고 있었다.
+    // 숨기면 손님은 "미수집인데 왜 점수가 있지?"를 본다(FieldTable 의 "추정값을 숨기지 않는다"와 같은 자리).
+    const r = scoreLocation(makeApt({ airQuality: { grade: "좋음", pm25: 5 } }));
+    expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain(`중립 ${AIR_QUALITY_DEFAULT}점`);
+  });
+  it("오늘 값에는 '참고' 를 붙인다 — 채점에 안 쓰인다는 뜻", () => {
+    const r = scoreLocation(makeApt({ airQuality: { grade: "나쁨", annual: { pm25: 12 } } }));
+    expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain("오늘:나쁨(참고)");
   });
 });
 
