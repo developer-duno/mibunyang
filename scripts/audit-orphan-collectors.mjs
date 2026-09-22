@@ -35,6 +35,13 @@ const DATA_FILL = "scripts/collectors/data-fill.mjs";
  * @type {Set<string>}
  */
 export const ALLOWLIST = new Set([
+  // 세션559: 에어코리아 **최종확정 측정자료**(data.go.kr 15122830)를 집계한 JSON 을 DB 에 넣는 도구.
+  // 원본이 **연 1회, 그것도 약 6개월 늦게** 나온다(2024년분이 2025-06 등록) — cron 을 걸 주기가 없다.
+  // 게다가 XLSX 300~400MB × 3개를 사람이 내려받아 python 집계(air-annual-aggregate.py)를 먼저
+  // 돌려야 입력 JSON 이 생기므로, 자동 실행 경로를 만들어도 그 앞단이 비어 있으면 무의미하다.
+  // 선례 = collect-crime-safety(연 1회 수동 CSV)였으나 그쪽은 채우는 대상(regions)에 매월 새 행이
+  // 생겨 세션521에 러너로 편입됐다. 이쪽은 측정소별 표 하나라 그 사정이 없다.
+  "air-annual-load",
   // apartments_flat VIEW 를 훑는 진단 리포트 도구. docstring 사용법이 "콘솔 리포트 /
   // --json / --region=" 등 사람이 손으로 실행하는 형태로만 적혀 있다. data-fill.mjs 가
   // computeAudit/fetchAllFromView 를 **함수로 import** 해 판단 근거로 쓰지만 그건
