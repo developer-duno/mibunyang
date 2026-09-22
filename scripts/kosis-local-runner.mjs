@@ -236,6 +236,12 @@ export const DAY_TABLE = [
   // 세션519: apis.data.go.kr/B552584(에어코리아)도 같은 차단 — GH 8회 중 2회만 성공(25%,
   // 러너 IP 복불복)인데 로컬은 92ms 200 OK. 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**.
   { dow: 2, script: "collect-air-quality.mjs" },
+  // ⚠️ 위 수집기가 `air_quality` 를 통째로 교체한다. `mergeKeepingAnnual` 이 기존 `annual`(3년 평균)을
+  //    보존하지만 **그 한 줄이 유일한 방어선**이라, 한 번 비면 그 단지는 영영 중립값(14점)으로 미끄러진다.
+  //    이 재부착은 **멱등**이다(실측 2026-09-23: "붙일 대상 0곳 | 이미 최신 2992") — 평소엔 아무것도
+  //    안 하고, 유실이 생긴 회차에만 되살린다. 순서상 반드시 collect-air-quality **뒤**에 둔다.
+  //    세션561 적대검증 🔴 적발: 이게 없으면 유실을 되돌릴 사람이 아무도 없었다.
+  { dow: 2, script: "air-annual-attach.mjs", args: ["--apply"] },
 ];
 
 /**

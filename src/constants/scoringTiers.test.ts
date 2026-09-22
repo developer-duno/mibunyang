@@ -356,10 +356,16 @@ describe("scoreLocation 대기질 문구가 점수와 어긋나지 않는다 (�
     expect(d).not.toMatch(/\/PM10(?! )/);
   });
 
-  it("3년 평균이 없으면(76곳) PM10·O3 를 아예 안 쓴다 — 없는 기준을 보여주지 않는다", () => {
+  it("3년 평균이 없으면(76곳) 세 축 모두 '미수집(중립 N점)' 으로 **밝힌다**", () => {
+    // ⚠️ 세션561 적대검증 🔴 정정: 옛 단언은 "아예 안 쓴다" 였는데 **사실과 달랐다.**
+    //    pm10Sc/o3Sc 가 null 이어도 점수에는 중립값이 0.35·0.25 몫으로 **그대로 들어간다**.
+    //    쓰면서 안 밝히면 손님은 "그 축은 안 봤다"로 읽는다 — PM2.5 와 같은 문형으로 대칭화했다.
     const d = natOf({ airQuality: { pm25: 15, grade: "보통" }, view: "블루", noise: 40 });
-    expect(d).not.toContain("/PM10");
-    expect(d).not.toContain("/O3");
-    expect(d).toContain("미수집");
+    expect(d).toContain("대기질:미수집");
+    expect(d).toContain("/PM10 미수집");
+    expect(d).toContain("/O3 미수집");
+    // 없는 경계 숫자를 지어내지는 않는다.
+    expect(d).not.toContain("/PM10 좋음");
+    expect(d).not.toContain("/O3 좋음");
   });
 });

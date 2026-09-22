@@ -1,17 +1,17 @@
 # 지표 지도 — 기계 추출분 (1층)
 
 > 이 파일은 `node scripts/build-whitepaper.mjs` 가 **코드에서 직접 추출**한다. 손으로 고치지 말 것.
-> 추출 시각: 2026-09-22T17:31:37.849Z · VIEW: `20260922000004_view_add_coord_shared.sql`
+> 추출 시각: 2026-09-22T18:27:45.154Z · VIEW: `20260922000004_view_add_coord_shared.sql`
 > "실제 내용물"·"시간 성격" 같은 **사람의 판단**은 2층(`judgments.md`)에 따로 쓴다.
 
 | 코드명(기계어) | 화면 이름(사람어) | DB 표현식 | 점수 | 수집기 | 주기 | 채움 |
 |---|---|---|---|---|---|---|
 | `address` | 지번 주소 | `(VIEW 없음)` |  |  |  | 100% |
-| `airQuality` | 대기질 | `a.air_quality` | Location | data-audit.mjs, collect-air-quality.mjs, air-annual-attach.mjs | 로컬러너 매주 화요일 05:30 KST | 100% |
+| `airQuality` | 대기질 | `a.air_quality` | Location | data-audit.mjs, collect-air-quality.mjs, air-annual-attach.mjs | 로컬러너 매주 화요일 05:30 KST | 97.3% |
 | `announcementUrl` | (화면 미표시) | `a.announcement_url` |  | collect-applyhome-seed.mjs | GH cron 30 2 * * 1 (collect-applyhome.yml) | 3.3% |
 | `area` | 전용면적 (㎡) | `(VIEW 없음)` | Price |  |  | 72.6% |
 | `avgFloor` | 평균 거래 층수 (층) | `ts.avg_floor` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.3% |
-| `avgMaintenanceCost` | 평균 관리비 (만원) | `a.avg_maintenance_cost` | Benefit | data-audit.mjs, sync-naver-complex.mjs, collect-maintenance.mjs | GH cron 0 19 * * * (collect-naver-listings.yml) / 로컬러너 매월 15일 05:30 KST; 로컬러너 매월 16일 05:30 KST; 로컬러너 매월 17일 05:30 KST; 로컬러너 매월 18일 05:30 KST; 로컬러너 매월 19일 05:30 KST | 78% |
+| `avgMaintenanceCost` | 평균 관리비(매물 기준) (만원) | `a.avg_maintenance_cost` | Benefit | data-audit.mjs, sync-naver-complex.mjs, collect-maintenance.mjs | GH cron 0 19 * * * (collect-naver-listings.yml) / 로컬러너 매월 15일 05:30 KST; 로컬러너 매월 16일 05:30 KST; 로컬러너 매월 17일 05:30 KST; 로컬러너 매월 18일 05:30 KST; 로컬러너 매월 19일 05:30 KST | 78% |
 | `avgPriceSqm` | ㎡당 평균분양가 (천원/㎡) | `r.avg_price_sqm` | Price | data-audit.mjs, collect-market-stats.mjs, naver-presale.mjs | 로컬러너 매월 6일 05:30 KST | 100% |
 | `balconyFree` | 발코니 확장 무상 | `a.balcony_free` | Benefit | data-audit.mjs |  | 0% |
 | `balconyValue` | 발코니 가치 (만원) | `a.balcony_value` | Benefit |  |  | 0% |
@@ -73,14 +73,14 @@
 | `housingPrice` | 공시가격(시군구 평균) (만원/㎡) | `rg.housing_price` |  | data-audit.mjs, collect-housing-price.mjs | 로컬러너 매월 17일 05:30 KST | 99.4% |
 | `housingSupplyLevel` | 주택보급률 (%) | `r.housing_supply_level` | Risk | data-audit.mjs, collect-housing-supply-ratio.mjs | 로컬러너 매월 2일 05:30 KST | 100% |
 | `hugGuarantee` | HUG 보증 | `b.hug_guarantee` | Risk | data-audit.mjs |  | 0% |
-| `icDist` | IC 거리 (km) | `t.ic_dist` | Location | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 100% |
+| `icDist` | IC 거리 (km) | `t.ic_dist` | Location | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 98.7% |
 | `id` | 단지 ID | `(VIEW 없음)` |  |  |  | 100% |
 | `industryDev` | 산업 개발 | `a.industry_dev` | Future | data-audit.mjs, industry-match.mjs, naver-devplan.mjs 외1 | GH cron 0 19 7 * * (collect-industry.yml) / 로컬러너 매월 20일 05:30 KST | 67.4% |
 | `initialSaleRate` | 초기분양률 (%) | `r.initial_sale_rate` | Risk | data-audit.mjs, collect-market-stats.mjs | 로컬러너 매월 6일 05:30 KST | 100% |
 | `isRegulated` | 규제지역 | `a.is_regulated` | Risk | data-audit.mjs, regulation-seed.mjs |  | 100% |
-| `jeonseByArea` | (화면 미표시) | `ts.jeonse_by_area` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 100% |
+| `jeonseByArea` | (화면 미표시) | `ts.jeonse_by_area` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.2% |
 | `jeonseRate` | 전세가율 (%) | `ts.jeonse_rate` | Price | data-audit.mjs, trade-stats.mjs, trade-stats-regions.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) / GH cron 30 16 7,21 * * (collect-trade-stats-regions.yml) | 99.2% |
-| `ktxDist` | KTX 거리 (km) | `t.ktx_dist` | Location | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 100% |
+| `ktxDist` | KTX 거리 (km) | `t.ktx_dist` | Location | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 90.4% |
 | `landCostRatio` | 대지비 비율 (%) | `r.land_cost_ratio` | Price | data-audit.mjs, collect-market-stats.mjs | 로컬러너 매월 6일 05:30 KST | 100% |
 | `lastUnsoldEventAt` | 최근 무순위 공고일 | `pso.last_recruit_date` |  |  |  | 54.9% |
 | `layout` | 평면구조 | `(VIEW 없음)` | Product |  |  | 68.3% |
@@ -106,11 +106,11 @@
 | `nearbyBuildYear` | 주변 평균 건축연도 | `ts.nearby_build_year` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 81.6% |
 | `nearbyFacilities` | (화면 미표시) | `i.nearby_facilities` |  | data-audit.mjs |  | 0% |
 | `nearbyMedian` | 주변 아파트 시세 (만원) | `ts.nearby_median` | Price | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.9% |
-| `nearbySchools` | (화면 미표시) | `sc.nearby_schools` |  | data-audit.mjs, calc-school-walk.mjs, schools-neis.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 100% |
+| `nearbySchools` | (화면 미표시) | `sc.nearby_schools` |  | data-audit.mjs, calc-school-walk.mjs, schools-neis.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 98.5% |
 | `netMigration` | 순이동 (명) | `r.net_migration` | Future | data-audit.mjs, migration.mjs | 로컬러너 매월 7일 05:30 KST | 100% |
 | `newSupply` | 신규 분양세대수 (세대) | `r.new_supply` |  | data-audit.mjs, collect-market-stats.mjs | 로컬러너 매월 6일 05:30 KST | 100% |
 | `noise` | 소음 (dB) | `(VIEW 없음)` | Location |  |  | 76.4% |
-| `noxious` | 혐오시설 | `(VIEW 없음)` | Location |  |  | 89.6% |
+| `noxious` | 혐오시설 | `(VIEW 없음)` | Location |  |  | 86.2% |
 | `noxiousDist` | 혐오시설 거리 (m) | `a.noxious_dist` | Location | data-audit.mjs, collect-air-quality.mjs, noxious.mjs | 로컬러너 매주 화요일 05:30 KST / GH cron 0 18 3 * * (collect-noxious.yml) | 86.2% |
 | `optionFree` | 옵션 무상 | `a.option_free` | Benefit |  |  | 0% |
 | `optionValue` | 옵션 가치 (만원) | `a.option_value` | Benefit |  |  | 0% |
@@ -142,26 +142,26 @@
 | `presaleStageCode` | 분양단계코드 | `a.presale_stage_code` |  | naver-presale.mjs |  | 72.9% |
 | `presaleType` | 분양유형 | `a.presale_type` | Price,Risk | naver-presale.mjs |  | 72.9% |
 | `price` | 분양가 (만원) | `(VIEW 없음)` | Price,Benefit |  |  | 97.1% |
-| `priceByArea` | (화면 미표시) | `ts.price_by_area` | Price | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 100% |
-| `priceByFloor` | (화면 미표시) | `ts.price_by_floor` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 100% |
+| `priceByArea` | (화면 미표시) | `ts.price_by_area` | Price | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.3% |
+| `priceByFloor` | (화면 미표시) | `ts.price_by_floor` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.3% |
 | `priceIndex` | 분양가격지수 (2014=100) | `r.price_index` | Price | collect-sale-price-index.mjs, data-audit.mjs, collect-jeonse-price-index.mjs 외1 | 로컬러너 매월 17일 05:30 KST / 로컬러너 매월 18일 05:30 KST / 로컬러너 매월 6일 05:30 KST | 100% |
 | `primaryDirection` | 대표 향 | `a.primary_direction` | Location | data-audit.mjs, sync-naver-complex.mjs | GH cron 0 19 * * * (collect-naver-listings.yml) | 83.2% |
 | `psr` | PSR (주변대비) | `(VIEW 없음)` | Price |  |  | 72.1% |
-| `quakeDesign` | 내진설계 | `a.quake_design` | Product | collect-building-hub.mjs, sync-naver-complex.mjs | 로컬러너 매월 15일 05:30 KST / GH cron 0 19 * * * (collect-naver-listings.yml) | 32.4% |
+| `quakeDesign` | 내진설계 | `a.quake_design` | Product | collect-building-hub.mjs, sync-naver-complex.mjs | 로컬러너 매월 15일 05:30 KST / GH cron 0 19 * * * (collect-naver-listings.yml) | 0% |
 | `recentTrades6m` | 구 최근6개월 거래 (건) | `ts.recent_trades_6m` | Risk | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.3% |
 | `region` | 시/도 | `(VIEW 없음)` | Risk,Location |  |  | 100% |
-| `rentByArea` | (화면 미표시) | `ts.rent_by_area` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 100% |
+| `rentByArea` | (화면 미표시) | `ts.rent_by_area` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.2% |
 | `roadAddress` | 도로명 주소 | `a.road_address` |  | _kakao-poi.mjs, data-audit.mjs, reverse-geocode.mjs 외2 | GH cron 0 2 * * 0 (backfill-new-apartments.yml); GH cron 0 19 * * * (collect-naver-listings.yml) / GH cron 0 4 1 * * (collect-noise.yml) / 로컬러너 매월 15일 05:30 KST | 40.3% |
 | `schoolGrade` | 학군 등급 | `sc.school_grade` | Location | data-audit.mjs, schools-neis.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 100% |
 | `schoolScore` | 학군 점수 | `sc.school_score` | Location | data-audit.mjs, schools-neis.mjs, collect-nearby-childcare.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / GH cron 30 20 * * 2 (collect-nearby-childcare.yml) | 100% |
 | `scoresComputedAt` | (화면 미표시) | `a.scores_computed_at` |  |  |  | 100% |
-| `subwayDist` | 지하철 거리 (m) | `COALESCE(t.subway_dist, i.subway_dist, 9999)` ⚠️식 | Location | data-audit.mjs, infra-kakao.mjs, collect-air-quality.mjs 외1 | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / 로컬러너 매주 화요일 05:30 KST | 100% |
+| `subwayDist` | 지하철 거리 (m) | `COALESCE(t.subway_dist, i.subway_dist, 9999)` ⚠️식 | Location | data-audit.mjs, infra-kakao.mjs, collect-air-quality.mjs 외1 | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / 로컬러너 매주 화요일 05:30 KST | 84% |
 | `subwayLines` | 지하철 노선 | `t.subway_lines` | Location | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 77.9% |
 | `subwayName` | 최근접 지하철역 | `t.subway_name` |  | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 84% |
 | `sunlight` | 일조 | `(VIEW 없음)` | Location |  |  | 60.2% |
 | `supplyRatio` | 공급비율 (%) | `r.supply_ratio` | Risk | data-audit.mjs, housing-permits.mjs, population.mjs | 로컬러너 매월 11일 05:30 KST / 로컬러너 매월 5일 05:30 KST | 100% |
 | `transitDev` | 교통 개발 | `a.transit_dev` | Future | data-audit.mjs, naver-devplan.mjs, transit-match.mjs | 로컬러너 매월 20일 05:30 KST | 56.4% |
-| `units` | 총세대수 (세대) | `(VIEW 없음)` | Product,Risk |  |  | 100% |
+| `units` | 총세대수 (세대) | `(VIEW 없음)` | Product,Risk |  |  | 99.1% |
 | `unsold` | 미분양 세대 (세대) | `(VIEW 없음)` |  |  |  | 84.2% |
 | `unsoldEventCount` | 무순위 공고 횟수 | `COALESCE(ae.event_count, 0)` ⚠️식 |  |  |  | 100% |
 | `unsoldRate` | 미분양률 (%) | `CASE WHEN a.unsold_rate > 100 THEN NULL ELSE a.unsold_rate END` ⚠️식 | Risk | molit-units.mjs, collect-applyhome-seed.mjs, collect-unsold-kosis.mjs 외1 | 로컬러너 매월 6일 05:30 KST / GH cron 30 2 * * 1 (collect-applyhome.yml) / 로컬러너 매월 9일 05:30 KST / GH cron 0 19 * * * (collect-naver-listings.yml) | 81.8% |
