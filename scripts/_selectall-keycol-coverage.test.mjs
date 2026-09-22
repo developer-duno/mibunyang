@@ -61,6 +61,9 @@ export const MIN_TOTAL_CALLS = 71;
  */
 export const KNOWN_UNIQUE_KEYS = {
   default: "id",
+  // `id` 컬럼이 없다 — PK 가 측정소명이다(세션559 마이그레이션 실측:
+  // `station_name TEXT PRIMARY KEY`). 기본값 "id" 로 두면 조회가 죽는다.
+  air_station_annual: "station_name",
   apartments: "id",
   apartments_flat: "id",
   applyhome_unit_supply: "id",

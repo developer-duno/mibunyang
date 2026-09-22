@@ -9,6 +9,10 @@ import {
   SUNLIGHT_DIRECTION_MAX,
   NOISE_TIERS,
   AIR_QUALITY_TIERS,
+  AIR_QUALITY_DEFAULT,
+  AIR_ANNUAL_LABELS,
+  AIR_ANNUAL_LEGEND,
+  airAnnualBand,
   infraSaturation,
   FUTURE_WEIGHTS,
   FUTURE_RAW_MAX,
@@ -531,6 +535,8 @@ describe("scoreLocation", () => {
   });
   it("최고 조건에서도 자연환경 서브는 100 을 넘지 않는다 (정규화 제거 시 red)", () => {
     // 조망 블루(40) + 일조 우수(30)+남향(8)=38 + 소음 40dB(30) + 대기 좋음(20) = 128 = ENV_MAX
+    // ⚠️ 대기질 만점은 **`annual`(3년 평균)** 에서 나온다(세션560) — 최상위 키는 "오늘" 값이라
+    //    채점에 안 쓰인다. 여기에 실시간 키만 주면 폴백(14점)으로 떨어져 95 가 된다.
     const best = scoreLocation(
       makeApt(
         /** @type {any} */ ({
@@ -538,7 +544,7 @@ describe("scoreLocation", () => {
           sunlight: "우수",
           primaryDirection: "남향",
           noise: 40,
-          airQuality: { pm25: 10, pm10: 20, o3: 0.02 },
+          airQuality: { pm25: 10, pm10: 20, o3: 0.02, annual: { pm25: 10, pm10: 20, o3: 0.02 } },
         })
       )
     );
@@ -1501,6 +1507,78 @@ describe("scoreFuture — FUTURE_WEIGHT_MAP 모든 8개 경로", () => {
 
 // === 세션66: 신규 15개 필드 스코어링 테스트 ===
 
+describe("대기질 3년 평균 경계·문구 (세션560)", () => {
+  // ⚠️ 앵커는 **실측값**이다(2026-09-22, 단지 2,992곳 기준). 경계를 파생식으로만 검증하면
+  //    상수를 옮겨도 가드가 따라 움직여 아무것도 안 잡는다 — 관측값을 손으로 박는다.
+  it("경계는 국가 대기환경기준(15)에서 시작한다", () => {
+    expect(AIR_QUALITY_TIERS[0].max).toBe(15);
+    expect(AIR_QUALITY_TIERS[0].score).toBe(20);
+  });
+  it("최고점 20 — 바꾸면 ENV_MAX 가 따라 움직여 자연환경 축 전체가 이동한다", () => {
+    expect(Math.max(...AIR_QUALITY_TIERS.map((t) => t.score))).toBe(20);
+  });
+  it("중립 폴백은 가운데 칸과 같은 점수 (자료 사정이 감점이 되면 안 된다)", () => {
+    // 사장님 확정 2026-09-22: 3년 평균 없는 76곳은 "가운데 칸".
+    expect(AIR_QUALITY_DEFAULT).toBe(AIR_QUALITY_TIERS[1].score);
+  });
+  it("등급 이름은 경계 표와 같은 길이 (한 쌍이 어긋나면 문구가 값과 다른 말을 한다)", () => {
+    expect(AIR_ANNUAL_LABELS.length).toBe(AIR_QUALITY_TIERS.length);
+  });
+  it("실측 분위값이 기대한 등급으로 떨어진다", () => {
+    expect(airAnnualBand(10.25)).toBe("좋음"); // 실측 최소
+    expect(airAnnualBand(15)).toBe("좋음"); // 경계 포함
+    expect(airAnnualBand(15.01)).toBe("보통");
+    expect(airAnnualBand(18.63)).toBe("보통"); // 실측 중앙값
+    expect(airAnnualBand(19)).toBe("보통"); // 경계 포함
+    expect(airAnnualBand(19.71)).toBe("나쁨"); // 실측 p75
+    expect(airAnnualBand(26.03)).toBe("나쁨"); // 실측 최대 — 상한 밖으로 새면 안 된다
+  });
+  it("범례는 경계에서 파생된다 (손으로 적으면 경계와 어긋난다)", () => {
+    expect(AIR_ANNUAL_LEGEND).toContain("15↓");
+    expect(AIR_ANNUAL_LEGEND).toContain("19↓");
+  });
+
+  // === 시간축 — 여기가 이 작업의 본체다 ===
+  it("채점은 3년 평균(annual)만 본다 — 오늘 값은 점수를 못 바꾼다", () => {
+    const todayGood = scoreLocation(makeApt({ airQuality: { pm25: 5, annual: { pm25: 25 } } }));
+    const todayBad = scoreLocation(makeApt({ airQuality: { pm25: 45, annual: { pm25: 25 } } }));
+    // 오늘 값이 5 든 45 든 3년 평균이 같으면 점수가 같아야 한다.
+    expect(todayGood.subs.find((s) => s.name === "자연환경")?.score).toBe(
+      todayBad.subs.find((s) => s.name === "자연환경")?.score
+    );
+  });
+  it("3년 평균이 좋으면 나쁜 쪽보다 높다", () => {
+    const clean = scoreLocation(makeApt({ airQuality: { annual: { pm25: 12 } } }));
+    const dirty = scoreLocation(makeApt({ airQuality: { annual: { pm25: 24 } } }));
+    expect(Number(clean.subs.find((s) => s.name === "자연환경")?.score)).toBeGreaterThan(
+      Number(dirty.subs.find((s) => s.name === "자연환경")?.score)
+    );
+  });
+  it("annual 없으면 중립 폴백 — 오늘 값이 아무리 나빠도 감점되지 않는다", () => {
+    const noAnnual = scoreLocation(makeApt({ airQuality: { pm25: 45, pm10: 90, o3: 0.2 } }));
+    const neutral = scoreLocation(makeApt({ airQuality: {} }));
+    expect(noAnnual.subs.find((s) => s.name === "자연환경")?.score).toBe(
+      neutral.subs.find((s) => s.name === "자연환경")?.score
+    );
+  });
+
+  // === 문구 — 점수와 같은 말을 해야 한다 ===
+  it("화면 등급은 채점에 쓴 값에서 나온다 (오늘 등급이 아니라)", () => {
+    const r = scoreLocation(makeApt({ airQuality: { grade: "매우나쁨", annual: { pm25: 12 } } }));
+    const env = r.subs.find((s) => s.name === "자연환경");
+    expect(env?.info).toContain("대기:좋음"); // 3년 평균 12 → 좋음
+    expect(env?.info).not.toContain("대기:매우나쁨"); // 오늘 등급이 새면 안 된다
+  });
+  it("오늘 실시간 값은 상세에 '오늘:' 로 남는다", () => {
+    const r = scoreLocation(makeApt({ airQuality: { grade: "나쁨", annual: { pm25: 12 } } }));
+    expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain("오늘:나쁨");
+  });
+  it("3년 평균이 없으면 등급을 '미수집' 으로 — 오늘 값으로 메우지 않는다", () => {
+    const r = scoreLocation(makeApt({ airQuality: { grade: "좋음", pm25: 5 } }));
+    expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain("대기질:미수집");
+  });
+});
+
 describe("scoreLocation — 대기질 복합 (PM10/O3)", () => {
   it("pm10/o3 null → 기존과 동일 (pm25만 사용)", () => {
     const base = scoreLocation(makeApt());
@@ -1515,8 +1593,9 @@ describe("scoreLocation — 대기질 복합 (PM10/O3)", () => {
     expect(withPm10.subs.find((s) => s.name === "자연환경")?.score ?? 0).toBeGreaterThanOrEqual(0);
   });
   it("o3 나쁨 → 환경 점수 하락", () => {
-    const good = scoreLocation(makeApt({ airQuality: { pm25: 10, pm10: 20, o3: 0.02 } }));
-    const bad = scoreLocation(makeApt({ airQuality: { pm25: 10, pm10: 20, o3: 0.15 } }));
+    // 채점은 `annual` 을 본다(세션560) — 세 항목을 한 묶음으로 준다.
+    const good = scoreLocation(makeApt({ airQuality: { annual: { pm25: 10, pm10: 20, o3: 0.02 } } }));
+    const bad = scoreLocation(makeApt({ airQuality: { annual: { pm25: 10, pm10: 20, o3: 0.15 } } }));
     expect(good.subs.find((s) => s.name === "자연환경")?.score ?? 0).toBeGreaterThan(
       bad.subs.find((s) => s.name === "자연환경")?.score ?? 0
     );

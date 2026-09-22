@@ -236,13 +236,60 @@ export const NOISE_TIERS: Tier[] = [
 // 실측 최악(70dB=8점)보다 더 시끄러운 곳"으로 채점되던 것. 미수집에 최고점(30)을 주면 수집
 // 동기가 사라지므로(중립 원칙), 65dB 구간과 같은 15점을 중립값으로 쓴다.
 export const NOISE_UNKNOWN_SCORE = 15;
-// === Location: 대기질 (PM2.5 기준 4단계) ===
+// === Location: 대기질 (PM2.5 **3년 평균** 기준 3단계, 세션560) ===
+//
+// ## 왜 경계를 다시 그었나
+// 옛 경계(15/25/50)는 **오늘 하루치 실시간 값**을 전제로 잡은 것이라, 3년 평균으로 재보니
+// 거의 아무도 가르지 못했다. 실측(단지 2,992곳 · 값 325종):
+//   min 10.25 | p25 17.17 | 중앙 18.63 | p75 19.71 | max 26.03
+// 최대가 26 이라 셋째 칸(25~50)은 **사실상 비어 있고**, 단지의 91.6% 가 "보통"(15점) 한 칸에
+// 통째로 뭉쳤다 — 대기질이 순위를 안 가르는 상태였다.
+//
+// ## 왜 3칸인가 (사장님 확정 2026-09-22)
+// 방침 = "기준 이하는 큰 차이 두지 말고, 초과는 상황 봐서".
+// 값이 17~20 에 빽빽이 몰려(사분위 폭 2.5) 칸을 잘게 썰수록 **거의 같은 공기가 소수점 차이로**
+// 갈린다. 5칸(15/17/19/21)은 변별력이 가장 크지만 그 억울함도 가장 크다. 3칸이 그 절충이다.
+// 실측 분포: 20점 250곳(8.4%) / 14점 1,611곳(53.8%) / 8점 1,131곳(37.8%).
+//
+// ⚠️ 첫 경계 15 는 **국가 대기환경기준**이다. 우리 편의로 옮기지 않는다.
+// ⚠️ 최고점 20 은 유지해야 한다 — `ENV_MAX` 가 이 표의 최댓값에서 파생되므로(아래 참조),
+//    바꾸면 자연환경 축 **전체**의 척도가 조용히 이동한다.
 export const AIR_QUALITY_TIERS: Tier[] = [
-  { max: 15, score: 20 }, // 좋음
-  { max: 25, score: 15 }, // 보통
-  { max: 50, score: 8 }, // 나쁨
+  { max: 15, score: 20 }, // 좋음 — 국가 대기환경기준 이하
+  { max: 19, score: 14 }, // 보통
+  { max: 999, score: 8 }, // 나쁨 (실측 최대 26.03 — 상한은 넉넉히 열어 둔다)
 ];
-export const AIR_QUALITY_DEFAULT = 12; // 데이터 없을 때 중립
+// 3년 평균이 없을 때 중립 (세션560 — 사장님 확정: "가운데 칸").
+// 대상 = 측정소 표본이 얇아 `MIN_SAMPLE_HOURS` 에 걸러진 13종을 쓰는 76곳(전체의 2.5%).
+// **그 단지가 나쁘다는 뜻이 아니라 우리 자료 사정**이므로, 불이익도 이익도 주지 않는다.
+// ⚠️ 옛 값 12 는 새 경계에서 가운데 칸(14)보다 낮아, "측정소가 우리 표에 없다"는 사정이
+//    그대로 감점으로 변했다 — 중립값은 반드시 가운데 칸 점수와 같아야 한다.
+export const AIR_QUALITY_DEFAULT = 14;
+/**
+ * 3년 평균 대기질 등급 이름 — `AIR_QUALITY_TIERS` 와 **한 쌍**이다(같은 순서).
+ * 점수·문구가 이 한 곳에서 나오게 해서, 경계를 옮겨도 둘이 함께 따라온다.
+ *
+ * ⚠️ 화면의 옛 "대기: 보통"은 `air_quality.grade` = 에어코리아 **실시간 통합지수**(khaiGrade)라
+ *    채점 기준(3년 평균 PM2.5)과 **다른 값**이었다. 점수만 3년 평균으로 바꾸면 점수와 글자가
+ *    서로 다른 말을 하게 된다([[score-meaning-and-wording-are-a-pair]]).
+ *    선례 = `LIQUIDITY_LABELS`(세션514, 같은 병을 같은 방식으로 고쳤다).
+ */
+export const AIR_ANNUAL_LABELS = ["좋음", "보통", "나쁨"] as const;
+
+/** PM2.5 3년 평균 → 등급 이름. 경계는 `AIR_QUALITY_TIERS`(max 오름차순) 그대로. */
+export function airAnnualBand(pm25: number): (typeof AIR_ANNUAL_LABELS)[number] {
+  for (let i = 0; i < AIR_QUALITY_TIERS.length; i++) {
+    if (pm25 <= (AIR_QUALITY_TIERS[i].max ?? Infinity)) return AIR_ANNUAL_LABELS[i];
+  }
+  return AIR_ANNUAL_LABELS[AIR_ANNUAL_LABELS.length - 1];
+}
+
+/** `"좋음 15↓, 보통 19↓, 나쁨 19↑"` — 경계를 손으로 적지 않는다. */
+export const AIR_ANNUAL_LEGEND: string =
+  AIR_QUALITY_TIERS.slice(0, -1)
+    .map((t, i) => `${AIR_ANNUAL_LABELS[i]} ${t.max}↓`)
+    .join(", ") +
+  `, ${AIR_ANNUAL_LABELS[AIR_ANNUAL_LABELS.length - 1]} ${AIR_QUALITY_TIERS[AIR_QUALITY_TIERS.length - 2].max}↑`;
 
 // === Future: 교통개발 (세션511 재설계) ==================================
 //

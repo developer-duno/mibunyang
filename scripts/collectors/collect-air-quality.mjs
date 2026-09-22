@@ -144,7 +144,13 @@ async function main() {
   log(PHASE, `측정소 ${allStations.length}건 조회 완료 (API ${apiCalls}회)`);
 
   // 2. 단지 목록 조회 — selectAll 공유 헬퍼(고유키 id 커서 페이지네이션)
-  const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng"), sb, "id");
+  // ⚠️ `air_quality` 도 함께 읽는다 — 이 수집기는 그 JSON 을 **통째로 교체**하므로, 다른
+  //    수집기가 넣어 둔 키(`annual` = 3년 평균, 세션560)를 보존하려면 기존 값이 필요하다.
+  const apts = await selectAll(
+    (s) => s.from("apartments").select("id, name, lat, lng, air_quality"),
+    sb,
+    "id"
+  );
   const targets = apts.filter(a => a.lat && a.lng);
   log(PHASE, `대상: ${targets.length}건`);
 
@@ -161,7 +167,13 @@ async function main() {
         rpt.success(1);
         continue;
       }
-      const { error: uErr } = await sb.from("apartments").update({ air_quality: aq }).eq("id", apt.id);
+      // ⚠️ **행 덮어쓰기 금지** — 바로 아래 `infra` 와 같은 원칙이다(세션560).
+      //    이 수집기가 소유한 건 실시간 키(pm25/pm10/o3/grade/station/stationDist/collected_at)뿐이고,
+      //    `annual`(3년 평균, `air-annual-attach.mjs` 소유)은 **채점에 쓰이는 값**이라 날리면
+      //    다음 재계산에서 전 단지가 조용히 중립 폴백으로 떨어진다(에러도 경보도 안 난다).
+      const prevAq = /** @type {Record<string, unknown> | null} */ (apt.air_quality);
+      const merged = prevAq?.annual != null ? { ...aq, annual: prevAq.annual } : aq;
+      const { error: uErr } = await sb.from("apartments").update({ air_quality: merged }).eq("id", apt.id);
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); continue; }
       // `infra.air_station_name`·`air_station_dist` 도 함께 맞춘다 — **자매 레포가 읽는 자리**다
       // (`naver-estate-web` `MbEnvironmentSection.tsx:132·137`). 이 수집기가 `apartments.air_quality`
