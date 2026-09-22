@@ -57,7 +57,10 @@ function createFullRow(overrides = {}) {
     cancelRatio6m: 2.5,
     popGrowth: 1.2, supplyRatio: 95, netMigration: 500,
     priceIndex: 102, avgPriceSqm: 850, newSupply: 5000, initialSaleRate: 95, landCostRatio: 55,
-    airQuality: { pm25: 15, pm10: 30, grade: "좋음", station: "강남구" },
+    // ⚠️ 채점이 읽는 값은 `annual.pm25`(3년 평균)다. 최상위 pm25 는 실시간 값이라
+    //    그것만 있으면 감사는 "미수집"으로 센다(세션561). 이 픽스처는 "전부 채워진 행"
+    //    이어야 하므로 실제 운영 데이터와 같은 모양(annual 포함)으로 둔다.
+    airQuality: { pm25: 15, pm10: 30, grade: "좋음", station: "강남구", annual: { pm25: 17.4, pm10: 33, o3: 0.032, years: 3 } },
     crimeSafetyGrade: 2, emergency: 3, emergencyDist: 800,
     emergencyName: "강남세브란스병원", emergencyType: "지역응급의료센터",
     dataReliability: 85,
@@ -488,5 +491,56 @@ describe("data-audit — 모수 보정이 배선돼 있다", () => {
   it("VIEW id 를 apartments_flat 에서 가져온다", () => {
     expect(src).toMatch(/const viewIds = await fetchViewIds\(sb, regionFilter\);/);
     expect(src).toMatch(/"apartments_flat",\s*\n\s*"id",/);
+  });
+});
+
+// ── JSON 껍데기 판정 (세션561) ────────────────────────────────
+/**
+ * 세션561 가드 — `airQuality` 는 껍데기가 아니라 **알맹이**로 센다.
+ *
+ * ## 왜 이 가드가 있나
+ * 옛 `isFieldNull` 은 JSON 최상위가 객체이기만 하면 "채움"으로 셌다. 그래서 채점이 실제로
+ * 읽는 `annual.pm25` 가 없는 76곳(실측 2026-09-22: 객체 3,068 vs annual.pm25 2,992)까지
+ * 채움으로 세어 **채움률을 영원히 100%** 로 보고했다.
+ * 결과: `annual` 이 통째로 날아가도 감사도 모니터도 침묵한다 — 세션560이
+ * `mergeKeepingAnnual` 로 막으려 한 바로 그 사고를 **감시할 수단이 없던** 것이다.
+ */
+describe("isFieldNull — JSON 껍데기는 채움이 아니다 (세션561)", () => {
+  it("annual.pm25 가 있으면 채움", () => {
+    expect(isFieldNull("airQuality", { pm25: 15, annual: { pm25: 17.4 } })).toBe(false);
+  });
+
+  it("객체는 있는데 annual 이 없으면 미수집 — 이게 옛 판정이 놓치던 76곳이다", () => {
+    // 실제 운영 데이터의 그 76곳 모양(실시간 키만 있고 annual 키 자체가 없다).
+    expect(
+      isFieldNull("airQuality", { pm25: 15, pm10: 30, grade: "좋음", station: "강남구" }),
+    ).toBe(true);
+  });
+
+  it("annual 은 있는데 pm25 가 없어도 미수집 (부분 객체)", () => {
+    expect(isFieldNull("airQuality", { annual: { pm10: 33, o3: 0.032 } })).toBe(true);
+  });
+
+  it("객체 자체가 없으면 당연히 미수집", () => {
+    expect(isFieldNull("airQuality", null)).toBe(true);
+    expect(isFieldNull("airQuality", undefined)).toBe(true);
+  });
+
+  it("실시간 pm25 가 아무리 좋아도 채움으로 세지 않는다", () => {
+    // 최상위 pm25 는 에어코리아 실시간 통합지수 쪽 값이라 채점과 무관하다.
+    expect(isFieldNull("airQuality", { pm25: 5, grade: "좋음" })).toBe(true);
+  });
+});
+
+describe("computeAudit — 껍데기만 있는 행은 채움률에 안 들어간다 (세션561)", () => {
+  it("3행 중 1행만 annual 보유 → air 채움 1 / 미수집 2", () => {
+    const rows = [
+      createFullRow({ airQuality: { pm25: 15, annual: { pm25: 17.4 } } }),
+      createFullRow({ airQuality: { pm25: 15, grade: "좋음" } }), // 껍데기만
+      createFullRow({ airQuality: null }),
+    ];
+    const r = computeAudit(rows);
+    expect(r.fields["air.airQuality"].filled).toBe(1);
+    expect(r.fields["air.airQuality"].missing).toBe(2);
   });
 });
