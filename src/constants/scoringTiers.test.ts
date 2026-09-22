@@ -11,6 +11,12 @@ import {
   DEV_SCORE_BASE,
   DEV_NEUTRAL_BAND_PCT,
   DEV_BAND_LABEL,
+  AIR_PM10_TIERS,
+  AIR_PM10_DEFAULT,
+  AIR_O3_TIERS,
+  AIR_O3_DEFAULT,
+  AIR_O3_BAD_SCORE,
+  AIR_QUALITY_TIERS,
   type Tier,
 } from "./scoringTiers";
 import { scoreLocation } from "@/scoring/scoreLocation";
@@ -223,5 +229,79 @@ describe("괴리도 눈금 관측값 앵커 (2026-08-24 실측)", () => {
     expect(DEV_BAND_LABEL).toContain(`+${DEV_SCORE_TIERS[0].min}%`);
     expect(DEV_BAND_LABEL).toContain(`−${DEV_SCORE_BASE / DEV_SCORE_NEGATIVE_MULT}%`);
     expect(DEV_BAND_LABEL).not.toContain("주의"); // 음수 쪽 산식과 어긋났던 옛 문구
+  });
+});
+
+/**
+ * 세션561 가드 — PM10·O3 3년 평균 경계.
+ *
+ * ## 왜 이 가드가 있나
+ * 세션560이 PM2.5 를 3년 평균으로 바꿨을 때 PM10·O3 표는 **옛 실시간 척도 그대로** 남아
+ * 셋째 칸이 영구 도달 불가였다(PM10 `{max:150}` vs 실측 max 60.49 / O3 `>0.09` vs 실측
+ * max 0.05056). 그런데 **테스트가 한 건도 없어** 그 상태로 머지됐고, 검사관이 읽어서야
+ * 발견됐다. 이 가드는 같은 일이 조용히 반복되지 않게 한다.
+ *
+ * ⚠️ 경계를 옮기려면 이 가드가 먼저 빨개진다 — 그때 위 주석의 실측 근거를 다시 읽을 것.
+ */
+const airMaxOf = (t: Tier) => t.max ?? Infinity;
+
+describe("PM10·O3 경계는 세션561 실측 결정값이다 (사장님 확정 2026-09-22)", () => {
+  it("PM10 경계 = 30 / 36 / 열림", () => {
+    expect(AIR_PM10_TIERS.map(airMaxOf).slice(0, 2)).toEqual([30, 36]);
+  });
+
+  it("O3 경계 = 0.030 / 0.035 / 열림", () => {
+    expect(AIR_O3_TIERS.map(airMaxOf).slice(0, 2)).toEqual([0.03, 0.035]);
+  });
+
+  it("두 표 모두 3칸이다 — 2칸이면 '나쁨'이 사라져 변별이 죽는다", () => {
+    expect(AIR_PM10_TIERS).toHaveLength(3);
+    expect(AIR_O3_TIERS).toHaveLength(3);
+  });
+
+  it("죽은 칸이 없다 — 가운데 칸 상한이 실측 최댓값 아래여야 마지막 칸에 닿는다", () => {
+    // 이 사고의 본질이자, 이 가드에서 가장 틀리기 쉬운 자리다.
+    // ⚠️ `tierMax(60.49, …)` 가 마지막 칸 점수를 돌려주는지 보는 것으로는 **못 잡는다** —
+    //    그 검사는 마지막 칸 상한을 150 으로 되돌려도 그대로 통과한다(뮤테이션 실증).
+    //    진짜 성질은 "**가운데 칸 상한 < 실측 최댓값**" 이다 — 옛 사고표(PM10 30/80/150)는 가운데가
+    //    80 이라 실측 최대 60.49 가 셋째 칸에 영영 못 닿았다. 그 형태를 되살리면 이 가드가 빨개진다.
+    const PM10_OBSERVED_MAX = 60.49; // 측정소 650곳 3년 평균 실측 (세션561)
+    const O3_OBSERVED_MAX = 0.05056; // 측정소 648곳 3년 평균 실측 (세션561)
+    // (1) 가운데 칸 상한 < 실측 최댓값 → 셋째 칸에 실제로 값이 들어온다.
+    expect(airMaxOf(AIR_PM10_TIERS[1])).toBeLessThan(PM10_OBSERVED_MAX);
+    expect(airMaxOf(AIR_O3_TIERS[1])).toBeLessThan(O3_OBSERVED_MAX);
+    // (2) 마지막 칸 상한 >= 실측 최댓값 → 실측 최댓값이 fallback 으로 새지 않는다.
+    //     (1)이 죽은 칸을 잡는 본체고, (2)는 반대쪽 구멍(표를 넘어 fallback 으로 흐르는 값)을 막는다.
+    expect(airMaxOf(AIR_PM10_TIERS[2])).toBeGreaterThanOrEqual(PM10_OBSERVED_MAX);
+    expect(airMaxOf(AIR_O3_TIERS[2])).toBeGreaterThanOrEqual(O3_OBSERVED_MAX);
+    // 가운데 칸에도 실측값이 실제로 들어와야 한다(한 칸 몰림 방지).
+    expect(tierMax(33, AIR_PM10_TIERS, 0)).toBe(AIR_PM10_TIERS[1].score);
+    expect(tierMax(0.0322, AIR_O3_TIERS, AIR_O3_BAD_SCORE)).toBe(AIR_O3_TIERS[1].score);
+  });
+
+  it("경계값은 `<=` 라 아래 칸에 속한다 (tierMax 규약)", () => {
+    expect(tierMax(30, AIR_PM10_TIERS, 0)).toBe(20);
+    expect(tierMax(30.1, AIR_PM10_TIERS, 0)).toBe(14);
+    expect(tierMax(0.03, AIR_O3_TIERS, AIR_O3_BAD_SCORE)).toBe(20);
+    expect(tierMax(0.0301, AIR_O3_TIERS, AIR_O3_BAD_SCORE)).toBe(14);
+  });
+
+  it("중립값은 가운데 칸과 같다 — 자료 없음이 감점이 되면 안 된다", () => {
+    // 세션560이 PM2.5 에서 12→14 로 고친 것과 같은 원칙(사장님 확정).
+    expect(AIR_PM10_DEFAULT).toBe(AIR_PM10_TIERS[1].score);
+    expect(AIR_O3_DEFAULT).toBe(AIR_O3_TIERS[1].score);
+  });
+
+  it("세 축의 최고점이 같아야 ENV_MAX 척도가 안 흔들린다", () => {
+    // airSc = pm25*0.4 + pm10*0.35 + o3*0.25 의 최댓값이 AIR_QUALITY_TIERS 최대(20)와
+    // 같아야 한다. ENV_MAX 가 PM2.5 표에서만 파생되므로, 여기가 어긋나면 자연환경 축
+    // 전체가 조용히 이동한다.
+    const top = (t: readonly Tier[]) => Math.max(...t.map((x) => x.score));
+    const blendMax = top(AIR_QUALITY_TIERS) * 0.4 + top(AIR_PM10_TIERS) * 0.35 + top(AIR_O3_TIERS) * 0.25;
+    expect(blendMax).toBe(top(AIR_QUALITY_TIERS));
+  });
+
+  it("AIR_O3_BAD_SCORE 는 마지막 칸과 같은 값이다 (둘이 어긋날 여지 제거)", () => {
+    expect(AIR_O3_BAD_SCORE).toBe(AIR_O3_TIERS[2].score);
   });
 });
