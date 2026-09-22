@@ -278,3 +278,24 @@ describe("전용률 0-비대칭 — calcCats 경유로 화면과 점수가 같�
     });
   });
 });
+
+describe("평균 관리비 라벨은 무엇의 평균인지 밝힌다 (세션561)", () => {
+  /**
+   * 이 값은 **네이버 활성 매물에 적힌 관리비의 평균**(총관리비)이다.
+   * 공식 API 의 5항목 합계(난방·온수·가스·전기·수도)와 **재는 범위가 다르다**
+   * — 실측 950곳: 공식 중앙 8만원 vs 저장값 중앙 11만원.
+   *
+   * 그냥 "평균 관리비"로 두면 손님은 그게 무엇의 평균인지 알 수 없다
+   * (세션559 `unsold` 가 "미분양"이라는 이름으로 매물 수였던 것과 같은 결).
+   */
+  it("라벨에 기준이 드러난다 — 맨 이름으로 되돌리면 빨개진다", () => {
+    expect(FIELD_META.avgMaintenanceCost.label).toContain("매물");
+    expect(FIELD_META.avgMaintenanceCost.label).not.toBe("평균 관리비");
+  });
+
+  it("값이 없으면 '미수집' — 0 을 관리비 0원으로 보여주지 않는다", () => {
+    expect(FIELD_META.avgMaintenanceCost.fmt(null)).toBe("미수집");
+    expect(FIELD_META.avgMaintenanceCost.fmt(0)).toBe("미수집");
+    expect(FIELD_META.avgMaintenanceCost.fmt(11)).toContain("11");
+  });
+});
