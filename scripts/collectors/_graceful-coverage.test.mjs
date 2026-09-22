@@ -36,6 +36,11 @@ const COLLECTORS_DIR = path.resolve(process.cwd(), "scripts/collectors");
  *     graceful 누락. setupGracefulShutdown + break 박힘 후 ALLOWLIST 에서 제거.
  */
 const ALLOWLIST = new Set([
+  // 세션559: air-annual-load.mjs — **외부 API 호출 0 · upsert 1회**의 one-shot.
+  // 로컬 JSON(python 집계 산출물)을 읽어 651행을 한 번에 upsert 하고 끝난다. 끊을 루프가 없고
+  // 중간 중단해도 남길 부분 결과가 없다. 원본 자료가 **연 1회**(그것도 6개월 늦게) 나와
+  // DAY_TABLE 에도 없는 수동 실행 도구다.
+  "air-annual-load.mjs",
   // graceful 무관 — calc 단발 변환
   // 세션 495: calc-exclusive-ratio.mjs 를 ALLOWLIST 에서 **제거**했다.
   // 실행 기록(collector_runs)을 넣으면서 createReporter + 단지별 UPDATE 루프의 break 를 함께 박았다.
