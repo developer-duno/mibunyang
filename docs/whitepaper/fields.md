@@ -1,7 +1,7 @@
 # 지표 지도 — 기계 추출분 (1층)
 
 > 이 파일은 `node scripts/build-whitepaper.mjs` 가 **코드에서 직접 추출**한다. 손으로 고치지 말 것.
-> 추출 시각: 2026-09-22T08:26:31.195Z · VIEW: `20260920000000_view_sejong_gu_join.sql`
+> 추출 시각: 2026-09-22T17:31:37.849Z · VIEW: `20260922000004_view_add_coord_shared.sql`
 > "실제 내용물"·"시간 성격" 같은 **사람의 판단**은 2층(`judgments.md`)에 따로 쓴다.
 
 | 코드명(기계어) | 화면 이름(사람어) | DB 표현식 | 점수 | 수집기 | 주기 | 채움 |
@@ -39,6 +39,7 @@
 | `contractDiscount` | 계약금 할인 | `a.contract_discount` |  |  |  | 0% |
 | `conv` | 편의점 (개) | `(VIEW 없음)` | Location |  |  | 100% |
 | `convDist` | 편의점 거리 (m) | `i.conv_dist` |  | data-audit.mjs |  | 93.9% |
+| `coordShared` | (화면 미표시) | `a.coord_shared` |  | flag-shared-coords.mjs |  | 1.6% |
 | `corridorType` | 복도유형 | `a.corridor_type` |  | data-audit.mjs, sync-naver-complex.mjs, molit-building-info.mjs | GH cron 0 19 * * * (collect-naver-listings.yml) / 로컬러너 매월 10일 05:30 KST; 로컬러너 매월 11일 05:30 KST | 63.1% |
 | `crimeSafetyGrade` | 치안 안전등급 | `a.crime_safety_grade` | Risk | data-audit.mjs, collect-crime-safety.mjs | 로컬러너 매월 8일 05:30 KST | 96.6% |
 | `culture` | 문화시설 (개) | `(VIEW 없음)` |  |  |  | 100% |
@@ -167,4 +168,4 @@
 | `updatedAt` | (화면 미표시) | `a.updated_at` |  | molit-units.mjs, calc-floors.mjs, regulation-seed.mjs 외17 | 로컬러너 매월 6일 05:30 KST / GH cron 0 23 * * 0 (calc-layout.yml) / GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / GH cron 0 16 7,21 * * (collect-trade-stats.yml) / GH cron 0 20 1 * * (collect-childcare.yml) / GH cron 0 19 * * * (collect-naver-listings.yml) / 로컬러너 매월 3일 05:30 KST / GH cron 30 2 * * 1 (collect-applyhome.yml) / 로컬러너 매월 9일 05:30 KST / GH cron 0 16 1 * * (collect-police.yml) / 로컬러너 매월 15일 05:30 KST / 로컬러너 매월 15일 05:30 KST; 로컬러너 매월 16일 05:30 KST; 로컬러너 매월 17일 05:30 KST; 로컬러너 매월 18일 05:30 KST; 로컬러너 매월 19일 05:30 KST / 로컬러너 매월 10일 05:30 KST; 로컬러너 매월 11일 05:30 KST / GH cron 0 3 15 1,4,7,10 * (collect-dart-builders.yml) | 100% |
 | `view` | 조망 | `(VIEW 없음)` | Location |  |  | 93.4% |
 
-총 160개 지표.
+총 161개 지표.
