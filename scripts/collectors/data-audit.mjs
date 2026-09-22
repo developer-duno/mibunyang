@@ -39,6 +39,23 @@ const PERMANENT_NULL = new Set(["quakeDesign", "greenBldg", "energyGrade"]);
 /** @type {Record<string, number>} */
 const MASKED_DEFAULTS = { subwayDist: 9999, icDist: 99, ktxDist: 99 };
 
+// ── JSON 필드의 "알맹이" 경로 (세션561) ───────────────────────
+// 껍데기(객체)가 있다고 채워진 게 아니다. **점수가 실제로 읽는 값**이 있어야 채워진 것이다.
+//
+// ⚠️ 왜 MASKED_DEFAULTS 로는 못 하나: 그쪽은 `value === 9999` 처럼 **스칼라 일치** 비교라
+//    JSON 내부 키를 못 본다. 그래서 경로 기반 분기를 따로 둔다.
+//
+// airQuality: 채점은 `annual.pm25`(3년 평균) 하나만 쓴다(src/scoring/scoreLocation.ts).
+//   최상위 `pm25` 는 **에어코리아 실시간 값**이라 채점과 무관하다 — 그게 있다고 채워진 게 아니다.
+//   실측(2026-09-22): 객체 보유 3,068 곳 중 `annual.pm25` 보유는 2,992 곳.
+//   나머지 76 곳은 측정소 표본이 얇아 3년 평균을 못 만든 곳이고, 옛 판정은 이 76 곳을
+//   "채움"으로 세어 **채움률을 영원히 100%** 로 보고했다. 그래서 annual 이 통째로 날아가도
+//   감사도 모니터도 못 잡는 상태였다(세션560 `mergeKeepingAnnual` 이 막으려던 바로 그 사고).
+/** @type {Record<string, (v: any) => boolean>} */
+const JSON_FIELD_HAS_VALUE = {
+  airQuality: (v) => v?.annual?.pm25 != null,
+};
+
 // ── AUDIT_FIELDS: 19 카테고리, ~91 필드 ──────────────────────
 /** @type {Record<string, AuditFieldEntry>} */
 export const AUDIT_FIELDS = {
@@ -151,6 +168,8 @@ export function isFieldNull(field, value) {
   if (value == null) return true;
   // COALESCE 기본값 마스킹
   if (field in MASKED_DEFAULTS && value === MASKED_DEFAULTS[field]) return true;
+  // JSON 껍데기 마스킹 — 객체는 있는데 점수가 읽는 알맹이가 없으면 미수집이다
+  if (field in JSON_FIELD_HAS_VALUE) return !JSON_FIELD_HAS_VALUE[field](value);
   // units 특수 케이스 (세대수 미상)
   if (field === "units" && typeof value === "number" && value <= 1) return true;
   return false;
