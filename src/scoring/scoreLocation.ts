@@ -142,6 +142,10 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
   const annual = airQuality?.annual;
   const pm25Sc: number = annual?.pm25 != null ? tierMax(annual.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
   // PM10·O3 도 3년 평균만 본다. 없으면 null → 아래에서 각 축의 중립 기본값으로 떨어진다.
+  // ⚠️ null 이어도 **점수에는 중립값으로 들어간다**(0.35·0.25 몫을 그대로 차지). 그러니 문구도
+  //    PM2.5 와 대칭으로 "미수집(중립 N점)" 이라 밝혀야 한다 — 안 밝히면 "쓰지 않았다"로 읽힌다.
+  //    실측(2026-09-23): `annual.o3` 만 없는 단지 2곳(전주 반월동3차 세움펠리피아·서신더샵비발디).
+  //    세션561 적대검증 🔴 적발 — #558 커밋이 "없으면 아예 안 쓴다"고 적었는데 사실과 달랐다.
   const pm10Sc: number | null = annual?.pm10 != null ? tierMax(annual.pm10, AIR_PM10_TIERS, 0) : null;
   const o3Sc: number | null = annual?.o3 != null ? tierMax(annual.o3, AIR_O3_TIERS, AIR_O3_BAD_SCORE) : null;
   // 화면 등급은 **채점에 쓴 값**에서 뽑는다 — 점수와 글자가 어긋나지 않게(세션560).
@@ -240,7 +244,7 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
         // ⚠️ 3년 평균이 없는 단지(실측 76곳)는 그냥 "미수집"이 아니라 **중립 점수를 받고 있다**.
         //    그걸 숨기면 "미수집인데 왜 점수가 있지?"가 된다 — `FieldTable` 의 "추정값·기본값임을
         //    숨기지 않는다" 원칙과 같은 자리다(세션560 맹점 검사관 적발).
-        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`}(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? ` /PM10 ${AIR_PM10_LEGEND}` : ""}${o3Sc != null ? ` /O3 ${AIR_O3_LEGEND}` : ""})${airQuality?.grade ? ` 오늘:${airQuality.grade}(참고)` : ""}`,
+        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`}(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? ` /PM10 ${AIR_PM10_LEGEND}` : ` /PM10 미수집(중립 ${AIR_PM10_DEFAULT}점)`}${o3Sc != null ? ` /O3 ${AIR_O3_LEGEND}` : ` /O3 미수집(중립 ${AIR_O3_DEFAULT}점)`})${airQuality?.grade ? ` 오늘:${airQuality.grade}(참고)` : ""}`,
       },
       {
         name: "혐오시설",

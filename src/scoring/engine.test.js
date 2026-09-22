@@ -1604,9 +1604,25 @@ describe("scoreLocation — 대기질 복합 (PM10/O3)", () => {
       base.subs.find((s) => s.name === "자연환경")?.score ?? 0
     );
   });
-  it("pm10 좋음 → 환경 점수 변화", () => {
-    const withPm10 = scoreLocation(makeApt({ airQuality: { pm25: 20, pm10: 20, o3: null } }));
-    expect(withPm10.subs.find((s) => s.name === "자연환경")?.score ?? 0).toBeGreaterThanOrEqual(0);
+  // ⚠️ 세션561 적대검증 적발: 옛 테스트는 **최상위 키**(`{pm25,pm10,o3}`)를 줬는데 채점은
+  //    `annual` 만 읽으므로(scoreLocation.ts) pm10 을 20 으로 주든 50 으로 주든 결과가 같았다.
+  //    게다가 단언이 `toBeGreaterThanOrEqual(0)` 이라 **무엇이든 통과**했다 — 회귀를 못 잡는 죽은 가드.
+  /** @param {Record<string, unknown>} aq */
+  const envOf = (aq) => scoreLocation(makeApt({ airQuality: aq })).subs.find((s) => s.name === "자연환경")?.score ?? 0;
+
+  it("pm10 이 좋으면 나쁠 때보다 환경 점수가 높다 (annual 기준)", () => {
+    const good = envOf({ annual: { pm25: 17, pm10: 25, o3: 0.03 } }); // pm10 좋음(≤30)
+    const bad = envOf({ annual: { pm25: 17, pm10: 50, o3: 0.03 } }); // pm10 나쁨(>36)
+    expect(good).toBeGreaterThan(bad);
+  });
+
+  it("o3 만 없으면 중립값이 쓰이고, 문구가 그 사실을 밝힌다", () => {
+    // 실측 2곳(전주 반월동3차 세움펠리피아·서신더샵비발디)의 모양.
+    const d = scoreLocation(makeApt({ airQuality: { annual: { pm25: 16.59, pm10: 34.04, o3: null } } })).subs.find(
+      (s) => s.name === "자연환경"
+    )?.detail;
+    expect(d).toContain("/O3 미수집");
+    expect(d).toContain("/PM10 좋음"); // pm10 은 있으므로 경계가 그대로 보인다
   });
   it("o3 나쁨 → 환경 점수 하락", () => {
     // 채점은 `annual` 을 본다(세션560) — 세 항목을 한 묶음으로 준다.

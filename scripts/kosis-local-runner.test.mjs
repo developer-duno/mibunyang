@@ -103,6 +103,10 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         // apis.data.go.kr/B552584(에어코리아)도 해외 IP 를 막는다. GH yml 2개 삭제했으므로
         // 여기 없으면 아예 안 돈다.
         "collect-air-quality.mjs",
+        // 세션 561: 위 수집기가 `air_quality` 를 통째로 교체할 때 3년 평균(`annual`)이 날아가면
+        // 되돌릴 사람이 없었다(적대검증 🔴). 같은 화요일에 이어 붙여 멱등 재부착한다 —
+        // 평소엔 "붙일 대상 0곳", 유실이 생긴 회차에만 되살린다.
+        "air-annual-attach.mjs",
         "collect-housing-price.mjs",
         // 세션 525: apis.data.go.kr/B552657(국립중앙의료원 응급의료기관)도 해외 IP 차단.
         // GH yml 을 삭제했으므로 여기 없으면 아예 안 돈다.

@@ -231,11 +231,17 @@ async function main() {
     loadEnv();
     const sb = getSupabase();
     console.log("DB 실측 중...");
+    // ⚠️ 채움 판정은 `data-audit.mjs` 의 `isFieldNull` 을 **빌려 쓴다** — 여기서 `!= null` 만 보면
+    //    JSON 껍데기(객체는 있는데 점수가 읽는 알맹이가 없는 행)를 채움으로 세어 **영원히 100%** 가
+    //    된다. 세션561 적대검증 적발: `airQuality` 가 3,068 중 2,992 만 `annual.pm25` 를 갖는데
+    //    표에는 100% 로 찍혀 있었다(#557 이 data-audit 에서 고친 바로 그 병이 여기 남아 있었다).
+    //    두 곳이 **같은 판정**을 쓰게 해서 다시 갈라지지 않게 한다.
+    const { isFieldNull } = await import("./collectors/data-audit.mjs");
     const rows = await selectAll((s) => s.from("apartments_flat").select("*"), sb, "id");
     const total = rows.length;
     if (total) {
       for (const key of Object.keys(rows[0])) {
-        const filled = rows.filter((r) => r[key] != null).length;
+        const filled = rows.filter((r) => !isFieldNull(key, r[key])).length;
         fillRate.set(key, Math.round((filled / total) * 1000) / 10);
       }
       console.log(`  apartments_flat ${total}행 실측`);
