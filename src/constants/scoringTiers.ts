@@ -284,12 +284,22 @@ export function airAnnualBand(pm25: number): (typeof AIR_ANNUAL_LABELS)[number] 
   return AIR_ANNUAL_LABELS[AIR_ANNUAL_LABELS.length - 1];
 }
 
-/** `"좋음 15↓, 보통 19↓, 나쁨 19↑"` — 경계를 손으로 적지 않는다. */
-export const AIR_ANNUAL_LEGEND: string =
-  AIR_QUALITY_TIERS.slice(0, -1)
-    .map((t, i) => `${AIR_ANNUAL_LABELS[i]} ${t.max}↓`)
-    .join(", ") +
-  `, ${AIR_ANNUAL_LABELS[AIR_ANNUAL_LABELS.length - 1]} ${AIR_QUALITY_TIERS[AIR_QUALITY_TIERS.length - 2].max}↑`;
+/**
+ * `"좋음 15 이하, 보통 19 이하, 나쁨 19 초과"` — 경계를 손으로 적지 않는다.
+ *
+ * ⚠️ `↓`/`↑` 를 쓰면 **경계값이 양쪽에 걸친다.** 판정은 `<=`(`tierMax`)이라 정확히 19 는
+ * "보통"인데 옛 표기 `나쁨 19↑` 는 19도 나쁨처럼 읽혔다(세션560 맹점 검사관 적발).
+ * 실측 p75 가 19.71 이라 **값이 19 부근에 가장 빽빽해** 하필 제일 잘 걸리는 자리다.
+ *
+ * ⚠️ 표가 2칸 이하면 마지막 경계 참조가 무너진다 — 1칸이면 `undefined.max` 로 **모듈 최상위에서
+ * 앱 전체가 죽는다**(코드 검사관 적발). 옵셔널 체인으로 받고, 못 만들면 이름만 쓴다.
+ */
+export const AIR_ANNUAL_LEGEND: string = (() => {
+  const head = AIR_QUALITY_TIERS.slice(0, -1).map((t, i) => `${AIR_ANNUAL_LABELS[i]} ${t.max} 이하`);
+  const lastLabel = AIR_ANNUAL_LABELS[AIR_ANNUAL_LABELS.length - 1];
+  const lastCut = AIR_QUALITY_TIERS[AIR_QUALITY_TIERS.length - 2]?.max;
+  return [...head, lastCut != null ? `${lastLabel} ${lastCut} 초과` : lastLabel].join(", ");
+})();
 
 // === Future: 교통개발 (세션511 재설계) ==================================
 //
@@ -853,21 +863,38 @@ export const BENEFIT_FULL_RATE = 25; // 총혜택률 25% = 100점
 // 0.1㎡·p90 1.8㎡ — 버킷이 5㎡ 단위라 대부분 거의 정확히 맞는다). scorePrice.ts matchAreaPrice 참조.
 export const AREA_BUCKET_TOLERANCE_M2 = 10;
 
-// === Location: 대기질 PM10 (4단계, ㎍/㎥ 기준) ===
+// === Location: 대기질 PM10 (㎍/㎥ 기준) ===
+//
+// ⚠️⚠️ **이 표는 아직 "오늘 값" 척도다 — 미완결 상태다**(세션560 코드 검사관 적발).
+// 세션560이 PM2.5 를 3년 평균으로 갈아끼우면서 `scoreLocation.ts` 가 `annual.pm10` 도 함께 먹이는데,
+// **이 표는 한 줄도 안 바뀌었다.** 그래서 PM2.5 에서 고친 바로 그 병이 여기 남아 있다:
+//   3년 평균 실측(측정소 651곳) min 21.72 / 중앙 33 / **max 60.49**
+//   → `{max:150}` 칸은 **영구 도달 불가**, 실제로는 20점·15점 **두 칸**으로만 갈린다.
+// `airSc = pm25*0.4 + pm10*0.35 + o3*0.25` 이므로 이 둘이 점수의 **60%** 를 차지한다.
+//
+// 고치려면 **경계를 데이터로 재도출**해야 한다(이 저장소 "경계 먼저·데이터 나중" 함정 — 5회 재발).
+// 참고: PM10 국가 대기환경기준 **연평균 50㎍/㎥**. 사장님 결정이 필요한 자리라 세션560은 손대지 않았다.
 export const AIR_PM10_TIERS: Tier[] = [
   { max: 30, score: 20 }, // 좋음
   { max: 80, score: 15 }, // 보통
-  { max: 150, score: 8 }, // 나쁨
+  { max: 150, score: 8 }, // 나쁨 — ⚠️ 3년 평균 최대가 60.49 라 **도달 불가**
 ];
-export const AIR_PM10_DEFAULT = 12; // 데이터 없을 때 중립
+// ⚠️ 중립값이 가운데 칸(15)과 다르다. PM2.5 는 세션560에 12→14(가운데 칸)로 맞췄는데
+//    여기는 그대로다 — 위 경계 재설계와 함께 정리할 자리.
+export const AIR_PM10_DEFAULT = 12;
 
-// === Location: 오존 O3 (3단계, ppm 기준) ===
+// === Location: 오존 O3 (ppm 기준) ===
+//
+// ⚠️⚠️ **위 PM10 과 같은 미완결 상태다.** 3년 평균 실측 min 0.01626 / 중앙 0.03215 / **max 0.05056**
+// → `AIR_O3_BAD_SCORE`(> 0.09)는 **영구 사문화**, 20점·12점 두 칸으로만 갈린다.
+// ⚠️ O3 는 **연평균 환경기준이 없다**(8시간 0.06ppm·1시간 0.1ppm이 기준이라 3년 평균과 단위가 다르다).
+//    그래서 PM10 보다 재설계가 까다롭다 — 분위값 기준으로 잡을지 사장님 판단이 필요하다.
 export const AIR_O3_TIERS: Tier[] = [
   { max: 0.03, score: 20 }, // 좋음
   { max: 0.09, score: 12 }, // 보통
 ];
 export const AIR_O3_DEFAULT = 12; // 데이터 없을 때 중립
-export const AIR_O3_BAD_SCORE = 5; // 나쁨
+export const AIR_O3_BAD_SCORE = 5; // 나쁨 — ⚠️ 3년 평균 최대가 0.05 라 **도달 불가**
 
 // === Location: 도보통학 시간 보정 (분 기준) ===
 export const SCHOOL_WALK_BONUS: Tier[] = [
