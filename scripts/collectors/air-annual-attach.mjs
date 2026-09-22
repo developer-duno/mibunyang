@@ -20,8 +20,9 @@
  * `air-annual-load.mjs` 가 표를 갱신한 **직후 한 번**. 원본이 연 1회 나오므로
  * 주기 수집기가 아니다(선례 = air-annual-load 자신).
  *
- * ⚠️ 매일 도는 `collect-air-quality.mjs` 가 `air_quality` 를 통째로 덮어쓰면 `annual` 이
- *    날아간다. 그 수집기가 기존 객체를 펼쳐 쓰는지 확인한 뒤 운영에 태울 것(아래 §확인).
+ * ⚠️ 매일 도는 `collect-air-quality.mjs` 가 `air_quality` 를 **통째로 교체**해서 `annual` 이
+ *    다음 날 새벽에 날아갈 상태였다(세션560 발견). 그 수집기가 기존 `annual` 을 보존하도록
+ *    같이 고쳤다 — 그 보존 코드를 지우면 이 스크립트의 결과가 매일 조용히 사라진다.
  *
  * ## 사용법
  *   node scripts/collectors/air-annual-attach.mjs            (dry-run)
@@ -33,7 +34,7 @@ import {
   logError,
   getSupabase,
   selectAll,
-  upsertBatch,
+  createSemaphore,
   recordCollectorRun,
   createReporter,
 } from "./_shared.mjs";
@@ -76,6 +77,32 @@ export function needsUpdate(existing, next) {
     if (existing[k] !== next[k]) return true;
   }
   return false;
+}
+
+/**
+ * Supabase 응답 배열에서 **실제** 성공/실패를 센다.
+ *
+ * ⚠️ 이 함수가 따로 있는 이유 = 세션560 실사고. 옛 코드는 보낸 건수(슬라이스 길이)를 그대로
+ * `rpt.success()` 에 더했다. 그래서 2,992건이 **전부 실패**했는데도 로그와 `collector_runs` 가
+ * **"성공 2992 · 실패 0"** 이라고 보고했다(DB 는 한 칸도 안 바뀐 상태였다).
+ * 보낸 수가 아니라 **돌아온 결과**를 세야 한다 — 이 저장소가 말하는 "조용한 실패" 그 자체였다.
+ *
+ * @param {Array<unknown>} results Supabase 호출 결과(각각 `{ error }` 를 가진다)
+ * @returns {{ ok: number; fail: number; firstError: string | null }}
+ */
+export function countResults(results) {
+  let ok = 0;
+  let fail = 0;
+  /** @type {string | null} */
+  let firstError = null;
+  for (const r of results) {
+    const err = /** @type {{ error?: { message?: string } | null }} */ (r)?.error;
+    if (err) {
+      if (firstError == null) firstError = err.message ?? String(err);
+      fail++;
+    } else ok++;
+  }
+  return { ok, fail, firstError };
 }
 
 async function main() {
@@ -150,25 +177,41 @@ async function main() {
   }
 
   const rpt = createReporter(PHASE);
-  // 중단 신호(SIGTERM·워크플로 취소)를 받으면 **다음 배치로 넘어가지 않는다**.
-  // 한 번에 다 밀어넣으면 중단해도 멈출 자리가 없어, 그때까지의 진행이 보고되지 않는다
-  // ([[graceful-shutdown-coverage]] — 수집기 공통 계약).
+  // ⚠️ **`upsertBatch` 를 쓰면 안 된다**(세션560 실사고). 그건 행 전체를 넣는 insert-or-update 라
+  //    `{id, air_quality}` 만 주면 `name` 이 빠진 **새 행을 만들려다** NOT NULL 제약에 걸린다
+  //    (실측: 2,992건 전부 실패). 우리가 하려는 건 기존 행의 **한 칸만 고치는 것**이므로
+  //    다른 수집기들과 같이 `update(...).eq("id", ...)` 를 쓴다.
+  // 동시 10건 — 직렬이면 3,000건 × 왕복시간이라 너무 느리다(선례: trade-stats 세션309).
+  // 중단 신호(SIGTERM·워크플로 취소)는 덩어리 사이에서 확인한다([[graceful-shutdown-coverage]]).
+  const limit = createSemaphore(10);
   const CHUNK = 500;
-  let done = 0;
+  let ok = 0;
+  let fail = 0;
   for (let i = 0; i < updates.length; i += CHUNK) {
     if (rpt.interrupted()) {
-      log(PHASE, `중단 신호 — ${done}곳까지 반영하고 멈춥니다`);
+      log(PHASE, `중단 신호 — ${ok}곳까지 반영하고 멈춥니다`);
       break;
     }
     const slice = updates.slice(i, i + CHUNK);
-    await upsertBatch("apartments", slice, "id");
-    done += slice.length;
+    const results = await Promise.all(
+      slice.map((row) =>
+        limit(async () =>
+          sb.from("apartments").update({ air_quality: row.air_quality }).eq("id", row.id)
+        )
+      )
+    );
+    const tally = countResults(results);
+    if (tally.fail && !fail) logError(PHASE, `업데이트 실패 예시: ${tally.firstError}`);
+    ok += tally.ok;
+    fail += tally.fail;
   }
-  rpt.success(done);
+  rpt.success(ok);
+  if (fail) rpt.fail(fail);
   rpt.skip(skipSame + skipNoAnnual + skipNoStation);
   const result = rpt.summary();
   await recordCollectorRun(PHASE, result);
-  log(PHASE, `완료 — 반영 ${done}곳`);
+  log(PHASE, `완료 — 반영 ${ok}곳${fail ? ` / 실패 ${fail}곳` : ""}`);
+  if (fail) process.exitCode = 1;
 }
 
 const argv1 = process.argv[1];

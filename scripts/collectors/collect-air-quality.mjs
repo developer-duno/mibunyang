@@ -79,6 +79,24 @@ export async function fetchSidoData(sido, coordMap) {
 }
 
 /**
+ * 오늘 실시간 값으로 갈아끼우되 **`annual`(3년 평균)은 보존**한다 (세션560).
+ *
+ * ⚠️ 이 함수가 없으면 조용한 데이터 유실이 난다. 이 수집기는 `air_quality` JSON 을 **통째로
+ * 교체**하는데(`update({ air_quality: ... })`), `annual` 은 다른 도구(`air-annual-attach.mjs`)가
+ * 넣는 **채점용** 값이다. 그냥 덮으면 매일 새벽에 전 단지의 3년 평균이 사라지고, 점수는
+ * 중립 폴백(14점)으로 조용히 떨어진다 — **에러도 경보도 안 난다.**
+ *
+ * 같은 파일의 `infra` 갱신이 이미 쓰는 원칙과 같다: **소유한 칸만 건드린다.**
+ *
+ * @param {Record<string, unknown> | null | undefined} prev 기존 air_quality
+ * @param {Record<string, unknown>} next 오늘 측정값
+ * @returns {Record<string, unknown>}
+ */
+export function mergeKeepingAnnual(prev, next) {
+  return prev?.annual != null ? { ...next, annual: prev.annual } : next;
+}
+
+/**
  * 단지별 최근접 측정소 매칭
  *
  * ## `stationDist` 는 **m** 단위다 (세션556 신설)
@@ -171,8 +189,7 @@ async function main() {
       //    이 수집기가 소유한 건 실시간 키(pm25/pm10/o3/grade/station/stationDist/collected_at)뿐이고,
       //    `annual`(3년 평균, `air-annual-attach.mjs` 소유)은 **채점에 쓰이는 값**이라 날리면
       //    다음 재계산에서 전 단지가 조용히 중립 폴백으로 떨어진다(에러도 경보도 안 난다).
-      const prevAq = /** @type {Record<string, unknown> | null} */ (apt.air_quality);
-      const merged = prevAq?.annual != null ? { ...aq, annual: prevAq.annual } : aq;
+      const merged = mergeKeepingAnnual(/** @type {Record<string, unknown> | null} */ (apt.air_quality), aq);
       const { error: uErr } = await sb.from("apartments").update({ air_quality: merged }).eq("id", apt.id);
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); continue; }
       // `infra.air_station_name`·`air_station_dist` 도 함께 맞춘다 — **자매 레포가 읽는 자리**다

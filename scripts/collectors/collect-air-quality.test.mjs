@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { haversine, matchNearestStation } from "./collect-air-quality.mjs";
+import { haversine, matchNearestStation, mergeKeepingAnnual } from "./collect-air-quality.mjs";
 
 // 에어코리아 대기질 수집기 테스트 — 측정소 매칭 로직
 
@@ -71,5 +71,29 @@ describe("matchNearestStation — stationDist 는 m 단위 (세션556)", () => {
 
   it("측정소가 없으면 null 을 돌려준다(거리도 없음)", () => {
     expect(matchNearestStation(/** @type {any} */ ({ lat: 37.5, lng: 127 }), [])).toBeNull();
+  });
+});
+
+describe("mergeKeepingAnnual — 매일 덮어쓰기에서 3년 평균을 지키는 자리 (세션560)", () => {
+  const today = { pm25: 9, pm10: 13, o3: 0.033, grade: "보통", station: "강서구", collected_at: "2026-09-22" };
+  const annual = { pm25: 18.27, pm10: 37.32, o3: 0.0319, years: "2022,2023,2024" };
+
+  it("⚠️ 기존 annual 은 그대로 살아남는다 — 이게 깨지면 매일 새벽 전 단지의 채점값이 사라진다", () => {
+    const merged = mergeKeepingAnnual({ ...today, pm25: 5, annual }, today);
+    expect(merged.annual).toEqual(annual);
+  });
+  it("오늘 값은 새 값으로 갈린다(보존은 annual 한 칸뿐)", () => {
+    const merged = mergeKeepingAnnual({ pm25: 99, grade: "매우나쁨", annual }, today);
+    expect(merged.pm25).toBe(9);
+    expect(merged.grade).toBe("보통");
+  });
+  it("기존에 annual 이 없으면 그냥 오늘 값 — 없는 키를 만들지 않는다", () => {
+    const merged = mergeKeepingAnnual({ pm25: 99 }, today);
+    expect(merged).toEqual(today);
+    expect("annual" in merged).toBe(false);
+  });
+  it("기존 행 자체가 없어도(null/undefined) 안 죽는다", () => {
+    expect(mergeKeepingAnnual(null, today)).toEqual(today);
+    expect(mergeKeepingAnnual(undefined, today)).toEqual(today);
   });
 });
