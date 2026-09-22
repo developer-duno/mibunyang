@@ -30,6 +30,23 @@
 > 상세·실측 근거(칸별 개수·고유값 분포·처방 후보) = [docs/whitepaper/judgments.md](../docs/whitepaper/judgments.md) "죽은 칸" 절.
 > 결정 = 경계를 바꾸면 2,457곳 점수가 즉시 바뀐다. 고치기로 하면 **사전·사후 비교표 먼저**.
 
+### A-1. 좌표 경고 확대 · 시각 검증 사각지대 (세션562, 사장님 결정 대기)
+
+- 🟠 **좌표 경고를 나머지 4곳으로 넓힐지** — 세션562가 **지도 핀만** 했다(PR #564).
+  `coordShared=true` **40곳 전부**가 아래 화면에서도 좌표로 계산한 값을 보여준다:
+  학교 거리(색깔 표시) · 어린이집(색깔) · 병원·인프라 개수 · 대기질 측정소.
+  ⚠️ 학교·어린이집은 **거리를 색으로 칠한다**(500m 초록/1km 파랑) — 색은 "가깝다"는
+  강한 신호라 근거가 틀리면 숫자보다 위험하다. 다음 우선순위로 유력.
+- 🟡 **`LineChart.tsx` 에 테스트 파일이 아예 없다** — 차트는 좌표를 계산해 선을 그리므로
+  겹침·잘림이 가장 나기 쉬운데 검증이 0건이다. 절차 = 글로벌 스킬
+  `silent-cache-and-visual-check` §결함B(3배 확대 렌더로 눈으로 대조).
+- 🟢 **`useFinlifeRates` 캐시 키에 `apiPath` 없음** — 지금은 호출자가 각자 `cacheRef` 를
+  만들어 **범위가 갈려 안전**하다(경고 주석 있음). 호출자가 `apiPath` 를 인자로 열거나
+  `cacheRef` 를 공유하면 **주담대와 전세대출 금리가 섞인다**. 그때 키에 넣을 것.
+
+> 점검 절차 정본 = 글로벌 스킬 `silent-cache-and-visual-check`(자동 발동).
+> 범용 프롬프트 사본 = [docs/prompts/cache-key-and-visual-verification.md](../docs/prompts/cache-key-and-visual-verification.md).
+
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - 🟡 **자매 PR [#556](https://github.com/developer-duno/naver-estate-web/pull/556)(머지 완료) 후속** — `air_quality_stations` 표만 남았다.
   ⚠️ **정정(세션556 말미 실측, 2026-09-22): `infra.air_station_name` 은 이미 정상이다.**
