@@ -359,4 +359,27 @@ assert abs(tm_y - 451896) < 1
 
 > 사건·이력 (세션556 — 자매 레포 `wgs84_to_tm` 의 false northing 누락을 고치자 기존 `TestWgs84ToTm` 2건이 red. 그 두 단언이 바로 결함의 기대값이었다. 같은 날 `geocode-missing.test.mjs` 정규식·`toHaveLength(9)` 도 같은 꼴)
 
+## ⚠️ 기존 함수 **앞에** 코드를 끼워 넣으면 그 함수의 JSDoc 을 가로챈다 (세션563)
+
+새 함수를 기존 함수 **바로 위**에 삽입하면, 원래 아래 함수를 가리키던 JSDoc 이 **내 함수에
+붙는다.** 그러면 기존 함수는 주석을 잃고 `@param` 도 사라져 `implicitly has an 'any' type` 이 난다.
+
+더 나쁜 변종: 주석을 "복원" 한다며 다시 써 넣으면 **주석이 둘 겹친다.** 이때
+`typecheck` 는 **통과한다** — JSDoc 이 연달아 있으면 마지막 것만 적용되기 때문이다.
+즉 앞의 주석은 아무것도 안 가리키는 **고아**로 남고, 아무 도구도 말해 주지 않는다.
+
+```bash
+# 끼워 넣은 뒤 반드시 — 주석이 겹치지 않았나
+grep -c "<그 함수의 JSDoc 첫 줄>" <파일>      # 1이어야 한다
+sed -n '<삽입 지점 앞뒤>p' <파일>              # 눈으로 한 번
+```
+
+**처방**: 새 함수는 기존 함수의 **JSDoc 앞**이 아니라 **그 함수 본문이 끝난 뒤**(`}` 다음
+빈 줄)에 넣는다. 삽입 앵커를 `export function X(` 로 잡으면 그 위 주석을 가로채므로,
+**앞 함수의 닫는 `}`** 를 앵커로 삼는 편이 안전하다.
+
+> 사건(2026-09-23 세션563 — `fetchCoordSharedRows` 를 `fetchGuPairStats` 앞에 넣어 13줄짜리
+> 페이징 경고 주석을 가로챔. `typecheck:scripts` 가 잡아 줬지만, 복원하며 중복시킨 두 번째
+> 상태는 **typecheck 통과**라 `grep -c` 로 세어서야 발견)
+
 > 답습 자산·차단 검증 이력 → [rules-history/meta/guards-must-be-mutation-tested.md](../../rules-history/meta/guards-must-be-mutation-tested.md)

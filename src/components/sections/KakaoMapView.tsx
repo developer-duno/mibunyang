@@ -533,6 +533,10 @@ export const KakaoMapView = memo(function KakaoMapView({
         ⚠️ 색칠 지도(choropleth)에서는 핀을 안 그리므로 띄우지 않는다.
         ⚠️ "표시가 없으면 정확하다"는 **긍정 문구는 두지 않는다**(TransportCard 와 같은 원칙) —
            표시가 안 달린 단지까지 위치를 보증하게 되기 때문이다.
+        ⚠️ 문구는 **사실만** 적는다("준공 전 단지 · 위치는 대략"). "정확하지 않을 수 있으니
+           참고로만 보세요" 처럼 **신뢰도를 변명하며 판단을 떠넘기는 말은 쓰지 않는다**
+           (사장님 결정 2026-09-23 — `scripts/audit-customer-facing-excuses.mjs` 가 CI 에서 막는다).
+           점선이라는 **생김새**로 상태를 구분하는 것까지가 이 범례의 몫이다.
       */}
       {!compact && mode !== "choropleth" && filtered.some((f) => f.apt.coordShared === true) && (
         <div
@@ -566,7 +570,7 @@ export const KakaoMapView = memo(function KakaoMapView({
               flexShrink: 0,
             }}
           />
-          점선 핀은 준공 전이라 위치가 정확하지 않을 수 있습니다
+          점선 핀은 준공 전 단지 — 위치는 대략입니다
         </div>
       )}
       {/* 좌상단: 결과수 + 모드 토글 */}

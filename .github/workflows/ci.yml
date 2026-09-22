@@ -107,6 +107,13 @@ jobs:
       - name: rules paths glob audit
         run: node scripts/audit-rules-paths.mjs
 
+      # 손님 화면에 **우리 데이터 결함을 변명하는 문구**가 들어가는 것을 막는다(세션563).
+      # "정확하지 않을 수 있습니다 / 참고로만 봐 주세요" 는 해결이 아니라 떠넘기기다 —
+      # 고치거나, 못 고치면 monitor(텔레그램)·관리자 화면으로 사장님께 알린다.
+      # 사장님 지적 2026-09-23: "좌표경고를 왜 손님한테 보여줘 나한테 알려줘야지?"
+      - name: customer-facing excuse audit
+        run: node scripts/audit-customer-facing-excuses.mjs
+
       - name: Test
         run: npm run test
 
