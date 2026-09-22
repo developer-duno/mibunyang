@@ -26,6 +26,19 @@
 --
 -- 본문은 직전 VIEW(20260920000000_view_sejong_gu_join.sql) 통째 복사 + 위 1곳만 수정.
 -- ROLLBACK: 20260922000005_rollback_view_add_coord_shared.sql (직전 VIEW 복원)
+-- ⚠️ 선후 가드 (세션560 코드·맹점 검사관 지적) — 컬럼 없이 이 파일만 실행하는 사고를 막는다.
+-- 그냥 두면 42703(column does not exist)으로 죽는데, 그 메시지로는 "무엇을 먼저 해야 하는지"가 안 보인다.
+-- (실패해도 옛 VIEW 는 그대로 남으므로 화면은 안 죽는다 — CREATE OR REPLACE 는 원자적이다.)
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_name = 'apartments' AND column_name = 'coord_shared'
+  ) THEN
+    RAISE EXCEPTION '먼저 20260922000002_apartments_coord_shared.sql 을 실행하세요 (apartments.coord_shared 컬럼이 없습니다)';
+  END IF;
+END $$;
+
 CREATE OR REPLACE VIEW apartments_flat WITH (security_invoker = on) AS
 WITH dedup_ranked AS (
   SELECT *,
@@ -278,7 +291,10 @@ SELECT
   --   ⚠️ CREATE OR REPLACE VIEW 는 기존 컬럼 순서 변경 불가(42P16) → 신규 컬럼은 반드시 SELECT 맨 끝.
   rg.housing_price AS "housingPrice",
   -- 좌표 자리표시 의심 표시 (세션560) — true 면 이 단지 좌표를 다른 단지가 함께 쓴다.
-  --   좌표 파생값(교통·학군·인프라·대기질)을 그대로 믿을 수 없다는 뜻이라 화면이 경고를 띄운다.
+  --   좌표 파생값(교통·학군·인프라·대기질)을 그대로 믿을 수 없다는 뜻이다.
+  --   ⚠️ **화면 경고 UI 는 아직 없다**(세션560 기준 `src/` 변경 0건) — 이 컬럼은 그 준비다.
+  --   ⚠️ 라이브 API(`api/supabase/apartments.ts`)는 필드 **화이트리스트** 방식이라 `coordShared` 가
+  --      안 나간다. 정적 JSON(`collect-data.mjs` 의 `select("*")`)에만 실린다 — 화면을 만들 때 확인할 것.
   --   채우는 주체 = scripts/collectors/flag-shared-coords.mjs (양방향 — 좌표가 고쳐지면 내려간다).
   --   ⚠️ CREATE OR REPLACE VIEW 는 기존 컬럼 순서 변경 불가(42P16) → 신규 컬럼은 반드시 SELECT 맨 끝.
   a.coord_shared AS "coordShared"
