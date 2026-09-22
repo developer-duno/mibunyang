@@ -42,6 +42,13 @@ export const ALLOWLIST = new Set([
   // 선례 = collect-crime-safety(연 1회 수동 CSV)였으나 그쪽은 채우는 대상(regions)에 매월 새 행이
   // 생겨 세션521에 러너로 편입됐다. 이쪽은 측정소별 표 하나라 그 사정이 없다.
   "air-annual-load",
+  // 세션560: 위 `air-annual-load` 가 채운 `air_station_annual` 을 각 단지의
+  // `apartments.air_quality.annual` 에 붙이는 **짝 도구**다. 입력(3년 평균 표)이 위 도구의
+  // 출력이라 **그것이 갱신될 때만** 돌릴 일이 생긴다 — 즉 실행 주기가 위와 같은 연 1회고,
+  // 같은 이유로 cron 을 걸 주기가 없다(원본이 연 1회·6개월 지연).
+  // ⚠️ 단지 쪽 측정소 배정이 바뀌면(`collect-air-quality` 가 더 가까운 측정소를 잡는 경우)
+  //    재실행이 필요한데, 그 경우에도 멱등이라 안전하다(`needsUpdate` 가 같은 값이면 건너뛴다).
+  "air-annual-attach",
   // apartments_flat VIEW 를 훑는 진단 리포트 도구. docstring 사용법이 "콘솔 리포트 /
   // --json / --region=" 등 사람이 손으로 실행하는 형태로만 적혀 있다. data-fill.mjs 가
   // computeAudit/fetchAllFromView 를 **함수로 import** 해 판단 근거로 쓰지만 그건
