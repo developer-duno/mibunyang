@@ -906,6 +906,18 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
  */
 export const COORD_SHARED_BASELINE = 56;
 
+/**
+ * **daily 모드에서도 dedup 을 타는** collector — 사람이 손대야만 풀리는 지속 상태 (세션563).
+ *
+ * 기본값은 "daily 는 dedup 미적용"(지속 상태를 하루 1회 리마인드하는 게 의도)인데, 여기 든
+ * collector 는 그 리마인드가 **영구 도배**가 된다. 짝 규칙: 그 이슈의 `at` 은 시각이 아니라
+ * **상태 지문**이어야 한다(안 그러면 키가 매일 달라져 dedup 이 무효다).
+ */
+export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
+
+/** 기준보다 이만큼 줄면 "기준을 낮추라" 고 알린다 — 잘할수록 눈머는 것을 막는다(세션563). */
+export const BASELINE_SLACK = 5;
+
 export const GU_JOIN_COLUMNS = [
   "fertility_rate",
   "doctors_per_1k",
@@ -1356,6 +1368,20 @@ export function checkCoordSharedDrift(rows, opts = {}) {
   /** @type {Issue[]} */
   const issues = [];
 
+  // ⚠️ 기준보다 **크게 줄면** 기준 자체를 낮추라고 알린다(세션563 적대검증 🟠).
+  //    하드코딩 상한이라, 정정을 잘해 40곳이 된 뒤 통로가 다시 뚫려 55곳이 돼도 56 미만이라
+  //    **침묵한다** — 잘할수록 탐지 폭이 벌어지는 구조다. 기준 갱신을 사람이 하도록 알린다.
+  if (shared.length <= baseline - BASELINE_SLACK) {
+    issues.push({
+      kind: "nulls",
+      collector: "coord-shared",
+      detail:
+        `좌표 부정확 단지가 ${shared.length}곳으로 줄었다(기준 ${baseline}) — ` +
+        `COORD_SHARED_BASELINE 을 ${shared.length} 로 낮춰야 다시 늘어나는 것을 잡는다`,
+      at: `shrank:${shared.length}`,
+    });
+  }
+
   // (A) 늘었다 — 새 단지가 들어오며 자리표시 좌표를 받았다는 뜻이다. 통로가 다시 뚫렸을 수 있다.
   if (shared.length > baseline) {
     issues.push({
@@ -1364,7 +1390,8 @@ export function checkCoordSharedDrift(rows, opts = {}) {
       detail:
         `좌표 부정확 단지 ${shared.length}곳 (기준 ${baseline}곳 대비 +${shared.length - baseline}) — ` +
         `새 단지가 자리표시 좌표를 받았을 수 있다. scripts/fix-placeholder-addresses.mjs --out=<덤프> 로 판정하라`,
-      at: now.toISOString(),
+      // 같은 이유로 건수 지문(위 주석 참조) — 늘어난 수가 바뀔 때만 다시 알린다.
+      at: `grew:${shared.length}`,
     });
   }
 
@@ -1379,7 +1406,12 @@ export function checkCoordSharedDrift(rows, opts = {}) {
       detail:
         `준공일이 지난 좌표 부정확 단지 ${fixable.length}곳 — 이제 지도에 있으니 **고칠 수 있다**. ` +
         `scripts/fix-placeholder-addresses.mjs --out=<덤프> 후 --apply-from 으로 반영 (예: ${sample})`,
-      at: now.toISOString(),
+      // ⚠️ `at` 은 **시각이 아니라 건수 지문**이다(세션563 적대검증 🟠).
+      //    이 상태는 사람이 도구를 고쳐야 풀리는데, 시각을 넣으면 `dedupKey`(kind|collector|at)가
+      //    매일 달라져 **매일 텔레그램이 온다.** 고칠 방법이 없는 것을 매일 알리면 사장님이
+      //    ①~⑧ 까지 통째로 무시하게 된다 — 2차 피해가 1차보다 크다.
+      //    건수 지문이면 48→47 로 줄 때만 새 알림이 간다(= 실제로 진전이 있을 때).
+      at: `past:${fixable.length}`,
     });
   }
   return issues;
@@ -1904,12 +1936,17 @@ async function main() {
   // dedup: run 모드(수집기 ~40개 완료마다 발화)는 같은 이슈를 매번 재알림하므로
   // 이미 보낸 키는 skip. daily(매일 1회 스윕)는 ③stale·④NULL 같은 지속 상태를
   // 하루 1회 리마인드하는 게 의도라 dedup 미적용 — 하루 1회는 도배 아님.
-  if (mode === "run") {
-    const keys = issues.map(dedupKey);
+  // ⚠️ daily 라도 `ALWAYS_DEDUP_COLLECTORS` 는 dedup 을 탄다(세션563). ③stale·④NULL 은
+  //    "고치면 멈추는" 상태라 하루 1회 리마인드가 옳지만, ⑨ 좌표 부정확은 **사람이 도구를
+  //    고쳐야** 풀려서 매일 울면 감시 전체가 무뎌진다. 건수 지문 `at` 과 짝을 이룬다.
+  if (mode === "run" || issues.some((i) => ALWAYS_DEDUP_COLLECTORS.has(i.collector))) {
+    const scoped = mode === "run" ? issues : issues.filter((i) => ALWAYS_DEDUP_COLLECTORS.has(i.collector));
+    const keys = scoped.map(dedupKey);
     const sentKeys = await fetchSentAlertKeys(keys);
-    const fresh = filterUnsent(issues, sentKeys);
-    const skipped = issues.length - fresh.length;
-    if (skipped > 0) console.log(`[monitor] 이미 알린 이상 ${skipped}건 재발송 skip (dedup)`);
+    const freshScoped = filterUnsent(scoped, sentKeys);
+    const skipped = scoped.length - freshScoped.length;
+    if (skipped > 0) console.log(`[monitor] 이미 알린 이상 ${skipped}건 재발송 skip (dedup, mode=${mode})`);
+    const fresh = mode === "run" ? freshScoped : issues.filter((i) => !ALWAYS_DEDUP_COLLECTORS.has(i.collector) || freshScoped.includes(i));
     issues = fresh;
     if (issues.length === 0) {
       console.log("[monitor] 새 이상 없음 (전부 이미 알림, mode=run)");

@@ -39,9 +39,9 @@ const ROOTS = ["src/components"];
 const ADMIN_RE = /(^|\/)Admin[A-Z]/;
 
 /**
- * 금지 문구 — **우리 값의 신뢰도를 변명하는** 표현만 담는다.
+ * 금지 문구 — **우리 값의 신뢰도를 변명하는** 표현.
  *
- * ⚠️ "예정"·"평균"·"추정"·"표본" 은 넣지 않는다. 그건 값의 **성질**이라 사실 그대로이고,
+ * ⚠️ "예정"·"평균"·"추정" 은 넣지 않는다. 그건 값의 **성질**이라 사실 그대로이고,
  *    빼면 오히려 손님이 확정값으로 오해한다.
  */
 const BANNED = [
@@ -52,6 +52,41 @@ const BANNED = [
   { re: /오차가\s*있을\s*수\s*있/, why: "값의 신뢰도를 손님에게 변명한다" },
   { re: /신뢰할\s*수\s*없/, why: "값의 신뢰도를 손님에게 변명한다" },
 ];
+
+/**
+ * **면제 신호** — 같은 줄에 이 말이 있으면 금지어가 있어도 통과시킨다 (세션563 적대검증 🔴).
+ *
+ * ## 왜 필요한가
+ *
+ * 처음 만든 감사는 문장의 **주어를 안 봐서**, 우리 수집 결함이든 국토부 신고 지연이든
+ * 똑같이 막았다. 실측으로 다음 셋이 전부 차단됐다 — 셋 다 **넣어야 하는 문장**이다:
+ *
+ *   "본 정보는 참고 자료이며 투자 판단의 근거로 **신뢰할 수 없습니다**"   ← 면책 고지
+ *   "실거래가는 국토부 공개자료로, 신고 지연으로 **오차가 있을 수 있습니다**" ← 제3자 출처 특성
+ *   "추정가는 통계 모델 결과로 실제 거래가와 **정확하지 않을 수 있습니다**"   ← 진짜 추정치
+ *
+ * 이 사이트는 "적정 추정가"를 제시하고 갭투자액을 계산해 준다(`FAQSection.tsx`·`LoanAnalysis.tsx`).
+ * 표시·광고의 공정화에 관한 법률상 추정·예측은 그것이 추정임을 밝혀야 하고, 공인중개사법상
+ * 중개가 아님을 분명히 해야 한다. **그 고지를 이 감사가 막으면 안 된다.**
+ *
+ * ## 가르는 기준
+ *
+ * 금지 대상은 **우리가 못 채우거나 틀리게 채운 값**을 변명하는 말이다. 반면
+ * **출처·성질을 밝히는 말**(추정·모델·국토부·공공데이터·신고·평균·예정·표본·법적 고지)이
+ * 같은 줄에 있으면 그건 "무엇을 보고 있는지" 를 알려 주는 것이라 통과시킨다.
+ *
+ * ⚠️ 이 면제는 **같은 줄**만 본다. 줄을 갈라 회피할 수 있지만, 그러려면 일부러 그래야 한다 —
+ *    실수로 떠넘기는 것을 막는 게 목적이고, 작정한 우회까지 막는 도구가 아니다.
+ */
+const EXEMPT = [
+  /추정|예상|예측|모델|시뮬/,           // 값의 성질 — 진짜 추정치
+  /국토부|공공데이터|공개자료|출처|원자료|신고\s*지연|제공받/, // 제3자 출처 특성
+  /평균|중앙값|표본|통계/,               // 집계값의 성질
+  /투자\s*판단|법적\s*책임|면책|중개\s*대상|참고\s*자료|보증하지/, // 법적 고지
+];
+
+/** 직전 토큰이 이것으로 끝나면 다음 `/` 는 나눗셈이 아니라 **정규식 시작**이다. */
+const REGEX_PRECEDER = /(^|[=(,:;!&|?{}[\]+\-*%<>~^]|return|typeof|case)\s*$/;
 
 /**
  * 주석을 지운다 — 주석에 적힌 금지어는 **설명**이지 화면에 나가는 글이 아니다.
@@ -69,6 +104,7 @@ export function stripComments(src) {
     const c = src[i];
     const nx = src[i + 1];
     if (quote) {
+      // 이스케이프는 2글자를 통째로 건너뛴다 — 안 그러면 `"\\"` 의 닫는 따옴표를 놓친다.
       if (c === "\\") { out += "  "; i += 2; continue; }
       if (c === quote) quote = "";
       out += c;
@@ -76,13 +112,35 @@ export function stripComments(src) {
       continue;
     }
     if (c === '"' || c === "'" || c === "`") { quote = c; out += c; i++; continue; }
+    // ⚠️ 정규식 리터럴 — `/https:\/\//` 의 `\/` 를 진짜 슬래시로 읽으면 `//` 를 줄 주석으로
+    //    오인해 **그 줄 끝까지 지운다**(세션563 적대검증 🔴, 세션531 `*/*` 사고의 새 변종).
+    //    앞 토큰이 값이 아닌 자리(연산자·여는 괄호·`return` 등)의 `/` 는 정규식 시작으로 본다.
+    if (c === "/" && nx !== "/" && nx !== "*" && REGEX_PRECEDER.test(out)) {
+      let k = i + 1;
+      let inClass = false;
+      while (k < src.length) {
+        const ch = src[k];
+        if (ch === "\\") { k += 2; continue; }
+        if (ch === "[") inClass = true;
+        else if (ch === "]") inClass = false;
+        else if (ch === "/" && !inClass) break;
+        else if (ch === String.fromCharCode(10)) break; // 정규식은 줄을 안 넘는다 — 오판이면 여기서 포기
+        k++;
+      }
+      if (k < src.length && src[k] === "/") { out += src.slice(i, k + 1); i = k + 1; continue; }
+      // 정규식이 아니었다 — 아래 일반 경로로 떨어진다(`/` 한 글자만 소비).
+    }
     if (c === "/" && nx === "/") {
       while (i < src.length && src[i] !== "\n") { out += " "; i++; }
       continue;
     }
     if (c === "/" && nx === "*") {
       const end = src.indexOf("*/", i + 2);
-      const stop = end === -1 ? src.length : end + 2;
+      // ⚠️ 닫히지 않은 블록 주석이면 **지우지 않는다**(세션563 적대검증 🔴).
+      //    파일 끝까지 지우면 그 뒤 모든 금지어가 사라져 감사가 통째로 눈먼다.
+      //    문법 오류인 파일이므로 다른 게이트(typecheck)가 잡는다 — 여기선 보수적으로 남긴다.
+      if (end === -1) { out += c; i++; continue; }
+      const stop = end + 2;
       for (let k = i; k < stop; k++) out += src[k] === "\n" ? "\n" : " ";
       i = stop;
       continue;
@@ -96,6 +154,23 @@ export function stripComments(src) {
 
 /**
  * 한 파일에서 위반을 찾는다.
+ *
+ * ## 왜 줄 단위로 안 보나 (세션563 적대검증 🔴)
+ *
+ * 처음엔 `lines[i]` 를 한 줄씩 검사했는데, **줄바꿈 하나로 100% 우회**됐다. JSX 텍스트는
+ * prettier 가 상시 줄을 나누므로, 막으려던 그 문구가 포매터를 한 번 돌리면 스스로 빠져나간다.
+ * 실측으로 다음 넷이 전부 통과했다(한 줄 대조군만 잡힘):
+ *
+ *   <div>
+ 이 값은 정확하지
+ 않을 수 있습니다
+</div>
+ *   {`정확하지 ${x} 않을 수 있습니다`}
+ *   {"정확하지 않을" + " 수 있습니다"}
+ *   정확하지{" "}않을 수 있습니다
+ *
+ * 그래서 **텍스트를 먼저 이어 붙여 정규화**한 뒤 찾는다. 줄 번호는 정규화 전 위치를 따로
+ * 기억해 두었다가 되돌린다 — 안 그러면 보고가 쓸모없어진다.
  * @param {string} file
  * @param {string} raw
  * @returns {{ file: string, line: number, text: string, why: string }[]}
@@ -103,15 +178,44 @@ export function stripComments(src) {
 export function findViolations(file, raw) {
   if (ADMIN_RE.test(file)) return [];
   const src = stripComments(raw);
+
+  // 정규화 — 글자를 지우지 않고 **공백으로 바꿔** 길이를 보존한다. 그래야 오프셋으로
+  // 원래 줄 번호를 되찾을 수 있다(길이가 변하면 위치가 어긋난다).
+  const flat = src
+    .replace(/\{\s*"[^"]*"\s*\}/g, (m) => " ".repeat(m.length)) // {" "} JSX 공백 표현
+    .replace(/\$\{[^}]*\}/g, (m) => " ".repeat(m.length)) // 템플릿 보간
+    .replace(/"\s*\+\s*"/g, (m) => " ".repeat(m.length)) // "a" + "b" 문자열 결합
+    .replace(/[\r\n\t]/g, " ");
+
+  // 오프셋 → 줄 번호 표
+  const lineStarts = [0];
+  for (let i = 0; i < src.length; i++) if (src[i] === String.fromCharCode(10)) lineStarts.push(i + 1);
+  /** @param {number} off */
+  const lineOf = (off) => {
+    let lo = 0, hi = lineStarts.length - 1;
+    while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (lineStarts[mid] <= off) lo = mid; else hi = mid - 1; }
+    return lo + 1;
+  };
+
   /** @type {{ file: string, line: number, text: string, why: string }[]} */
   const hits = [];
-  const lines = src.split(/\r?\n/);
-  for (let i = 0; i < lines.length; i++) {
-    for (const { re, why } of BANNED) {
-      if (re.test(lines[i])) hits.push({ file, line: i + 1, text: lines[i].trim().slice(0, 90), why });
+  for (const { re, why } of BANNED) {
+    // 공백을 건너뛰며 찾도록 각 금지 정규식을 전역으로 다시 만든다.
+    const g = new RegExp(re.source, "g");
+    let m;
+    while ((m = g.exec(flat)) !== null) {
+      if (m.index === g.lastIndex) g.lastIndex++;
+      const line = lineOf(m.index);
+      // 면제 검사는 **그 문장이 놓인 맥락**(앞뒤 200자)에서 본다 — 출처·성질어가
+      // 줄바꿈 건너편에 있어도 정당한 고지는 통과시켜야 한다.
+      const ctx = flat.slice(Math.max(0, m.index - 200), m.index + 200);
+      if (EXEMPT.some((ex) => ex.test(ctx))) continue;
+      if (hits.some((h) => h.line === line && h.why === why)) continue;
+      const rawLine = (src.split(String.fromCharCode(10))[line - 1] ?? "").trim();
+      hits.push({ file, line, text: rawLine.slice(0, 90) || m[0], why });
     }
   }
-  return hits;
+  return hits.sort((a, b) => a.line - b.line);
 }
 
 /**

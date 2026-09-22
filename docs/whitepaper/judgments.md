@@ -261,8 +261,9 @@ node scripts/fix-placeholder-addresses.mjs --out=<절대경로>
 node scripts/collectors/flag-shared-coords.mjs --from=<그 덤프> --apply
 ```
 
-**손님에게는** 상세 화면 교통 카드에 한 줄 경고로 나타난다(세션561) — "아직 준공 전이라 위치가
-정확하지 않을 수 있습니다". 40곳 전부 교통 필드가 있어 카드가 안 떠서 경고를 놓치는 곳은 **0곳**.
+> ⚠️ **옛 기록(세션561)** — 여기 "상세 화면 교통 카드에 한 줄 경고로 나타난다(40곳 전부 교통
+> 필드 보유)" 가 적혀 있었다. **세션563에 그 경고를 뺐다**(위 "손님에게는 글로 알리지 않는다" 절).
+> 되돌리지 말 것 — `scripts/audit-customer-facing-excuses.mjs` 가 CI 에서 막는다.
 
 
 ### `avgMaintenanceCost` — 매일 도는 네이버가 월 1회 공식 API 값을 덮어쓴다 (확인됨)

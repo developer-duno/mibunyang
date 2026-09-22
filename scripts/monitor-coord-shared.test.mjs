@@ -66,8 +66,20 @@ describe("checkCoordSharedDrift — 언제 알리고 언제 조용한가", () =>
     expect(checkCoordSharedDrift(rows, { now: NOW })).toEqual([]);
   });
 
-  it("줄어든 것은 정상이다 — 준공되면 저절로 풀린다", () => {
+  it("많이 줄면 **기준을 낮추라고** 알린다 — 잘할수록 눈머는 것을 막는다", () => {
+    // 하드코딩 상한이라, 40곳으로 줄어든 뒤 통로가 다시 뚫려 55곳이 돼도 56 미만이라 침묵한다.
+    // 그래서 줄어든 것 자체를 "기준 갱신하라" 로 알린다(세션563 적대검증 🟠).
     const rows = [apt({ completion: "202912" })];
+    const issues = checkCoordSharedDrift(rows, { now: NOW });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].at).toBe("shrank:1");
+    expect(issues[0].detail).toMatch(/COORD_SHARED_BASELINE/);
+  });
+
+  it("기준 근처(여유 안)면 조용하다 — 한두 곳 흔들림에 울지 않는다", () => {
+    const rows = Array.from({ length: COORD_SHARED_BASELINE - 1 }, (_, i) =>
+      apt({ id: `ap-${i}`, completion: "202912" })
+    );
     expect(checkCoordSharedDrift(rows, { now: NOW })).toEqual([]);
   });
 
@@ -82,8 +94,9 @@ describe("checkCoordSharedDrift — 언제 알리고 언제 조용한가", () =>
   });
 
   it("(B) 준공일이 지났는데 안 풀렸으면 알린다 — 이제는 고칠 수 있다", () => {
+    // 표본이 작아 "기준을 낮추라"(shrank) 도 함께 난다 — (B) 만 골라 본다.
     const rows = [apt({ name: "지난단지", completion: "202401" }), apt({ id: "ap-2", completion: "202912" })];
-    const issues = checkCoordSharedDrift(rows, { now: NOW });
+    const issues = checkCoordSharedDrift(rows, { now: NOW }).filter((i) => String(i.at).startsWith("past:"));
     expect(issues).toHaveLength(1);
     expect(issues[0].detail).toMatch(/준공일이 지난/);
     expect(issues[0].detail).toMatch(/지난단지/); // 어느 단지인지 알려준다
@@ -95,7 +108,9 @@ describe("checkCoordSharedDrift — 언제 알리고 언제 조용한가", () =>
       apt({ id: "b", coord_shared: null, completion: "202401" }),
       apt({ id: "c", coord_shared: "true", completion: "202401" }),
     ];
-    expect(checkCoordSharedDrift(rows, { now: NOW })).toEqual([]);
+    // coord_shared 가 0곳이므로 "기준을 낮추라"(shrank:0) 만 나고, (A)(B) 는 안 난다.
+    const issues = checkCoordSharedDrift(rows, { now: NOW });
+    expect(issues.filter((i) => /^(grew|past):/.test(String(i.at)))).toEqual([]);
   });
 
   it("두 경보는 함께 날 수 있다 — 늘었고 그중 준공도 지났다", () => {

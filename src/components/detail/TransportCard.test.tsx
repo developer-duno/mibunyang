@@ -112,13 +112,18 @@ describe("좌표 자리표시 경고 — 일부러 두지 않는다 (세션563)"
   // 데이터 문제이지 손님이 감당할 일이 아니다. **다시 들어오면 이 검사가 빨간불이 된다.**
   const WARN = /위치가 정확하지 않을 수 있습니다/;
 
+  // ⚠️ "없다" 를 단언하는 테스트는 **컴포넌트가 아예 안 그려져도 통과**한다(세션563 적대검증 🟠:
+  //    본문 첫 줄에 return null 을 넣는 뮤테이션에 이 2건이 초록이었다). 그래서 같은 render 결과에
+  //    **양성 앵커**(카드가 실제로 그려졌다는 증거)를 함께 단언한다.
   it("coordShared 가 true 여도 손님용 경고 문구가 없다", () => {
     render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
+    expect(screen.getByText("교통 상세")).toBeTruthy(); // 양성 앵커 — 카드가 그려졌다
     expect(screen.queryByText(WARN)).toBeNull();
   });
 
   it("경고용 표식(data-field=coordShared)도 남아 있지 않다", () => {
     const { container } = render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
+    expect(screen.getByText("교통 상세")).toBeTruthy(); // 양성 앵커
     expect(container.querySelector('[data-field="coordShared"]')).toBeNull();
   });
 });
