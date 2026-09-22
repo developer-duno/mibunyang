@@ -35,12 +35,26 @@ const SHADOW = "rgba(0,0,0,0.22)";
  *
  * 좌표 불변식: 그림자 최하단 ≤ H, 꼬리 끝점 y == H(= MarkerImage offset.y, 핀 끝이 좌표에 꽂힘).
  * stroke 가 SVG 밖으로 잘리지 않게 본체 rect 는 x=1, width=W-2(stroke 절반 0.75/1.25 < 1 여백).
+ *
+ * `coordShared=true` 면 **흰 테두리를 점선으로** 바꾼다(세션562). 좌표를 남의 단지와 공유하는
+ * 행 = 지오코딩 자리표시 의심이라 **핀이 실제 단지가 아닌 곳(구청 등)에 꽂혀 있을 수 있다**.
+ * 거리 숫자는 "참고값"으로 넘길 수 있지만 **지도 위치는 손님이 사실로 믿는다** — 그래서 표시한다.
+ * ⚠️ **색(gradeColor)은 바꾸지 않는다.** 등급색을 건드리면 손님이 점수를 오해한다.
+ * ⚠️ 표시가 없는 핀을 "정확하다"고 말하지 않는다 — 긍정 표시는 두지 않는다(TransportCard 와 같은 원칙).
  */
-export function buildMarkerSvg(total: number, gradeColor: string, priceLabel: string, selected = false): MarkerSvg {
+export function buildMarkerSvg(
+  total: number,
+  gradeColor: string,
+  priceLabel: string,
+  selected = false,
+  coordShared = false
+): MarkerSvg {
   if (priceLabel) {
     const { w, h } = selected ? MARKER_WITH_PRICE_SEL : MARKER_WITH_PRICE;
     const sw = selected ? 2.5 : 1.5; // stroke-width
     const inset = selected ? 1.5 : 1; // stroke 절반보다 큰 여백
+    // 좌표 의심 = 흰 테두리를 점선으로. 색·크기·좌표 불변식은 그대로 둔다(위 주석).
+    const dash = coordShared ? ` stroke-dasharray="4 3"` : "";
     const cx = w / 2;
     const bodyH = h - (selected ? 9 : 8); // 본체 아래 꼬리 높이 8~9px
     const tailHalf = selected ? 6 : 5;
@@ -50,7 +64,7 @@ export function buildMarkerSvg(total: number, gradeColor: string, priceLabel: st
     const yPrice = bodyH * 0.74;
     // 그림자: 본체와 같은 둥근 사각을 1.5px 아래로(최하단 = bodyH+1.5 ≤ H 보장 — bodyH=h-8 이라 +1.5 < h).
     const shadow = `<rect x="${inset}" y="${1 + 1.5}" width="${w - inset * 2}" height="${bodyH}" rx="10" fill="${SHADOW}"/>`;
-    const body = `<rect x="${inset}" y="1" width="${w - inset * 2}" height="${bodyH}" rx="10" fill="${gradeColor}" stroke="#fff" stroke-width="${sw}"/>`;
+    const body = `<rect x="${inset}" y="1" width="${w - inset * 2}" height="${bodyH}" rx="10" fill="${gradeColor}" stroke="#fff" stroke-width="${sw}"${dash}/>`;
     // 꼬리: 본체 하단에서 H(핀 끝점)까지. 본체와 동색 fill만(이음새 stroke 겹침 회피). 본체 안쪽으로 1px 겹쳐 이음새 숨김.
     const tail = `<polygon points="${cx - tailHalf},${bodyH - 1} ${cx},${h} ${cx + tailHalf},${bodyH - 1}" fill="${gradeColor}"/>`;
     const textScore = `<text x="${cx}" y="${yScore}" text-anchor="middle" font-size="${fsScore}" font-weight="700" fill="#fff" dy="0.35em">${total}점</text>`;
@@ -73,7 +87,11 @@ export function buildMarkerSvg(total: number, gradeColor: string, priceLabel: st
   const tailW = r * 0.7;
   const drop = `M${cx - tailW},${cyCircle + r * 0.5} Q${cx},${tipY} ${cx + tailW},${cyCircle + r * 0.5}`;
   const shadow = `<ellipse cx="${cx}" cy="${tipY - 1}" rx="${r * 0.5}" ry="2" fill="${SHADOW}"/>`;
-  const body = `<circle cx="${cx}" cy="${cyCircle}" r="${r}" fill="${gradeColor}" stroke="#fff" stroke-width="${sw}"/><path d="${drop}" fill="${gradeColor}" stroke="#fff" stroke-width="${sw}" stroke-linejoin="round"/>`;
+  // 물방울 핀은 **원 테두리에만** 점선을 준다. 꼬리(drop path)에도 주면 원과 겹치는 구간에서
+  // 점선이 이중으로 얹혀 **물방울 모양이 뭉개진다**(세션562: 3배 확대 렌더로 눈으로 확인).
+  // 테스트는 `stroke-dasharray` 유무만 보므로 이 결함을 못 잡는다 — 그래서 그려 봐야 한다.
+  const dash2 = coordShared ? ` stroke-dasharray="3 2.5"` : "";
+  const body = `<circle cx="${cx}" cy="${cyCircle}" r="${r}" fill="${gradeColor}" stroke="#fff" stroke-width="${sw}"${dash2}/><path d="${drop}" fill="${gradeColor}" stroke="#fff" stroke-width="${sw}" stroke-linejoin="round"/>`;
   const inner = `<circle cx="${cx}" cy="${cyCircle}" r="${r * 0.62}" fill="#fff"/>`;
   const text = `<text x="${cx}" y="${cyCircle}" text-anchor="middle" font-size="${selected ? 13 : 11}" font-weight="700" fill="${gradeColor}" dy="0.35em">${total}</text>`;
   return {

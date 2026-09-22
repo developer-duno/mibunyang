@@ -34,6 +34,10 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
 
   const load = useCallback(
     async (signal: AbortSignal) => {
+      // ⚠️ 캐시 키에 `apiPath` 가 없다. 지금은 안전하다 — 호출자(useLoanRates·useRentLoanRates)가
+      //    **각자 자기 cacheRef 를 만들고** apiPath 를 상수로 고정하므로 캐시 범위 자체가 갈린다.
+      //    그러나 호출자가 apiPath 를 인자로 열거나 cacheRef 를 공유하는 순간 **다른 종류의 금리가
+      //    섞인다**(세션562 전수검사에서 확인한 잠재 결함). 그때는 키에 apiPath 를 넣어야 한다.
       const cached = getCached(cacheRef);
       if (cached) {
         setRates(cached as FinlifeRate[]);

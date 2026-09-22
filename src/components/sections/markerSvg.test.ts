@@ -113,4 +113,53 @@ describe("마커 그림의 결정 인자 (KakaoMapView MarkerImage 캐시의 전
     const sel = buildMarkerSvg(72, "#16A34A", "5.2억", true);
     expect(sel.svg).not.toBe(normal.svg);
   });
+
+  // ── 좌표 의심 핀 (세션562) ─────────────────────────────────────────────
+  // 좌표를 남의 단지와 공유하는 행(`coordShared`)은 지오코딩 자리표시 의심이라
+  // 핀이 실제 단지가 아닌 곳(구청 등)에 꽂혀 있을 수 있다. 거리 숫자와 달리
+  // **지도 위치는 손님이 사실로 믿기 때문에** 점선 테두리로 알린다.
+  describe("coordShared — 좌표 의심 핀은 테두리가 점선", () => {
+    it("가격 있는 핀: coordShared 면 점선, 아니면 실선", () => {
+      const normal = buildMarkerSvg(72, "#16A34A", "5.2억", false, false);
+      const shared = buildMarkerSvg(72, "#16A34A", "5.2억", false, true);
+      expect(normal.svg).not.toContain("stroke-dasharray");
+      expect(shared.svg).toContain('stroke-dasharray="4 3"');
+    });
+
+    it("가격 없는 물방울 핀도 점선이 붙는다 — 단 원 테두리에만", () => {
+      const normal = buildMarkerSvg(72, "#16A34A", "", false, false);
+      const shared = buildMarkerSvg(72, "#16A34A", "", false, true);
+      expect(normal.svg).not.toContain("stroke-dasharray");
+      // 대시 패턴 값은 가격핀과 다르다(작은 핀이라 촘촘하게) — 유무만 본다.
+      expect(shared.svg).toMatch(/stroke-dasharray="[\d.\s]+"/);
+      // ⚠️ 꼬리(path)에는 점선을 주지 않는다. 주면 원과 겹치는 구간에서 점선이 이중으로
+      //    얹혀 **물방울 모양이 뭉개진다**(세션562: 3배 확대 렌더로 눈으로 확인).
+      //    테스트가 "유무"만 보면 이 결함을 못 잡으므로 여기서 path 를 따로 단언한다.
+      const pathTag = shared.svg.match(/<path[^>]*>/)?.[0] ?? "";
+      expect(pathTag, "물방울 꼬리에 점선이 붙으면 모양이 깨진다").not.toContain("stroke-dasharray");
+    });
+
+    it("선택 강조본도 점선을 유지한다 — 눌렀다고 경고가 사라지면 안 된다", () => {
+      const sel = buildMarkerSvg(72, "#16A34A", "5.2억", true, true);
+      expect(sel.svg).toContain('stroke-dasharray="4 3"');
+    });
+
+    it("색(등급색)은 바꾸지 않는다 — 점수를 오해하게 만들면 안 된다", () => {
+      const shared = buildMarkerSvg(72, "#16A34A", "5.2억", false, true);
+      expect(shared.svg).toContain("#16A34A");
+    });
+
+    it("크기·좌표 불변식이 유지된다 — 핀 끝이 좌표에 그대로 꽂힌다", () => {
+      const normal = buildMarkerSvg(72, "#16A34A", "5.2억", false, false);
+      const shared = buildMarkerSvg(72, "#16A34A", "5.2억", false, true);
+      expect(shared.w).toBe(normal.w);
+      expect(shared.h).toBe(normal.h);
+    });
+
+    it("SVG 가 달라진다 — 캐시 키에 coordShared 가 반드시 들어가야 하는 근거", () => {
+      const a = buildMarkerSvg(72, "#16A34A", "5.2억", false, false);
+      const b = buildMarkerSvg(72, "#16A34A", "5.2억", false, true);
+      expect(b.svg).not.toBe(a.svg);
+    });
+  });
 });
