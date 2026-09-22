@@ -1644,7 +1644,7 @@ describe("scoreRisk — naverSellCount 는 점수에 영향을 주지 않는다 
   it("매물이 아무리 많아도 거래량 점수가 같다 (페널티를 되살리면 red)", () => {
     const base = scoreRisk(makeApt({ naverSellCount: null }));
     const flood = scoreRisk(makeApt({ naverSellCount: 566 })); // 실측 최대
-    const warn = scoreRisk(makeApt({ naverSellCount: 31 }));   // 옛 경계 30 바로 위
+    const warn = scoreRisk(makeApt({ naverSellCount: 31 })); // 옛 경계 30 바로 위
     const b = base.subs.find((s) => s.name === "거래량")?.score ?? 0;
     expect(flood.subs.find((s) => s.name === "거래량")?.score ?? 0).toBe(b);
     expect(warn.subs.find((s) => s.name === "거래량")?.score ?? 0).toBe(b);
