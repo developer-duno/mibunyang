@@ -40,7 +40,7 @@ CREATE TABLE IF NOT EXISTS air_station_annual (
 );
 
 COMMENT ON TABLE air_station_annual IS
-  '에어코리아 최종확정 측정자료(data.go.kr 15122830) 기반 측정소별 3년 평균. 연 1회 수동 갱신 — scripts/collectors/air-annual-aggregate.mjs';
+  '에어코리아 최종확정 측정자료(data.go.kr 15122830) 기반 측정소별 3년 평균. 연 1회 수동 갱신 — scripts/air-annual-aggregate.py + scripts/collectors/air-annual-load.mjs';
 COMMENT ON COLUMN air_station_annual.station_name IS
   '측정소명. apartments.air_quality->>''station'' 과 같은 표기라 그대로 조인한다(세션559 실측 97.4% 일치)';
 COMMENT ON COLUMN air_station_annual.sample_hours IS
