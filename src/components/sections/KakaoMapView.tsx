@@ -156,7 +156,14 @@ export const KakaoMapView = memo(function KakaoMapView({
       return; // stale/filtered 교체로 사라진 마커 — no-op
     }
     const { apt, res } = selected;
-    const { w, h, svg } = buildMarkerSvg(res.total, gr(res.total).c, shortPrice(apt.price), true);
+    // 강조 이미지도 점선을 유지한다 — 선택했다고 경고가 사라지면 안 된다(세션562).
+    const { w, h, svg } = buildMarkerSvg(
+      res.total,
+      gr(res.total).c,
+      shortPrice(apt.price),
+      true,
+      apt.coordShared === true
+    );
     marker.setImage(
       new kakao.MarkerImage(`data:image/svg+xml,${encodeURIComponent(svg)}`, new kakao.Size(w, h), {
         offset: new kakao.Point(w / 2, h),
@@ -310,13 +317,16 @@ export const KakaoMapView = memo(function KakaoMapView({
       if (!apt.lat || !apt.lng) continue;
       const pos = new kakao.LatLng(apt.lat, apt.lng);
       const priceLabel = shortPrice(apt.price);
-      // 그림을 정하는 값은 이 둘뿐 — 같은 키면 이미 만든 MarkerImage 를 그대로 쓴다.
+      // 그림을 정하는 값은 이 셋뿐 — 같은 키면 이미 만든 MarkerImage 를 그대로 쓴다.
       // (res.total 은 engine.ts·useDataPipeline 이 Math.round 로 0~100 정수를 보장한다)
-      const imgKey = `${res.total}|${priceLabel}`;
+      // ⚠️ `coordShared` 를 키에 **반드시** 넣는다(세션562). 빼면 같은 점수·가격인 단지끼리
+      //    캐시를 공유해 **좌표가 멀쩡한 단지에 점선 테두리가 붙는다** — 경고가 거짓이 된다.
+      const coordShared = apt.coordShared === true;
+      const imgKey = `${res.total}|${priceLabel}|${coordShared ? "cs" : ""}`;
       let normalImage = markerImgCacheRef.current.get(imgKey) as any;
       if (!normalImage) {
         const grade = gr(res.total);
-        const { w, h, svg } = buildMarkerSvg(res.total, grade.c, priceLabel);
+        const { w, h, svg } = buildMarkerSvg(res.total, grade.c, priceLabel, false, coordShared);
         normalImage = new kakao.MarkerImage(`data:image/svg+xml,${encodeURIComponent(svg)}`, new kakao.Size(w, h), {
           offset: new kakao.Point(w / 2, h),
         });
@@ -514,6 +524,51 @@ export const KakaoMapView = memo(function KakaoMapView({
       )}
       {/* 현위치 버튼 */}
       {!compact && ready && navigator.geolocation && <MyLocationButton onClick={handleMyLocation} />}
+      {/*
+        좌표 의심 핀 안내 (세션562) — 점선 테두리가 무슨 뜻인지 지도 위에서 알려 준다.
+        점 보기 지도에는 범례가 없어(색칠 지도만 있다) 점선만 보이면 손님이 뜻을 모른다.
+
+        ⚠️ **점선 핀이 실제로 화면에 있을 때만** 띄운다. 늘 띄우면 2,457곳 중 40곳(1.6%)
+           때문에 나머지 손님의 화면이 지저분해진다.
+        ⚠️ 색칠 지도(choropleth)에서는 핀을 안 그리므로 띄우지 않는다.
+        ⚠️ "표시가 없으면 정확하다"는 **긍정 문구는 두지 않는다**(TransportCard 와 같은 원칙) —
+           표시가 안 달린 단지까지 위치를 보증하게 되기 때문이다.
+      */}
+      {!compact && mode !== "choropleth" && filtered.some((f) => f.apt.coordShared === true) && (
+        <div
+          role="note"
+          style={{
+            position: "absolute",
+            bottom: 12,
+            left: 12,
+            background: "rgba(255,255,255,0.94)",
+            borderRadius: 8,
+            padding: "6px 8px",
+            fontSize: F.micro,
+            fontWeight: 600,
+            color: C.muted,
+            boxShadow: "0 1px 4px rgba(0,0,0,0.12)",
+            border: `1px solid ${C.border}`,
+            display: "flex",
+            alignItems: "center",
+            gap: 6,
+            maxWidth: 220,
+            zIndex: 10,
+          }}
+        >
+          <span
+            aria-hidden
+            style={{
+              width: 12,
+              height: 12,
+              borderRadius: 3,
+              border: `1.5px dashed ${C.muted}`,
+              flexShrink: 0,
+            }}
+          />
+          점선 핀은 준공 전이라 위치가 정확하지 않을 수 있습니다
+        </div>
+      )}
       {/* 좌상단: 결과수 + 모드 토글 */}
       <div style={{ position: "absolute", top: 8, left: 8, display: "flex", gap: 6, zIndex: 10 }}>
         <div
