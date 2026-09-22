@@ -47,22 +47,35 @@
     **이미 해결된 것을 기다리라고** 적힐 뻔했다.
 - 🟠 **`notification_logs` 표 생성** — 사장님이 Supabase Dashboard 에서 SQL 1회. 안내문 = `artifacts/notification-logs-적용안내.md`.
   **구독자 0명이라 급하지 않다.** CLI 는 다른 조직 로그인이라 마이그레이션은 Dashboard 만(세션489 확인).
-- ★★ **다음 세션 주 작업 — 공유 DB 전체 나노정밀조사** (사장님 지정, 세션556).
-  **범위 실측 완료(2026-09-22): 22개 표 · 약 300만 행.**
-  `articles` 1,536,657 · `trades` 929,442 · `complex_price_history` 396,214 · `complexes` 64,162 ·
-  `applyhome_unit_supply` 15,906 · `prices` 13,716 · `unsold_history` 4,915 · `officetel_unit_supply` 3,211 ·
-  `apartments`/`schools`/`transport`/`infra`/`trade_stats` 각 3,068 · `regions` 2,359 ·
-  `presale_schedule_official` 1,947 · `collector_runs` 1,496 · `rental_unit_supply` 1,012 ·
-  `officetel_presale_schedule` 620 · `rental_schedule_official` 186 · `builders` 32 ·
-  `air_quality_stations` **8** · `consults` 0.
-  - ⚠️ **`data-audit.mjs` 는 `apartments_flat` VIEW **하나만** 본다**(세션556 확인). 그 VIEW 가 조인하는 것은
-    `apartments`·`prices`·`infra`·`schools`·`transport`·`builders`·`regions`·`trade_stats`·`applyhome_events` **뿐**이라,
-    **나머지 13개 표는 정기 감사를 아예 안 받는다** — `articles`(153만) · `complexes`(6.4만) ·
-    `complex_price_history`(39.6만) · 청약홈·오피스텔·임대 6표 · `air_quality_stations` · `unsold_history` · `trades`.
-    이게 이번 조사의 **출발점**이다.
-  - 조사 축 4개: ①소유권(어느 레포가 쓰고 읽나) ②채움률(컬럼별 NULL, sentinel 주의) ③손님 도달(화면·점수에 닿나) ④신선도(그 수집기 주기 안인가)
-  - 먼저 읽을 것: `~/.claude/projects/f--mibunyang/memory/reference_shared_db_ownership_probe.md` · `supabase/CLAUDE.md`(세션556 전면 개정)
-  - ⚠️ 큰 표는 **고유키 커서**(`selectAll(fn, sb, 'id')`) — `.range()` 반복은 정렬 없으면 **에러 없이 행을 잃는다**(세션514: 거래량이 원본의 8%)
+- ✅ **완료(세션557, 2026-09-22) — 공유 DB 전체 나노정밀조사.** 실측 자료 = [docs/audits/2026-09-22-shared-db-ownership.md](../docs/audits/2026-09-22-shared-db-ownership.md).
+  - ★ **범위가 틀렸다 — 22개 표가 아니라 46개 표 · 약 355만 행.** 빠졌던 큰 표:
+    `complex_pyeong_details` 294,535 · `complex_official_prices` 139,752 · `crawl_jobs` 56,569 ·
+    `kapt_complex_map` 14,747 · `kapt_management_costs` 9,521 · `article_price_history` 6,099 ·
+    `market_stats_history` 4,659 · `dev_plans` 2,250 · `subway_stations` 1,099 등.
+    예전 수치가 틀렸던 이유 = `.from("x")` 패턴 하나로만 셌기 때문(자매는 `__tablename__`,
+    우리도 `upsertBatch("x", …)` 처럼 표 이름을 함수 인자로 넘기는 자리가 있다).
+  - **손님에게 닿는 표는 14개뿐**이고, 그 14개는 **건강하다** — 100% 빈 컴럼 20개를
+    전부 추적했는데 진짜 결함 0건(전부 이미 처리됐거나 화면에 안 닿는다).
+    구조 무결성도 이상 없음(고아 행 0 · 빈 외래키 0). 신선도도 이상 없음
+    (`regions` 83일·`builders` 48일·`market_stats_history` 17일 전부 정상 주기 — `recorded_at` 은
+    "자료의 기준월"이지 수집 시각이 아니다).
+  - 🔴 **찾은 결함 — 자매 임대 표 15칸이 전수 0%**(`rental_unit_supply` 8 · `rental_schedule_official` 7).
+    그 빈 값이 자매 손님에게 그대로 직렬화돼 나간다(`mb_serializers.rental_unit_supply_to_dict`).
+    라이브 API 100행 전수로 원인 **2종** 확정: ①필드명 6개가 실제 응답과 다름
+    (`EXCLU_AR`→**`EXCLUSE_AR`** · `GNRL_HSHLDCO`→**`GNSPLY_HSHLDCO`** · `HOUSE_TY`→**`TP`** 등)
+    ②일정 4칸(접수·당첨발표·계약·입주월)은 API 가 주는데 **매핑 코드가 아예 없다**.
+    사장님 결정(2026-09-22) = 자매 레포까지 직접 고쳐 PR · 공급금액을 새 칸으로 받고
+    월세·보증금은 비워둔다(API 미제공) · 일정 4칸도 이번 PR 에 포함.
+  - 🟢 **`complexes.has_pool`·`corridor_type` 이 64,162행 전수 0%** — 우리 `sync-naver-complex` 가
+    매 회차 읽어오지만 값이 없어 보충이 안 된다. **손님 피해는 없다**(주 출처 건축HUB 생존).
+    데이터는 자매가 **`kapt_complex_map`** 으로 옮겨 있다(14,747행 100% 채움).
+    다만 이름 정확일치로 되찾을 수 있는 단지는 **45곳**(빈칸 963곳의 4.7%)뿐이라
+    이득이 작고 자매 표 의존이 하나 늘어난다 — 후순위.
+  - ✅ **오피스텔 5칸 0% 는 결함이 아니다** — 청약홈 오피스텔 API 가 그 필드를 안 준다(실측).
+    `top_amount` 는 자매 코드가 명시적으로 `None` 을 넣는다.
+  - ⚠️ **남은 사각** — `data-audit` 은 VIEW 하나만 보고 `monitor-collectors` 는 *수집기 상태*만 본다.
+    "수집기는 도는데 엉뚱한 값을 넣는다"를 아무도 못 잡는다 — 이번 자매 결함이 그 틈에서 나왔다.
+    표 내용을 보는 감시를 둘지는 미결정(사장님 판단 사항).
 - ~~**오늘** — 세종 VIEW SQL 적용~~ ✅ **완료(세션551, 2026-09-20 21:4x KST, 사장님 Dashboard)**. 회귀 0 확인(총 2,443행 · 비세종 fertilityRate 2,408 / housingPrice 2,393 / doctorsPer1k 2,408 / hospitalBedsPer1k 2,406 전부 불변) + 세종 35곳 fertility·housing 0→35. `data-audit` 세종 수치를 다시 기준선으로 써도 된다.
 - ~~**09-21(월) 05:30** — `lhzone-status` 첫 자동 발화~~ ✅ **완료(세션555 실측)**: 2026-09-20T20:30Z(=09-21 05:30 KST) `success` · `ok=1144 fail=0` — 08-21 회차와 동일한 수치다.
 - ~~**09-21(월) 08:00 이후** — 네이버 파이프라인 완주 확인 / `--max-minutes` 도입~~ ✅ **해소(세션555 실측)**: `--max-minutes` 는 **이미 도입돼 있다**(`naver-collect.py:372` 기본 90, `run-naver-local.bat:37` 이 `--max-minutes=120` 으로 호출). 그래서 `naver-collect` 가 매 회차 정확히 120분에 `partial` 로 끊기는 것은 **고장이 아니라 설계**다 — bat 주석 그대로 *"1단계를 제한해 2~6단계가 항상 돌도록"*, 남은 단지는 다음 실행이 resume 한다(`naver-collect.py:496`). 최근 5회 전부 `partial`/120분/`fail=0`(ok 7,603~13,531, skip 409~469).
