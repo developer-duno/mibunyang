@@ -11,7 +11,7 @@
  *   node scripts/collectors/sync-naver-complex.mjs              (Supabase UPDATE)
  *   node scripts/collectors/sync-naver-complex.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll, isPlausibleExclRatio, canUseComplexForExclRatio, clampUnsoldRate } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll, isPlausibleExclRatio, canUseComplexForExclRatio } from "./_shared.mjs";
 
 /** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null; real_estate_type_name: string | null }} ComplexRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
@@ -607,7 +607,7 @@ export async function main() {
           // 미분양 세대수로 기록했다. 그 결과:
           //   · 1,989곳 중 **1,157곳(58%)** 의 `unsold` 가 `naver_sell_count` 와 완전히 같았다
           //   · **81곳**은 미분양이 총세대수보다 많았다(세종더샵예미지 L4블록: 1세대인데 18)
-          //   · 미분양률 최대 **2,500%**
+          //   · 미분양률 최대 **11,800%**(익산 제일풍경채 어바니티 = 1세대에 118)
           // 즉 다 팔린 단지라도 집주인 여럿이 이사 가려고 매물을 내놓으면 '미분양'이 되고,
           // 그 값이 scoreRisk 의 안전 점수(가중치 0.14)를 깎았다. 매물은 매일 갈리는
           // '오늘의 매대'지 그 단지의 지속적 성질이 아니다.

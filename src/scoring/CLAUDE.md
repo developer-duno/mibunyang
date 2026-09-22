@@ -518,7 +518,7 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | noise | scoreLocation noiseSc | null → NOISE_UNKNOWN_SCORE(중립 15점, 65dB 구간과 동일) (세션508) |
 | builderDebtRatio | scoreRisk finSc | null → BUILDER_DEBT_UNKNOWN_ADJ(중립 +10, "주의" 구간과 동일) (세션508) |
 | quakeDesign | scoreProduct quakeSc | **false(확인된 미적용)일 때만 0점**, null(모름)·true 5점 (세션508) |
-| naverSellCount | scoreRisk liqSc | 50건+ → +5, 30건+ → +2 페널티 |
+| naverSellCount | **점수 미사용** (세션559 페널티 제거) | 화면 참고값("오늘 나와 있는 매물 수")으로만. 매일 갈리는 값에 절대 임계를 걸어 경계 근처 325곳이 흔들렸고, 규모 보정하면 `unsoldRate` 와 중복이라 되살리지 않는다 |
 | presaleType | scoreRisk finSc | "공공" 포함 시 -15 보너스 |
 | housingSupplyLevel | scoreRisk supSc **주 지표** | 96%↓ 5 / 101%↓ 25 / 104%↓ 50 / 초과 75, null 75 |
 | supplyRatio (인허가율) | scoreRisk supSc 보정 | 2.2%+ → +5, 1.5%- → -3, null 무보정 |

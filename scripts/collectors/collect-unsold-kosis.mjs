@@ -133,7 +133,7 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
  *
  * 매물이 하나라도 있는 단지는 **공식 통계를 영원히 못 받았다**. 실측(세션559):
  * 1,989곳 중 1,157곳(58%)의 `unsold` 가 `naver_sell_count` 와 동일했고,
- * 81곳은 미분양이 총세대수를 넘었다(세종더샵예미지 L4블록 = 1세대인데 18, 미분양률 최대 2,500%).
+ * 81곳은 미분양이 총세대수를 넘었다(세종더샵예미지 L4블록 = 1세대인데 18, 미분양률 최대 11,800%(익산 제일풍경채 어바니티 = 1세대에 118)).
  *
  * ## 지금 규칙 — 공식만 남긴다
  * · `naver_sell_count` 는 **판정에 쓰지 않는다** — 매물은 미분양이 아니다
@@ -142,14 +142,43 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
  *
  * ⚠️ `units <= 1` 은 비례배분의 분모가 될 수 없어 제외한다(옛 조건 유지).
  *
- * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null }} apt
+ * ## ⚠️ 세션559 말미 정정 — 첫 판에 1,090곳이 영구 보존되고 있었다
+ *
+ * 처음엔 "총세대수를 넘는 것만 오염"으로 봤는데, **매물 유래 값은 대부분 세대수 이내**라
+ * `unsold <= units` 조건에 걸려 **"유효한 기존 값"으로 분류돼 영원히 안 덮어써졌다.**
+ * 적대검증이 실제로 돌려 확인: 매물 유래 의심 1,090곳 중 **1,090곳(100%)을 건너뛰었다.**
+ * 그중 **196곳은 미분양률 15% 초과**로 안전 점수를 깎는 중이었다
+ * (두산위브 트리니뷰 구명역: **31세대인데 미분양 30**(=매물 30건) = 96.8%).
+ *
+ * PR #547 본문에 "1,090곳은 KOSIS 가 다음 회차에 덮어쓴다"고 적은 것은 **사실이 아니었다.**
+ *
+ * ## 지금 규칙
+ * · `naver_sell_count` 는 판정에 쓰지 않는다 — **단, 값이 정확히 같으면 매물 유래로 본다**(아래)
+ * · `unsold > units` → 오염값, 덮어쓴다
+ * · **`unsold === naver_sell_count` → 매물 유래, 덮어쓴다** (세션559 말미 추가)
+ * · 나머지 유효한 기존 값(청약홈 단지별 실측)은 존중한다
+ *
+ * ⚠️ **우연 일치 위험**: `unsold` 가 1~3 처럼 작으면 진짜 미분양이 매물 수와 우연히 같을 수 있다
+ * (실측 166곳). 그래도 덮어쓰는 쪽을 택한 이유 — KOSIS 공식 통계가 매물 수보다 정확하므로
+ * 덮어써서 손해 볼 게 없다. 반대로 남겨 두면 매물 수가 미분양으로 계속 행세한다.
+ *
+ * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null; naver_sell_count?: number | null }} apt
  * @returns {boolean} true 면 이 단지는 KOSIS 로 채우지 않는다
  */
 export function shouldSkipKosisFill(apt) {
   if (!apt.region || !apt.gu || !apt.units || apt.units <= 1) return true;
-  // 총세대수를 넘는 미분양은 매물 수가 흘러든 오염값이다 — 덮어쓴다(= 건너뛰지 않는다)
-  if (apt.unsold != null && apt.unsold > 0 && apt.unsold <= apt.units) return true;
-  return false;
+  // ⚠️ `unsold === 0` 은 **"다 팔렸다"는 단지별 실측**이다 — 값 없음이 아니다(세션559 말미 정정).
+  //    옛 코드는 `<= 0` 이라 완판 91곳을 구 단위 추정치로 덮어썼다. 그건 이 수집기가 내세운
+  //    원칙("단지별 실측이 구 단위 비례배분보다 정확하다")과 정면으로 어긋난다.
+  //    ⚠️ 다만 `hideNoUnsold`(기본 켜짐)가 `unsold > 0` 만 목록에 남기므로 이 113곳은
+  //    손님 목록에 안 뜬다 — 그건 "미분양 단지 목록"이라는 화면 성격상 의도된 동작이다.
+  if (apt.unsold == null) return false; // 진짜 값 없음 → 채운다
+  if (apt.unsold === 0) return true;    // 완판 실측 → 존중
+  // 총세대수를 넘는 미분양은 오염값이다 — 덮어쓴다(= 건너뛰지 않는다)
+  if (apt.unsold > apt.units) return false;
+  // 매물 수와 정확히 같으면 매물이 흘러든 것이다 — 덮어쓴다
+  if (apt.naver_sell_count != null && apt.unsold === apt.naver_sell_count) return false;
+  return true; // 그 밖의 유효한 기존 값(청약홈 실측)은 존중
 }
 
 // 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로

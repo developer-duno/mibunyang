@@ -1634,13 +1634,20 @@ describe("scoreRisk — isRegulated DB값 우선", () => {
   });
 });
 
-describe("scoreRisk — naverSellCount 매물과잉 페널티", () => {
-  it("naverSellCount=60 → liqSc 페널티 +5", () => {
+describe("scoreRisk — naverSellCount 는 점수에 영향을 주지 않는다 (세션559 페널티 제거)", () => {
+  // ⚠️ 옛 테스트는 `toBeLessThanOrEqual` 이라 **페널티가 있든 없든 통과**했다.
+  //    이름은 "매물과잉 페널티"인데 기능은 세션559에 삭제돼, 어느 방향으로도 실패하지 않는
+  //    좀비 가드였다(적대검증 실측: 옛 페널티를 되살려도 green, 지운 채로도 green).
+  //    세션555의 "깃발 stub 테스트"와 같은 종류 — 정보량 0인데 이름이 오해를 만든다.
+  //
+  // 이제 **정확히 같음**을 요구한다. 페널티를 되살리면 이 테스트가 red 가 된다.
+  it("매물이 아무리 많아도 거래량 점수가 같다 (페널티를 되살리면 red)", () => {
     const base = scoreRisk(makeApt({ naverSellCount: null }));
-    const flood = scoreRisk(makeApt({ naverSellCount: 60 }));
-    expect(flood.subs.find((s) => s.name === "거래량")?.score ?? 0).toBeLessThanOrEqual(
-      base.subs.find((s) => s.name === "거래량")?.score ?? 0
-    );
+    const flood = scoreRisk(makeApt({ naverSellCount: 566 })); // 실측 최대
+    const warn = scoreRisk(makeApt({ naverSellCount: 31 }));   // 옛 경계 30 바로 위
+    const b = base.subs.find((s) => s.name === "거래량")?.score ?? 0;
+    expect(flood.subs.find((s) => s.name === "거래량")?.score ?? 0).toBe(b);
+    expect(warn.subs.find((s) => s.name === "거래량")?.score ?? 0).toBe(b);
   });
 });
 

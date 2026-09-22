@@ -927,11 +927,15 @@ export const INIT_SALE_TIERS: Tier[] = [
 export const INIT_SALE_HIGH_RISK = 85; // 30% 미만
 export const INIT_SALE_NULL = 40; // 데이터 없음 중립
 
-// === Risk: 매물 과잉 임계값 ===
-export const LISTING_FLOOD_THRESHOLD = 50; // 매물 50건 초과 → +5
-export const LISTING_WARN_THRESHOLD = 30; // 매물 30건 초과 → +2
-export const LISTING_FLOOD_PENALTY = 5;
-export const LISTING_WARN_PENALTY = 2;
+// === Risk: 매물 과잉 임계값 (세션559 제거) ===
+// `scoreRisk.ts` 의 매물 과잉 페널티와 함께 지웠다. 소비처 0건이 된 상수를 남겨 두면
+// 다음 사람이 "이게 왜 안 걸리지"로 헤맨다(글로벌 CLAUDE.md §3 — 내 변경이 만든 고아는 치운다).
+// 되살릴 일이 있으면 git 이력에서: 옛 값은 FLOOD 50건/+5 · WARN 30건/+2 였다.
+// ⚠️ 되살리기 전에 읽을 것 — 그 축이 틀렸던 이유는 임계값이 아니라 **설계**였다:
+//   ① 매물은 매일 새벽 갈린다(경계 근처 325곳이 매물 하나에 흔들림)
+//   ② 절대 개수라 단지 규모를 무시(실측 최대 566건)
+//   ③ 규모 보정(매물÷세대수)을 하면 `unsoldRate` 와 같은 값이라 중복 감점
+//   회전 개월수(매물÷거래량)는 분모가 달라 중복이 아니다 — 새로 만들 거면 그쪽.
 
 // === Risk: 공공분양 재무안전 보너스 ===
 export const PUBLIC_PRESALE_BONUS = -15;
