@@ -314,6 +314,28 @@ describe("shouldSkipKosisFill — 공식 미분양이 매물 수에 밀리지 �
     expect(skip({ unsold: 500, units: 500, region: "경기", gu: "수원시" })).toBe(true); // 경계: 같으면 유효
   });
 
+  it("매물 수와 정확히 같으면 매물 유래이므로 덮어쓴다 (세션559 말미 — 1,090곳이 영구 보존되던 결함)", () => {
+    // 첫 판은 "총세대수 초과만 오염"으로 봤는데, 매물 유래 값은 대부분 세대수 이내라
+    // 1,090곳 전부가 "유효한 기존 값"으로 분류돼 영원히 안 덮어써졌다(적대검증 실측 100%).
+    // 그중 196곳은 미분양률 15% 초과로 안전 점수를 깎는 중이었다
+    // (두산위브 트리니뷰 구명역: 31세대인데 미분양 30 = 매물 30건 = 96.8%).
+    expect(skip({ unsold: 30, units: 31, region: "부산", gu: "북구", naver_sell_count: 30 })).toBe(false);
+    expect(skip({ unsold: 77, units: 80, region: "부산", gu: "부산진구", naver_sell_count: 77 })).toBe(false);
+  });
+
+  it("매물 수와 다르면 청약홈 실측으로 보고 존중한다", () => {
+    // 출처가 다른 값까지 덮으면 단지별 실측(청약홈)을 구 단위 추정치로 갈아치운다
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: 12 })).toBe(true);
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: null })).toBe(true);
+  });
+
+  it("⚠️ 세종은 gu 가 null 이라 이 함수가 통째로 건너뛴다 (별개 구조 문제)", () => {
+    // 실측 7곳(엘리프세종 계열 등)이 매물 유래인데도 안 덮어써진다.
+    // 세종은 구·군이 없어 gu=null 이고, 비례배분 분모(시군구)가 없다.
+    // 이 테스트는 그 한계를 못 박아 다음 사람이 "왜 세종만 안 고쳐지지"로 헤매지 않게 한다.
+    expect(skip({ unsold: 23, units: 660, region: "세종", gu: null, naver_sell_count: 23 })).toBe(true);
+  });
+
   it("비례배분 분모가 될 수 없는 단지는 건너뛴다", () => {
     expect(skip({ unsold: null, units: 1, region: "경기", gu: "수원시" })).toBe(true);
     expect(skip({ unsold: null, units: null, region: "경기", gu: "수원시" })).toBe(true);
@@ -321,7 +343,14 @@ describe("shouldSkipKosisFill — 공식 미분양이 매물 수에 밀리지 �
     expect(skip({ unsold: null, units: 500, region: "경기", gu: null })).toBe(true);
   });
 
-  it("unsold 가 0 이면 값이 없는 것으로 보고 채운다", () => {
-    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시" })).toBe(false);
+  it("unsold === 0(완판 실측)은 존중한다 — 구 추정치로 덮지 않는다 (세션559 말미 정정)", () => {
+    // 옛 코드는 `unsold <= 0` 이라 0 을 "값 없음"으로 보고 **완판 91곳을 구 단위 추정치로 덮어썼다.**
+    // "다 팔렸다(0세대)"는 단지별 실측이고, 이 수집기가 내세운 원칙(단지별 실측 > 구 비례배분)과
+    // 정면으로 어긋났다. 적대검증이 잡았다.
+    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시" })).toBe(true);
+  });
+
+  it("unsold 가 null 이면 진짜 값 없음이므로 채운다 (대조군)", () => {
+    expect(skip({ unsold: null, units: 500, region: "경기", gu: "수원시" })).toBe(false);
   });
 });

@@ -26,7 +26,7 @@
 추출 가능한 재료 (2026-09-22 실측):
 - 수집기 **61개** (`scripts/collectors/*.mjs`)
 - VIEW 컬럼 **124개** (`AS "camelCase"` — 기계어↔중간이름 대응)
-- 화면 항목 **145개** (`fieldMeta.ts` — 사람어 label·단위·표시 형식)
+- 화면 항목 **150개** (`fieldMeta.ts` — 사람어 label·단위·표시 형식)
 - 점수 가중치 (`scoringTiers.ts` 의 `*_WEIGHTS` 상수)
 - 수집 주기 (`.github/workflows/*.yml` cron + `kosis-local-runner.mjs` DAY_TABLE)
 - 채움률·최신 갱신 시각 (DB 실측)
