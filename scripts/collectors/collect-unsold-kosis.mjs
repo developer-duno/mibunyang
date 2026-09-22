@@ -119,6 +119,39 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
   return { estimated, unsoldRate };
 }
 
+/**
+ * KOSIS 공식 미분양 비례배분을 **건너뛸지** 판정 (세션559 신설)
+ *
+ * ## 왜 함수로 뺐나
+ * 옛 코드는 루프 안 인라인 조건 3줄이었고, 그중 두 줄이 **공식 통계를 막고 있었다**:
+ *
+ * ```js
+ * // 옛 코드 — 주석에 '우선순위: 청약홈 > 네이버 > KOSIS' 라고 적혀 있었다
+ * if (apt.unsold != null && apt.unsold > 0) continue;                      // 옛 매물값이 있으면 영영 못 덮음
+ * if (apt.naver_sell_count != null && apt.naver_sell_count > 0) continue;  // 매물이 공식보다 우선
+ * ```
+ *
+ * 매물이 하나라도 있는 단지는 **공식 통계를 영원히 못 받았다**. 실측(세션559):
+ * 1,989곳 중 1,157곳(58%)의 `unsold` 가 `naver_sell_count` 와 동일했고,
+ * 81곳은 미분양이 총세대수를 넘었다(세종더샵예미지 L4블록 = 1세대인데 18, 미분양률 최대 2,500%).
+ *
+ * ## 지금 규칙 — 공식만 남긴다
+ * · `naver_sell_count` 는 **판정에 쓰지 않는다** — 매물은 미분양이 아니다
+ * · `unsold` 가 있어도 **총세대수를 넘으면 오염된 값**이므로 덮어쓴다
+ * · 나머지 유효한 기존 값(청약홈 단지별 실측)은 존중한다 — 구 단위 비례배분보다 정확하다
+ *
+ * ⚠️ `units <= 1` 은 비례배분의 분모가 될 수 없어 제외한다(옛 조건 유지).
+ *
+ * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null }} apt
+ * @returns {boolean} true 면 이 단지는 KOSIS 로 채우지 않는다
+ */
+export function shouldSkipKosisFill(apt) {
+  if (!apt.region || !apt.gu || !apt.units || apt.units <= 1) return true;
+  // 총세대수를 넘는 미분양은 매물 수가 흘러든 오염값이다 — 덮어쓴다(= 건너뛰지 않는다)
+  if (apt.unsold != null && apt.unsold > 0 && apt.unsold <= apt.units) return true;
+  return false;
+}
+
 // 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로
 // 남는 사각 정정 (PR #97 collect-regional-economy 패턴 답습).
 export async function main() {
@@ -261,18 +294,19 @@ export async function main() {
 
     let aptUpdated = 0;
     for (const apt of apartmentsTyped) {
-      // 이미 확인된 값이 있으면 건너뜀 (우선순위: 청약홈 > 네이버 > KOSIS)
-      if (apt.unsold != null && apt.unsold > 0) continue;
-      if (apt.naver_sell_count != null && apt.naver_sell_count > 0) continue;
-      if (!apt.region || !apt.gu || !apt.units || apt.units <= 1) continue;
+      if (shouldSkipKosisFill(apt)) continue;
+      // 판정 함수가 이미 확인했지만 타입 검사기는 그 안을 모른다 — 인덱스로 쓰기 전에 좁힌다.
+      // (cast 로 덮지 않는 이유: 판정 함수의 조건이 나중에 바뀌면 여기가 조용히 깨진다)
+      const { region, gu } = apt;
+      if (!region || !gu) continue;
 
       // 시군구별 미분양 총량 조회
-      const guMap = unsoldByRegionGu[apt.region];
-      const guUnsold = guMap?.[apt.gu] ?? regionTotals[apt.region] ?? null;
+      const guMap = unsoldByRegionGu[region];
+      const guUnsold = guMap?.[gu] ?? regionTotals[region] ?? null;
       if (guUnsold == null || guUnsold <= 0) continue;
 
       // 비례배분
-      const guKey = `${apt.region}::${apt.gu}`;
+      const guKey = `${region}::${gu}`;
       const totalUnitsInGu = unitsByGu[guKey] || apt.units;
       const result = calcProportionalUnsold(guUnsold, apt.units, totalUnitsInGu);
       if (!result) continue;

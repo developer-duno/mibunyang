@@ -282,3 +282,46 @@ describe("regions 조회 배선 — selectAll keyCol", () => {
     expect(src).toMatch(/} catch \(e\) {\s*rErr = /);
   });
 });
+
+describe("shouldSkipKosisFill — 공식 미분양이 매물 수에 밀리지 않는다 (세션559)", () => {
+  /** @type {(a: any) => boolean} */
+  let skip;
+  beforeEach(async () => {
+    ({ shouldSkipKosisFill: skip } = await import("./collect-unsold-kosis.mjs"));
+  });
+
+  it("매물이 많아도 KOSIS 로 채운다 (옛 코드는 naver_sell_count>0 이면 건너뛰었다)", () => {
+    // 이 한 줄이 1,157곳(58%)의 unsold 를 '오늘 네이버 매물 수'로 만든 원인이었다.
+    expect(skip({ unsold: null, units: 500, region: "경기", gu: "수원시" })).toBe(false);
+  });
+
+  it("미분양이 총세대수를 넘으면 오염값이므로 덮어쓴다", () => {
+    // 실측 81곳 — 춘천 파밀리에 리버파크: 15세대인데 미분양 54(=매물 54건)
+    expect(skip({ unsold: 54, units: 15, region: "강원", gu: "춘천시" })).toBe(false);
+    expect(skip({ unsold: 24, units: 5, region: "경기", gu: "의정부시" })).toBe(false);
+  });
+
+  it("⚠️ units<=1 인 오염 단지는 이 함수가 못 고친다 (비례배분 분모가 없다)", () => {
+    // 세종더샵예미지 L4블록: 1세대인데 미분양 18. 분모가 1이라 비례배분을 쓸 수 없어
+    // 여기서는 건너뛴다 — 옛 오염값이 DB 에 남는다. 그건 **일회성 정리 스크립트**가 지운다.
+    // 이 테스트는 그 한계를 명시적으로 박아, 다음 사람이 '왜 안 고쳐지지' 로 헤매지 않게 한다.
+    expect(skip({ unsold: 18, units: 1, region: "세종", gu: "세종시" })).toBe(true);
+  });
+
+  it("유효한 기존 값(청약홈 단지별 실측)은 존중해 건너뛴다", () => {
+    // 단지별 실측이 구 단위 비례배분보다 정확하다 — 총세대수 이하면 그대로 둔다
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시" })).toBe(true);
+    expect(skip({ unsold: 500, units: 500, region: "경기", gu: "수원시" })).toBe(true); // 경계: 같으면 유효
+  });
+
+  it("비례배분 분모가 될 수 없는 단지는 건너뛴다", () => {
+    expect(skip({ unsold: null, units: 1, region: "경기", gu: "수원시" })).toBe(true);
+    expect(skip({ unsold: null, units: null, region: "경기", gu: "수원시" })).toBe(true);
+    expect(skip({ unsold: null, units: 500, region: null, gu: "수원시" })).toBe(true);
+    expect(skip({ unsold: null, units: 500, region: "경기", gu: null })).toBe(true);
+  });
+
+  it("unsold 가 0 이면 값이 없는 것으로 보고 채운다", () => {
+    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시" })).toBe(false);
+  });
+});
