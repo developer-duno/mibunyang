@@ -35,6 +35,18 @@ const TC_S: Record<string, import("react").CSSProperties> = {
   cell: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" },
   label: { fontSize: F.xs, color: C.muted },
   value: { fontSize: F.xs, fontWeight: 600, color: C.text },
+  // 좌표 자리표시 경고 (세션561). 빨강(위험)이 아니라 amber(주의) — 값이 틀렸다는 단정이
+  // 아니라 "그대로 믿지 말라"는 주의라서다.
+  coordWarn: {
+    marginTop: 8,
+    padding: "7px 9px",
+    background: C.amberLight,
+    border: `1px solid ${C.amberBorder}`,
+    borderRadius: 8,
+    fontSize: F.xs,
+    lineHeight: 1.5,
+    color: C.amber,
+  },
 };
 
 /** 필드 1행 — label/value 는 호출부가 리터럴 `apt.<field>` 로 넘긴다(회귀 가드가 소스를 grep 하기 때문). */
@@ -72,6 +84,20 @@ export const TransportCard = memo(function TransportCard({ apt }: { apt: Apt }) 
           ▼
         </span>
       </div>
+      {/*
+        좌표를 남의 단지와 공유하는 행(= 지오코딩 자리표시 의심)에만 뜬다. `coordShared` 는
+        `apartments_flat` VIEW 가 실어 오고, `flag-shared-coords.mjs` 가 채운다(세션561).
+
+        ⚠️ 카드가 **기본 접힘**이라 `{open && …}` 안에 두면 경고가 안 보인다 — 펼치지 않아도
+           보이도록 머리 바로 아래 둔다. 경고를 숨기면 다는 의미가 없다.
+        ⚠️ 값이 없으면(대부분의 단지) 아무것도 그리지 않는다. 표시가 안 달린 단지까지
+           "위치가 정확하다"고 말하지 않기 위해 **긍정 문구는 두지 않는다.**
+      */}
+      {apt.coordShared === true && (
+        <div style={TC_S.coordWarn} role="note" data-field="coordShared">
+          이 단지는 아직 준공 전이라 위치가 정확하지 않을 수 있습니다. 아래 거리는 참고로만 봐 주세요.
+        </div>
+      )}
       {open && (
         <div style={TC_S.body}>
           <Field
