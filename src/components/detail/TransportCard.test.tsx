@@ -99,3 +99,39 @@ describe("TransportCard — 센티널 문구는 fieldMeta.fmt 그대로 (v1 오�
     expect(screen.getAllByText("—").length).toBeGreaterThan(0);
   });
 });
+
+/**
+ * 세션561 가드 — 좌표 자리표시 경고.
+ *
+ * 표시된 40곳(전체 2,457 중 1.6%)은 아직 준공 전이라 지도에 없어서, 지오코딩이 구청 같은
+ * 대표 장소 좌표로 떨어진 행이다. 그 좌표로 재는 지하철·버스·IC 거리를 손님이 사실로 믿는
+ * 것을 막는 게 이 경고의 목적이다.
+ */
+describe("좌표 자리표시 경고 (세션561)", () => {
+  const WARN = /준공 전이라 위치가 정확하지 않을 수 있습니다/;
+
+  it("coordShared 가 true 면 경고가 보인다", () => {
+    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
+    expect(screen.getByText(WARN)).toBeTruthy();
+  });
+
+  it("⚠️ 카드를 펼치지 않아도 보인다 — 기본 접힘이라 숨기면 다는 의미가 없다", () => {
+    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
+    // 접힌 상태에서 본문(역 이름)은 아직 없는데, 경고는 이미 있어야 한다.
+    expect(screen.queryByText("왕십리역")).toBeNull();
+    expect(screen.getByText(WARN)).toBeTruthy();
+  });
+
+  it("coordShared 가 없거나 false 면 경고가 없다 — 긍정 문구도 두지 않는다", () => {
+    for (const v of [undefined, false, null]) {
+      const { unmount } = render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: v })} />);
+      expect(screen.queryByText(WARN)).toBeNull();
+      unmount();
+    }
+  });
+
+  it("true 가 아닌 값(문자열 등)에는 뜨지 않는다 — 엄격 비교", () => {
+    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: "true" })} />);
+    expect(screen.queryByText(WARN)).toBeNull();
+  });
+});
