@@ -107,31 +107,23 @@ describe("TransportCard — 센티널 문구는 fieldMeta.fmt 그대로 (v1 오�
  * 대표 장소 좌표로 떨어진 행이다. 그 좌표로 재는 지하철·버스·IC 거리를 손님이 사실로 믿는
  * 것을 막는 게 이 경고의 목적이다.
  */
-describe("좌표 자리표시 경고 (세션561)", () => {
-  const WARN = /준공 전이라 위치가 정확하지 않을 수 있습니다/;
+describe("좌표 자리표시 경고 — 일부러 두지 않는다 (세션563)", () => {
+  // 세션561이 달았던 손님용 경고를 뺐다(사장님 결정 2026-09-23). 좌표가 부정확한 건 우리
+  // 데이터 문제이지 손님이 감당할 일이 아니다. **다시 들어오면 이 검사가 빨간불이 된다.**
+  const WARN = /위치가 정확하지 않을 수 있습니다/;
 
-  it("coordShared 가 true 면 경고가 보인다", () => {
+  // ⚠️ "없다" 를 단언하는 테스트는 **컴포넌트가 아예 안 그려져도 통과**한다(세션563 적대검증 🟠:
+  //    본문 첫 줄에 return null 을 넣는 뮤테이션에 이 2건이 초록이었다). 그래서 같은 render 결과에
+  //    **양성 앵커**(카드가 실제로 그려졌다는 증거)를 함께 단언한다.
+  it("coordShared 가 true 여도 손님용 경고 문구가 없다", () => {
     render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
-    expect(screen.getByText(WARN)).toBeTruthy();
-  });
-
-  it("⚠️ 카드를 펼치지 않아도 보인다 — 기본 접힘이라 숨기면 다는 의미가 없다", () => {
-    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
-    // 접힌 상태에서 본문(역 이름)은 아직 없는데, 경고는 이미 있어야 한다.
-    expect(screen.queryByText("왕십리역")).toBeNull();
-    expect(screen.getByText(WARN)).toBeTruthy();
-  });
-
-  it("coordShared 가 없거나 false 면 경고가 없다 — 긍정 문구도 두지 않는다", () => {
-    for (const v of [undefined, false, null]) {
-      const { unmount } = render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: v })} />);
-      expect(screen.queryByText(WARN)).toBeNull();
-      unmount();
-    }
-  });
-
-  it("true 가 아닌 값(문자열 등)에는 뜨지 않는다 — 엄격 비교", () => {
-    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: "true" })} />);
+    expect(screen.getByText("교통 상세")).toBeTruthy(); // 양성 앵커 — 카드가 그려졌다
     expect(screen.queryByText(WARN)).toBeNull();
+  });
+
+  it("경고용 표식(data-field=coordShared)도 남아 있지 않다", () => {
+    const { container } = render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
+    expect(screen.getByText("교통 상세")).toBeTruthy(); // 양성 앵커
+    expect(container.querySelector('[data-field="coordShared"]')).toBeNull();
   });
 });

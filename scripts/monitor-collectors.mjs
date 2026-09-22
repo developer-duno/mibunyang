@@ -894,6 +894,30 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
  *    빠뜨리면 그 컬럼만 비어도 ⑦-B(빈 껍데기)가 "전부 비었다" 로 안 보고 조용히 넘어간다.
  *    확인 방법: 최신 `supabase/migrations/*view*.sql` 에서 `rg.` 로 시작하는 SELECT 항목 grep.
  */
+/**
+ * 좌표 부정확 단지의 **기준 건수** — 이보다 늘면 경보한다(감시 ⑨).
+ *
+ * 2026-09-23 실측 56곳. 전부 준공 전이라 세 출처(카카오 POI·청약홈 지번·네이버 단지)가
+ * 다 못 찾는 게 정상이고, 그날 정정 대상은 0곳이었다. 준공되면 저절로 풀리므로
+ * **줄어드는 것은 정상**이다 — 늘어날 때만 본다.
+ *
+ * ⚠️ 이 값을 낮추면 매일 거짓 경보가 나 감시가 무뎌진다. 실측 후에만 고친다:
+ *   node -e "...apartments 에서 coord_shared=true 세기..."
+ */
+export const COORD_SHARED_BASELINE = 56;
+
+/**
+ * **daily 모드에서도 dedup 을 타는** collector — 사람이 손대야만 풀리는 지속 상태 (세션563).
+ *
+ * 기본값은 "daily 는 dedup 미적용"(지속 상태를 하루 1회 리마인드하는 게 의도)인데, 여기 든
+ * collector 는 그 리마인드가 **영구 도배**가 된다. 짝 규칙: 그 이슈의 `at` 은 시각이 아니라
+ * **상태 지문**이어야 한다(안 그러면 키가 매일 달라져 dedup 이 무효다).
+ */
+export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
+
+/** 기준보다 이만큼 줄면 "기준을 낮추라" 고 알린다 — 잘할수록 눈머는 것을 막는다(세션563). */
+export const BASELINE_SLACK = 5;
+
 export const GU_JOIN_COLUMNS = [
   "fertility_rate",
   "doctors_per_1k",
@@ -1309,6 +1333,138 @@ export async function fetchTradeMonthRows(sbArg) {
   const sb = sbArg ?? getSupabase();
   return await selectAll(
     (s) => s.from("trades").select(["id", "region", "deal_month"].join(", ")),
+    sb,
+    "id",
+  );
+}
+
+/**
+ * 좌표가 부정확한 단지(`coord_shared`)를 사장님께 알린다 — 감시 ⑨ (세션563)
+ *
+ * ## 왜 감시인가 (손님 화면이 아니라)
+ *
+ * 좌표가 남의 단지와 겹치면 지하철·학교·병원·대기질이 **전부 다른 동네 기준**으로 계산된다.
+ * 그런데 이건 **우리 데이터 문제**라 손님에게 "정확하지 않을 수 있습니다" 를 보여주는 건
+ * 떠넘기기다(사장님 지적 2026-09-23). 고치거나, 못 고치면 **여기서 사장님께 알린다.**
+ * 규칙 = `~/.claude/rules/our-defect-is-not-customer-warning.md`.
+ *
+ * ## 왜 "0건이 될 때까지" 가 아닌가
+ *
+ * 이 단지들은 **아직 준공 전이라 지도에 없다**. 카카오 POI·청약홈 지번·네이버 실단지 셋 다
+ * 못 찾는 게 정상이고(2026-09-23 실측: 정정 대상 0곳), 준공되면 저절로 풀린다. 그래서
+ * "있다" 자체는 경보가 아니다. 경보는 **늘었을 때**와 **준공이 지났는데도 안 풀렸을 때**다.
+ *
+ * @param {Array<{ id?: string|null, name?: string|null, completion?: unknown, coord_shared?: unknown }>} rows
+ *   apartments 전체 (coord_shared 포함).
+ * @param {{ baseline?: number, now?: Date }} [opts]
+ *   baseline = 직전에 알려진 건수(COORD_SHARED_BASELINE). now = 준공 경과 판정 기준 시각.
+ * @returns {Issue[]}
+ */
+export function checkCoordSharedDrift(rows, opts = {}) {
+  const baseline = opts.baseline ?? COORD_SHARED_BASELINE;
+  const now = opts.now ?? new Date();
+  const shared = rows.filter((r) => r?.coord_shared === true);
+
+  /** @type {Issue[]} */
+  const issues = [];
+
+  // ⚠️ 기준보다 **크게 줄면** 기준 자체를 낮추라고 알린다(세션563 적대검증 🟠).
+  //    하드코딩 상한이라, 정정을 잘해 40곳이 된 뒤 통로가 다시 뚫려 55곳이 돼도 56 미만이라
+  //    **침묵한다** — 잘할수록 탐지 폭이 벌어지는 구조다. 기준 갱신을 사람이 하도록 알린다.
+  if (shared.length <= baseline - BASELINE_SLACK) {
+    issues.push({
+      kind: "nulls",
+      collector: "coord-shared",
+      detail:
+        `좌표 부정확 단지가 ${shared.length}곳으로 줄었다(기준 ${baseline}) — ` +
+        `COORD_SHARED_BASELINE 을 ${shared.length} 로 낮춰야 다시 늘어나는 것을 잡는다`,
+      at: `shrank:${shared.length}`,
+    });
+  }
+
+  // (A) 늘었다 — 새 단지가 들어오며 자리표시 좌표를 받았다는 뜻이다. 통로가 다시 뚫렸을 수 있다.
+  if (shared.length > baseline) {
+    issues.push({
+      kind: "nulls",
+      collector: "coord-shared",
+      detail:
+        `좌표 부정확 단지 ${shared.length}곳 (기준 ${baseline}곳 대비 +${shared.length - baseline}) — ` +
+        `새 단지가 자리표시 좌표를 받았을 수 있다. scripts/fix-placeholder-addresses.mjs --out=<덤프> 로 판정하라`,
+      // 같은 이유로 건수 지문(위 주석 참조) — 늘어난 수가 바뀔 때만 다시 알린다.
+      at: `grew:${shared.length}`,
+    });
+  }
+
+  // (B) 준공일이 지났는데도 안 풀렸다 — 이제는 지도에 있을 테니 **고칠 수 있다**.
+  //     이게 이 감시의 핵심이다. 준공 전에는 고칠 재료가 없지만, 준공 후엔 있다.
+  const fixable = shared.filter((r) => isPastCompletion(r?.completion, now));
+  if (fixable.length > 0) {
+    const sample = fixable.slice(0, 5).map((r) => r?.name ?? r?.id).join(" · ");
+    issues.push({
+      kind: "nulls",
+      collector: "coord-shared",
+      detail:
+        `준공일이 지난 좌표 부정확 단지 ${fixable.length}곳 — 이제 지도에 있으니 **고칠 수 있다**. ` +
+        `scripts/fix-placeholder-addresses.mjs --out=<덤프> 후 --apply-from 으로 반영 (예: ${sample})`,
+      // ⚠️ `at` 은 **시각이 아니라 건수 지문**이다(세션563 적대검증 🟠).
+      //    이 상태는 사람이 도구를 고쳐야 풀리는데, 시각을 넣으면 `dedupKey`(kind|collector|at)가
+      //    매일 달라져 **매일 텔레그램이 온다.** 고칠 방법이 없는 것을 매일 알리면 사장님이
+      //    ①~⑧ 까지 통째로 무시하게 된다 — 2차 피해가 1차보다 크다.
+      //    건수 지문이면 48→47 로 줄 때만 새 알림이 간다(= 실제로 진전이 있을 때).
+      at: `past:${fixable.length}`,
+    });
+  }
+  return issues;
+}
+
+/**
+ * 준공일이 지났나 — `completion` 은 `"202407"`(YYYYMM) 꼴이다.
+ *
+ * ⚠️ **`new Date()` 에 문자열을 그냥 넘기지 마라.** `"202211"` 에 `"-01"` 을 이어 붙이면
+ *    자바스크립트가 **서기 202211년 1월**로 읽는다(2026-09-23 실사고 — 그래서 준공 지난 48곳을
+ *    "전부 준공 전" 이라 잘못 보고했다). `src/scoring/scorePrice.ts` 의 `parseCompletionMonth`
+ *    가 이미 같은 함정을 막아 두었다("20266" 이 서기 20266년으로 통과하는 것) — **그 방식을 따른다**:
+ *    정규식으로 형식을 강제하고, 월 범위를 검사하고, Date 생성자에 문자열을 넘기지 않는다.
+ *
+ * ⚠️ 판독 불가는 **false**. "지났다" 쪽으로 기울면 못 고칠 것을 매일 경보해 감시가 무뎌진다.
+ *
+ * 2026-09-23 운영 실측 형식 분포: `YYYYMM` 2,609 · 빈값 447 · `"미정"` 9 · `"2029 미…"` 3 ·
+ * `YYYY-MM-DD` **0건**. `coord_shared` 56곳은 전부 `YYYYMM`.
+ *
+ * @param {unknown} completion
+ * @param {Date} now
+ * @returns {boolean}
+ */
+export function isPastCompletion(completion, now) {
+  const s = String(completion ?? "").trim();
+  //                    "202407"                  "2024-07" / "2024-07-01"
+  const m = /^(\d{4})(\d{2})$/.exec(s) ?? /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(s);
+  if (!m) return false;
+  const year = Number(m[1]);
+  const month = Number(m[2]);
+  // 월 범위를 막지 않으면 "202613" 이 Date 생성자에서 조용히 2027-01 로 넘어간다(scorePrice 선례).
+  if (month < 1 || month > 12) return false;
+  // 월 단위 정수로 비교한다 — Date 생성자를 아예 안 거치므로 위 함정이 원천 차단된다.
+  const idx = year * 12 + (month - 1);
+  const nowIdx = now.getFullYear() * 12 + now.getMonth();
+  return idx < nowIdx;
+}
+
+/**
+ * 감시 ⑨ 입력 — apartments 의 좌표 표시.
+ *
+ * ⚠️ `fetchGuPairStats` 와 같은 이유로 **고유키 커서**(`selectAll(fn, sb, "id")`)로 훑는다.
+ *    정렬 없는 OFFSET 페이징은 1,000행 넘는 표에서 **에러 없이** 행이 샌다
+ *    (`.claude/rules/collectors/unordered-pagination-loses-rows.md`). 여기서 행이 새면
+ *    `coord_shared` 건수가 실제보다 적게 세어져 **늘어난 것을 놓친다**.
+ *
+ * @param {any} [sbArg] 테스트 주입용. 생략하면 getSupabase().
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
+export async function fetchCoordSharedRows(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  return await selectAll(
+    (s) => s.from("apartments").select(["id", "name", "completion", "coord_shared"].join(", ")),
     sb,
     "id",
   );
@@ -1743,6 +1899,19 @@ async function main() {
       console.log(`[monitor] ⑦ 시군구 짝 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    // ⑨ 좌표 부정확 단지 — 늘었거나, 준공이 지나 이제 고칠 수 있게 된 것 (세션563).
+    //    손님 화면에 경고를 다는 대신 **사장님께 알린다**(사장님 지적 2026-09-23).
+    //    ⑦ 과 같은 이유로 fail-open — 이 조회가 실패해도 ①~⑦ 은 그대로 보고된다.
+    try {
+      const coordRows = await fetchCoordSharedRows();
+      const coordIssues = checkCoordSharedDrift(coordRows);
+      const sharedCount = coordRows.filter((r) => r?.coord_shared === true).length;
+      console.log(`[monitor] ⑨ 좌표 부정확 점검: ${sharedCount}곳(기준 ${COORD_SHARED_BASELINE}) → 이상 ${coordIssues.length}건`);
+      issues = issues.concat(coordIssues);
+    } catch (err) {
+      console.log(`[monitor] ⑨ 좌표 부정확 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+    }
+
     // ⑧ 지역×월 거래 0건 — 외부 API 가 옛 지역코드에 **에러 대신 0건**을 주는 사고(세션545 전남 3개월).
     //    ⑤ 신선도는 수집기가 매 회차 잘 돌면 침묵하므로 이 격자를 따로 본다. ⑦ 과 같이 fail-open.
     try {
@@ -1767,12 +1936,17 @@ async function main() {
   // dedup: run 모드(수집기 ~40개 완료마다 발화)는 같은 이슈를 매번 재알림하므로
   // 이미 보낸 키는 skip. daily(매일 1회 스윕)는 ③stale·④NULL 같은 지속 상태를
   // 하루 1회 리마인드하는 게 의도라 dedup 미적용 — 하루 1회는 도배 아님.
-  if (mode === "run") {
-    const keys = issues.map(dedupKey);
+  // ⚠️ daily 라도 `ALWAYS_DEDUP_COLLECTORS` 는 dedup 을 탄다(세션563). ③stale·④NULL 은
+  //    "고치면 멈추는" 상태라 하루 1회 리마인드가 옳지만, ⑨ 좌표 부정확은 **사람이 도구를
+  //    고쳐야** 풀려서 매일 울면 감시 전체가 무뎌진다. 건수 지문 `at` 과 짝을 이룬다.
+  if (mode === "run" || issues.some((i) => ALWAYS_DEDUP_COLLECTORS.has(i.collector))) {
+    const scoped = mode === "run" ? issues : issues.filter((i) => ALWAYS_DEDUP_COLLECTORS.has(i.collector));
+    const keys = scoped.map(dedupKey);
     const sentKeys = await fetchSentAlertKeys(keys);
-    const fresh = filterUnsent(issues, sentKeys);
-    const skipped = issues.length - fresh.length;
-    if (skipped > 0) console.log(`[monitor] 이미 알린 이상 ${skipped}건 재발송 skip (dedup)`);
+    const freshScoped = filterUnsent(scoped, sentKeys);
+    const skipped = scoped.length - freshScoped.length;
+    if (skipped > 0) console.log(`[monitor] 이미 알린 이상 ${skipped}건 재발송 skip (dedup, mode=${mode})`);
+    const fresh = mode === "run" ? freshScoped : issues.filter((i) => !ALWAYS_DEDUP_COLLECTORS.has(i.collector) || freshScoped.includes(i));
     issues = fresh;
     if (issues.length === 0) {
       console.log("[monitor] 새 이상 없음 (전부 이미 알림, mode=run)");
