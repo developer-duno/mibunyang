@@ -294,12 +294,24 @@ export function airAnnualBand(pm25: number): (typeof AIR_ANNUAL_LABELS)[number] 
  * ⚠️ 표가 2칸 이하면 마지막 경계 참조가 무너진다 — 1칸이면 `undefined.max` 로 **모듈 최상위에서
  * 앱 전체가 죽는다**(코드 검사관 적발). 옵셔널 체인으로 받고, 못 만들면 이름만 쓴다.
  */
-export const AIR_ANNUAL_LEGEND: string = (() => {
-  const head = AIR_QUALITY_TIERS.slice(0, -1).map((t, i) => `${AIR_ANNUAL_LABELS[i]} ${t.max} 이하`);
-  const lastLabel = AIR_ANNUAL_LABELS[AIR_ANNUAL_LABELS.length - 1];
-  const lastCut = AIR_QUALITY_TIERS[AIR_QUALITY_TIERS.length - 2]?.max;
+export const AIR_ANNUAL_LEGEND: string = buildAnnualLegend(AIR_QUALITY_TIERS);
+
+/**
+ * 등급표 → `"좋음 15 이하, 보통 19 이하, 나쁨 19 초과"` 문구.
+ *
+ * PM2.5·PM10·O3 가 **같은 함수**를 쓰게 해서, 경계를 옮기면 손님이 보는 설명도 같이 따라오게
+ * 한다. 경계를 손으로 적으면 표만 바뀌었을 때 문구가 거짓이 된다(이 저장소의 "점수와 문구는
+ * 한 쌍" 원칙).
+ *
+ * ⚠️ 표가 2칸 이하면 마지막 경계 참조가 무너진다 — 1칸이면 `undefined.max` 로 **모듈 최상위에서
+ * 앱 전체가 죽는다**(세션560 코드 검사관 적발). 옵셔널 체인으로 받고, 못 만들면 이름만 쓴다.
+ */
+export function buildAnnualLegend(tiers: readonly Tier[], labels: readonly string[] = AIR_ANNUAL_LABELS): string {
+  const head = tiers.slice(0, -1).map((t, i) => `${labels[i]} ${t.max} 이하`);
+  const lastLabel = labels[labels.length - 1];
+  const lastCut = tiers[tiers.length - 2]?.max;
   return [...head, lastCut != null ? `${lastLabel} ${lastCut} 초과` : lastLabel].join(", ");
-})();
+}
 
 // === Future: 교통개발 (세션511 재설계) ==================================
 //
@@ -919,6 +931,14 @@ export const AIR_O3_DEFAULT = 14;
 //    "표를 넘어선 값"의 폴백이 아니다. 호출부(scoreLocation.ts)가 표의 마지막 칸에 기대도록
 //    바뀌었고, 값도 그 칸과 같은 8 로 맞춰 둘이 어긋날 여지를 없앴다.
 export const AIR_O3_BAD_SCORE = 8;
+
+// ⚠️ 아래 두 상수는 **표 정의 뒤**에 와야 한다. 위쪽(PM2.5 범례 옆)에 두면
+//    `Block-scoped variable used before its declaration` 로 모듈이 안 뜬다(세션561 실측).
+/** PM10 3년 평균 등급 설명 — `AIR_PM10_TIERS` 에서 유도된다(세션561). */
+export const AIR_PM10_LEGEND: string = buildAnnualLegend(AIR_PM10_TIERS);
+
+/** O3 3년 평균 등급 설명 — `AIR_O3_TIERS` 에서 유도된다(세션561). */
+export const AIR_O3_LEGEND: string = buildAnnualLegend(AIR_O3_TIERS);
 
 // === Location: 도보통학 시간 보정 (분 기준) ===
 export const SCHOOL_WALK_BONUS: Tier[] = [

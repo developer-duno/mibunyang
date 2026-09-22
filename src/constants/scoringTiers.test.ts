@@ -17,6 +17,9 @@ import {
   AIR_O3_DEFAULT,
   AIR_O3_BAD_SCORE,
   AIR_QUALITY_TIERS,
+  AIR_PM10_LEGEND,
+  AIR_O3_LEGEND,
+  AIR_ANNUAL_LEGEND,
   type Tier,
 } from "./scoringTiers";
 import { scoreLocation } from "@/scoring/scoreLocation";
@@ -303,5 +306,60 @@ describe("PM10·O3 경계는 세션561 실측 결정값이다 (사장님 확정 
 
   it("AIR_O3_BAD_SCORE 는 마지막 칸과 같은 값이다 (둘이 어긋날 여지 제거)", () => {
     expect(AIR_O3_BAD_SCORE).toBe(AIR_O3_TIERS[2].score);
+  });
+});
+
+/**
+ * 세션561 가드 — 손님이 보는 설명은 **표에서 유도**된다.
+ *
+ * 옛 문구는 `" /PM10"`·`" /O3"` 라는 **빈 이름표**였다. 경계 숫자가 아예 없어서, 손님은
+ * 그 축이 어떤 기준으로 매겨졌는지 볼 수 없었다(세션561 발견). PM2.5 만 범례가 있었다.
+ * 이 가드는 경계를 옮겼을 때 설명이 따라오지 않으면 빨개진다.
+ */
+describe("PM10·O3 범례는 등급표에서 유도된다 (세션561)", () => {
+  it("범례에 실제 경계 숫자가 들어 있다", () => {
+    expect(AIR_PM10_LEGEND).toBe("좋음 30 이하, 보통 36 이하, 나쁨 36 초과");
+    expect(AIR_O3_LEGEND).toBe("좋음 0.03 이하, 보통 0.035 이하, 나쁨 0.035 초과");
+  });
+
+  it("범례 숫자는 표의 경계와 항상 같다 — 손으로 적은 값이 아니다", () => {
+    // 표를 바꾸면 범례도 따라와야 한다. 문자열을 직접 쓰면 이 단언이 깨진다.
+    expect(AIR_PM10_LEGEND).toContain(String(AIR_PM10_TIERS[0].max));
+    expect(AIR_PM10_LEGEND).toContain(String(AIR_PM10_TIERS[1].max));
+    expect(AIR_O3_LEGEND).toContain(String(AIR_O3_TIERS[0].max));
+    expect(AIR_O3_LEGEND).toContain(String(AIR_O3_TIERS[1].max));
+  });
+
+  it("세 범례가 모두 비어 있지 않다 (빈 이름표 회귀 차단)", () => {
+    for (const l of [AIR_ANNUAL_LEGEND, AIR_PM10_LEGEND, AIR_O3_LEGEND]) {
+      expect(l.length).toBeGreaterThan(10);
+      expect(l).toMatch(/좋음 .+ 이하, 보통 .+ 이하, 나쁨 .+ 초과/);
+    }
+  });
+});
+
+describe("scoreLocation 대기질 문구가 점수와 어긋나지 않는다 (세션561)", () => {
+  const natOf = (apt: Record<string, unknown>) => {
+    const r = scoreLocation(apt) as unknown as { subs: { name: string; detail: string }[] };
+    return r.subs.find((x) => x.name === "자연환경")!.detail;
+  };
+
+  it("3년 평균이 있으면 PM10·O3 경계가 문구에 보인다", () => {
+    const d = natOf({
+      airQuality: { pm25: 15, grade: "보통", annual: { pm25: 17.4, pm10: 33, o3: 0.032 } },
+      view: "블루",
+      noise: 40,
+    });
+    expect(d).toContain(`/PM10 ${AIR_PM10_LEGEND}`);
+    expect(d).toContain(`/O3 ${AIR_O3_LEGEND}`);
+    // 옛 빈 이름표가 되살아나면 빨개진다.
+    expect(d).not.toMatch(/\/PM10(?! )/);
+  });
+
+  it("3년 평균이 없으면(76곳) PM10·O3 를 아예 안 쓴다 — 없는 기준을 보여주지 않는다", () => {
+    const d = natOf({ airQuality: { pm25: 15, grade: "보통" }, view: "블루", noise: 40 });
+    expect(d).not.toContain("/PM10");
+    expect(d).not.toContain("/O3");
+    expect(d).toContain("미수집");
   });
 });
