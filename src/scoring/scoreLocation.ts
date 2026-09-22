@@ -23,6 +23,8 @@ import {
   SUNLIGHT_DIRECTION_MAX,
   AIR_QUALITY_TIERS,
   AIR_QUALITY_DEFAULT,
+  airAnnualBand,
+  AIR_ANNUAL_LEGEND,
   ENV_MAX,
   infraSaturation,
   AIR_PM10_TIERS,
@@ -118,11 +120,30 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
   const noise = apt.noise as number | null | undefined;
   const noiseSc: number = noise == null ? NOISE_UNKNOWN_SCORE : tierMax(noise, NOISE_TIERS, 0);
   // 대기질 복합: PM2.5(40%) + PM10(35%) + O3(25%) — pm10/o3 null이면 기존과 동일
-  const airQuality = apt.airQuality as { pm25?: number; pm10?: number; o3?: number; grade?: string } | undefined;
-  const pm25Sc: number =
-    airQuality?.pm25 != null ? tierMax(airQuality.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
-  const pm10Sc: number | null = airQuality?.pm10 != null ? tierMax(airQuality.pm10, AIR_PM10_TIERS, 0) : null;
-  const o3Sc: number | null = airQuality?.o3 != null ? tierMax(airQuality.o3, AIR_O3_TIERS, AIR_O3_BAD_SCORE) : null;
+  //
+  // ⚠️ 채점은 **3년 평균**(`annual`)으로 한다 (세션560). `pm25`/`pm10`/`o3` 최상위 키는
+  //    `collect-air-quality.mjs` 가 넣는 **오늘 한 시점** 값이라, 집을 고르는 잣대로 쓰면
+  //    어제와 오늘의 점수가 달라진다([[time-varying-value-in-score]]).
+  //    실시간 값은 화면의 "오늘" 참고로만 남는다(아래 info/detail).
+  //
+  // ⚠️ 세 항목을 **한 묶음으로** 갈아끼운다. PM2.5 만 3년 평균을 쓰고 PM10·O3 는 오늘 값을
+  //    쓰면 한 점수 안에 시간축이 둘 섞인다 — 3년 평균 표는 세 항목을 모두 갖고 있다.
+  const airQuality = apt.airQuality as
+    | {
+        pm25?: number;
+        pm10?: number;
+        o3?: number;
+        grade?: string;
+        annual?: { pm25?: number; pm10?: number; o3?: number; grade?: string };
+      }
+    | undefined;
+  const annual = airQuality?.annual;
+  const pm25Sc: number = annual?.pm25 != null ? tierMax(annual.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
+  // PM10·O3 도 3년 평균만 본다. 없으면 null → 아래에서 각 축의 중립 기본값으로 떨어진다.
+  const pm10Sc: number | null = annual?.pm10 != null ? tierMax(annual.pm10, AIR_PM10_TIERS, 0) : null;
+  const o3Sc: number | null = annual?.o3 != null ? tierMax(annual.o3, AIR_O3_TIERS, AIR_O3_BAD_SCORE) : null;
+  // 화면 등급은 **채점에 쓴 값**에서 뽑는다 — 점수와 글자가 어긋나지 않게(세션560).
+  const airBand: string | null = annual?.pm25 != null ? airAnnualBand(annual.pm25) : null;
   const airSc =
     pm10Sc == null && o3Sc == null
       ? pm25Sc
@@ -213,8 +234,8 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
         info:
           apt._noView && apt._noNoise && apt._noSunlight
             ? "정보 없음"
-            : `${view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${sunlight}`}${apt._noNoise ? "" : ` ${noise}dB`}${airQuality?.grade ? ` 대기:${airQuality.grade}` : ""}`,
-        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airQuality?.grade || "미수집"}(PM2.5${pm10Sc != null ? `/PM10` : ""}${o3Sc != null ? `/O3` : ""})`,
+            : `${view || "미확인"}조망${apt._noSunlight ? "" : ` 일조:${sunlight}`}${apt._noNoise ? "" : ` ${noise}dB`}${airBand ? ` 대기:${airBand}` : ""}`,
+        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airBand || "미수집"}(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? " /PM10" : ""}${o3Sc != null ? " /O3" : ""})${airQuality?.grade ? ` 오늘:${airQuality.grade}` : ""}`,
       },
       {
         name: "혐오시설",

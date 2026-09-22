@@ -252,4 +252,29 @@ describe("전용률 0-비대칭 — calcCats 경유로 화면과 점수가 같�
     expect(cats.product.subs.find((s) => s.name === "전용률")?.info).toBe("74%");
     expect(FIELD_META.exclusiveRatio.fmt(74, apt)).toBe("74%");
   });
+
+  // === 대기질 — 두 시간축 (세션560) ===
+  // ⚠️ `fmt` 인자가 `any` 라 타입 검사가 이 자리를 못 지킨다. 가드로만 막힌다.
+  describe("airQuality — 채점(3년평균)과 오늘 값을 구분해 보여준다", () => {
+    it("3년 평균이 있으면 그것을 먼저, 오늘 값은 '오늘:' 로", () => {
+      const s = FIELD_META.airQuality.fmt({
+        grade: "나쁨",
+        pm25: 45,
+        annual: { pm25: 17.2, pm10: 33.1 },
+      });
+      expect(s).toContain("3년평균 PM2.5: 17.2");
+      expect(s).toContain("오늘: 나쁨");
+      // 오늘 값(45)이 3년 평균 자리를 차지하면 안 된다 — 채점 기준과 어긋난다.
+      expect(s).not.toContain("PM2.5: 45");
+    });
+    it("3년 평균이 없으면 오늘 값만 — 오늘 값을 3년 평균처럼 쓰지 않는다", () => {
+      const s = FIELD_META.airQuality.fmt({ grade: "보통", pm25: 9 });
+      expect(s).toContain("오늘: 보통");
+      expect(s).not.toContain("3년평균");
+    });
+    it("둘 다 없으면 미수집", () => {
+      expect(FIELD_META.airQuality.fmt(null)).toBe("미수집");
+      expect(FIELD_META.airQuality.fmt({})).toBe("미수집");
+    });
+  });
 });

@@ -266,12 +266,17 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   airQuality: {
     label: "대기질",
     section: "입지",
+    // ⚠️ **두 시간축을 섞지 않는다**(세션560). 채점에 쓰는 건 3년 평균이고, `grade`/`pm25` 최상위
+    //    키는 오늘 한 시점 값이다. 옛 표기는 오늘 값만 보여줘, 옆에 놓인 점수(3년 평균 기준)와
+    //    손님이 맞대면 앞뒤가 안 맞았다([[score-meaning-and-wording-are-a-pair]] §1).
     fmt: (v) => {
-      if (!v?.grade) return "미수집";
-      const parts = [v.grade];
-      if (v.pm25 != null) parts.push(`PM2.5: ${v.pm25}`);
-      if (v.pm10 != null) parts.push(`PM10: ${v.pm10}`);
-      return parts.join(" / ");
+      const parts: string[] = [];
+      if (v?.annual?.pm25 != null) {
+        parts.push(`3년평균 PM2.5: ${v.annual.pm25}`);
+        if (v.annual.pm10 != null) parts.push(`PM10: ${v.annual.pm10}`);
+      }
+      if (v?.grade) parts.push(`오늘: ${v.grade}`);
+      return parts.length ? parts.join(" / ") : "미수집";
     },
   },
   noxiousDist: { label: "혐오시설 거리", section: "입지", unit: "m", fmt: (v) => (v != null ? `${v}m` : "없음") },
