@@ -601,18 +601,23 @@ export async function main() {
           if (cnt.jeonse !== (apt.naver_jeonse_count ?? 0)) row.naver_jeonse_count = cnt.jeonse;
           if (cnt.wolse !== (apt.naver_wolse_count ?? 0)) row.naver_wolse_count = cnt.wolse;
 
-          // 매매 매물 수를 미분양 근사치로 사용.
-          // unsold_rate 는 clampUnsoldRate(>100 → null, 세션445)로 VIEW·API·collect-data 와
-          // 같은 단일 경계를 맞춘다(세션538). unsold(원본 매물 수)는 별개 판단이라 그대로 둔다.
+          // ⛔ 매물 수를 미분양으로 쓰지 않는다 (세션559에 제거).
           //
-          // ⚠️ null 을 **명시적으로 기록**한다(그 필드를 빼고 넘어가지 않는다). 빼면 unsold 만
-          //    최신으로 갱신되고 unsold_rate 는 마지막으로 경계를 통과했던 옛 값에 멈춰,
-          //    두 필드가 서로 다른 시점을 가리킨 채 그럴듯한 옛 비율이 화면·scoreRisk 에
-          //    계속 노출된다(세션538 적대검증 지적). 못 재는 것은 "모른다"로 남기는 게 맞다.
-          if (cnt.sell > 0 && apt.units != null && apt.units > 0) {
-            row.unsold = cnt.sell;
-            row.unsold_rate = clampUnsoldRate(Math.round(cnt.sell / apt.units * 1000) / 10);
-          }
+          // 옛 코드는 `row.unsold = cnt.sell` 로 **오늘 네이버에 올라온 매매 매물 수**를
+          // 미분양 세대수로 기록했다. 그 결과:
+          //   · 1,989곳 중 **1,157곳(58%)** 의 `unsold` 가 `naver_sell_count` 와 완전히 같았다
+          //   · **81곳**은 미분양이 총세대수보다 많았다(세종더샵예미지 L4블록: 1세대인데 18)
+          //   · 미분양률 최대 **2,500%**
+          // 즉 다 팔린 단지라도 집주인 여럿이 이사 가려고 매물을 내놓으면 '미분양'이 되고,
+          // 그 값이 scoreRisk 의 안전 점수(가중치 0.14)를 깎았다. 매물은 매일 갈리는
+          // '오늘의 매대'지 그 단지의 지속적 성질이 아니다.
+          //
+          // `fieldMeta.ts` 에 이미 '미분양 > 총세대수면 정보 없음으로 숨김' 방어가 있었지만
+          // 그건 **화면만** 가렸고 점수는 그대로 그 값을 썼다 — 손님 눈엔 안 보이는데 점수는 깎이는 상태.
+          //
+          // 이제 `unsold`·`unsold_rate` 는 **공식 통계만** 채운다:
+          //   청약홈(단지별 실측) > KOSIS 시군구 미분양 비례배분(collect-unsold-kosis.mjs)
+          // 매물 수 자체는 `naver_sell_count` 로 계속 저장한다 — 화면 참고값으로는 정직한 이름이다.
 
           if (Object.keys(row).length === 0) continue;
 

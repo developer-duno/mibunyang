@@ -31,10 +31,6 @@ import {
   INIT_SALE_TIERS,
   INIT_SALE_HIGH_RISK,
   INIT_SALE_NULL,
-  LISTING_FLOOD_THRESHOLD,
-  LISTING_WARN_THRESHOLD,
-  LISTING_FLOOD_PENALTY,
-  LISTING_WARN_PENALTY,
   PUBLIC_PRESALE_BONUS,
   HOUSING_SUPPLY_HIGH_LABEL,
   tierMaxLabel,
@@ -53,8 +49,9 @@ import type { Apt, Res } from "@/types/scoring";
  * 클램핑: `Math.round(Math.max(0, Math.min(100, 100 - risk)))`.
  *
  * 핵심 보정:
- *   - listingPen: naverSellCount > LISTING_FLOOD_THRESHOLD → LISTING_FLOOD_PENALTY,
- *     > LISTING_WARN_THRESHOLD → LISTING_WARN_PENALTY. liqSc 가산 후 상한 100.
+ *   - (세션559 제거) 옛 listingPen: naverSellCount 절대 임계(50/30건)로 liqSc 에 가산했으나,
+ *     매일 갈리는 매물 수에 절대 경계를 걸어 경계 근처 325곳이 매일 흔들렸고 대단지가
+ *     구조적으로 불이익을 받았다. 규모 보정을 하면 unsoldRate 와 중복이라 되살리지 않는다.
  *   - finSc 공공분양 보너스: presaleType "공공" 포함 시 + PUBLIC_PRESALE_BONUS (0~100 클램프).
  *   - isRegulated 폴백: DB값 우선, null이면 `getZone(region, gu)` 폴백.
  *   - 인허가율 보정(세션501, 옛 newSupply 보정 대체): >= PERMIT_RATIO_HIGH → supSc + 5 (상한 100),
@@ -108,14 +105,18 @@ export function scoreRisk(apt: Apt): Res {
     : tierMax(unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
   let liqSc: number =
     recentTrades6m == null ? LIQUIDITY_UNKNOWN_SCORE : tierMin(recentTrades6m, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE);
-  // 매물 과잉 페널티: naverSellCount 기반
-  const listingPen =
-    apt.naverSellCount != null && apt.naverSellCount > LISTING_FLOOD_THRESHOLD
-      ? LISTING_FLOOD_PENALTY
-      : apt.naverSellCount != null && apt.naverSellCount > LISTING_WARN_THRESHOLD
-        ? LISTING_WARN_PENALTY
-        : 0;
-  liqSc = Math.min(liqSc + listingPen, 100);
+  // ⛔ 매물 과잉 페널티 제거 (세션559)
+  //
+  // 옛 코드는 `naverSellCount > 50` 이면 +5, `> 30` 이면 +2 위험을 물렸다. 두 가지가 틀렸다:
+  //   ① **매일 바뀌는 값에 절대 임계** — 매물은 매일 새벽 통째로 갈리는데(collect-naver-listings.yml,
+  //      KST 04:00), 경계 근처(25~35건·45~55건)에 325곳이 몰려 있었다. 매물 하나가 팔리거나
+  //      새로 나오면 그 단지의 안전 점수가 하룻밤 사이 붙었다 떨어졌다 했다.
+  //   ② **단지 규모를 무시** — 대단지는 원래 매물이 많다(실측 최대 566건). 세대수 보정 없이
+  //      절대 개수로 자르면 큰 단지가 구조적으로 불이익을 받는다.
+  //
+  // 규모 보정을 하면(매물 ÷ 세대수) 결국 `unsoldRate` 와 같은 값이 되어 **중복 감점**이다.
+  // 그래서 이 축은 되살리지 않는다. 매물 수 자체는 `naverSellCount` 로 화면에 그대로 보여준다
+  // — '오늘 나와 있는 매물 수'라는 정직한 이름으로는 손님에게 쓸모가 있다.
   // 세션508: loanFree 는 이진 필드 — `=== false`(확인된 유이자)일 때만 +15. null(모름)·true 무페널티.
   // 세션513: `apt.dsr40pass` → `=== true`. API 가 이제 null 을 보존하므로(옛 `?? false`) 명시한다.
   //   ⚠️ null 이 false 와 같은 50 인 것은 **의도**다. 이 필드는 세션508 의 "이진 필드는 `=== false`

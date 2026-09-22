@@ -1102,13 +1102,13 @@ describe("전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(
     expect(mergedRowFor(updateCalls, "apt-e").exclusive_ratio).toBe(75);
   });
 
-  it("(f) unsold_rate 가 100 초과로 계산되면 null 을 명시 기록한다 (unsold 는 그대로 쓴다)", async () => {
-    // 세대수 10 · 매매 매물 15건 → 150% (clampUnsoldRate 가 null 로 무력화)
+  it("(f) 매물 수를 미분양으로 기록하지 않는다 (세션559 — 옛 동작 복원 시 red)", async () => {
+    // 옛 코드: `row.unsold = cnt.sell` — 세대수 10 인데 매물 15건이면 미분양 15(150%)로 기록했다.
+    // 그 결과 실측 1,157곳(58%)의 unsold 가 naver_sell_count 와 같았고 81곳은 세대수를 넘었다
+    // (세종더샵예미지 L4블록: 1세대인데 18). 매물은 매일 갈리는 "오늘의 매대"지 미분양이 아니다.
     //
-    // ⚠️ `toBeUndefined()`(= 그 필드를 빼고 넘어감) 이면 **안 된다**. 빼면 unsold 만 최신으로
-    //    갱신되고 unsold_rate 는 마지막으로 경계를 통과했던 옛 값에 멈춰, 두 필드가 서로 다른
-    //    시점을 가리킨 채 그럴듯한 옛 비율이 화면·scoreRisk 에 계속 노출된다(세션538 적대검증).
-    //    "못 잰다"는 undefined(안 건드림)가 아니라 null(모른다)로 남아야 한다.
+    // 이제 미분양은 공식 통계만 채운다: 청약홈(단지별 실측) > KOSIS 시군구 비례배분.
+    // 매물 수 자체는 `naver_sell_count` 로 계속 저장한다 — 정직한 이름이라 화면 참고값으로 쓸모 있다.
     const { sb, updateCalls } = makeExclSb({
       complexes: [cpx("CX-F", "아파트에프단지", { real_estate_type_name: "아파트" })],
       apartments: [apt("apt-f", "아파트에프단지", { units: 10, exclusive_ratio: 75 })],
@@ -1117,13 +1117,15 @@ describe("전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(
     getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
     await main();
     const row = mergedRowFor(updateCalls, "apt-f");
-    expect(row.unsold).toBe(15);
-    expect("unsold_rate" in row).toBe(true);
-    expect(row.unsold_rate).toBeNull();
+    expect("unsold" in row).toBe(false);
+    expect("unsold_rate" in row).toBe(false);
+    // 매물 수는 그대로 기록한다(이 필드까지 죽이면 화면 참고값이 사라진다)
+    expect(row.naver_sell_count).toBe(15);
   });
 
-  it("미분양률 100 이하는 그대로 쓴다 (대조군 — 클램프가 정상값까지 지우지 않는다)", async () => {
-    // 세대수 20 · 매매 매물 5건 → 25%
+  it("세대수 이내라도 미분양으로 기록하지 않는다 (대조군 — 조건부로 남아 있지 않은지)", async () => {
+    // 세대수 20 · 매물 5건 = 25% 는 옛 코드가 "정상값"으로 그대로 쓰던 경로다.
+    // 경계를 넘는 경우만 막고 이 경로를 남겨 두면 1,090곳이 계속 매물 기반으로 채점된다.
     const { sb, updateCalls } = makeExclSb({
       complexes: [cpx("CX-G", "아파트지단지", { real_estate_type_name: "아파트" })],
       apartments: [apt("apt-g", "아파트지단지", { units: 20, exclusive_ratio: 75 })],
@@ -1132,7 +1134,8 @@ describe("전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(
     getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
     await main();
     const row = mergedRowFor(updateCalls, "apt-g");
-    expect(row.unsold).toBe(5);
-    expect(row.unsold_rate).toBe(25);
+    expect("unsold" in row).toBe(false);
+    expect("unsold_rate" in row).toBe(false);
+    expect(row.naver_sell_count).toBe(5);
   });
 });
