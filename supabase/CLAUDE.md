@@ -220,6 +220,11 @@ naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 두 표 모두 service key 로 넣는다) · `pg_trgm` → `extensions` 스키마(자매 검색 색인
 `idx_apartments_name_trgm` 은 그대로 동작 — 자매는 ILIKE 만 쓴다). 마이그 = `20260923000000~03`.
 
+- **RLS 는 행만 막는다 — 칸은 GRANT 로.** "자기 행 수정" 정책이 있는 표에 권한 칸(role·status·결제·email)이 있으면
+  칸 권한을 거둔다(2u `user_profiles` 실사고 → 2u V062). 정적 가드 = `scripts/_rls-anon-write-policy.test.mjs`(항상 참 쓰기 정책).
+- **SQL 함수에 `SET search_path` 를 붙이면 인라인이 꺼진다** — 행마다 불리는 헬퍼는 느려진다(상가 실측 20~130%).
+  보안 고문 경고를 없애기 전에 그 함수가 쓰이는 쿼리의 **전후 속도**를 잰다(결과 동일 검사만으로는 못 잡는다).
+
 ⚠️ **컴퓨트 한계 — Micro 인스턴스 hang (세션 460, 2026-06-29).** 공유 인스턴스(`t4g.micro`,
 RAM 1GB)가 mibunyang + naver-estate-web 양쪽 collector + Vercel 동시 부하에서 일시 hang →
 Cloudflare **522** 응답(약 2.5h). 진단 순서: ① status.supabase.com (전체 장애 여부) ② GitHub

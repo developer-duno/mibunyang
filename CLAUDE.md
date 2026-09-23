@@ -55,7 +55,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 
 | 자원 | 상세 | 주의사항 |
 |------|------|---------|
-| Supabase DB | mibunyang `rwdtljipvmqpazrimyns` / naver-estate-web `gcfckzqrcujktloilwpz` | 공용 테이블은 mibunyang DB |
+| Supabase DB | 공유 인스턴스 `rwdtljipvmqpazrimyns`(대시보드 이름 "네이버에스테이트") — 미분양 데이터 + 2u backend `DATABASE_URL`·2u 로그인(Supabase Auth)이 모두 여기(2026-09-23 실측). `gcfckzqrcujktloilwpz` 는 프로젝트는 살아 있으나 2u 설정·번들에서 참조 0 | 공용 테이블은 이 DB · anon key 는 2u 번들에 공개 → `supabase/CLAUDE.md` |
 | data.go.kr API Key | MOLIT_KEY | 일일 10,000건 공유 |
 | 집 서버 IP | 192.168.219.101 (외부: Cloudflare Tunnel) | 네이버 rate limit 공유 |
 | Vercel Team | `developer-dunos-projects` | 프로젝트별 환경변수/배포 독립 |

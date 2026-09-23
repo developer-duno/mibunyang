@@ -106,7 +106,11 @@ export function maskDollarQuoted(src) {
     const closeRe = new RegExp(`\\$${tag}\\$`, "g");
     closeRe.lastIndex = openEnd;
     const closeMatch = closeRe.exec(src);
-    if (!closeMatch) break; // 안 닫힘 — 더 스캔하지 않는다
+    // 안 닫힘 — 조용히 멈추면 짝 없는 $$ 가 뒤쪽의 엉뚱한 $$ 와 짝을 지어 그 사이 문장(진짜 CREATE POLICY 포함)이
+    // 검사에서 빠진다(세션566 코드 검사관 재현: got=[] want=[t::x]). 모르는 형태는 시끄럽게 실패한다.
+    if (!closeMatch) {
+      throw new Error(`닫히지 않은 달러 인용 ${m[0]} (위치 ${m.index}) — 파일이 깨졌거나 문자열 안에 $$ 가 있다`);
+    }
     const closeEnd = closeMatch.index + closeMatch[0].length;
     for (let i = m.index; i < closeEnd; i++) {
       if (src[i] !== "\n") out[i] = " ";
@@ -400,7 +404,7 @@ export function isFlagged(p) {
  */
 export function listMigrationFiles() {
   return readdirSync(MIGRATIONS_DIR)
-    .filter((n) => n.endsWith(".sql") && !n.toLowerCase().includes("rollback"))
+    .filter((n) => n.endsWith(".sql") && !isRollbackFile(n))
     .sort()
     .map((n) => path.join(MIGRATIONS_DIR, n));
 }
@@ -415,9 +419,24 @@ function replayFiles(files) {
   let state = new Map();
   for (const f of files) {
     const src = readFileSync(f, "utf8").replace(/\r\n/g, "\n");
-    state = replayPolicies(src, state);
+    try {
+      state = replayPolicies(src, state);
+    } catch (e) {
+      throw new Error(`${path.basename(f)}: ${e instanceof Error ? e.message : String(e)}`);
+    }
   }
   return state;
+}
+
+/**
+ * 되돌리기 파일 = `14자리 시각_rollback_…` 이름 규칙(세션566 실측: 본 폴더 17개 전부 이 꼴).
+ * 이름 중간에 "rollback" 이 들어간 정방향 마이그레이션(예: `…_prevent_rollback_of_grants.sql`)은 검사 대상이다
+ * — 옛 판정(`includes("rollback")`)은 그런 파일을 조용히 빼는 탈출구였다(세션566 코드 검사관).
+ * @param {string} name 파일 이름(경로 없이)
+ * @returns {boolean}
+ */
+export function isRollbackFile(name) {
+  return /^\d{14}_rollback_/i.test(name);
 }
 
 describe("RLS anon 쓰기 정책 — 항상 참 조건 재발 방지(lint 0024 쌍둥이)", () => {
@@ -459,6 +478,18 @@ describe("RLS anon 쓰기 정책 — 항상 참 조건 재발 방지(lint 0024 �
 });
 
 describe("파서/판정 픽스처 — 합성 SQL", () => {
+  it("닫히지 않은 $$ 는 조용히 넘기지 않고 에러 — 뒤 문장이 검사에서 빠지는 탈출구를 막는다(세션566)", () => {
+    const src = "DO $$ BEGIN PERFORM 1;\nCREATE POLICY x ON t FOR INSERT TO anon WITH CHECK (true);";
+    expect(() => replayPolicies(src)).toThrow(/닫히지 않은 달러 인용/);
+    expect(() => replayPolicies("SELECT $tag$ 열린 채로;")).toThrow(/닫히지 않은 달러 인용/);
+  });
+
+  it("되돌리기 파일은 이름 규칙으로만 가린다 — 이름 중간의 rollback 은 정방향으로 검사한다(세션566)", () => {
+    expect(isRollbackFile("20260923000001_rollback_drop_anon_insert_policies.sql")).toBe(true);
+    expect(isRollbackFile("20260924000000_prevent_rollback_of_grants.sql")).toBe(false);
+    expect(isRollbackFile("rollback_notes.sql")).toBe(false);
+  });
+
   it("INSERT TO anon WITH CHECK (true) = 위반", () => {
     const state = replayPolicies('CREATE POLICY x ON t FOR INSERT TO anon WITH CHECK (true);');
     expect(isFlagged(/** @type {PolicyState} */ (state.get("t::x")))).toBe(true);

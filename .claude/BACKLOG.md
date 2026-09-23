@@ -77,11 +77,11 @@
 - 🟡 **자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm`** — 새 DB 에선 다시 public 에 깔린다 → `WITH SCHEMA extensions` 로(자매 세션 통보).
 - ✅ **2u `user_profiles` 자기 등급 올리기 구멍 — 운영 DB 에서 막음**(사장님 승인). 가입 개방·이메일 확인 꺼짐 + RLS 가 행만 막고 칸은 안 막아 가입자가 자기 `role`·`status`·`paid_until`·`email` 을 고칠 수 있었고, 2u `deps.py` 는 role=admin 또는 profile.email∈ADMIN_EMAILS 로 관리자 통과 → anon·authenticated 쓰기 권한 회수(전후 탐침: 허용 → permission denied). 기록 = 자매 V062(2u #563 머지) · 2u 인계 = 2u 메모리 `handoff_from_mibunyang_2026-09-23_security_kakao.md`.
 - ✅ **미분양 카카오 로그인 — 유효·인증된 이메일만 받기**(#582, 운영 배포 f0637ab7). 인증 안 된 이메일로 기존 계정 연결(B 분기)·관리자 판정(isAdminEmail)을 하던 구멍. 인증 안 된 손님은 안내 후 거절 — **사장님 실로그인 정상 확인(2026-09-23)**.
-- ✅ **상가(sangga) 보안 고문 경고 8건 해소**(sangga #152, 라이브 적용 — pg_trgm→extensions · 헬퍼 7개 search_path). 오류 3·경고 7은 의도된 설계(보안 정의자 뷰 = 가린 칸만 공개하는 면)·PostGIS 고유라 그대로 — 상가 메모리 `handoff_from_mibunyang_2026-09-23_security_advisor.md`.
+- ✅ **상가(sangga) 보안 고문 경고 6건 해소**(sangga #152·#153, 라이브 적용 — pg_trgm→extensions · 헬퍼 5개 search_path). search_key·price_floor_band 는 SET 뒤 인라인이 꺼져 검색·층대 가격이 20~130% 느려져 되돌림(경고 2건 일부러 둠). 오류 3·나머지 경고 7 = 의도된 설계(가린 칸만 공개하는 뷰)·PostGIS 고유 — 상가 메모리 `handoff_from_mibunyang_2026-09-23_security_advisor.md`.
 - 🟡 **2u 카카오 전용 가입 제안**(사장님 질문, 의견 = 찬성·2u 작업으로 따로) — 정할 것: 비즈 앱 공유/신규 · 관리자를 user_id 로 · 기존 계정 이전 · 비상 로그인. 2u 인계 문서에 기록.
 - 🟡 **2u `user_profiles` 의 로그인 계정 없는 admin/approved 26행**(gmail, 5/31~9/12, 로그인 이력 0) — 지금은 로그인 불가라 위험 없음, 삭제는 사장님 승인.
 - 🟢 미분양 세션 토큰이 localStorage(검사관 Low — XSS 통로 0건이라 급하지 않음) · 결정: 미분양 이메일(비밀번호) 로그인은 **넣지 않음**(카카오만).
-- 🟡 **문서 확인** — CLAUDE.md "naver-estate-web DB = `gcfckzqrcujktloilwpz`" 인데 2u backend·프론트는 모두 `rwdtljipvmqpazrimyns` 를 가리킨다(실측).
+- ✅ **문서 확인** — CLAUDE.md "naver-estate-web DB = `gcfckzqrcujktloilwpz`" 는 낡음(할루시네이션 감사관 확정): 2u backend·로그인·번들 모두 `rwdtljipvmqpazrimyns`. CLAUDE.md 공유 인프라 표 정정(세션566 말미).
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - 🔴 **9/24(목) 04:30 어린이집 로컬 러너 · 08:00 네이버 러너** — 로컬 러너는 `F:\mibunyang` **작업 트리를 그대로 실행**한다(`kosis-local-runner.bat` `cd /d "%~dp0.."`). 세션566 은 마무리에 작업 트리를 main 으로 되돌렸다 — 다음 세션도 **끝날 때 작업 트리를 main·깨끗한 상태로** 둔다(admin-district-code-reform §6).
