@@ -897,14 +897,15 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
 /**
  * 좌표 부정확 단지의 **기준 건수** — 이보다 늘면 경보한다(감시 ⑨).
  *
- * 2026-09-23 실측 56곳. 전부 준공 전이라 세 출처(카카오 POI·청약홈 지번·네이버 단지)가
- * 다 못 찾는 게 정상이고, 그날 정정 대상은 0곳이었다. 준공되면 저절로 풀리므로
- * **줄어드는 것은 정상**이다 — 늘어날 때만 본다.
+ * 2026-09-23 실측 56곳 → 같은 날 세션565 가 **42곳을 사람 대조·승인으로 정정**해 **14곳**
+ * (준공 전 8 + 증거 부족으로 보류한 준공 6 — `docs/audits/2026-09-23-coord-approvals.json` 밖의 행).
+ * 보류 6곳은 `past:6` 경보로 계속 알린다. 준공되면 저절로 풀리므로 **줄어드는 것은 정상**이다
+ * — 늘어날 때만 본다.
  *
  * ⚠️ 이 값을 낮추면 매일 거짓 경보가 나 감시가 무뎌진다. 실측 후에만 고친다:
  *   node -e "...apartments 에서 coord_shared=true 세기..."
  */
-export const COORD_SHARED_BASELINE = 56;
+export const COORD_SHARED_BASELINE = 14;
 
 /**
  * **daily 모드에서도 dedup 을 타는** collector — 사람이 손대야만 풀리는 지속 상태 (세션563).
