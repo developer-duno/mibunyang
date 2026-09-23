@@ -33,7 +33,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_KEY = "test-key";
 
-const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, main } =
+const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, main } =
   await import("./collect-unsold-kosis.mjs");
 const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -332,11 +332,12 @@ describe("shouldSkipKosisFill — 공식 미분양이 매물 수에 밀리지 �
     expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: null })).toBe(true);
   });
 
-  it("⚠️ 세종은 gu 가 null 이라 이 함수가 통째로 건너뛴다 (별개 구조 문제)", () => {
-    // 실측 7곳(엘리프세종 계열 등)이 매물 유래인데도 안 덮어써진다.
-    // 세종은 구·군이 없어 gu=null 이고, 비례배분 분모(시군구)가 없다.
-    // 이 테스트는 그 한계를 못 박아 다음 사람이 "왜 세종만 안 고쳐지지"로 헤매지 않게 한다.
-    expect(skip({ unsold: 23, units: 660, region: "세종", gu: null, naver_sell_count: 23 })).toBe(true);
+  it("세종은 gu 가 null 이어도 더 이상 통째로 건너뛰지 않는다 (세션567 — 사장님 결정 ⑦)", () => {
+    // 세션559 당시엔 gu=null 을 무조건 건너뛰어 실측 7곳(엘리프세종 계열 등)이 매물 유래여도
+    // 안 덮어써졌다. 세션567 부터는 apartments 쪽(resolveKosisGuKey)이 세종을 "세종시" 키로
+    // 판정하므로, 이 함수도 region==="세종" 이면 gu=null 을 정상 구조로 받아들인다.
+    // 매물 수와 정확히 같으면(23===23) 매물 유래이므로 덮어쓴다(false).
+    expect(skip({ unsold: 23, units: 660, region: "세종", gu: null, naver_sell_count: 23 })).toBe(false);
   });
 
   it("비례배분 분모가 될 수 없는 단지는 건너뛴다", () => {
@@ -454,5 +455,363 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
     expect(targetLine).toBeDefined();
     // estimated = round(1000 * 50200/150600) = round(333.33) = 333
     expect(targetLine).toMatch(/unsold=333,/);
+  });
+});
+
+// ── main() — clear_listing_derived 를 실제로 비운다 (세션567 추가분) ──
+describe("main() — 매물 유래 값 비움(clear_listing_derived) 이 dry-run 로그·ok 카운트에 반영된다", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("KOSIS=0 이고 매물 유래인 단지 → [DRY-RUN][비움·매물유래] 로그 + ok 카운트 포함", async () => {
+    const apartments = [
+      { id: "apt-clear", name: "매물유래단지", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null },
+    ];
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" }] });
+
+    /** @type {string[]} */
+    const logLines = [];
+    const { log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
+    /** @type {any} */ (logMock).mockImplementation((/** @type {string} */ _phase, /** @type {string} */ msg) => { logLines.push(msg); });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run"];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+    }
+
+    const clearLine = logLines.find((l) => l.includes("비움·매물유래"));
+    expect(clearLine).toBeDefined();
+    expect(clearLine).toMatch(/매물유래단지.*unsold 12 → null/);
+    expect(logLines.some((l) => l.includes("매물 유래 비움: 1건"))).toBe(true);
+    // regUpdated=0 + aptUpdated=0(write 대상 없음) + clearedListingDerived=1
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
+  });
+
+  it("--impact-out 에 clear_listing_derived action 이 그대로 실린다", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { readFileSync, rmSync } = await import("node:fs");
+    const impactPath = path.join(os.tmpdir(), `s567_impact_${Date.now()}.json`);
+
+    const apartments = [
+      { id: "apt-clear2", name: "매물유래단지2", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null },
+    ];
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" }] });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run", `--impact-out=${impactPath}`];
+    try {
+      await main();
+      const written = readFileSync(impactPath, "utf8");
+      const parsed = JSON.parse(written);
+      expect(parsed.actionCounts.clear_listing_derived).toBe(1);
+      const row = parsed.plan.find((/** @type {any} */ p) => p.id === "apt-clear2");
+      expect(row.action).toBe("clear_listing_derived");
+    } finally {
+      process.argv = originalArgv;
+      try { rmSync(impactPath); } catch { /* noop */ }
+    }
+  });
+});
+
+// ── resolveKosisGuKey — 시도 합계 폴백 삭제 + 두 단어 gu → 시 단위 매칭 (세션567) ──
+describe("resolveKosisGuKey", () => {
+  it("정확 일치 — gu 그대로 KOSIS 키로 조회된다", () => {
+    expect(resolveKosisGuKey("서울", "강남구", { "강남구": 10 })).toBe("강남구");
+  });
+
+  it("두 단어 gu('천안시 동남구') — 첫 토큰(시 단위)이 guMap 에 있으면 그것으로 매칭", () => {
+    expect(resolveKosisGuKey("충남", "천안시 동남구", { "천안시": 5100 })).toBe("천안시");
+    expect(resolveKosisGuKey("충남", "천안시 서북구", { "천안시": 5100 })).toBe("천안시");
+  });
+
+  it("두 단어 gu 인데 정확 일치가 먼저 있으면 정확 일치를 쓴다", () => {
+    // guMap 에 두 단어 키 자체가 있는 경우(예: 경기 수원시 권선구가 KOSIS 에도 따로 나오는 가상 상황)
+    expect(resolveKosisGuKey("경기", "수원시 권선구", { "수원시 권선구": 20, "수원시": 100 })).toBe("수원시 권선구");
+  });
+
+  it("세종(gu=null) — guMap 에 '세종시' 가 있으면 그것으로 매칭", () => {
+    expect(resolveKosisGuKey("세종", null, { "세종시": 43 })).toBe("세종시");
+  });
+
+  it("세종인데 guMap 에 '세종시' 가 없으면 null", () => {
+    expect(resolveKosisGuKey("세종", null, { "다른구": 1 })).toBeNull();
+  });
+
+  it("gu 도 없고 세종도 아니면 null — 시도 합계로 폴백하지 않는다", () => {
+    expect(resolveKosisGuKey("경기", null, { "수원시": 100 })).toBeNull();
+  });
+
+  it("첫 토큰도 guMap 에 없으면 null — 시도 합계로 폴백하지 않는다", () => {
+    expect(resolveKosisGuKey("충남", "모르는시 모르는구", { "천안시": 5100 })).toBeNull();
+  });
+
+  it("guMap 자체가 undefined 면 null", () => {
+    expect(resolveKosisGuKey("경기", "수원시", undefined)).toBeNull();
+  });
+
+  it("⚠️ 'constructor' 같은 프로토타입 키는 hasOwnProperty 로 막혀 null — 함수를 돌려주지 않는다", () => {
+    // guMap?.["constructor"] 는 Object.prototype.constructor(함수)를 돌려주는 함정이 있다
+    // (admin-district-code-reform.md §3). hasOwnProperty 조회라 이 값은 절대 나오면 안 된다.
+    const result = resolveKosisGuKey("경기", "constructor", { "수원시": 100 });
+    expect(result).toBeNull();
+    expect(typeof result).not.toBe("function");
+  });
+
+  it("'toString' 키도 마찬가지로 막힌다", () => {
+    expect(resolveKosisGuKey("경기", "toString", { "수원시": 100 })).toBeNull();
+  });
+});
+
+// ── planUnsoldUpdates — 순수 계획 함수 (세션567) ──
+describe("planUnsoldUpdates", () => {
+  /** @param {Partial<any>} overrides */
+  function apt(overrides = {}) {
+    return {
+      id: "id-1", name: "테스트단지", region: "경기", gu: "수원시",
+      units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null,
+      ...overrides,
+    };
+  }
+
+  it("매칭 성공 + 낮은 비율 → write", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt()],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan[0].action).toBe("write");
+    expect(plan[0].newEstimate).toBe(50); // guUnsold=50, units=500, totalUnitsInGu=500 → 50*500/500=50
+  });
+
+  it("임대형은 대상에서 제외된다(skip_lease) — 분모에도 안 들어간다", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "lease-1", presale_type: "국민임대", units: 400 }),
+        apt({ id: "target-1", units: 100 }),
+      ],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    const lease = plan.find((p) => p.id === "lease-1");
+    const target = plan.find((p) => p.id === "target-1");
+    expect(lease?.action).toBe("skip_lease");
+    // 분모에서 임대형(400)이 빠졌으므로 totalUnitsInGu = 100(target 자신만) → estimated = round(50*100/100) = 50
+    expect(target?.totalUnitsInGu).toBe(100);
+    expect(target?.newEstimate).toBe(50);
+  });
+
+  it("두 단어 gu('천안시 동남구') — 분모는 같은 시 전체(동남구+서북구) 비임대 합", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "a1", region: "충남", gu: "천안시 동남구", units: 300 }),
+        apt({ id: "a2", region: "충남", gu: "천안시 서북구", units: 700 }),
+      ],
+      unsoldByRegionGu: { "충남": { "천안시": 100 } },
+    });
+    const a1 = plan.find((p) => p.id === "a1");
+    const a2 = plan.find((p) => p.id === "a2");
+    expect(a1?.kosisKey).toBe("천안시");
+    expect(a2?.kosisKey).toBe("천안시");
+    // 옛 결함이었다면 시도(충남) 합계 전체가 각 구에 몰렸을 것 — 이제는 시 단위 분모로 비례배분
+    expect(a1?.totalUnitsInGu).toBe(1000); // 300+700
+    expect(a1?.newEstimate).toBe(30); // round(100*300/1000)
+    expect(a2?.newEstimate).toBe(70); // round(100*700/1000)
+  });
+
+  it("매칭 실패 시 시도 합계로 가지 않는다 — skip_no_match (옛 결함 삭제 확인)", () => {
+    // 시도 합계(50)가 단지 세대수(500)보다 작아, 시도 합계로 폴백해도 100% 이하 비율이
+    // 나오는 픽스처 — calcProportionalUnsold 의 자체 100% 상한 검사에 뮤테이션이 가려지지
+    // 않도록 일부러 작게 잡았다(뮤테이션 검증 시 실측: 큰 분모는 100% 초과로 null 이 되어
+    // "폴백을 되살려도" 결과가 우연히 같아지는 함정이 있었다).
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ region: "충남", gu: "모르는시", units: 500 })],
+      // 충남 시도 합계는 천안시(30)+아산시(20)=50 이지만, gu 매칭 실패 시 이 값을 절대 쓰면 안 된다
+      unsoldByRegionGu: { "충남": { "천안시": 30, "아산시": 20 } },
+    });
+    expect(plan[0].action).toBe("skip_no_match");
+    expect(plan[0].newEstimate).toBeNull();
+  });
+
+  it("새 추정 미분양률이 50% 이상이면 hold_ge50 — 쓰지 않는다", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 100 })],
+      // guUnsold=60, totalUnitsInGu=100(자기 자신) → estimated=60, rate=60%
+      unsoldByRegionGu: { "경기": { "수원시": 60 } },
+    });
+    expect(plan[0].action).toBe("hold_ge50");
+    expect(plan[0].newRate).toBe(60);
+  });
+
+  it("정확히 50%도 hold_ge50 (경계값, >= 조건)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 100 })],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan[0].action).toBe("hold_ge50");
+    expect(plan[0].newRate).toBe(50);
+  });
+
+  it("49.9% 는 write (경계값 확인)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 1000 })],
+      // guUnsold=499, totalUnitsInGu=1000 → rate=49.9%
+      unsoldByRegionGu: { "경기": { "수원시": 499 } },
+    });
+    expect(plan[0].action).toBe("write");
+    expect(plan[0].newRate).toBe(49.9);
+  });
+
+  it("shouldSkipKosisFill 이 존중(skip)하는 기존 값은 skip_preserved — 새 추정치도 함께 기록", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ unsold: 30, units: 500 })], // 유효한 기존 값(500 이하) → skip
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan[0].action).toBe("skip_preserved");
+    expect(plan[0].newEstimate).toBe(50); // 비교용으로 계산은 됐지만 안 쓴다
+  });
+
+  it("guUnsold 가 0 이하이면 skip_kosis_zero (매물 유래 아니면, 세션567 이름표 변경)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt()],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(plan[0].action).toBe("skip_kosis_zero");
+  });
+
+  it("calcProportionalUnsold 가 null(비정상 비율 100% 초과)이면 skip_no_estimate", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 10 })],
+      // totalUnitsInGu=10(자기자신), guUnsold=1000 → rate 10000% > 100 → calcProportionalUnsold null
+      unsoldByRegionGu: { "경기": { "수원시": 1000 } },
+    });
+    expect(plan[0].action).toBe("skip_no_estimate");
+  });
+
+  it("세종(gu=null) — '세종시' 로 매칭해 write 된다", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ id: "sejong-1", region: "세종", gu: null, units: 200 })],
+      unsoldByRegionGu: { "세종": { "세종시": 20 } },
+    });
+    expect(plan[0].kosisKey).toBe("세종시");
+    expect(plan[0].action).toBe("write");
+    expect(plan[0].newEstimate).toBe(20); // totalUnitsInGu = 자기 units(200, 세종시 분모 없으면 자신)
+  });
+});
+
+// ── 세션567 추가분 — KOSIS=0/추정 0/100% 초과 × 매물 유래 여부 (사장님 결정 2026-09-24) ──
+describe("planUnsoldUpdates — KOSIS 값이 없거나 0/거의 0/100%초과 일 때 매물 유래는 비운다", () => {
+  /** @param {Partial<any>} overrides */
+  function apt(overrides = {}) {
+    return {
+      id: "id-1", name: "테스트단지", region: "경기", gu: "수원시",
+      units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null,
+      ...overrides,
+    };
+  }
+
+  it("KOSIS=0 · 매물 아님(naver_sell_count 다름) → skip_kosis_zero (새 이름표, 단순 매칭없음과 구분)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ unsold: 30, naver_sell_count: 12 })], // 매물 유래 아님(값이 다름)
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(plan[0].action).toBe("skip_kosis_zero");
+    expect(plan[0].newEstimate).toBeNull();
+  });
+
+  it("KOSIS=0 · 매물 유래(unsold === naver_sell_count) → clear_listing_derived", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ unsold: 12, naver_sell_count: 12 })],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(plan[0].action).toBe("clear_listing_derived");
+  });
+
+  it("추정 반올림이 0 이하(거의 0) · 매물 유래 → clear_listing_derived", () => {
+    // guUnsold=1, units=1(자기 자신뿐이라 분모=1) → round(1*1/1)=1 이 아니라
+    // 분모를 크게 잡아 반올림 결과가 0이 되도록: guUnsold=1, aptUnits=1, totalUnitsInGu=1000
+    // round(1 * 1/1000) = round(0.001) = 0
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "big", units: 999, naver_sell_count: null }), // 분모를 키우는 이웃(비임대)
+        apt({ id: "target", units: 1, unsold: 3, naver_sell_count: 3 }), // 매물 유래, units 작음
+      ],
+      unsoldByRegionGu: { "경기": { "수원시": 1 } }, // guUnsold=1, totalUnitsInGu=1000 → round(1*1/1000)=0
+    });
+    const target = plan.find((p) => p.id === "target");
+    expect(target?.action).toBe("clear_listing_derived");
+  });
+
+  it("추정이 100% 초과(계산 불가)·매물 유래 → skip_no_estimate 그대로(비우지 않는다, 사장님 결정)", () => {
+    // guUnsold=1000, aptUnits=100, totalUnitsInGu=500 → rate=200% > 100 → calcProportionalUnsold null
+    // rawEstimate = round(1000*100/500) = 200 > 0 이므로 "거의 0" 아님 → 비우지 않는다
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 100, unsold: 50, naver_sell_count: 50 })], // 매물 유래
+      unsoldByRegionGu: { "경기": { "수원시": 1000 } },
+    });
+    expect(plan[0].action).toBe("skip_no_estimate");
+    expect(plan[0].newEstimate).toBeNull();
+  });
+
+  it("유효한 추정 · 매물 유래 → write (기존 동작 그대로, 회귀 없음)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 500, unsold: 30, naver_sell_count: 30 })], // 매물 유래지만 KOSIS 로 정상 채움
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan[0].action).toBe("write");
+    expect(plan[0].newEstimate).toBe(50);
+  });
+
+  it("임대형 · 매물 유래 조건이어도 → skip_lease (임대 제외가 매물유래 판정보다 우선)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ presale_type: "국민임대", units: 500, unsold: 30, naver_sell_count: 30 })],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(plan[0].action).toBe("skip_lease");
+  });
+});
+
+// ── 전남광주 파싱 — MERGED_SIDO_RE 확장 이후 (세션567) ──
+describe("parseKosisRows/parseKosisRowsAllMonths — 전남광주 통합 시도 실측 행 형태", () => {
+  it("C1_NM='전남광주' + C2_NM='북구' → 광주로 분류된다", () => {
+    const rows = [makeRow("전남광주", "북구", "202607", 30)];
+    const result = parseKosisRows(rows);
+    expect(result["광주"]?.["북구"]).toBe(30);
+  });
+
+  it("C1_NM='전남광주' + C2_NM='순천시' → 전남으로 분류된다", () => {
+    const rows = [makeRow("전남광주", "순천시", "202607", 45)];
+    const result = parseKosisRows(rows);
+    expect(result["전남"]?.["순천시"]).toBe(45);
+  });
+
+  it("C1_NM='전남광주' + C2_NM='계'(시도 합계) → 못 갈라 버려진다", () => {
+    const rows = [makeRow("전남광주", "계", "202607", 999)];
+    const result = parseKosisRows(rows);
+    expect(Object.keys(result)).toHaveLength(0);
+  });
+
+  it("광주·전남 구 값을 합해 시도 합계를 재구성한다(aggregateRegionTotals)", () => {
+    const rows = [
+      makeRow("전남광주", "북구", "202607", 30),
+      makeRow("전남광주", "광산구", "202607", 20),
+      makeRow("전남광주", "순천시", "202607", 45),
+    ];
+    const parsed = parseKosisRows(rows);
+    const totals = aggregateRegionTotals(parsed);
+    expect(totals["광주"]).toBe(50); // 30+20 (소계/_total 없어 구 합산)
+    expect(totals["전남"]).toBe(45);
+  });
+
+  it("parseKosisRowsAllMonths 도 동일하게 '전남광주'를 가른다", () => {
+    const rows = [makeRow("전남광주", "북구", "202607", 30)];
+    const result = parseKosisRowsAllMonths(rows);
+    expect(result["광주"]?.["북구"]).toEqual({ "202607": 30 });
   });
 });
