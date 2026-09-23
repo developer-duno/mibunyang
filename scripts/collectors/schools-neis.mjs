@@ -12,6 +12,7 @@
  *       저장된 nearby_schools 만 읽어 school_score/school_grade 재계산 (외부 API 호출 0)
  */
 import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun, createReporter, selectAll } from "./_shared.mjs";
+import { isSchoolPlace, isElementarySchoolDoc } from "./_school-place.mjs";
 
 loadEnv();
 
@@ -27,10 +28,10 @@ const NEIS_BASE = "https://open.neis.go.kr/hub";
 const SCHOOLINFO_KEY = process.env.SCHOOLINFO_KEY;
 const SCHOOLINFO_BASE = "https://www.schoolinfo.go.kr/openApi.do";
 
-/** 학교명 whitelist — 정상 학교는 반드시 "학교"로 끝남 (부속시설·비학교 POI 자동 제외) */
-const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
-/** @param {string} name */
-export const isSchoolPlace = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
+// 세션567: 학교명 판정(isSchoolPlace)은 이제 `_school-place.mjs` 가 진실의 원천이다
+// (calc-school-walk.mjs 와 공유). 이 파일에서 계속 같은 이름으로 쓰기 위해 재수출한다 —
+// 다른 파일이 이 모듈의 `isSchoolPlace` 를 import 하는 경우(테스트 포함)도 그대로 호환된다.
+export { isSchoolPlace };
 
 // ── Kakao Places API ────────────────────────────────────────────
 /**
@@ -547,9 +548,11 @@ async function main() {
       await sleep(100);
 
       // 2단계: nearby_schools 생성 + NEIS 보강
+      // 세션567: 초등만 isElementarySchoolDoc(이름+분류) — 분교장을 포함하고 개교 예정을
+      // 제외한다. 중·고는 기존 이름 화이트리스트(isSchoolPlace) 그대로 유지한다.
       /** @type {Array<Record<string, any>>} */
       let nearbySchools = [
-        ...elem.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "초", distance: Math.round(Number(s.distance)) })),
+        ...elem.filter(/** @param {Record<string, any>} s */ (s) => isElementarySchoolDoc(s)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "초", distance: Math.round(Number(s.distance)) })),
         ...middle.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "중", distance: Math.round(Number(s.distance)) })),
         ...high.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "고", distance: Math.round(Number(s.distance)) })),
       ].sort((a, b) => a.distance - b.distance);

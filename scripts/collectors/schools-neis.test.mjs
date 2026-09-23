@@ -684,6 +684,30 @@ describe("관측값 앵커 (2026-08-23 전수 실측, n=2,771)", () => {
 // 패턴이었는데 main() 만 빠져 있었다(unordered-pagination-loses-rows.md §1). select 문자열
 // 리터럴 조각으로 고정 — toContain("apartment_id") 류는 옆 옵션 줄에 오매칭된다
 // ([[guards-must-be-mutation-tested]] §"소스 grep 가드").
+// 세션567 — 초등 필터만 isElementarySchoolDoc(분교장 포함·개교 예정 제외)를 쓰고
+// 중·고는 기존 isSchoolPlace(이름) 그대로인지 소스로 확인한다. main() 은 Supabase/Kakao 를
+// 실제로 호출해 무거운 mocking 없이는 단위테스트가 어렵다
+// ([[guards-must-be-mutation-tested]] "테스트가 실제로 지나는 경로를 지나는가").
+describe("초등 필터 배선 — isElementarySchoolDoc, 중/고는 isSchoolPlace 유지 (세션567)", () => {
+  it("elem 필터는 isElementarySchoolDoc(s) 를 쓴다", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /elem\.filter\([\s\S]{0,120}?=>\s*isElementarySchoolDoc\(s\)\)/,
+    );
+  });
+
+  it("middle/high 필터는 여전히 isSchoolPlace\\(s\\.place_name\\) 를 쓴다", () => {
+    expect(COLLECTOR_SRC).toMatch(/middle\.filter\([\s\S]{0,120}?=>\s*isSchoolPlace\(s\.place_name\)\)/);
+    expect(COLLECTOR_SRC).toMatch(/high\.filter\([\s\S]{0,120}?=>\s*isSchoolPlace\(s\.place_name\)\)/);
+  });
+
+  it("공유 모듈을 import 하고 로컬 SCHOOL_SUFFIX_RE 선언이 없다", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /import \{ isSchoolPlace, isElementarySchoolDoc \} from "\.\/_school-place\.mjs";/,
+    );
+    expect(COLLECTOR_SRC).not.toMatch(/const\s+SCHOOL_SUFFIX_RE\s*=/);
+  });
+});
+
 describe("schools 페이징 — 고유키 커서 회귀 가드 (세션539 B-1)", () => {
   it("main() 은 selectAll(..., sb, \"apartment_id\") 커서로 schools 를 훑는다", () => {
     expect(COLLECTOR_SRC.includes('.select("apartment_id, nearby_schools, updated_at")')).toBe(true);

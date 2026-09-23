@@ -19,6 +19,18 @@
  *   가짜/센티널 분 값은 절대 저장하지 않는다(화면에 "초등 도보 {N}분"으로 그대로 노출됨,
  *   src/components/detail/SchoolInfo.tsx:99) — 못 찾으면 그 단지는 건너뛴다(skip).
  *
+ * 세션567 추가 정정 (사장님 결정 2026-09-23):
+ *   3) 카카오 keyword.json "초등학교" 응답의 이름 화이트리스트(isSchoolPlace)는 "…초등학교"로
+ *      끝나야 통과하는데, 실제로는 "인천영종초등학교 금산분교장"처럼 **분교장**이 category_name
+ *      "교육,학문 > 학교 > 초등학교"로 정상 분류되면서도 이름 끝이 "분교장"이라 버려지고 있었다.
+ *      판정을 `isSchoolPlace`(이름) → `isElementarySchoolDoc`(이름+분류, `_school-place.mjs`
+ *      공유)로 바꿔 분교장을 포함하되, "미단초중학교 (2028년 3월 예정)"처럼 개교 예정인 곳은
+ *      제외한다(사장님 결정 — 아직 없는 학교로 도보분을 매기지 않는다).
+ *   4) `apartments.coord_shared = true`(좌표가 남의 단지와 공유돼 부정확함, 세션560) 인 단지는
+ *      가짜 좌표에서 잰 도보분을 저장하면 안 되므로, 이번 재계산에서 카카오 조회 자체를
+ *      건너뛰고 기존 저장값을 null 로 비운다. 좌표가 정정돼 그 표시가 꺼지면 다음 정기 실행이
+ *      자동으로 다시 채운다(별도 백필 불필요 — 이 수집기는 좌표만 보고 대상을 정하므로).
+ *
  * 세션 511: transit-match.mjs 와 똑같은 사고 — 이 수집기를 실행하는 워크플로가 0건이라
  * collector_runs 행이 안 생겼다(createReporter 는 있었지만 recordCollectorRun 호출이 없었음).
  * audit-orphan-collectors.mjs 가 잡아 라이브 실측(2026-03 73.9% → 2026-04 이후 0%)까지 확인됨.
@@ -42,7 +54,13 @@ import {
   sleep,
   createSemaphore,
 } from "./_shared.mjs";
+import { isSchoolPlace, isElementarySchoolDoc } from "./_school-place.mjs";
 loadEnv();
+
+// 세션567: 학교명 판정은 이제 `_school-place.mjs` 가 진실의 원천이다. 이 파일 안에서
+// 계속 쓰기 위해서만이 아니라, 다른 파일이 이 모듈의 `isSchoolPlace` 를 import 하는 경우를
+// 위해 재수출한다(세션566까지는 로컬 복제본이었다).
+export { isSchoolPlace };
 
 const PHASE = "school-walk";
 const WALK_SPEED = 70; // m/분 (어린이 도보 속도)
@@ -62,14 +80,6 @@ export const SCHOOL_WALK_BONUS_MIRROR = [
   { max: 20, score: -5 },
 ];
 export const SCHOOL_WALK_FAR_ADJ_MIRROR = -10;
-
-// ── 학교명 화이트리스트 (schools-neis.mjs isSchoolPlace 거울) ──────────────────
-// schools-neis.mjs 는 최상위에서 `if (!KAKAO_KEY) process.exit(1)` 을 실행하므로 그 모듈을
-// import 하면 테스트·KAKAO_KEY 미설정 환경에서 이 파일까지 죽는다. 순수 판정 로직만 복제한다
-// (SCHOOL_SUFFIX_RE 는 schools-neis.mjs 가 진실의 원천 — 그쪽이 바뀌면 여기도 같이 바꿀 것).
-const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
-/** @param {string} name */
-export const isSchoolPlace = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
 
 /**
  * 초등학교 필터 + 최소 거리 찾기
@@ -96,36 +106,47 @@ export function calcWalkingMinutes(distanceM, walkSpeed = WALK_SPEED) {
 
 /**
  * 카카오 키워드 검색 결과(초등학교) 중 진짜 학교만 걸러 최소 거리를 찾는다.
- * schools-neis.mjs 의 SCHOOL_SUFFIX_RE 화이트리스트(isSchoolPlace)를 그대로 쓴다 —
- * "행복초등학교앞 정류장" 같은 비학교 POI, 병설유치원 등을 걸러낸다.
+ * `_school-place.mjs` 의 `isElementarySchoolDoc`(이름+분류, 분교장 포함·개교 예정 제외)을
+ * 쓴다 — "행복초등학교앞 정류장" 같은 비학교 POI, 병설유치원 등을 걸러내면서도 세션567부터는
+ * "…금산분교장"처럼 이름이 "학교"로 끝나지 않는 분교장을 분류로 구제한다.
  * @param {Array<Record<string, any>>} docs Kakao keyword.json documents
  * @returns {number | null} 최소 거리(m), 없으면 null
  */
 export function nearestElemFromKakaoDocs(docs) {
   if (!Array.isArray(docs) || docs.length === 0) return null;
-  const valid = docs.filter(d => isSchoolPlace(d?.place_name) && Number(d?.distance) > 0);
+  const valid = docs.filter(d => isElementarySchoolDoc(d) && Number(d?.distance) > 0);
   if (valid.length === 0) return null;
   return Math.min(...valid.map(d => Number(d.distance)));
 }
 
 /**
- * schools/apartments 스냅샷을 두 그룹으로 나눈다:
+ * schools/apartments 스냅샷을 세 그룹으로 나눈다:
  *   - direct: nearby_schools 안에 이미 초등학교가 있어 즉시 도보분을 계산할 수 있는 단지
  *   - needLookup: nearby_schools 에 초등학교가 없어 카카오로 더 넓게 찾아야 하는 단지
  *     (좌표가 없으면 목록에서 제외 — 조회할 수단이 없음)
+ *   - clear: `coord_shared === true`(좌표가 남의 단지와 공유돼 부정확함, 세션560) 인 단지.
+ *     가짜 좌표에서 잰 값을 저장하면 안 되므로 카카오 조회 없이 곧바로 null 로 비운다
+ *     (세션567, 사장님 결정) — direct/needLookup 판정보다 먼저 걸러낸다.
  *
- * @param {{ apartments: Array<{ id: string, lat: number|null, lng: number|null }>,
+ * @param {{ apartments: Array<{ id: string, lat: number|null, lng: number|null, coord_shared?: boolean|null }>,
  *           schoolsById: Map<string, Array<Record<string, any>>> }} args
  * @returns {{ direct: Array<{ id: string, walkMin: number, minDist: number }>,
- *             needLookup: Array<{ id: string, lat: number, lng: number }> }}
+ *             needLookup: Array<{ id: string, lat: number, lng: number }>,
+ *             clear: Array<{ id: string }> }}
  */
 export function planWalkUpdates({ apartments, schoolsById }) {
   /** @type {Array<{ id: string, walkMin: number, minDist: number }>} */
   const direct = [];
   /** @type {Array<{ id: string, lat: number, lng: number }>} */
   const needLookup = [];
+  /** @type {Array<{ id: string }>} */
+  const clear = [];
 
   for (const apt of apartments) {
+    if (apt.coord_shared === true) {
+      clear.push({ id: apt.id });
+      continue;
+    }
     const nearbySchools = /** @type {Array<{ type: string, distance: number }> | undefined} */ (schoolsById.get(apt.id));
     const minDist = findNearestElemSchool(nearbySchools);
     if (minDist != null) {
@@ -141,7 +162,7 @@ export function planWalkUpdates({ apartments, schoolsById }) {
     }
   }
 
-  return { direct, needLookup };
+  return { direct, needLookup, clear };
 }
 
 /**
@@ -181,14 +202,14 @@ async function main() {
   const schoolRows = /** @type {Array<{ apartment_id: string, nearby_schools: any }>} */ (
     await selectAll((s) => s.from("schools").select("apartment_id,nearby_schools"), sb, "apartment_id")
   );
-  const apts = /** @type {Array<{ id: string, lat: number|null, lng: number|null, naver_school_walk_min: number|null }>} */ (
-    await selectAll((s) => s.from("apartments").select("id,lat,lng,naver_school_walk_min"), sb, "id")
+  const apts = /** @type {Array<{ id: string, lat: number|null, lng: number|null, naver_school_walk_min: number|null, coord_shared: boolean|null }>} */ (
+    await selectAll((s) => s.from("apartments").select("id,lat,lng,naver_school_walk_min,coord_shared"), sb, "id")
   );
   log(PHASE, `schools 테이블: ${schoolRows.length}건, apartments 테이블: ${apts.length}건`);
 
   const schoolsById = new Map(schoolRows.map(r => [r.apartment_id, r.nearby_schools]));
-  const { direct, needLookup } = planWalkUpdates({ apartments: apts, schoolsById });
-  log(PHASE, `직접 계산: ${direct.length}건, 재탐색 필요: ${needLookup.length}건`);
+  const { direct, needLookup, clear } = planWalkUpdates({ apartments: apts, schoolsById });
+  log(PHASE, `직접 계산: ${direct.length}건, 재탐색 필요: ${needLookup.length}건, 좌표불명(비움 대상): ${clear.length}건`);
 
   // ── 재탐색(Kakao) ──────────────────────────────────────────
   /** @type {Array<{ id: string, walkMin: number, minDist: number }>} */
@@ -218,9 +239,11 @@ async function main() {
   const curById = new Map(apts.map(a => [a.id, a.naver_school_walk_min]));
   const allComputed = [...direct, ...lookupResults];
   const updates = allComputed.filter(u => curById.get(u.id) !== u.walkMin);
+  // coord_shared 단지 중 이미 null 인 것은 UPDATE 할 필요가 없다(세션567).
+  const clearUpdates = clear.filter(c => curById.get(c.id) != null);
 
   if (dryRun) {
-    log(PHASE, `변경 대상: ${updates.length}건 (직접 ${direct.length} + 재탐색 ${lookupResults.length} 중 기존값과 다른 것)`);
+    log(PHASE, `변경 대상: ${updates.length}건 (직접 ${direct.length} + 재탐색 ${lookupResults.length} 중 기존값과 다른 것), 좌표불명 비움: ${clearUpdates.length}건`);
     // 가산점 구간 분포 (old→new)
     /** @type {Record<string, number>} */
     const tierDist = {};
@@ -238,7 +261,12 @@ async function main() {
       log(PHASE, `  [DRY-RUN] apt ${u.id}: ${u.minDist}m → ${u.walkMin}분 (기존 ${curById.get(u.id) ?? "null"})`);
     }
     if (updates.length > sample.length) log(PHASE, `  ... 외 ${updates.length - sample.length}건`);
-    rpt.success(updates.length);
+    const clearSample = clearUpdates.slice(0, 10);
+    for (const c of clearSample) {
+      log(PHASE, `  [DRY-RUN] apt ${c.id}: 좌표불명 → null (기존 ${curById.get(c.id)}분)`);
+    }
+    if (clearUpdates.length > clearSample.length) log(PHASE, `  ... 외 ${clearUpdates.length - clearSample.length}건`);
+    rpt.success(updates.length + clearUpdates.length);
   } else {
     const limit = createSemaphore(10);
     const CHUNK = 500;
@@ -258,6 +286,25 @@ async function main() {
         const err = /** @type {{ error?: { message?: string } | null }} */ (r)?.error;
         if (err) {
           if (!fail) logError(PHASE, `업데이트 실패 예시: ${err.message}`);
+          fail++;
+        } else ok++;
+      }
+    }
+    // coord_shared 단지는 null 로 비운다 — 별도 루프(값이 다르므로 위 CHUNK 루프와 합칠 수 없음).
+    for (let i = 0; i < clearUpdates.length; i += CHUNK) {
+      if (rpt.interrupted()) {
+        log(PHASE, `중단 신호 — 좌표불명 비움 ${ok}건까지 반영하고 멈춥니다`);
+        break;
+      }
+      const results = await Promise.all(
+        clearUpdates
+          .slice(i, i + CHUNK)
+          .map(c => limit(() => /** @type {any} */ (sb.from("apartments").update({ naver_school_walk_min: null }).eq("id", c.id))))
+      );
+      for (const r of results) {
+        const err = /** @type {{ error?: { message?: string } | null }} */ (r)?.error;
+        if (err) {
+          if (!fail) logError(PHASE, `좌표불명 비움 실패 예시: ${err.message}`);
           fail++;
         } else ok++;
       }
