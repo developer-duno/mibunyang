@@ -75,7 +75,7 @@
 - 🟠 **경고 "Insufficient MFA Options"** — 2u 로그인(Supabase Auth 계정 1개) 몫. 2u 에 MFA 등록 화면이 없어 옵션만 켜면 효과 0 → 자매 세션 통보.
 - 🟡 **공개 열쇠로 읽히는 표 20개** — 공개 데이터(apartments·prices·regions 등)와 운영 표 4개(`collector_runs`·`api_quota_log`·`monitor_alert_state`·`monitor_daily_snapshot`). 개인정보는 없다(구독자·상담 0행). 사이트가 정적 JSON 으로 이미 내보내는 값이 대부분이나, 화면에 없는 칸·대량 긁기 부하(자매 V031 이 공유 4표에서 막은 이유)는 남는다 → anon SELECT 회수 여부 사장님 결정(우리 API·자매가 anon 으로 읽는 경로를 먼저 전수).
 - 🟡 **자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm`** — 새 DB 에선 다시 public 에 깔린다 → `WITH SCHEMA extensions` 로(자매 세션 통보).
-- ✅ **2u `user_profiles` 자기 등급 올리기 구멍 — 운영 DB 에서 막음**(사장님 승인). 가입 개방·이메일 확인 꺼짐 + RLS 가 행만 막고 칸은 안 막아 가입자가 자기 `role`·`status`·`paid_until`·`email` 을 고칠 수 있었고, 2u `deps.py` 는 role=admin 또는 profile.email∈ADMIN_EMAILS 로 관리자 통과 → anon·authenticated 쓰기 권한 회수(전후 탐침: 허용 → permission denied). 기록 = 자매 V060 PR · 2u 인계 = 2u 메모리 `handoff_from_mibunyang_2026-09-23_security_kakao.md`.
+- ✅ **2u `user_profiles` 자기 등급 올리기 구멍 — 운영 DB 에서 막음**(사장님 승인). 가입 개방·이메일 확인 꺼짐 + RLS 가 행만 막고 칸은 안 막아 가입자가 자기 `role`·`status`·`paid_until`·`email` 을 고칠 수 있었고, 2u `deps.py` 는 role=admin 또는 profile.email∈ADMIN_EMAILS 로 관리자 통과 → anon·authenticated 쓰기 권한 회수(전후 탐침: 허용 → permission denied). 기록 = 자매 V062 PR · 2u 인계 = 2u 메모리 `handoff_from_mibunyang_2026-09-23_security_kakao.md`.
 - 🔴 **미분양 카카오 로그인이 인증 안 된 이메일로 관리자·기존 계정을 판정**(`api/auth/kakao.ts:107·139·191`) — 카카오 공식 문서 "유효·인증 여부를 항상 확인". 사장님 결정 = `is_email_valid`·`is_email_verified` 둘 다 true 인 이메일만 받기(아니면 안내 후 거절).
 - 🟡 **2u 카카오 전용 가입 제안**(사장님 질문, 의견 = 찬성·2u 작업으로 따로) — 정할 것: 비즈 앱 공유/신규 · 관리자를 user_id 로 · 기존 계정 이전 · 비상 로그인. 2u 인계 문서에 기록.
 - 🟡 **2u `user_profiles` 의 로그인 계정 없는 admin/approved 26행**(gmail, 5/31~9/12, 로그인 이력 0) — 지금은 로그인 불가라 위험 없음, 삭제는 사장님 승인.
