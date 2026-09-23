@@ -491,3 +491,33 @@ fallback 215곳(9.7%)은 "15~20km 또는 20km 밖" 이고 둘 다 0점이라 **�
    비교는 위 "세션565 — 3건 전부 경계 변경 완료" 절 참조.
 2. ✅ 가드 확장 — `scoringTiers.test.ts` "죽은 칸이 없다" 절을 이 세 표까지 넓혔다(세션565).
    `INIT_SALE_TIERS`(🟡, 죽은 칸 없음)는 이번 범위에서 제외 — 별건.
+
+### ✅ 세션566 — 23개 표 전수 재조사 + 죽은 칸 가드 확장
+
+세션562는 `Tier[]` 형 표 중 **14개**만 조사했다. 세션566은 `apartments_flat`(n=2,456,
+2026-09-23 실측)로 **나머지를 포함한 23개 전부**를 다시 세었다 — `AIR_QUALITY_TIERS`(PM2.5)·
+`TRANSIT_DIST_TIERS`·`CITY_DIST_TIERS`·`INDUSTRY_DIST_TIERS`·`UNIT_TIERS`·`PARKING_TIERS`·
+`FAR_TIERS`·`EXCL_RATIO_TIERS`·`FLOOR_TIERS`·`LIQUIDITY_TIERS`·`HOUSING_SUPPLY_LEVEL_TIERS`
+(각 표는 실제로 `tierMax`/`tierMin` 이 불리는 모집단만 셌다 — 예: `TRANSIT_DIST_TIERS` 는
+개통되지 않은 매치 1,384건, `FAR_TIERS` 는 `_noFar=false` 1,560건).
+
+**결과: 죽은 칸이 있는 표는 `SCHOOL_WALK_BONUS` 하나뿐이었다** — 4번째 칸(`≤20` −5점)과
+fallback(−10점)이 **0곳**. 원인 = 초등학교 검색 반경이 1km 로 좁아 `naverSchoolWalkMin` 이
+도보 15분(약 1.1km)을 넘지 못하기 때문 — 15분을 넘는 학교는 애초에 후보에 안 잡힌다. 이
+칸은 **별도 세션이 진짜 최근접 학교를 찾도록 검색 로직을 고쳐서** 해소 중이라 이 세션에서는
+다루지 않는다(지시에 따라 `SCHOOL_WALK_BONUS` 가드 미추가).
+
+나머지 22개 표(세션562가 이미 다룬 `NOISE_TIERS`·`CANCEL_RATIO_TIERS`·`LAND_COST_TIERS`·
+`KTX_DIST_TIERS`·`INIT_SALE_TIERS` 포함)는 죽은 칸이 없었다.
+
+**가드 추가** (`src/constants/scoringTiers.test.ts`, 관측값 리터럴 앵커 — 파생 가드가 아니라
+실측값이 실제로 그 칸에 떨어지는지 직접 확인): `SUBWAY_DIST_TIERS` · `KTX_DIST_TIERS`(이번에
+"죽은 칸 없다" 전용 가드 신설 — 기존엔 라벨 테스트뿐이었음) · `TRANSIT_DIST_TIERS` ·
+`CITY_DIST_TIERS` · `INDUSTRY_DIST_TIERS` · `POLICE_DIST_TIERS` · `UNIT_TIERS` ·
+`PARKING_TIERS` · `FAR_TIERS` · `EXCL_RATIO_TIERS` · `FLOOR_TIERS` · `UNSOLD_RATE_TIERS` ·
+`LIQUIDITY_TIERS` · `HOUSING_SUPPLY_LEVEL_TIERS` · `INIT_SALE_TIERS` · `AIR_QUALITY_TIERS`
+(PM2.5, calcCats 경유) — 총 16개 표. 이미 세션565가 죽은 칸 가드를 넣어 둔 `NOISE_TIERS`·
+`CANCEL_RATIO_TIERS`·`LAND_COST_TIERS`, 이미 경계 고정 가드가 있는 `IC_DIST_TIERS`,
+세션561 가드가 있는 `AIR_PM10_TIERS`·`AIR_O3_TIERS` 는 중복 추가하지 않았다.
+뮤테이션 검증(가운데 칸 경계를 옆 칸으로 밀어 죽이는 방식) 4종을 `SUBWAY_DIST_TIERS`·
+`UNSOLD_RATE_TIERS`·`PARKING_TIERS`·`AIR_QUALITY_TIERS` 에 돌려 전부 red 확인.
