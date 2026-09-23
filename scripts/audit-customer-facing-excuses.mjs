@@ -28,9 +28,32 @@
  */
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 
-/** 손님이 보는 컴포넌트 뿌리. */
-const ROOTS = ["src/components"];
+/**
+ * 레포 루트 절대경로 — `scripts/` 의 부모.
+ *
+ * ⚠️ `process.cwd()` 기준으로 ROOTS 를 잡으면 **다른 cwd 에서 실행할 때 0개 파일을 스캔하고도
+ * 조용히 통과**한다(세션563 리뷰어 지적 ②). `import.meta.url` 은 실행 위치와 무관하게
+ * 이 파일 자신의 경로이므로, 여기서 레포 루트를 역산하면 cwd 에 흔들리지 않는다.
+ */
+const REPO_ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url))).replace(/\\/g, "/");
+
+/**
+ * 손님이 보는 뿌리들.
+ *
+ * - `src/components` — 화면 컴포넌트(JSX 텍스트)
+ * - `src/constants` — 컴포넌트가 렌더하는 **문구 상수**(`catHelp.ts`·`cardChips.ts`·`emptyText.ts`·
+ *   `fieldMeta.ts`·`landing.ts` 등). 여기 박힌 변명 문구는 컴포넌트를 grep 해도 안 보인다
+ *   (세션563 리뷰어 지적 ①).
+ * - `src/App.tsx` — 최상위 진입 파일. 디렉토리가 아니라 **단일 파일**이라 `walk` 가 파일도
+ *   그대로 받아들인다.
+ */
+export const ROOTS = [
+  path.posix.join(REPO_ROOT, "src/components"),
+  path.posix.join(REPO_ROOT, "src/constants"),
+  path.posix.join(REPO_ROOT, "src/App.tsx"),
+];
 
 /**
  * 관리자 전용 — 검사 제외. 사장님이 보는 자리라 데이터 상태를 적는 게 **맞다**.
@@ -218,31 +241,56 @@ export function findViolations(file, raw) {
   return hits.sort((a, b) => a.line - b.line);
 }
 
+/** 스캔 대상 확장자 — 텍스트 상수 파일은 JSX 없는 `.ts`/`.js`/`.mjs` 도 있다. */
+const SCAN_EXT_RE = /\.(tsx|jsx|ts|js|mjs)$/;
+
 /**
- * @param {string} dir
+ * 파일 또는 디렉토리를 재귀적으로 훑어 대상 파일 목록을 모은다.
+ *
+ * `root` 가 디렉토리가 아니라 **파일 하나**(`src/App.tsx`)일 수도 있다 — ROOTS 는
+ * "손님이 보는 진입점" 목록이지 디렉토리 목록이 아니다.
+ * @param {string} root
  * @returns {string[]}
  */
-function walk(dir) {
+function walk(root) {
   /** @type {string[]} */
   const acc = [];
-  if (!fs.existsSync(dir)) return acc;
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
-    const p = path.posix.join(dir, e.name);
+  if (!fs.existsSync(root)) return acc;
+  const stat = fs.statSync(root);
+  if (stat.isFile()) {
+    const name = path.posix.basename(root);
+    if (SCAN_EXT_RE.test(name) && !/\.test\./.test(name)) acc.push(root);
+    return acc;
+  }
+  for (const e of fs.readdirSync(root, { withFileTypes: true })) {
+    const p = path.posix.join(root, e.name);
     if (e.isDirectory()) acc.push(...walk(p));
-    else if (/\.(tsx|jsx)$/.test(e.name) && !/\.test\./.test(e.name)) acc.push(p);
+    else if (SCAN_EXT_RE.test(e.name) && !/\.test\./.test(e.name)) acc.push(p);
   }
   return acc;
 }
 
-function main() {
+/**
+ * @param {string[]} roots 스캔할 파일/디렉토리 목록 (기본 = {@link ROOTS})
+ * @returns {number} 0 = 통과, 1 = 위반 발견 또는 스캔 파일 0개(사고 신호)
+ */
+export function main(roots = ROOTS) {
   /** @type {{ file: string, line: number, text: string, why: string }[]} */
   const all = [];
   let scanned = 0;
-  for (const root of ROOTS) {
+  for (const root of roots) {
     for (const f of walk(root)) {
       scanned++;
       all.push(...findViolations(f, fs.readFileSync(f, "utf8")));
     }
+  }
+  // ⚠️ 0개 파일 스캔은 "손님 화면에 문제 없음"이 아니라 **감사 자체가 헛돌았다**는 신호다
+  // (다른 cwd 에서 실행됐거나 ROOTS 경로가 깨진 경우). 조용히 exit 0 을 주면 그 뒤로 이
+  // 감사가 아무것도 안 보면서 CI 를 영원히 통과시킨다(세션563 리뷰어 지적 ②) — fail-close.
+  if (scanned === 0) {
+    console.error(`[audit-customer-facing-excuses] 스캔한 파일이 0개 — ROOTS 경로가 잘못됐거나 존재하지 않는다`);
+    for (const root of roots) console.error(`  ROOT: ${root} (존재: ${fs.existsSync(root)})`);
+    return 1;
   }
   if (all.length === 0) {
     console.log(`[audit-customer-facing-excuses] 통과 — 손님 화면 ${scanned}개 파일에 변명 문구 없음`);
