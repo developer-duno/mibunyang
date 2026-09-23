@@ -18,6 +18,6 @@
 -- ⚠️ 자매 V002 는 `CREATE EXTENSION IF NOT EXISTS pg_trgm` 이라 새 DB 에서는 다시 public 에 깔린다.
 --    이 DB 에서는 이미 있으므로 아무 일도 하지 않는다.
 -- 적용 방법: Supabase Dashboard SQL Editor 또는 psql 단발 실행.
--- 되돌리기: 20260923000003_rollback_pg_trgm_to_extensions_schema.sql
+-- 되돌리기: _rollbacks/20260923000003_rollback_pg_trgm_to_extensions_schema.sql
 
 ALTER EXTENSION pg_trgm SET SCHEMA extensions;

@@ -25,7 +25,7 @@
 --   SELECT count(*) FILTER (WHERE "coordShared") AS flagged, count(*) AS total FROM apartments_flat;
 --
 -- 본문은 직전 VIEW(20260920000000_view_sejong_gu_join.sql) 통째 복사 + 위 1곳만 수정.
--- ROLLBACK: 20260922000005_rollback_view_add_coord_shared.sql (직전 VIEW 복원)
+-- ROLLBACK: _rollbacks/20260922000005_rollback_view_add_coord_shared.sql (직전 VIEW 복원)
 -- ⚠️ 선후 가드 (세션560 코드·맹점 검사관 지적) — 컬럼 없이 이 파일만 실행하는 사고를 막는다.
 -- 그냥 두면 42703(column does not exist)으로 죽는데, 그 메시지로는 "무엇을 먼저 해야 하는지"가 안 보인다.
 -- (실패해도 옛 VIEW 는 그대로 남으므로 화면은 안 죽는다 — CREATE OR REPLACE 는 원자적이다.)

@@ -20,7 +20,7 @@
  *   3) `;` 로 문을 나눠 순서대로 재생 — CREATE/DROP POLICY, DROP TABLE 을 Map 에 반영
  *   4) 최종 상태에서 "항상 참" 쓰기 정책이 있으면 실패
  *
- * ⚠️ 스캔 대상 — `_rollbacks/` 폴더와 이름에 "rollback" 이 들어간 파일은 제외한다. 롤백은
+ * ⚠️ 스캔 대상 — `_rollbacks/` 폴더와 이름이 `<14자리>_rollback_` 으로 시작하는 파일은 제외한다. 롤백은
  * 실제로 적용된 상태가 아니라 "되돌리는 방법"을 적어 둔 문서이므로, 그 안에 옛 정책을
  * CREATE 하는 문이 있어도(되돌리기 목적) 이 가드가 "재발"로 오판하면 안 된다.
  */
@@ -40,6 +40,30 @@ const RISKY_ROLES = new Set(["anon", "authenticated", "public"]);
 
 /** USING/WITH CHECK 를 "항상 참"으로 보는 정규화 문자열 집합 */
 const ALWAYS_TRUE = new Set(["true", "(true)", "1=1", "(1=1)"]);
+
+/**
+ * 로그인만 하면 참이 되는 조건 — 가입이 열려 있으면(2u 실측) authenticated·public 역할에게는 "항상 참"과 같다.
+ * 공식 lint 0024 는 이것을 못 잡는다(세션566 맹점 검사관 · 실례 medistartup fix_simulator_rls).
+ */
+const ANY_LOGGED_IN = new Set([
+  "auth.role()='authenticated'",
+  "(auth.role()='authenticated')",
+  "auth.role()='authenticated'::text",
+  "(auth.role()='authenticated'::text)",
+  "auth.uid()isnotnull",
+  "(auth.uid()isnotnull)",
+]);
+
+/**
+ * @param {string} expr
+ * @param {string[]} roles
+ * @returns {boolean}
+ */
+function isAlwaysTrueFor(expr, roles) {
+  const n = normalizeExpr(expr);
+  if (ALWAYS_TRUE.has(n)) return true;
+  return ANY_LOGGED_IN.has(n) && roles.some((r) => r === "authenticated" || r === "public");
+}
 
 /**
  * SQL 주석을 줄 수를 보존한 채 공백으로 지운다.
@@ -382,9 +406,8 @@ export function isFlagged(p) {
   if (p.cmd === "SELECT") return false;
   if (!p.roles.some((r) => RISKY_ROLES.has(r))) return false;
 
-  const usingAlwaysTrueOrNull =
-    p.using === null || ALWAYS_TRUE.has(normalizeExpr(p.using));
-  const checkAlwaysTrue = p.withCheck !== null && ALWAYS_TRUE.has(normalizeExpr(p.withCheck));
+  const usingAlwaysTrueOrNull = p.using === null || isAlwaysTrueFor(p.using, p.roles);
+  const checkAlwaysTrue = p.withCheck !== null && isAlwaysTrueFor(p.withCheck, p.roles);
 
   if ((p.cmd === "UPDATE" || p.cmd === "DELETE" || p.cmd === "ALL") && usingAlwaysTrueOrNull) {
     return true;
@@ -398,7 +421,7 @@ export function isFlagged(p) {
 }
 
 /**
- * `supabase/migrations/*.sql` 최상위 파일만, `_rollbacks/` 및 이름에 "rollback" 포함 파일 제외,
+ * `supabase/migrations/*.sql` 최상위 파일만, `_rollbacks/` 및 `<14자리>_rollback_` 으로 시작하는 파일 제외,
  * 파일명 오름차순으로 목록을 만든다.
  * @returns {string[]} 절대 경로 배열
  */
@@ -427,6 +450,30 @@ function replayFiles(files) {
   }
   return state;
 }
+
+/**
+ * 로그인 사용자·익명이 **쓸 수 있는** 정책(항상 참이 아니어도) — "자기 행 수정" 류.
+ * RLS 는 행만 막고 칸은 막지 않으므로, 이런 정책이 있는 표는 권한 칸(role·status·결제·email)을
+ * GRANT 로 좁혔는지 사람이 확인해야 한다(2u user_profiles 사고, 세션566). service_role 조건 정책은 제외.
+ * @param {Map<string, PolicyState>} state
+ * @returns {PolicyState[]}
+ */
+export function clientWritePolicies(state) {
+  return [...state.values()].filter((p) => {
+    if (!p.permissive || p.cmd === "SELECT") return false;
+    if (!p.roles.some((r) => RISKY_ROLES.has(r))) return false;
+    const exprs = [p.using, p.withCheck]
+      .filter((e) => e !== null)
+      .map((e) => normalizeExpr(/** @type {string} */ (e)));
+    return !exprs.some((e) => e.includes("auth.role()='service_role'"));
+  });
+}
+
+/**
+ * 칸 권한 확인을 마친 클라이언트 쓰기 정책 — `"표::정책"` → 칸을 어떻게 좁혔는지 한 줄. 작게 유지한다.
+ * @type {Record<string, string>}
+ */
+export const CLIENT_WRITE_ALLOWLIST = {};
 
 /**
  * 되돌리기 파일 = `14자리 시각_rollback_…` 이름 규칙(세션566 실측: 본 폴더 17개 전부 이 꼴).
@@ -461,6 +508,20 @@ describe("RLS anon 쓰기 정책 — 항상 참 조건 재발 방지(lint 0024 �
     ).toEqual([]);
   });
 
+  it("로그인 사용자·익명의 쓰기 정책은 칸 권한 확인(ALLOWLIST) 없이 생기지 않는다 — RLS 는 행만 막는다(세션566)", () => {
+    const state = replayFiles(files);
+    const unreviewed = clientWritePolicies(state)
+      .map((p) => `${p.table}::${p.name}`)
+      .filter((k) => !(k in CLIENT_WRITE_ALLOWLIST));
+    expect(
+      unreviewed,
+      unreviewed.length
+        ? `칸 권한(GRANT)을 좁혔는지 확인하고 CLIENT_WRITE_ALLOWLIST 에 사유와 함께 올릴 것 ` +
+          `(2u user_profiles 사고: 자기 행 수정으로 role·email 을 바꿔 관리자가 됐다): ${unreviewed.join(", ")}`
+        : undefined,
+    ).toEqual([]);
+  });
+
   it("(양성 대조군) 0923 드롭 마이그 이전까지 재생하면 정확히 그 2건이 플래그된다", () => {
     const before = files.filter((f) => path.basename(f) < "20260923000000");
     const state = replayFiles(before);
@@ -482,6 +543,24 @@ describe("파서/판정 픽스처 — 합성 SQL", () => {
     const src = "DO $$ BEGIN PERFORM 1;\nCREATE POLICY x ON t FOR INSERT TO anon WITH CHECK (true);";
     expect(() => replayPolicies(src)).toThrow(/닫히지 않은 달러 인용/);
     expect(() => replayPolicies("SELECT $tag$ 열린 채로;")).toThrow(/닫히지 않은 달러 인용/);
+  });
+
+  it("로그인만 하면 참인 조건도 항상 참으로 본다 — anon 에게는 거짓(세션566)", () => {
+    const a = replayPolicies("CREATE POLICY a ON t FOR UPDATE TO authenticated USING (auth.role() = 'authenticated');");
+    expect(isFlagged(/** @type {any} */ (a.get("t::a")))).toBe(true);
+    const b = replayPolicies("CREATE POLICY b ON t FOR INSERT TO authenticated WITH CHECK (auth.uid() IS NOT NULL);");
+    expect(isFlagged(/** @type {any} */ (b.get("t::b")))).toBe(true);
+    const c = replayPolicies("CREATE POLICY c ON t FOR UPDATE TO anon USING (auth.role() = 'authenticated');");
+    expect(isFlagged(/** @type {any} */ (c.get("t::c")))).toBe(false);
+  });
+
+  it("자기 행 쓰기 정책은 항상 참이 아니어도 확인 대상으로 잡는다 — service_role 조건은 제외(세션566)", () => {
+    const s = replayPolicies(
+      "CREATE POLICY own ON t FOR UPDATE TO authenticated USING (auth.uid() = user_id);\n" +
+        "CREATE POLICY svc ON t FOR ALL USING (auth.role() = 'service_role');\n" +
+        "CREATE POLICY rd ON t FOR SELECT USING (true);",
+    );
+    expect(clientWritePolicies(s).map((p) => p.name)).toEqual(["own"]);
   });
 
   it("되돌리기 파일은 이름 규칙으로만 가린다 — 이름 중간의 rollback 은 정방향으로 검사한다(세션566)", () => {

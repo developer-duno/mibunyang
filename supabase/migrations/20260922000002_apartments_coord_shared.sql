@@ -24,7 +24,7 @@
 -- 적용 전에도 프론트는 안전하다: VIEW 에 컬럼이 없으면 `apt.coordShared` 가 undefined 라
 --   경고가 그냥 안 뜬다(값이 깨지거나 화면이 죽지 않는다).
 --
--- ROLLBACK: 20260922000003_rollback_apartments_coord_shared.sql
+-- ROLLBACK: _rollbacks/20260922000003_rollback_apartments_coord_shared.sql
 
 ALTER TABLE apartments ADD COLUMN IF NOT EXISTS coord_shared BOOLEAN;
 

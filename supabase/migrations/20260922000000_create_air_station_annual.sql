@@ -26,7 +26,7 @@
 -- 추가 매핑이 필요 없다. 392종 중 379종(96.7%) 연결, 단지 2,992/3,068(97.5%) 커버 (DB 반영 651곳 기준 — 집계 JSON 671곳 기준으로 세면 더 높게 나오니 주의).
 -- 미연결 10종(용계동·옥포항·감일 등)은 2024년 이후 신설 측정소 = 58단지(1.9%).
 --
--- ROLLBACK: 20260922000001_rollback_create_air_station_annual.sql
+-- ROLLBACK: _rollbacks/20260922000001_rollback_create_air_station_annual.sql
 CREATE TABLE IF NOT EXISTS air_station_annual (
   station_name TEXT PRIMARY KEY,          -- 측정소명 — apartments.air_quality->>'station' 과 같은 표기
   station_code TEXT,                      -- 에어코리아 측정소코드(예: 111121). 이름이 바뀌어도 추적 가능

@@ -186,6 +186,10 @@ supabase db query --linked --file supabase/migrations/<최신>.sql
 > 재시도 → 과거의 깨진 마이그(예: 공유 테이블 부재로 실패한 `20260320170000`)까지
 > 다시 돌려 실패. 신규 SQL 만 `db query --file` 로 직접 적용.
 > 시뮬레이션이 필요하면 SQL 을 `BEGIN; ... ROLLBACK;` 으로 감싸 적용 후 검증 → DB 변경 0.
+>
+> ⚠️ **새 되돌리기(rollback) 파일은 `supabase/migrations/_rollbacks/` 에 둔다** (세션566). 본 폴더에 두면 번호가
+> 가장 큰 파일이 되돌리기가 되어, 위·아래의 "`<최신>.sql` 적용" 절차가 **되돌리기를 적용**한다. 본 폴더에 남은 옛
+> 되돌리기 12개는 최신 번호가 아니라 당장 위험은 없다(정리 후보).
 
 ### 방법 B — Dashboard SQL Editor 수동 실행
 
@@ -221,8 +225,11 @@ naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 `idx_apartments_name_trgm` 은 그대로 동작 — 자매는 ILIKE 만 쓴다). 마이그 = `20260923000000~03`.
 
 - **RLS 는 행만 막는다 — 칸은 GRANT 로.** "자기 행 수정" 정책이 있는 표에 권한 칸(role·status·결제·email)이 있으면
-  칸 권한을 거둔다(2u `user_profiles` 실사고 → 2u V062). 정적 가드 = `scripts/_rls-anon-write-policy.test.mjs`(항상 참 쓰기 정책).
-- **SQL 함수에 `SET search_path` 를 붙이면 인라인이 꺼진다** — 행마다 불리는 헬퍼는 느려진다(상가 실측 20~130%).
+  칸 권한을 거둔다(2u `user_profiles` 실사고 → 2u V062). 정적 가드 = `scripts/_rls-anon-write-policy.test.mjs` —
+  항상 참 쓰기 정책(로그인만 하면 참인 조건 포함)을 막고, **로그인 사용자·익명 쓰기 정책은 칸 권한을 확인한 뒤
+  `CLIENT_WRITE_ALLOWLIST` 에 적어야 통과**한다(지금 0건).
+- **SQL 함수에 `SET search_path` 를 붙이면 인라인이 꺼진다** — 행마다 불리는 헬퍼는 느려진다(상가 실측: 층대 가격
+  함수 약 2배 · 검색 키 함수는 측정 잡음 ±25% 안에서 느려짐 → 둘 다 되돌림).
   보안 고문 경고를 없애기 전에 그 함수가 쓰이는 쿼리의 **전후 속도**를 잰다(결과 동일 검사만으로는 못 잡는다).
 
 ⚠️ **컴퓨트 한계 — Micro 인스턴스 hang (세션 460, 2026-06-29).** 공유 인스턴스(`t4g.micro`,
