@@ -65,23 +65,23 @@
 - 🟠 **감시 ⑨ 가 개수만 본다 + "늘었다" 경보는 구조상 못 울린다**(coord_shared 를 켜는 곳이 수동 flag 도구뿐) — 기준 명단(id 8곳) 대조 + 외부 API 없이 "같은 좌표에 핵심이름 2종 이상" 자동 집계.
 - 🟠 **자매 레포 통보**(naver-estate-web) — 학교 도보 막대 최댓값 15 가정(`frontend/src/components/mb/metric-bar-configs.ts`) · "초등 도보 N분"(`MbInfraOverlay.tsx`)이 이제 최대 49분 · 미분양 변동 예정.
 
-### A-5. Supabase 보안 고문 경고 5건 (세션566 말미 — 사장님 스크린샷)
+### A-5. Supabase 보안 고문 경고 (세션566 말미 — 사장님 스크린샷)
 
-⚠️ **전제: 이 DB 의 anon key 는 공개돼 있다** — 자매 2u.pe.kr 로그인 화면 JS 에 실려 있다(2026-09-23 실측, JWT role=anon). [supabase/CLAUDE.md](../supabase/CLAUDE.md) "공유 DB 컨텍스트".
+⚠️ 전제: 이 DB 의 anon key 는 공개용이다(자매 2u.pe.kr 로그인 화면에 실림) → anon·authenticated 정책은 인터넷에 열린 것으로 본다. [supabase/CLAUDE.md](../supabase/CLAUDE.md) "공유 DB 컨텍스트".
+⚠️ **이 저장소는 공개다 — 아직 열린 약점의 세부는 여기 적지 않는다.** 세부 = 사장님 PC 의 비공개 메모리 `project_security_open_items_2026-09-23.md`.
 
-- ✅ 경고 0024 ×2 — `consults`·`subscribers` anon INSERT `true` 정책 삭제(#580, 운영 적용 완료). 공개 열쇠 탐침 **23502(열림) → 42501(닫힘)**. 상담 API 는 service key 로 저장.
-- ✅ 경고 0014 — `pg_trgm` → `extensions` 스키마(운영 적용 완료). 자매 검색 라이브 200 · "자이" 197=197 · 색인 `idx_apartments_name_trgm` 계속 사용.
-- ✅ **경고 "Leaked Password Protection"** — 켜짐(사장님 저장·확인 2026-09-23, 2u 로그인 설정). 보안 고문 새로고침 결과 = 네이버에스테이트 MFA 1개만 · 상가 오류 3·경고 7(전부 기대대로).
-- 🟠 **경고 "Insufficient MFA Options"** — 2u 로그인(Supabase Auth 계정 1개) 몫. 2u 에 MFA 등록 화면이 없어 옵션만 켜면 효과 0 → 자매 세션 통보.
-- 🟡 **공개 열쇠로 읽히는 표 20개** — 공개 데이터(apartments·prices·regions 등)와 운영 표 4개(`collector_runs`·`api_quota_log`·`monitor_alert_state`·`monitor_daily_snapshot`). 개인정보는 없다(구독자·상담 0행). 사이트가 정적 JSON 으로 이미 내보내는 값이 대부분이나, 화면에 없는 칸·대량 긁기 부하(자매 V031 이 공유 4표에서 막은 이유)는 남는다 → anon SELECT 회수 여부 사장님 결정(우리 API·자매가 anon 으로 읽는 경로를 먼저 전수).
-- 🟡 **자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm`** — 새 DB 에선 다시 public 에 깔린다 → `WITH SCHEMA extensions` 로(자매 세션 통보).
-- ✅ **2u `user_profiles` 자기 등급 올리기 구멍 — 운영 DB 에서 막음**(사장님 승인). 가입 개방·이메일 확인 꺼짐 + RLS 가 행만 막고 칸은 안 막아 가입자가 자기 `role`·`status`·`paid_until`·`email` 을 고칠 수 있었고, 2u `deps.py` 는 role=admin 또는 profile.email∈ADMIN_EMAILS 로 관리자 통과 → anon·authenticated 쓰기 권한 회수(전후 탐침: 허용 → permission denied). 기록 = 자매 V062(2u #563 머지) · 2u 인계 = 2u 메모리 `handoff_from_mibunyang_2026-09-23_security_kakao.md`.
-- ✅ **미분양 카카오 로그인 — 유효·인증된 이메일만 받기**(#582, 운영 배포 f0637ab7). 인증 안 된 이메일로 기존 계정 연결(B 분기)·관리자 판정(isAdminEmail)을 하던 구멍. 인증 안 된 손님은 안내 후 거절 — **사장님 실로그인 정상 확인(2026-09-23)**.
-- ✅ **상가(sangga) 보안 고문 경고 8건 해소**(sangga #152, 라이브 적용 — pg_trgm→extensions · 헬퍼 7개 search_path). 오류 3·경고 7은 의도된 설계(보안 정의자 뷰 = 가린 칸만 공개하는 면)·PostGIS 고유라 그대로 — 상가 메모리 `handoff_from_mibunyang_2026-09-23_security_advisor.md`.
-- 🟡 **2u 카카오 전용 가입 제안**(사장님 질문, 의견 = 찬성·2u 작업으로 따로) — 정할 것: 비즈 앱 공유/신규 · 관리자를 user_id 로 · 기존 계정 이전 · 비상 로그인. 2u 인계 문서에 기록.
-- 🟡 **2u `user_profiles` 의 로그인 계정 없는 admin/approved 26행**(gmail, 5/31~9/12, 로그인 이력 0) — 지금은 로그인 불가라 위험 없음, 삭제는 사장님 승인.
-- 🟢 미분양 세션 토큰이 localStorage(검사관 Low — XSS 통로 0건이라 급하지 않음) · 결정: 미분양 이메일(비밀번호) 로그인은 **넣지 않음**(카카오만).
-- 🟡 **문서 확인** — CLAUDE.md "naver-estate-web DB = `gcfckzqrcujktloilwpz`" 인데 2u backend·프론트는 모두 `rwdtljipvmqpazrimyns` 를 가리킨다(실측).
+- ✅ 경고 0024 ×2 — `consults`·`subscribers` anon INSERT `true` 정책 삭제(#580). 공개 열쇠 탐침 23502(열림) → 42501(닫힘). 상담 API 는 service key 로 저장.
+- ✅ 경고 0014 — `pg_trgm` → `extensions`(운영 적용). 자매 검색 라이브 200 · 색인 계속 사용.
+- ✅ 유출 비밀번호 차단 켜짐(사장님 확인 2026-09-23).
+- ✅ 2u 회원 표 자기 등급 올리기 구멍 막음 — anon·authenticated 쓰기 권한 회수(자매 V062 · 2u #563). 원리: **RLS 는 행만 막는다(칸은 GRANT)**.
+- ✅ 미분양 카카오 로그인 — 유효·인증된 이메일만(#582, 사장님 실로그인 정상 확인). 거절 시 개인정보 없는 경고 로그(#585).
+- ✅ 상가 보안 고문 경고 6건 해소(sangga #152·#153). search_key·price_floor_band 는 SET 뒤 인라인이 꺼져 느려져(최대 약 2배) 되돌림 — 경고 2건은 일부러 둠.
+- ✅ 정적 가드 `scripts/_rls-anon-write-policy.test.mjs` — 항상 참 쓰기 정책(로그인만 하면 참인 조건 포함) 금지 · **로그인 사용자·익명 쓰기 정책은 칸 권한 확인(ALLOWLIST) 없이 금지** · 짝 없는 `$$`·rollback 이름 탈출구 봉합(#581·#585, 뮤테이션 4종 red).
+- ✅ 새 되돌리기 파일은 `supabase/migrations/_rollbacks/` 에(본 폴더에 두면 "<최신>.sql 적용" 절차가 되돌리기를 적용한다 — #585). 🟢 본 폴더에 옛 되돌리기 12개 남음(최신 번호 아님 — 정리 후보).
+- ✅ CLAUDE.md 공유 인프라 표의 낡은 DB 표기 정정(#585).
+- 🟠 **보안 후속 — 세부는 비공개 메모리**: 2u 가입·관리자 판정 정리(2u 세션 몫, 인계 완료) · 공개 열쇠 읽기 범위 결정 · LawBrain 점검(인계 완료) · **주 1회 실제 DB 권한 점검 — 사장님 승인: 다음 세션에 설계안부터**.
+- 🟡 2u 카카오 전용 가입 제안(의견 = 찬성·2u 작업으로 따로) · 자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm` → `WITH SCHEMA extensions` — 둘 다 2u 인계 문서.
+- 결정: 미분양 이메일(비밀번호) 로그인은 넣지 않음(카카오만).
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - 🔴 **9/24(목) 04:30 어린이집 로컬 러너 · 08:00 네이버 러너** — 로컬 러너는 `F:\mibunyang` **작업 트리를 그대로 실행**한다(`kosis-local-runner.bat` `cd /d "%~dp0.."`). 세션566 은 마무리에 작업 트리를 main 으로 되돌렸다 — 다음 세션도 **끝날 때 작업 트리를 main·깨끗한 상태로** 둔다(admin-district-code-reform §6).

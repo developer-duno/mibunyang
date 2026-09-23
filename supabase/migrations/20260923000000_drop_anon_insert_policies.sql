@@ -15,7 +15,7 @@
 --
 -- ⚠️ 순서: api/consults.ts 변경이 **운영에 배포된 뒤** 적용한다. 먼저 적용하면 상담 접수가 500 이 된다.
 -- 적용 방법: Supabase Dashboard SQL Editor 또는 psql 단발 실행.
--- 되돌리기: 20260923000001_rollback_drop_anon_insert_policies.sql
+-- 되돌리기: _rollbacks/20260923000001_rollback_drop_anon_insert_policies.sql
 
 DROP POLICY IF EXISTS consults_anon_insert ON consults;
 DROP POLICY IF EXISTS "Anon insert" ON subscribers;

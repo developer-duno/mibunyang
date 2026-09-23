@@ -122,6 +122,11 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
     // 인증 안 된 이메일로 아래 B(기존 계정 연결)·7(관리자 판별)이 되면 남의 계정·관리자 권한에 붙는다.
     // 값이 없을 때도 거절한다(추측해서 믿지 않는다).
     if (userData.kakao_account?.is_email_valid !== true || userData.kakao_account?.is_email_verified !== true) {
+      // 막힌 손님 수를 알 수 있게 남긴다 — 개인정보(이메일·id) 없이 두 값만(세션566 맹점 검사관)
+      console.warn("[auth/kakao] 이메일 유효·인증 미확인으로 로그인 거절", {
+        valid: userData.kakao_account?.is_email_valid === true,
+        verified: userData.kakao_account?.is_email_verified === true,
+      });
       return res.status(400).json({
         ok: false,
         error: "카카오 계정의 이메일 인증이 필요합니다. 카카오 계정 설정에서 이메일 인증 후 다시 시도해 주세요.",
