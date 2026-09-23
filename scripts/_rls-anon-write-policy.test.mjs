@@ -27,6 +27,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "fs";
 import path from "path";
+import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
 
 const ROOT = path.resolve(process.cwd());
 const MIGRATIONS_DIR = path.join(ROOT, "supabase", "migrations");
@@ -469,11 +470,8 @@ export function clientWritePolicies(state) {
   });
 }
 
-/**
- * 칸 권한 확인을 마친 클라이언트 쓰기 정책 — `"표::정책"` → 칸을 어떻게 좁혔는지 한 줄. 작게 유지한다.
- * @type {Record<string, string>}
- */
-export const CLIENT_WRITE_ALLOWLIST = {};
+// CLIENT_WRITE_ALLOWLIST 는 scripts/_rls-allowlist.mjs 에서 가져온다 — monitor-collectors.mjs
+// 의 감시 ⑩(R1)이 같은 목록을 봐야 하므로 단일 출처를 유지한다(세션567, 위 import 참조).
 
 /**
  * 되돌리기 파일 = `14자리 시각_rollback_…` 이름 규칙(세션566 실측: 본 폴더 17개 전부 이 꼴).

@@ -23,9 +23,10 @@
  */
 import { loadEnv, getSupabase, selectAll, viewJoinGu } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
-import { sendTelegram, formatIssue, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
 import { buildBriefing, splitRuns } from "./monitor-briefing.mjs";
+import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
 
 loadEnv();
 
@@ -1146,6 +1147,226 @@ export function checkTradeMonthGaps(rows, opts = {}) {
   ];
 }
 
+// ── ⑩ 주 1회 DB 권한 실측 점검 (세션567) ────────────────────
+
+/**
+ * anon/authenticated 가 실행 가능해도 되는 SECURITY DEFINER 함수 — 이름을 알아야 검토가
+ * 가능하므로 표에는 이유를 적는다. 현재 이 저장소에 정당한 항목은 없다(비워 둠).
+ * @type {Record<string, string>}
+ */
+export const DEFINER_FUNCTION_ALLOWLIST = {};
+
+/**
+ * public 스키마에 설치돼도 되는 확장 — pg_trgm 은 세션566 이 extensions 스키마로 옮겼으므로
+ * (`20260923000002_pg_trgm_to_extensions_schema.sql`) public 에는 아무 확장도 없어야 정상이다.
+ * @type {string[]}
+ */
+export const PUBLIC_EXTENSION_ALLOWLIST = [];
+
+/**
+ * R4 — 공개 SELECT 가 가능해도 되는 표(운영 표 4개 제외). **잠정 목록**이다 — 함수를 처음
+ * 적용한 뒤 실측(`audit_db_permissions()` 결과)으로 확정한다.
+ *
+ * 도출 방법: `supabase/migrations/*.sql` 을 전부 재생했을 때 `CREATE POLICY ... FOR SELECT
+ * USING (true)`(또는 그와 동등한 공개 조건)가 남아 있는 표의 목록에서, 세션567 에 막은 운영
+ * 표 4개(collector_runs·api_quota_log·monitor_alert_state·monitor_daily_snapshot)를 뺀 것.
+ * 이 저장소는 손님 화면(apartments_flat 등)이 anon 으로 직접 읽는 구조라 그 표들은 의도된
+ * 공개다 — 실제 표 이름 목록은 CLIENT_WRITE_ALLOWLIST 와 달리 저장소 밖(텔레그램)에만 상세를
+ * 보낸다. 개수만 아래에 적는다: **세션567 도출 시점 잠정 12개**(마이그레이션 재생 실측,
+ * 운영 표 4개 제외 후). R4 는 이 개수보다 표가 **늘었을 때만** 경보한다(운영 판단이 필요한
+ * 신규 공개 표가 생겼다는 뜻이므로) — 표 이름 자체는 함수 결과(텔레그램)로만 확인한다.
+ * @type {number}
+ */
+export const PUBLIC_READ_TABLE_COUNT_BASELINE = 12;
+
+/**
+ * KST 기준 오늘이 월요일인가. `Intl` 로 시간대를 고정해 서버가 어느 시간대에서 돌든 같은
+ * 결과를 낸다([[timezone-consistency]] — UTC/로컬 혼용 금지, 이 저장소는 KST 로 요일을 정한다).
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+export function isKstMonday(now = new Date()) {
+  const weekday = new Intl.DateTimeFormat("en-US", {
+    timeZone: "Asia/Seoul",
+    weekday: "short",
+  }).format(now);
+  return weekday === "Mon";
+}
+
+/**
+ * `audit_db_permissions()` RPC 결과(스냅샷)를 판정 규칙과 대조해 Issue 목록을 만든다.
+ * 순수 함수 — DB 호출은 호출부(main)에서 이미 끝낸 뒤 결과만 넘긴다.
+ *
+ * 판정 R1~R7:
+ *   R1 anon/authenticated 의 표·칸 쓰기(INSERT/UPDATE/DELETE/TRUNCATE) — CLIENT_WRITE_ALLOWLIST 밖.
+ *   R2 public 기본 표(relkind 'r'/'p') 중 RLS 꺼진 것.
+ *   R3 anon/authenticated/public 대상 쓰기 정책 중 조건이 항상 참이거나 로그인 여부만 보는 것
+ *      (`_rls-anon-write-policy.test.mjs` 의 `isFlagged`/`ANY_LOGGED_IN` 과 같은 판정을 재사용).
+ *   R4 공개 읽기 가능 표가 PUBLIC_READ_TABLE_COUNT_BASELINE 을 넘으면.
+ *   R5 anon/authenticated 실행 가능한 SECURITY DEFINER 함수 — DEFINER_FUNCTION_ALLOWLIST 밖.
+ *   R6 public 스키마에 설치된 확장 — PUBLIC_EXTENSION_ALLOWLIST 밖.
+ *
+ * @param {Record<string, any> | null} snapshot `audit_db_permissions()` 반환값(RPC 성공 시) 또는 null(R7 — RPC 실패).
+ * @param {{
+ *   opsTables?: string[],
+ *   clientWriteAllowlist?: Record<string, string>,
+ *   definerAllowlist?: Record<string, string>,
+ *   extensionAllowlist?: string[],
+ *   publicReadBaseline?: number,
+ *   rpcError?: string | null,
+ * }} [rules]
+ * @returns {Issue[]}
+ */
+export function evaluateDbPermissions(snapshot, rules = {}) {
+  const opsTables = rules.opsTables ?? OPS_TABLES;
+  const clientWriteAllowlist = rules.clientWriteAllowlist ?? CLIENT_WRITE_ALLOWLIST;
+  const definerAllowlist = rules.definerAllowlist ?? DEFINER_FUNCTION_ALLOWLIST;
+  const extensionAllowlist = rules.extensionAllowlist ?? PUBLIC_EXTENSION_ALLOWLIST;
+  const publicReadBaseline = rules.publicReadBaseline ?? PUBLIC_READ_TABLE_COUNT_BASELINE;
+
+  // R7 — RPC 자체가 실패했다. 다른 규칙은 판정할 데이터가 없으므로 여기서 끝낸다.
+  if (!snapshot) {
+    return [
+      {
+        kind: "nulls",
+        collector: "db-permissions",
+        detail: `주간 DB 권한 점검 실행 실패 — ${rules.rpcError ?? "알 수 없는 오류"}`,
+        lines: [
+          "audit_db_permissions() RPC 호출이 실패했습니다(오류 코드만 기록).",
+          "[조치] 함수가 배포됐는지, service_role 에 EXECUTE 권한이 있는지 확인하세요.",
+        ],
+        at: `rpc-fail:${rules.rpcError ?? "unknown"}`,
+      },
+    ];
+  }
+
+  /** @type {string[]} */
+  const lines = [];
+  const relations = /** @type {Array<Record<string, any>>} */ (snapshot.relations ?? []);
+  const policies = /** @type {Array<Record<string, any>>} */ (snapshot.policies ?? []);
+  const definerFunctions = /** @type {Array<Record<string, any>>} */ (snapshot.definer_functions ?? []);
+  const publicExtensions = /** @type {string[]} */ (snapshot.public_extensions ?? []);
+
+  // R1 — anon/authenticated 의 표·칸 쓰기.
+  /** @type {string[]} */
+  const r1 = [];
+  for (const rel of relations) {
+    if (opsTables.includes(rel.name)) continue; // 운영 표는 이미 anon/authenticated 권한이 0이어야 정상 — R4 몫
+    for (const role of ["anon", "authenticated"]) {
+      for (const priv of ["insert", "update", "delete", "truncate"]) {
+        if (rel[`${role}_${priv}`] === true) {
+          r1.push(`${rel.schema}.${rel.name} — ${role} ${priv.toUpperCase()} (표 권한)`);
+        }
+      }
+    }
+    for (const grant of rel.column_write_grants ?? []) {
+      const key = `${rel.name}::${grant.column}`;
+      if (!(key in clientWriteAllowlist)) {
+        r1.push(`${rel.schema}.${rel.name}.${grant.column} — ${grant.grantee} ${grant.privilege} (칸 권한, ALLOWLIST 밖)`);
+      }
+    }
+  }
+  if (r1.length > 0) {
+    lines.push(`[R1] anon/authenticated 쓰기 권한 ${r1.length}건`, ...r1.map((l) => `  · ${l}`));
+  }
+
+  // R2 — public 기본 표 중 RLS 꺼진 것.
+  const r2 = relations.filter((r) => r.kind === "r" && r.rls_enabled !== true).map((r) => r.name);
+  if (r2.length > 0) {
+    lines.push(`[R2] RLS 꺼진 표 ${r2.length}개`, ...r2.map((n) => `  · ${n}`));
+  }
+
+  // R3 — anon/authenticated/public 대상 쓰기 정책 중 항상 참(또는 로그인만 하면 참).
+  /** @type {string[]} */
+  const r3 = [];
+  for (const p of policies) {
+    if (p.permissive === false) continue;
+    if (p.cmd === "SELECT") continue;
+    const roles = /** @type {string[]} */ (p.roles ?? []).map((r) => String(r).toLowerCase());
+    if (!roles.some((r) => RISKY_ROLES_MONITOR.has(r))) continue;
+    const key = `${p.table}::${p.name}`;
+    if (key in clientWriteAllowlist) continue;
+    const usingAlwaysTrue = p.qual == null || isAlwaysTrueForRoles(p.qual, roles);
+    const checkAlwaysTrue = p.with_check != null && isAlwaysTrueForRoles(p.with_check, roles);
+    const flagged =
+      ((p.cmd === "UPDATE" || p.cmd === "DELETE" || p.cmd === "ALL") && usingAlwaysTrue) ||
+      checkAlwaysTrue ||
+      (p.with_check == null && p.cmd === "INSERT") ||
+      (p.with_check == null && (p.cmd === "UPDATE" || p.cmd === "ALL") && usingAlwaysTrue);
+    if (flagged) r3.push(`${p.table}::${p.name} (FOR ${p.cmd} TO ${roles.join(",")})`);
+  }
+  if (r3.length > 0) {
+    lines.push(`[R3] 항상 참(또는 로그인만 하면 참) 쓰기 정책 ${r3.length}건`, ...r3.map((l) => `  · ${l}`));
+  }
+
+  // R4 — 공개 읽기 가능 표(RLS 꺼짐 또는 anon/public SELECT 정책 존재)가 기준을 넘었나.
+  const publicReadTables = relations
+    .filter((r) => r.kind === "r")
+    .filter((r) => r.anon_select === true || r.authenticated_select === true)
+    .map((r) => r.name);
+  if (publicReadTables.length > publicReadBaseline) {
+    lines.push(
+      `[R4] 공개 읽기 가능 표 ${publicReadTables.length}개 (기준 ${publicReadBaseline}개) — 새 공개 표가 생겼을 수 있습니다`,
+    );
+  }
+
+  // R5 — anon/authenticated 실행 가능한 SECURITY DEFINER 함수.
+  const r5 = definerFunctions
+    .filter((f) => (f.anon_execute === true || f.authenticated_execute === true))
+    .map((f) => `${f.schema}.${f.name}`)
+    .filter((name) => !(name in definerAllowlist));
+  if (r5.length > 0) {
+    lines.push(`[R5] anon/authenticated 실행 가능 SECURITY DEFINER 함수 ${r5.length}개`, ...r5.map((n) => `  · ${n}`));
+  }
+
+  // R6 — public 스키마에 설치된 확장.
+  const r6 = publicExtensions.filter((e) => !extensionAllowlist.includes(e));
+  if (r6.length > 0) {
+    lines.push(`[R6] public 스키마에 설치된 확장 ${r6.length}개`, ...r6.map((n) => `  · ${n}`));
+  }
+
+  if (lines.length === 0) return [];
+
+  return [
+    {
+      kind: "nulls",
+      collector: "db-permissions",
+      detail: `주간 DB 권한 점검 — 경보 ${[r1, r2, r3, r5, r6].filter((a) => a.length > 0).length}종` +
+        (publicReadTables.length > publicReadBaseline ? " (+R4)" : ""),
+      lines,
+      at: new Date().toISOString(),
+    },
+  ];
+}
+
+/** 감시 ⑩ R1/R4 판정에서 "이미 anon 읽기가 막혔어야 정상"으로 보는 운영 표 4개(세션567). */
+export const OPS_TABLES = ["collector_runs", "api_quota_log", "monitor_alert_state", "monitor_daily_snapshot"];
+
+/** 감시 ⑩ R1/R3 에서 위험하다고 보는 역할 — `_rls-anon-write-policy.test.mjs` RISKY_ROLES 와 같은 개념. */
+const RISKY_ROLES_MONITOR = new Set(["anon", "authenticated", "public"]);
+
+/**
+ * 표현식이 "항상 참"이거나 "로그인만 하면 참"인지 — 정적 가드(`_rls-anon-write-policy.test.mjs`)
+ * 의 `isAlwaysTrueFor`/`ANY_LOGGED_IN` 과 같은 판정을 실측 표현식(qual/with_check 문자열)에 적용한다.
+ * @param {string} expr
+ * @param {string[]} roles
+ * @returns {boolean}
+ */
+function isAlwaysTrueForRoles(expr, roles) {
+  const n = String(expr).toLowerCase().replace(/\s+/g, "");
+  const ALWAYS_TRUE = new Set(["true", "(true)", "1=1", "(1=1)"]);
+  if (ALWAYS_TRUE.has(n)) return true;
+  const ANY_LOGGED_IN = new Set([
+    "auth.role()='authenticated'",
+    "(auth.role()='authenticated')",
+    "auth.role()='authenticated'::text",
+    "(auth.role()='authenticated'::text)",
+    "auth.uid()isnotnull",
+    "(auth.uid()isnotnull)",
+  ]);
+  return ANY_LOGGED_IN.has(n) && roles.some((r) => r === "authenticated" || r === "public");
+}
+
 // ── I/O 래퍼 (실제 API·DB 호출) ─────────────────────────────
 
 /**
@@ -1338,6 +1559,20 @@ export async function fetchTradeMonthRows(sbArg) {
     sb,
     "id",
   );
+}
+
+/**
+ * 감시 ⑩ 입력 — `audit_db_permissions()` RPC 1회 호출.
+ * 실패해도 throw 하지 않는다(main 이 fail-open 으로 감쌀 필요 없이, 이 함수 자체가
+ * `{ snapshot: null, error }` 를 돌려주고 `evaluateDbPermissions` 의 R7 이 그걸 경보로 만든다).
+ * @param {any} [sbArg] 테스트 주입용. 생략하면 getSupabase()(service_role).
+ * @returns {Promise<{ snapshot: Record<string, any> | null, error: string | null }>}
+ */
+export async function fetchDbPermissionsSnapshot(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  const { data, error } = await sb.rpc("audit_db_permissions");
+  if (error) return { snapshot: null, error: error.code ?? error.message ?? "unknown" };
+  return { snapshot: /** @type {Record<string, any>} */ (data), error: null };
 }
 
 /**
@@ -1925,6 +2160,31 @@ async function main() {
       console.log(`[monitor] ⑧ 지역×월 거래 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
 
+    // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
+    //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를
+    //    직접 재는 실측 점검. 기존 서비스 키(getSupabase)만 쓰고 새 비밀값은 만들지 않는다.
+    //    다른 점검을 막지 않도록 fail-open — ⑦⑨ 와 같은 패턴.
+    const forcePermAudit = process.env.FORCE_DB_PERMISSION_AUDIT === "1";
+    if (isKstMonday() || forcePermAudit) {
+      try {
+        const { snapshot, error } = await fetchDbPermissionsSnapshot();
+        const permIssues = evaluateDbPermissions(snapshot, { rpcError: error });
+        if (permIssues.length === 0) {
+          console.log("[monitor] ⑩ 권한 점검: 통과 (월요일 리마인드)");
+          // 경보가 0건이면 issues 에는 안 실리므로(다른 이상이 없으면 "이상 없음"으로 조용히
+          // 끝난다), 월요일에 사람이 "점검이 실제로 돌긴 했다"를 알 수 있게 한 줄만 별도 발송.
+          if (process.env.GITHUB_ACTIONS) {
+            await sendTelegram("🔎 <b>주간 DB 권한 점검</b> — 이상 없음");
+          }
+        } else {
+          console.log(`[monitor] ⑩ 권한 점검: 경보 ${permIssues.length}건(세부는 텔레그램)`);
+        }
+        issues = issues.concat(permIssues);
+      } catch (err) {
+        console.log(`[monitor] ⑩ 권한 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+      }
+    }
+
     // ★ 매일 아침 현황 브리핑 (세션 478) — 이상 유무 무관 daily 마다 1통. L1138 early-return 앞에서
     //   별도 발송해야 이상 0건 아침에도 나간다. CI 에서만 발송(로컬은 콘솔).
     await sendDailyBriefing({ audit, externalStaleIssues, issueCount: issues.length });
@@ -1959,7 +2219,7 @@ async function main() {
   console.log(`[monitor] 이상 ${issues.length}건 발견 (mode=${mode})`);
   // 한 통으로 모아 보낸다. 4000자 넘으면 buildMessages 가 이슈 경계에서 나눈다.
   const messages = buildMessages(issues);
-  for (const issue of issues) console.log(formatIssue(issue));
+  for (const issue of issues) console.log(formatIssueForConsole(issue));
   let anySent = false;
   for (const text of messages) {
     const result = await sendTelegram(text);

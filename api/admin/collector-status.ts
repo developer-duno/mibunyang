@@ -5,7 +5,7 @@
  *   2. api_quota_log 최근 호출 (수집기별 최근 N건)
  *   3. 데이터 테이블의 마지막 갱신 시각
  */
-import { getSupabase } from "../_lib/supabase.js";
+import { getMibuyangSupabase } from "../_lib/supabase.js";
 import { withHandler } from "../_lib/handler.js";
 
 type LastRun = {
@@ -83,7 +83,7 @@ export default withHandler({
   rateLimit: "admin",
   handler: async (req, res) => {
     try {
-      const sb = getSupabase();
+      const sb = getMibuyangSupabase();
 
       // runs 1 + quota 1 + freshness 7 = 9 쿼리 병렬. 한 쿼리 실패가 전체를 죽이지 않게.
       const settled = await Promise.allSettled([

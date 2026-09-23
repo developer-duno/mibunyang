@@ -53,7 +53,7 @@ function freshnessChain(table: string) {
 }
 
 vi.mock('../_lib/supabase.js', () => ({
-  getSupabase: () => ({
+  getMibuyangSupabase: () => ({
     from: vi.fn((table: string) => {
       if (table === 'collector_runs' || table === 'api_quota_log') return listChain(table);
       return freshnessChain(table);

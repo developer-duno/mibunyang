@@ -133,6 +133,23 @@ export function formatIssue(issue) {
   return out.join("\n");
 }
 
+/**
+ * 공개 GitHub Actions 콘솔용 이슈 포맷 — `formatIssue` 와 달리 감시 ⑩(db-permissions) 이슈는
+ * `lines`(표·칸·정책·SECURITY DEFINER 함수 이름)를 버리고 개수 요약(`detail`)만 남긴다.
+ *
+ * 저장소가 공개이고 이 감시는 GitHub Actions 콘솔 로그에도 찍히는데, 그 로그는 인터넷에
+ * 공개된다. 세부는 텔레그램(`buildMessages`→`formatIssue`)로만 전달하고, 콘솔에는 "무엇이
+ * 몇 건 걸렸는지"만 남긴다(사장님 결정). 그 밖의 기존 감시 이슈는 그대로 `formatIssue` 를 쓴다
+ * — 콘솔 출력 형태가 바뀌지 않는다.
+ * @param {Parameters<typeof formatIssue>[0]} issue
+ * @returns {string}
+ */
+export function formatIssueForConsole(issue) {
+  if (issue.collector !== "db-permissions") return formatIssue(issue);
+  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨" }[issue.kind];
+  return [`${emoji} <b>DB 권한 점검</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)].join("\n");
+}
+
 /** 텔레그램 1개 메시지 글자수 한도(4096). 여유를 둬 4000 에서 자른다. */
 const TELEGRAM_MAX_CHARS = 4000;
 /** 이슈와 이슈 사이 구분선. */
