@@ -58,7 +58,7 @@
 |------|------|------|------|
 | `FINLIFE_API_KEY` | finlife (금감원 금리) | - | 미등록 시 빈 배열 |
 | `NEIS_KEY` | schools-neis | - | 나이스 교육정보 개방포털 |
-| `SCHOOLINFO_KEY` | schools-neis | - | 학교알리미 학생수 |
+| `SCHOOLINFO_KEY` | schools-neis | - | 학교알리미 학생수(학군 밀도 보정 ±5 원점수). ⚠️ **운영 워크플로 2개(`collect-schools.yml`·`collect-naver-listings-incremental.yml`)에만 있고 로컬 `.env.local` 엔 없다** — 없으면 같은 단지 학군 점수가 달라진다(세션567 실측 63 vs 68). 그래서 로컬 **실제 쓰기**는 시작 전에 멈춘다(`--dry-run`·`--rescale-only`·CI 는 그대로). 학교 점수 반영은 `collect-schools.yml`(`ids` 입력)로 |
 | `DART_KEY` | dart-builders | O (DART 활성 시) | OpenDART 시공사 신용 |
 
 ## MCP 서버 운영 메모 (세션 439 감사 기록)

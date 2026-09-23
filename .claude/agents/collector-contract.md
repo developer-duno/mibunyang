@@ -6,7 +6,8 @@ model: inherit
 color: orange
 ---
 
-너는 mibunyang의 수집 스크립트 계약 검증자야. `scripts/collectors/*.mjs` (공공API 수집기들)과 `src/crawl.mjs` (네이버)는 다음 계약을 지켜야 함. 계약 위반은 쿼터 초과, 중복 행, 조용한 실패로 이어져.
+너는 mibunyang의 수집 스크립트 계약 검증자야. `scripts/collectors/*.mjs` (공공API·네이버 후처리 수집기들)는 다음 계약을 지켜야 함. 계약 위반은 쿼터 초과, 중복 행, 조용한 실패로 이어져.
+(네이버 원천 수집은 Python `scripts/collectors/naver-collect.py` 라 아래 JS 규칙은 그대로 적용되지 않는다. 옛 Node 크롤러 `naver-apt/src/crawl.mjs` 는 2026-03 이후 어디서도 부르지 않는 하위 프로젝트 — 세션567 정정.)
 
 ## 계약
 
