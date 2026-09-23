@@ -39,6 +39,9 @@ BEGIN
   WHERE p.schemaname = 'public'
     AND p.tablename IN ('collector_runs', 'api_quota_log', 'monitor_alert_state', 'monitor_daily_snapshot')
     AND p.cmd IN ('SELECT', 'ALL')
+    -- "Service write"(USING auth.role() = 'service_role')는 서비스 역할만 통과 — 공개 대상 아님(2026-09-24 운영 적용 시 이 검사가 그 정책까지 잡아 전부 취소됐다)
+    -- 부분 일치(LIKE %service_role%)는 "service_role … OR true" 같은 위험한 정책까지 빼 버린다(세션567 검사관) — 실제 DB 의 서비스 전용 정책 43개와 **정확히 같은 문구**만 뺀다
+    AND NOT (coalesce(p.qual, '') = '(auth.role() = ''service_role''::text)' AND p.with_check IS NULL)
     AND (
       'anon' = ANY(p.roles) OR 'authenticated' = ANY(p.roles) OR 'public' = ANY(p.roles)
     )
