@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: ''
+      ids:
+        description: '지정 단지만 다시 계산 (apartments.id 를 쉼표로 구분, 30일 건너뛰기 무시 · 빈 값 = 평소대로)'
+        required: false
+        type: string
+        default: ''
 
 concurrency:
   group: school-collection
@@ -68,6 +73,8 @@ jobs:
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
           NEIS_KEY: ${{ secrets.NEIS_KEY }}
           SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
+          # 입력을 스크립트에 직접 끼우지 않고 환경변수로 받아 형식을 검사한다(명령 주입 방지, 세션567).
+          IDS: ${{ inputs.ids }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
@@ -75,5 +82,12 @@ jobs:
           fi
           if [ -n "${{ inputs.limit }}" ]; then
             ARGS="$ARGS --limit ${{ inputs.limit }}"
+          fi
+          if [ -n "$IDS" ]; then
+            if ! printf '%s' "$IDS" | grep -Eq '^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$'; then
+              echo "::error::ids 형식 오류 — 영문·숫자·-·_ 로 된 id 를 쉼표로만 구분"
+              exit 1
+            fi
+            ARGS="$ARGS --ids=$IDS"
           fi
           node scripts/collectors/schools-neis.mjs $ARGS

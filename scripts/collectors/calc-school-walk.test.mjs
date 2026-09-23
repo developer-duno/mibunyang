@@ -40,6 +40,9 @@ const {
   SCHOOL_WALK_FAR_ADJ_MIRROR,
 } = await import("./calc-school-walk.mjs");
 
+// 소스를 직접 읽어 두 수집기가 정말 공유 모듈을 쓰는지 확인한다(세션567).
+const COLLECTOR_SRC = readFileSync(new URL("./calc-school-walk.mjs", import.meta.url), "utf-8");
+
 // ── findNearestElemSchool ─────────────────────────────────────
 describe("findNearestElemSchool", () => {
   it("초등학교 1개 → 해당 거리 반환", () => {
@@ -168,6 +171,27 @@ describe("nearestElemFromKakaoDocs", () => {
     expect(nearestElemFromKakaoDocs([])).toBeNull();
     expect(nearestElemFromKakaoDocs(/** @type {any} */ (undefined))).toBeNull();
   });
+
+  // 세션567 — 카카오 keyword.json "초등학교" 라이브 실측(2026-09-23) 그대로. 오션포레
+  // (ah-2026910156)는 1km 안에 등재 초등학교가 없어 needLookup 이었는데, 5km 재탐색에서
+  // 옛 이름 화이트리스트는 "…금산분교장"이 "학교"로 안 끝나 버렸다(49분 → 실제로는 1,980m).
+  it("오션포레 실측 — 금산분교장 포함시 1,980m(29분), 제외시 더 먼 학교로 밀림", () => {
+    const docs = [
+      { place_name: "인천영종초등학교 금산분교장", category_name: "교육,학문 > 학교 > 초등학교", distance: "1980" },
+      { place_name: "인천영종초등학교 금산분교장 교무실", category_name: "교육,학문 > 학교부속시설", distance: "1985" },
+      { place_name: "먼초등학교", category_name: "교육,학문 > 학교 > 초등학교", distance: "3430" },
+    ];
+    expect(nearestElemFromKakaoDocs(docs)).toBe(1980);
+    expect(calcWalkingMinutes(nearestElemFromKakaoDocs(docs) ?? 0)).toBe(29); // ceil(1980/70)=29
+  });
+
+  it("개교 예정 학교는 더 가까워도 제외된다", () => {
+    const docs = [
+      { place_name: "미단초중학교 (2028년 3월 예정)", category_name: "교육,학문 > 학교 > 초등학교", distance: "500" },
+      { place_name: "정상초등학교", category_name: "교육,학문 > 학교 > 초등학교", distance: "2000" },
+    ];
+    expect(nearestElemFromKakaoDocs(docs)).toBe(2000);
+  });
 });
 
 // ── planWalkUpdates ───────────────────────────────────────────
@@ -226,6 +250,60 @@ describe("planWalkUpdates", () => {
     expect(direct.map(d => d.id)).toEqual(["d1"]);
     expect(needLookup.map(n => n.id)).toEqual(["n1"]);
   });
+
+  // 세션567 — coord_shared(좌표 불명, 세션560)인 단지는 direct/needLookup 어느 쪽으로도
+  // 안 가고 clear 로 빠져야 한다. 가짜 좌표로 카카오를 조회하면 안 된다(사장님 결정).
+  describe("coord_shared 단지는 clear 로 분류된다 (세션567)", () => {
+    it("nearby_schools 에 초등학교가 있어도 coord_shared 면 direct 아닌 clear", () => {
+      const apartments = [{ id: "cs1", lat: 37.1, lng: 127.1, coord_shared: true }];
+      const schoolsById = new Map([["cs1", [{ type: "초", distance: 200 }]]]);
+      const { direct, needLookup, clear } = planWalkUpdates({ apartments, schoolsById });
+      expect(direct).toEqual([]);
+      expect(needLookup).toEqual([]);
+      expect(clear).toEqual([{ id: "cs1" }]);
+    });
+
+    it("좌표가 있어도 coord_shared 면 카카오 재탐색(needLookup) 대상이 아니다", () => {
+      const apartments = [{ id: "cs2", lat: 37.1, lng: 127.1, coord_shared: true }];
+      const schoolsById = new Map();
+      const { needLookup, clear } = planWalkUpdates({ apartments, schoolsById });
+      expect(needLookup).toEqual([]);
+      expect(clear).toEqual([{ id: "cs2" }]);
+    });
+
+    it("coord_shared: false 또는 null 또는 미설정 — 평소대로 direct/needLookup", () => {
+      const apartments = [
+        { id: "a", lat: 37.1, lng: 127.1, coord_shared: false },
+        { id: "b", lat: 37.1, lng: 127.1, coord_shared: null },
+        { id: "c", lat: 37.1, lng: 127.1 },
+      ];
+      const schoolsById = new Map([
+        ["a", [{ type: "초", distance: 200 }]],
+        ["b", [{ type: "초", distance: 200 }]],
+        ["c", [{ type: "초", distance: 200 }]],
+      ]);
+      const { direct, clear } = planWalkUpdates({ apartments, schoolsById });
+      expect(direct.map(d => d.id).sort()).toEqual(["a", "b", "c"]);
+      expect(clear).toEqual([]);
+    });
+
+    it("혼합 — direct/needLookup/clear 세 그룹이 동시에 정확히 갈린다", () => {
+      const apartments = [
+        { id: "d1", lat: 37.1, lng: 127.1 },
+        { id: "n1", lat: 37.2, lng: 127.2 },
+        { id: "cs1", lat: 37.3, lng: 127.3, coord_shared: true },
+      ];
+      const schoolsById = new Map([
+        ["d1", [{ type: "초", distance: 200 }]],
+        ["n1", [{ type: "중", distance: 100 }]],
+        ["cs1", [{ type: "초", distance: 200 }]], // 있어도 clear 가 우선
+      ]);
+      const { direct, needLookup, clear } = planWalkUpdates({ apartments, schoolsById });
+      expect(direct.map(d => d.id)).toEqual(["d1"]);
+      expect(needLookup.map(n => n.id)).toEqual(["n1"]);
+      expect(clear.map(c => c.id)).toEqual(["cs1"]);
+    });
+  });
 });
 
 // ── 세션566: dry-run 은 KAKAO_KEY 부재로 exit 1 하지 않는다 ──────────────
@@ -250,31 +328,34 @@ describe("dry-run 은 KAKAO_KEY 부재만으로 exit 1 하지 않는다 (세션5
 });
 
 // ── 세션566: 거울 사본 동기화 가드 (schools-neis.test.mjs 관례 답습) ──────────
-// 이 수집기는 두 원본을 import 하지 못해 복제한다 — 점수표는 .ts 라서, 학교명 판정은
-// schools-neis.mjs 가 KAKAO_KEY 없으면 import 즉시 process.exit 하기 때문이다.
-// 복제본이 원본에서 조용히 어긋나지 않게 **직접 import 해서** 대조한다.
-describe("거울 사본 동기화 (calc-school-walk ↔ scoringTiers.ts · schools-neis.mjs)", () => {
+// 점수표(.ts)는 이 수집기가 import 할 수 없어 여전히 복제한다.
+describe("거울 사본 동기화 (calc-school-walk ↔ scoringTiers.ts)", () => {
   it("가산점 표 거울이 한 칸도 어긋나지 않는다", async () => {
     const { SCHOOL_WALK_BONUS, SCHOOL_WALK_FAR_ADJ } = await import("@/constants/scoringTiers");
     expect(SCHOOL_WALK_BONUS_MIRROR).toEqual(SCHOOL_WALK_BONUS.map((t) => ({ max: t.max, score: t.score })));
     expect(SCHOOL_WALK_FAR_ADJ_MIRROR).toBe(SCHOOL_WALK_FAR_ADJ);
   });
+});
 
-  it("학교명 판정이 schools-neis.mjs 와 같은 답을 낸다", async () => {
-    const saved = process.env.KAKAO_KEY;
-    process.env.KAKAO_KEY = saved || "test-key"; // 그 모듈은 키가 없으면 import 즉시 종료한다
-    try {
-      const neis = await import("./schools-neis.mjs");
-      const names = [
-        "서울초등학교", "행복중학교", "한빛고등학교", "하늘대안학교", "초등학교",
-        "  서울초등학교  ", "행복초등학교앞 정류장", "서울초등학교 병설유치원", "학교앞", "", "초등",
-      ];
-      for (const n of names) expect(isSchoolPlace(n)).toBe(neis.isSchoolPlace(n));
-      // 판정이 전부 한쪽으로 쏠리면 이 대조는 의미가 없다 — 참·거짓이 둘 다 나와야 한다.
-      expect(new Set(names.map((n) => isSchoolPlace(n))).size).toBe(2);
-    } finally {
-      if (saved === undefined) delete process.env.KAKAO_KEY;
-      else process.env.KAKAO_KEY = saved;
-    }
+// ── 세션567: 학교명 판정은 이제 복제본이 아니라 공유 모듈 `_school-place.mjs` 를 쓴다.
+// "거울이 어긋나지 않는다"를 값 대조로 재확인할 필요가 없어졌고(같은 함수이므로 항상 같다),
+// 대신 **소스에 로컬 복제본이 부활하지 않았는지**를 grep 으로 지킨다
+// ([[guards-must-be-mutation-tested]] "소스 grep 가드는 좌변까지 고정" — 선언문 형태로 고정해
+// 주석·부분 문자열에 걸리는 껍데기를 피한다).
+describe("학교명 판정 — 공유 모듈만 쓰고 로컬 복제본이 없다 (세션567)", () => {
+  it("calc-school-walk.mjs 는 ./_school-place.mjs 를 import 한다", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /import \{ isSchoolPlace, isElementarySchoolDoc \} from "\.\/_school-place\.mjs";/,
+    );
+  });
+
+  it("calc-school-walk.mjs 안에 로컬 SCHOOL_SUFFIX_RE 선언이 없다 (사본 부활 방지)", () => {
+    expect(COLLECTOR_SRC).not.toMatch(/const\s+SCHOOL_SUFFIX_RE\s*=/);
+  });
+
+  it("schools-neis.mjs 도 ./_school-place.mjs 를 import 하고 로컬 선언이 없다", () => {
+    const neisSrc = readFileSync(new URL("./schools-neis.mjs", import.meta.url), "utf-8");
+    expect(neisSrc).toMatch(/import \{[^}]*isSchoolPlace[^}]*isElementarySchoolDoc[^}]*\} from "\.\/_school-place\.mjs";/);
+    expect(neisSrc).not.toMatch(/const\s+SCHOOL_SUFFIX_RE\s*=/);
   });
 });

@@ -12,6 +12,7 @@
  *       저장된 nearby_schools 만 읽어 school_score/school_grade 재계산 (외부 API 호출 0)
  */
 import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, getLawdCd, stringSimilarity, recordApiQuota, recordCollectorRun, createReporter, selectAll } from "./_shared.mjs";
+import { isSchoolPlace, isElementarySchoolDoc } from "./_school-place.mjs";
 
 loadEnv();
 
@@ -27,10 +28,10 @@ const NEIS_BASE = "https://open.neis.go.kr/hub";
 const SCHOOLINFO_KEY = process.env.SCHOOLINFO_KEY;
 const SCHOOLINFO_BASE = "https://www.schoolinfo.go.kr/openApi.do";
 
-/** 학교명 whitelist — 정상 학교는 반드시 "학교"로 끝남 (부속시설·비학교 POI 자동 제외) */
-const SCHOOL_SUFFIX_RE = /(?:초등학교|중학교|고등학교|학교)$/;
-/** @param {string} name */
-export const isSchoolPlace = (name) => typeof name === "string" && SCHOOL_SUFFIX_RE.test(name.trim());
+// 세션567: 학교명 판정(isSchoolPlace)은 이제 `_school-place.mjs` 가 진실의 원천이다
+// (calc-school-walk.mjs 와 공유). 이 파일에서 계속 같은 이름으로 쓰기 위해 재수출한다 —
+// 다른 파일이 이 모듈의 `isSchoolPlace` 를 import 하는 경우(테스트 포함)도 그대로 호환된다.
+export { isSchoolPlace };
 
 // ── Kakao Places API ────────────────────────────────────────────
 /**
@@ -415,6 +416,52 @@ export function buildEnrichedIds(schoolRows, staleThresholdMs) {
   return ids;
 }
 
+// ── 세션567: "지정 단지만 다시 보기" (--ids) ──────────────────
+// 배경 — 대전 서구 18행(탄방초 용문분교장 영향)의 schools.updated_at 이 전부 2026-09-22 라
+// buildEnrichedIds 의 30일 skip 에 걸려 10/22 이후에야 자연 재처리된다. 지정한 id 는 그
+// skip 을 무시하고 즉시 재처리하는 옵션을 둔다.
+
+/**
+ * `--ids=a,b,c` 인자를 쉼표로 분리해 공백을 trim 하고 빈 항목을 걷어낸다.
+ * @param {string[]} argv process.argv (또는 그와 같은 배열)
+ * @returns {string[] | null} 지정 안 하면 null, 지정했는데 값이 비었으면 빈 배열
+ */
+export function parseIdsArg(argv) {
+  const found = argv.find((a) => a.startsWith("--ids="));
+  if (found == null) return null;
+  const raw = found.slice("--ids=".length);
+  return raw.split(",").map((s) => s.trim()).filter((s) => s.length > 0);
+}
+
+/**
+ * `--ids` 로 지정한 단지만 대상으로 좁힌다. 좌표가 없는 id 는 목록에서 제외하고 별도로
+ * 보고하며, 존재하지 않는 id 도 별도로 보고한다. 지정된 id 는 30일 skip(enrichedIds)을
+ * 무시하도록 `forceIds` Set 도 함께 돌려준다 — 호출부가 그 Set 에 있으면 skip 판정을
+ * 건너뛴다.
+ * @param {Array<{ id: string, name?: string, lat: number|null, lng: number|null }>} apts apartments 전체(좌표 무관)
+ * @param {string[]} ids parseIdsArg 결과(빈 배열 아님)
+ * @returns {{ targets: Array<{ id: string, name?: string, lat: number, lng: number }>,
+ *             forceIds: Set<string>,
+ *             missing: string[],
+ *             noCoord: Array<{ id: string, name?: string }> }}
+ */
+export function selectTargetsByIds(apts, ids) {
+  const byId = new Map(apts.map((a) => [a.id, a]));
+  /** @type {Array<{ id: string, name?: string, lat: number, lng: number }>} */
+  const targets = [];
+  /** @type {string[]} */
+  const missing = [];
+  /** @type {Array<{ id: string, name?: string }>} */
+  const noCoord = [];
+  for (const id of ids) {
+    const apt = byId.get(id);
+    if (!apt) { missing.push(id); continue; }
+    if (apt.lat == null || apt.lng == null) { noCoord.push({ id: apt.id, name: apt.name }); continue; }
+    targets.push(/** @type {{ id: string, name?: string, lat: number, lng: number }} */ (apt));
+  }
+  return { targets, forceIds: new Set(ids), missing, noCoord };
+}
+
 // ── 재척도 백필 (세션524) ────────────────────────────────────
 /**
  * 이미 저장된 `nearby_schools` 만 읽어 `school_score`·`school_grade` 를 다시 계산한다.
@@ -506,7 +553,24 @@ async function main() {
   // 세션534: 무정렬 OFFSET → 고유키(id) 커서 (unordered-pagination-loses-rows.md §1).
   const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng, region, gu, bjd_code"), sb, "id");
 
-  const targets = apts.filter(a => a.lat && a.lng).slice(0, limit);
+  // 세션567: --ids=a,b,c — 지정 단지만 다시 본다(30일 skip 무시). 없는 id 는 이름을 찍고
+  // 건너뛰고, 좌표 없는 id 도 목록을 보고한 뒤 제외한다. --limit 과 함께 쓰면 그 뒤 slice 로
+  // 기존 의미(대상을 다시 자름)를 유지한다.
+  const idsArg = parseIdsArg(process.argv);
+  /** @type {Set<string>} */
+  let forceIds = new Set();
+  let targets = apts.filter(a => a.lat && a.lng);
+  if (idsArg != null) {
+    const sel = selectTargetsByIds(apts, idsArg);
+    forceIds = sel.forceIds;
+    targets = sel.targets;
+    if (sel.missing.length > 0) log(PHASE, `⚠️ --ids 중 존재하지 않는 단지 ${sel.missing.length}건: ${sel.missing.join(", ")}`);
+    if (sel.noCoord.length > 0) {
+      log(PHASE, `⚠️ --ids 중 좌표 없는 단지 ${sel.noCoord.length}건(제외): ${sel.noCoord.map(a => `${a.id}(${a.name ?? "이름없음"})`).join(", ")}`);
+    }
+    log(PHASE, `--ids 지정 — 대상 ${targets.length}건, 30일 skip 무시`);
+  }
+  targets = targets.slice(0, limit);
 
   // 세션 338: 데이터 완결성 기반 resume self skip
   //   - nearby_schools 안 학교 객체에 schoolType 키 박힘 = NEIS 보강 완료
@@ -521,6 +585,20 @@ async function main() {
     await selectAll((s) => s.from("schools").select("apartment_id, nearby_schools, updated_at"), sb, "apartment_id")
   );
   const enrichedIds = buildEnrichedIds(allSchoolRows, staleThresholdMs);
+  // --ids 로 지정한 단지는 30일 skip 을 무시한다 — enrichedIds 에서 걷어낸다.
+  for (const id of forceIds) enrichedIds.delete(id);
+  // dry-run + --ids 확장 출력용 옛 값(school_score/school_grade 포함) 조회 — 위 allSchoolRows
+  // 는 회귀 가드(schools-neis.test.mjs "고유키 커서")가 select 문자열을 리터럴로 고정해
+  // 컬럼을 늘릴 수 없으므로, 지정된 소수 id 에 한해 별도로 조회한다.
+  /** @type {Map<string, Record<string, any>>} */
+  let oldById = new Map();
+  if (forceIds.size > 0) {
+    const { data: oldRows } = await sb
+      .from("schools")
+      .select("apartment_id, nearby_schools, school_score, school_grade")
+      .in("apartment_id", Array.from(forceIds));
+    oldById = new Map((/** @type {Array<Record<string, any>>} */ (oldRows) ?? []).map(r => [r.apartment_id, r]));
+  }
 
   log(PHASE, `대상: ${targets.length}건 (좌표 있음), NEIS 보강 + 30일 이내 = ${enrichedIds.size}건 skip 예정${limit < Infinity ? `, limit ${limit}` : ""}`);
 
@@ -547,9 +625,11 @@ async function main() {
       await sleep(100);
 
       // 2단계: nearby_schools 생성 + NEIS 보강
+      // 세션567: 초등만 isElementarySchoolDoc(이름+분류) — 분교장을 포함하고 개교 예정을
+      // 제외한다. 중·고는 기존 이름 화이트리스트(isSchoolPlace) 그대로 유지한다.
       /** @type {Array<Record<string, any>>} */
       let nearbySchools = [
-        ...elem.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "초", distance: Math.round(Number(s.distance)) })),
+        ...elem.filter(/** @param {Record<string, any>} s */ (s) => isElementarySchoolDoc(s)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "초", distance: Math.round(Number(s.distance)) })),
         ...middle.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "중", distance: Math.round(Number(s.distance)) })),
         ...high.filter(/** @param {Record<string, any>} s */ (s) => isSchoolPlace(s.place_name)).map(/** @param {Record<string, any>} s */ (s) => ({ name: s.place_name, type: "고", distance: Math.round(Number(s.distance)) })),
       ].sort((a, b) => a.distance - b.distance);
@@ -583,6 +663,17 @@ async function main() {
 
       if (dryRun) {
         log(PHASE, `  [DRY] ${apt.name}: 점수${score}(${grade}) 초${elem.length} 중${middle.length} 고${high.length}`);
+        // 세션567: --ids 지정 단지는 옛 값을 함께 찍는다 — 초등 목록(이름·거리)과
+        // school_score/school_grade 옛→새를 눈으로 대조할 수 있게.
+        if (forceIds.has(apt.id)) {
+          const old = oldById.get(apt.id);
+          const oldElem = Array.isArray(old?.nearby_schools) ? old.nearby_schools.filter(/** @param {Record<string, any>} s */ (s) => s?.type === "초") : [];
+          const newElem = nearbySchools.filter(s => s.type === "초");
+          const fmt = /** @param {Array<Record<string, any>>} arr */ (arr) => arr.length === 0 ? "(없음)" : arr.map(s => `${s.name}(${s.distance}m${s.schoolType ? `,${s.schoolType}` : ""})`).join(" · ");
+          log(PHASE, `    [DRY --ids] ${apt.id} 초등 옛: ${fmt(oldElem)}`);
+          log(PHASE, `    [DRY --ids] ${apt.id} 초등 새: ${fmt(newElem)}`);
+          log(PHASE, `    [DRY --ids] ${apt.id} school_score/grade 옛: ${old?.school_score ?? "(없음)"}${old?.school_grade ? `(${old.school_grade})` : ""} → 새: ${score}(${grade})`);
+        }
         updated++;
         continue;
       }
