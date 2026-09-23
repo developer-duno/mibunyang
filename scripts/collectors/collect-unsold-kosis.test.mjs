@@ -11,6 +11,8 @@ import path from "path";
 const fetchWithRetryMock = vi.fn();
 
 // _shared.mjs 모킹
+const selectAllMock = vi.fn();
+
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
   return {
@@ -25,6 +27,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     // main 호출마다 실 SIGTERM 리스너 누적 방지 (반환 함수 = isInterrupted)
     setupGracefulShutdown: vi.fn(() => () => false),
     fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
+    selectAll: (/** @type {any[]} */ ...args) => selectAllMock(...args),
   };
 });
 
@@ -352,5 +355,104 @@ describe("shouldSkipKosisFill — 공식 미분양이 매물 수에 밀리지 �
 
   it("unsold 가 null 이면 진짜 값 없음이므로 채운다 (대조군)", () => {
     expect(skip({ unsold: null, units: 500, region: "경기", gu: "수원시" })).toBe(false);
+  });
+});
+
+// ── apartments 조회 — selectAll 전수 확보 (세션566, 1,000행 컷 정정) ──
+// 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
+// 1,000행 컷의 두 가지 피해: (a) unitsByGu(비례배분 분모)가 표본만으로 계산돼 왜곡,
+// (b) 1,000행 밖의 채움 대상이 영영 안 채워짐. 아래는 selectAll 이 전수(1,005건)를 돌려주는
+// mock 으로, 1,000번째를 넘는 행도 처리되고 분모가 전량 기준임을 증명한다.
+describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  /** KOSIS 응답 — 경기 수원시에 미분양 1,000세대(비례배분 분모 검증용) */
+  function kosisRows() {
+    return [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "1000" }];
+  }
+
+  /** @param {number} n 채움 대상이 아닌 "이미 값 있음" 단지 수, 그 뒤 1개는 1,000번째를 넘는 채움 대상 */
+  function makeApartments(n) {
+    /** @type {any[]} */
+    const rows = [];
+    for (let i = 0; i < n; i++) {
+      rows.push({
+        id: `apt-${i}`, name: `단지${i}`, region: "경기", gu: "수원시",
+        units: 100, unsold: 10, unsold_rate: 10, naver_sell_count: null, // 유효 기존값 → skip
+      });
+    }
+    // 1,000번째를 넘는 위치(인덱스 1004, 총 1,005건)에 채움 대상 1건 추가
+    rows.push({
+      id: "apt-target", name: "1005번째단지", region: "경기", gu: "수원시",
+      units: 100, unsold: null, unsold_rate: null, naver_sell_count: null,
+    });
+    return rows;
+  }
+
+  it("1,000행 넘는 표(1,005건)에서 1,000번째를 넘는 채움 대상도 처리된다", async () => {
+    const apartments = makeApartments(1004); // 0~1003 + target(인덱스1004) = 1,005건
+    selectAllMock
+      .mockResolvedValueOnce([]) // 1st call: regions (빈 배열 — regions 갱신은 본 테스트 밖)
+      .mockResolvedValueOnce(apartments); // 2nd call: apartments
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows() });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run"];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+    }
+
+    // selectAll 이 apartments 를 filter/range 없이 keyCol "id" 로 호출했는지 확인
+    expect(selectAllMock).toHaveBeenCalledTimes(2);
+    const apartmentsCallArgs = selectAllMock.mock.calls[1];
+    expect(apartmentsCallArgs[2]).toBe("id"); // keyCol
+
+    // aptUpdated 카운트 — main() 은 dry-run 이라 DB write 없이 카운트만 증가.
+    // recordCollectorRun 의 ok 값으로 간접 검증(regUpdated=0 + aptUpdated=1 대상).
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
+  });
+
+  it("per-gu 분모(unitsByGu)가 전체 1,005행 기준으로 계산된다 — 1,000행 컷이면 값이 왜곡된다", async () => {
+    // guUnsold=1000, totalUnitsInGu=1,005*100=100,500 이면 채움 대상(units=100)의 비례배분:
+    // estimated = round(1000 * 100/100500) = round(0.995) = 1
+    // 1,000행 컷이었다면(999*100+100=100,000 대신 1000*100=100,000 아님 — 표본이 999건뿐이면
+    // totalUnitsInGu=999*100=99,900 이 되어 estimated = round(1000*100/99900)=1 로 동일할 수도
+    // 있으므로, 분모 차이가 값에 드러나도록 목표 단지 units 를 크게 잡아 대비시킨다.
+    /** @type {any[]} */
+    const rows = [];
+    for (let i = 0; i < 1004; i++) {
+      rows.push({ id: `apt-${i}`, name: `단지${i}`, region: "경기", gu: "수원시", units: 100, unsold: 10, unsold_rate: 10, naver_sell_count: null });
+    }
+    rows.push({ id: "apt-target", name: "타겟", region: "경기", gu: "수원시", units: 50200, unsold: null, unsold_rate: null, naver_sell_count: null });
+    // totalUnitsInGu(전체) = 1004*100 + 50200 = 150,600
+    // 1,000행 컷이었다면 표본 999건(단지 999개, 타겟 미포함) → 분모 = 999*100 = 99,900 (타겟 자체가 안 보임)
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(rows);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows() });
+
+    /** @type {string[]} */
+    const logLines = [];
+    const { log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
+    /** @type {any} */ (logMock).mockImplementation((/** @type {string} */ _phase, /** @type {string} */ msg) => {
+      logLines.push(msg);
+    });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run"];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+    }
+
+    const targetLine = logLines.find((l) => l.includes("타겟"));
+    expect(targetLine).toBeDefined();
+    // estimated = round(1000 * 50200/150600) = round(333.33) = 333
+    expect(targetLine).toMatch(/unsold=333,/);
   });
 });
