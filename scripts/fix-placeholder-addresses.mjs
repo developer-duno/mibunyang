@@ -211,6 +211,32 @@ export const PLANNED_POI_RE = /\([^()]*예정\)/;
  * (세션544 결정 ③).
  */
 export const GRAY_MAX_M = 500;
+
+/**
+ * 단일 출처(K)를 **반영 대상으로 인정하는 최대 거리** — 이보다 멀면 보고만 한다 (세션564).
+ *
+ * ## 왜 필요한가 (세션563 조사 실측)
+ *
+ * 이름이 흔한 전국 브랜드는 **엉뚱한 지역 단지**에 걸린다. 시도 게이트를 지나도 그렇다:
+ *
+ *   `오산세교2지구 A-13블록 호반써밋` → `호반써밋동탄아파트`  sim 0.80 · **9.0km**
+ *   `에코델타시티 7블록 호반써밋`     → `호반써밋스마트시티`   sim 0.42 · **8.8km**
+ *   `파주 운정3지구 A10블록 제일풍경채` → `해오름마을3단지…`   sim 0.56 · 4.6km
+ *
+ * 자리표시 좌표는 구청·동 중심점이라 **진짜 위치와 보통 수 km 안**이다(세션539~542 정정 209곳
+ * 실측). 그보다 훨씬 멀면 "자리표시를 고치는 것"이 아니라 **다른 단지로 옮기는 것**이다.
+ *
+ * ⚠️ 이 값을 올리면 브랜드 충돌이 통과한다. 내리려면 정정 이력의 거리 분포를 다시 재라.
+ */
+export const FAR_MAX_M = 3000;
+
+/**
+ * 단일 출처(K)를 반영 대상으로 인정하는 **최소 이름 유사도** (세션564).
+ *
+ * `KAKAO_STRONG_SIM`(0.85) 은 "강함" 판정 기준이고, 여기는 **좌표를 실제로 옮겨도 되는가**를
+ * 묻는 자리라 더 엄하다. 위 실측에서 0.80·0.57·0.56·0.42 가 전부 다른 단지였다.
+ */
+export const APPLY_MIN_SIM = 0.85;
 /** complexes 이름매칭 최소 유사도. */
 export const COMPLEX_MIN_SIM = 0.75;
 /** C 단독 채택에 필요한 유사도. */
@@ -225,6 +251,64 @@ export const METRO_REGIONS = new Set(["서울", "부산", "대구", "인천", "�
 
 /** `--apply` 가 실제로 반영하는 등급. */
 export const APPLY_TIERS = new Set(["A2", "B_apply", "B_kakao_strong"]);
+
+/**
+ * **한 후보를 둘 이상이 가리키면 전부 보류** — 전체 결과를 가로질러 보는 게이트 (세션564).
+ *
+ * ## 왜 `classify` 안에서 못 하나
+ *
+ * `classify` 는 단지 **하나**만 보므로 "다른 단지도 같은 곳을 가리키나"를 알 수 없다.
+ * 이 판정은 전체를 모은 뒤에만 가능하다.
+ *
+ * ## 무엇을 막나 (세션563 조사 실측 — 56곳 중 25곳이 11개 묶음에 걸렸다)
+ *
+ *   `고양덕은 DMC리버파크자이(A4BL)` ┐
+ *   `고양덕은 DMC리버포레자이(A7BL)` ┘ → **둘 다** `DMC자이더리버아파트`
+ *   `남악 오룡지구 39BL …파르세나`   ┐
+ *   `남악 오룡지구 40BL …파르세나`   ┘ → 1단지·2단지에 **sim 0.80 동점**
+ *
+ * 둘 다 이름·거리로는 그럴듯해서 게이트 ①(거리·유사도)이 못 잡는다. **서로 다른 결함**이라
+ * 두 게이트가 각각 필요하다.
+ *
+ * ## 왜 "둘 중 하나를 고르기" 가 아니라 "전부 보류" 인가
+ *
+ * 39BL 이 1단지인지 2단지인지는 **이름으로 알 수 없다**. 찍으면 반은 틀리고, 틀린 쪽은
+ * 멀쩡했던 자리표시보다 더 나쁜 거짓이 된다(세션560이 형제 좌표 승계로 겪었다).
+ * 블록↔단지 대응은 청약홈 공고 본문·면적·세대수로 갈라야 하고, 그건 별도 작업이다.
+ *
+ * @param {Array<{ id?: string, tier?: string, source?: string|null, newLat?: number|null, newLng?: number|null, kakaoName?: string|null }>} rows
+ *   `classify` 를 마친 전체 행.
+ * @returns {{ demoted: number, keys: string[] }} 강등된 행 수와 충돌한 후보 이름들.
+ *   ⚠️ `rows` 를 **제자리에서 고친다**(tier·reason). 큰 배열을 복사하지 않기 위해서다.
+ */
+export function demoteMultiPointed(rows) {
+  /** @type {Map<string, typeof rows>} */
+  const byTarget = new Map();
+  for (const r of rows ?? []) {
+    // 반영 대상만 본다 — 이미 보고만 하는 행은 강등할 것이 없다.
+    if (!APPLY_TIERS.has(String(r?.tier))) continue;
+    // 좌표로 묶는다(이름이 아니라) — 같은 자리를 가리키는지가 본질이고, 이름은 표기가 갈린다.
+    if (r?.newLat == null || r?.newLng == null) continue;
+    const key = `${r.newLat.toFixed(5)},${r.newLng.toFixed(5)}`;
+    const arr = byTarget.get(key);
+    if (arr) arr.push(r);
+    else byTarget.set(key, [r]);
+  }
+  /** @type {string[]} */
+  const keys = [];
+  let demoted = 0;
+  for (const [key, group] of byTarget) {
+    if (group.length < 2) continue;
+    keys.push(group[0]?.kakaoName ?? key);
+    for (const r of group) {
+      r.tier = "B_multi";
+      // @ts-expect-error reason 은 rows 에 실리는 자유 필드다
+      r.reason = `같은 좌표를 ${group.length}곳이 가리킴 — 어느 쪽인지 이름으로 못 가른다(보고만)`;
+      demoted++;
+    }
+  }
+  return { demoted, keys };
+}
 
 /**
  * `infra-kakao` 가 소유한 시설 종류 — purge 시 **개수와 거리 둘 다** 비운다.
@@ -347,7 +431,7 @@ export function normalizeApplyhomeAddress(addr) {
  * 순수 함수로 뽑아 둔 이유 = `planned` 를 **실제로 채우는지**를 소스 grep 이 아니라 단위
  * 테스트로 잠그기 위해서다(`guards-must-be-mutation-tested.md` §"소스 grep 가드").
  * @param {{ doc: any, sim: number, strong: boolean } | null} kPick
- * @returns {{ lat: number, lng: number, strong: boolean, planned: boolean } | null}
+ * @returns {{ lat: number, lng: number, strong: boolean, planned: boolean, sim: number } | null}
  */
 export function buildKakaoInput(kPick) {
   if (!kPick) return null;
@@ -355,6 +439,8 @@ export function buildKakaoInput(kPick) {
     lat: Number(kPick.doc.y),
     lng: Number(kPick.doc.x),
     strong: kPick.strong,
+    // 게이트 ①(APPLY_MIN_SIM)이 읽는다 — 반영해도 되는지는 이름이 얼마나 닮았나로도 갈린다.
+    sim: kPick.sim,
     planned: PLANNED_POI_RE.test(String(kPick.doc.place_name ?? "")),
   };
 }
@@ -370,7 +456,7 @@ export function buildKakaoInput(kPick) {
  * 가진 가장 강한 근거이기 때문이다.
  * @param {{
  *   cur: { lat: number | null, lng: number | null } | null,
- *   K?: { lat: number, lng: number, strong: boolean, planned?: boolean } | null,
+ *   K?: { lat: number, lng: number, strong: boolean, planned?: boolean, sim?: number } | null,
  *   A?: { lat: number, lng: number } | null,
  *   C?: { lat: number, lng: number, solo: boolean } | null,
  * }} input
@@ -429,6 +515,27 @@ export function classify({ cur, K = null, A = null, C = null }) {
   if (K) {
     const gray = grayIfClose(K, "K", `카카오 POI ${K.strong ? "강함" : "약함"}`);
     if (gray) return gray;
+    // ── 게이트 ①: 너무 멀거나 이름이 덜 닮았으면 **반영하지 않고 보고만** 한다 (세션564)
+    //
+    // 이름이 흔한 전국 브랜드(`호반써밋`·`제일풍경채`)는 시도 게이트를 지나고도 엉뚱한
+    // 지역 단지에 걸린다. 실측: `오산세교2지구 A-13블록 호반써밋` → `호반써밋동탄`
+    // sim 0.80 · **9.0km**. 자리표시는 구청·동 중심점이라 진짜 위치와 보통 수 km 안인데,
+    // 그보다 훨씬 멀면 자리표시를 고치는 게 아니라 **다른 단지로 옮기는 것**이다.
+    const far = haversineMeters(lat, lng, K.lat, K.lng);
+    if (far > FAR_MAX_M) {
+      return {
+        tier: "B_kakao_far",
+        source: "K",
+        reason: `카카오 POI 단독인데 ${(far / 1000).toFixed(1)}km — ${FAR_MAX_M / 1000}km 초과라 다른 단지 의심(보고만)`,
+      };
+    }
+    if (K.sim != null && K.sim < APPLY_MIN_SIM) {
+      return {
+        tier: "B_kakao_weak",
+        source: "K",
+        reason: `카카오 POI 단독 sim ${K.sim.toFixed(2)} — 반영 문턱 ${APPLY_MIN_SIM} 미만(보고만)`,
+      };
+    }
     return K.strong
       ? { tier: "B_kakao_strong", source: "K", reason: "카카오 POI 강함 단독" }
       : { tier: "B_kakao_weak", source: "K", reason: "카카오 POI 약함 단독" };
@@ -1633,7 +1740,7 @@ async function main() {
     }
 
     // ── K: 카카오 키워드 POI ──
-    /** @type {{lat:number,lng:number,strong:boolean,planned:boolean}|null} */
+    /** @type {{lat:number,lng:number,strong:boolean,planned:boolean,sim:number}|null} */
     let K = null;
     /** @type {{doc:any,sim:number,strong:boolean}|null} */
     let kPick = null;
@@ -1694,9 +1801,22 @@ async function main() {
   for (const r of rows) if (truePlaceholders.has(r.id)) r.truePlaceholder = true;
 
   // ── 보고 ──
+  // ── 게이트 ②: 같은 좌표를 여러 단지가 가리키면 전부 보류 (세션564)
+  //
+  // 전체를 모은 **뒤에만** 판정할 수 있어서 여기 둔다. 반드시 등급 집계 **앞**이어야
+  // 요약 표와 후속 반영이 강등을 반영한다 — 뒤에 두면 화면엔 안 보이는데 반영만 막힌다.
+  const multi = demoteMultiPointed(rows);
+  if (multi.demoted > 0) {
+    log(
+      PHASE,
+      `\n게이트②: 같은 좌표를 여럿이 가리켜 ${multi.demoted}곳 보류(B_multi) — ${multi.keys.slice(0, 5).join(" · ")}`,
+    );
+  }
+
   /** @type {Record<string, number>} */
   const tally = {};
   for (const r of rows) tally[r.tier] = (tally[r.tier] ?? 0) + 1;
+
   log(PHASE, "\n=== 등급별 ===");
   for (const [t, n] of Object.entries(tally).sort((a, b) => b[1] - a[1])) {
     log(PHASE, `  ${t.padEnd(16)} ${String(n).padStart(5)}`);
