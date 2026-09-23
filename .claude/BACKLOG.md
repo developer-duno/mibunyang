@@ -71,12 +71,12 @@
 
 - ✅ 경고 0024 ×2 — `consults`·`subscribers` anon INSERT `true` 정책 삭제(#580, 운영 적용 완료). 공개 열쇠 탐침 **23502(열림) → 42501(닫힘)**. 상담 API 는 service key 로 저장.
 - ✅ 경고 0014 — `pg_trgm` → `extensions` 스키마(운영 적용 완료). 자매 검색 라이브 200 · "자이" 197=197 · 색인 `idx_apartments_name_trgm` 계속 사용.
-- 🟠 **경고 "Leaked Password Protection"** — 사장님 1클릭(`supabase.com/dashboard/project/rwdtljipvmqpazrimyns/auth/providers?provider=Email`, Pro). 2u 로그인 설정이다. 켰는지 = 보안 고문 새로고침으로 확인.
+- ✅ **경고 "Leaked Password Protection"** — 켜짐(사장님 저장·확인 2026-09-23, 2u 로그인 설정). 보안 고문 새로고침 결과 = 네이버에스테이트 MFA 1개만 · 상가 오류 3·경고 7(전부 기대대로).
 - 🟠 **경고 "Insufficient MFA Options"** — 2u 로그인(Supabase Auth 계정 1개) 몫. 2u 에 MFA 등록 화면이 없어 옵션만 켜면 효과 0 → 자매 세션 통보.
 - 🟡 **공개 열쇠로 읽히는 표 20개** — 공개 데이터(apartments·prices·regions 등)와 운영 표 4개(`collector_runs`·`api_quota_log`·`monitor_alert_state`·`monitor_daily_snapshot`). 개인정보는 없다(구독자·상담 0행). 사이트가 정적 JSON 으로 이미 내보내는 값이 대부분이나, 화면에 없는 칸·대량 긁기 부하(자매 V031 이 공유 4표에서 막은 이유)는 남는다 → anon SELECT 회수 여부 사장님 결정(우리 API·자매가 anon 으로 읽는 경로를 먼저 전수).
 - 🟡 **자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm`** — 새 DB 에선 다시 public 에 깔린다 → `WITH SCHEMA extensions` 로(자매 세션 통보).
 - ✅ **2u `user_profiles` 자기 등급 올리기 구멍 — 운영 DB 에서 막음**(사장님 승인). 가입 개방·이메일 확인 꺼짐 + RLS 가 행만 막고 칸은 안 막아 가입자가 자기 `role`·`status`·`paid_until`·`email` 을 고칠 수 있었고, 2u `deps.py` 는 role=admin 또는 profile.email∈ADMIN_EMAILS 로 관리자 통과 → anon·authenticated 쓰기 권한 회수(전후 탐침: 허용 → permission denied). 기록 = 자매 V062(2u #563 머지) · 2u 인계 = 2u 메모리 `handoff_from_mibunyang_2026-09-23_security_kakao.md`.
-- ✅ **미분양 카카오 로그인 — 유효·인증된 이메일만 받기**(#582, 운영 배포 f0637ab7). 인증 안 된 이메일로 기존 계정 연결(B 분기)·관리자 판정(isAdminEmail)을 하던 구멍. 인증 안 된 손님은 안내 후 거절 — **사장님 카카오 로그인 1회로 실제 확인 권장**(가짜 코드 스모크 401 은 정상).
+- ✅ **미분양 카카오 로그인 — 유효·인증된 이메일만 받기**(#582, 운영 배포 f0637ab7). 인증 안 된 이메일로 기존 계정 연결(B 분기)·관리자 판정(isAdminEmail)을 하던 구멍. 인증 안 된 손님은 안내 후 거절 — **사장님 실로그인 정상 확인(2026-09-23)**.
 - ✅ **상가(sangga) 보안 고문 경고 8건 해소**(sangga #152, 라이브 적용 — pg_trgm→extensions · 헬퍼 7개 search_path). 오류 3·경고 7은 의도된 설계(보안 정의자 뷰 = 가린 칸만 공개하는 면)·PostGIS 고유라 그대로 — 상가 메모리 `handoff_from_mibunyang_2026-09-23_security_advisor.md`.
 - 🟡 **2u 카카오 전용 가입 제안**(사장님 질문, 의견 = 찬성·2u 작업으로 따로) — 정할 것: 비즈 앱 공유/신규 · 관리자를 user_id 로 · 기존 계정 이전 · 비상 로그인. 2u 인계 문서에 기록.
 - 🟡 **2u `user_profiles` 의 로그인 계정 없는 admin/approved 26행**(gmail, 5/31~9/12, 로그인 이력 0) — 지금은 로그인 불가라 위험 없음, 삭제는 사장님 승인.
