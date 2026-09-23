@@ -1,4 +1,4 @@
-import { getSupabase, getMibuyangSupabase } from "./_lib/supabase.js";
+import { getMibuyangSupabase } from "./_lib/supabase.js";
 import { checkRateLimit } from "./_lib/rateLimit.js";
 import { requireAdminGate } from "./_lib/adminAuth.js";
 import { parsePagination } from "./_lib/validators.js";
@@ -52,7 +52,10 @@ async function handlePost(req: any, res: any) {
   }
 
   try {
-    const sb = getSupabase();
+    // 세션566: 공개 열쇠(anon) 대신 service key 로 저장한다 — anon INSERT 정책을 지웠다.
+    // 이 DB 의 anon key 는 자매 사이트(2u.pe.kr) 번들에 공개돼 있어, 정책이 있으면 누구나
+    // 이 API 의 검증·레이트리밋을 건너뛰고 표에 직접 넣을 수 있었다(보안 고문 경고 0024).
+    const sb = getMibuyangSupabase();
     const { error } = await sb.from("consults").insert({
       name: name.trim(),
       phone: phone.trim(),

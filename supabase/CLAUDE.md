@@ -213,6 +213,13 @@ B2B 모델 유출 봉합. mibunyang 은 공유 테이블을 **service_role(`SUPA
 경로로 이 4테이블을 읽으려 하면 42501 로 막힘 — service_role 경유로 전환할 것. 차단 원본 =
 naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 
+⚠️ **이 DB 의 anon key 는 공개돼 있다 (세션566, 2026-09-23 실측).** 자매 2u.pe.kr 로그인 화면 JS 에
+실려 있다(2u 로그인이 이 DB 의 Supabase Auth 를 쓴다). 그래서 **anon·authenticated 대상 정책은 전부
+인터넷에 열린 것**으로 본다 — 새 표에 anon 쓰기 정책을 두지 말고, 쓰기는 API(service key) 경유로.
+같은 날 보안 고문 경고 3건을 닫았다: `consults`·`subscribers` anon INSERT `true` 정책 삭제(우리 API 는
+두 표 모두 service key 로 넣는다) · `pg_trgm` → `extensions` 스키마(자매 검색 색인
+`idx_apartments_name_trgm` 은 그대로 동작 — 자매는 ILIKE 만 쓴다). 마이그 = `20260923000000~03`.
+
 ⚠️ **컴퓨트 한계 — Micro 인스턴스 hang (세션 460, 2026-06-29).** 공유 인스턴스(`t4g.micro`,
 RAM 1GB)가 mibunyang + naver-estate-web 양쪽 collector + Vercel 동시 부하에서 일시 hang →
 Cloudflare **522** 응답(약 2.5h). 진단 순서: ① status.supabase.com (전체 장애 여부) ② GitHub
