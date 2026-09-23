@@ -36,9 +36,14 @@ const mockSelect = vi.fn().mockReturnValue({ order: mockOrder });
 const mockDeleteEq = vi.fn().mockResolvedValue({ error: null });
 const mockDelete = vi.fn().mockReturnValue({ eq: mockDeleteEq });
 
+// 세션566: POST 저장도 service key 클라이언트(getMibuyangSupabase)로 한다 — anon INSERT 정책을 지웠다.
+// anon 클라이언트(getSupabase)에는 insert 를 주지 않는다. 저장이 anon 으로 되돌아가면
+// insert 가 없어 500 이 되므로, 정상 신청 테스트들이 전부 red 가 된다.
 vi.mock("./_lib/supabase.js", () => ({
-  getSupabase: vi.fn(() => ({ from: vi.fn(() => ({ insert: mockInsert })) })),
-  getMibuyangSupabase: vi.fn(() => ({ from: vi.fn(() => ({ select: mockSelect, delete: mockDelete })) })),
+  getSupabase: vi.fn(() => ({ from: vi.fn(() => ({})) })),
+  getMibuyangSupabase: vi.fn(() => ({
+    from: vi.fn(() => ({ insert: mockInsert, select: mockSelect, delete: mockDelete })),
+  })),
 }));
 
 beforeEach(() => {
@@ -123,6 +128,17 @@ describe("consults handler", () => {
     expect(res.status).toHaveBeenCalledWith(201);
     const inserted = mockInsert.mock.calls[0][0];
     expect(inserted.consent_at).toEqual(expect.any(String));
+  });
+
+  it("POST: 저장은 service key 클라이언트로 한다 — 공개 열쇠(anon)로 되돌리면 red (세션566)", async () => {
+    // anon INSERT 정책을 지웠으므로 anon 으로 넣으면 운영에서 RLS 오류(42501)로 상담 접수가 막힌다.
+    const { getSupabase, getMibuyangSupabase } = await import("./_lib/supabase.js");
+    const res = makeRes();
+    await handler(makePostReq(), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(getMibuyangSupabase).toHaveBeenCalled();
+    expect(getSupabase).not.toHaveBeenCalled();
+    expect(mockInsert).toHaveBeenCalledTimes(1);
   });
 
   it("POST: 이름 미입력 시 400을 반환한다", async () => {

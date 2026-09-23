@@ -1,0 +1,23 @@
+-- 세션566: Supabase 보안 고문 경고 0014 "Extension in Public" 해소 — pg_trgm 을 extensions 스키마로
+--
+-- 공식 처방: alter extension <name> set schema extensions;
+--   https://supabase.com/docs/guides/database/database-advisors?lint=0014_extension_in_public
+--
+-- 누가 쓰나: 자매 naver-estate-web 의 단지명 검색 색인 idx_apartments_name_trgm
+--   (자매 backend/db/migrations/V016__apartments_trigram.sql, GIN gin_trgm_ops).
+--   자매 코드는 ILIKE 만 쓰고 trigram 함수를 이름으로 부르지 않는다
+--   (backend/db/mb_query_helpers.py _apply_keyword_filter · complex_queries.py search_complexes).
+--   색인은 연산자 클래스를 OID 로 참조하므로 스키마를 옮겨도 그대로 동작한다.
+--   우리(mibunyang) 코드는 pg_trgm 을 쓰지 않는다.
+--
+-- 2026-09-23 적용 전 실측(읽기 전용):
+--   pg_trgm 1.6 · public · relocatable=t · extensions 스키마 있음 ·
+--   postgres 역할 search_path = "$user", public, extensions ·
+--   trgm 색인 1개(idx_apartments_name_trgm) · trgm 함수를 본문에서 부르는 사용자 함수 0개
+--
+-- ⚠️ 자매 V002 는 `CREATE EXTENSION IF NOT EXISTS pg_trgm` 이라 새 DB 에서는 다시 public 에 깔린다.
+--    이 DB 에서는 이미 있으므로 아무 일도 하지 않는다.
+-- 적용 방법: Supabase Dashboard SQL Editor 또는 psql 단발 실행.
+-- 되돌리기: 20260923000003_rollback_pg_trgm_to_extensions_schema.sql
+
+ALTER EXTENSION pg_trgm SET SCHEMA extensions;
