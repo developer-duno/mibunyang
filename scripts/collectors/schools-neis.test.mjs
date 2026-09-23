@@ -27,7 +27,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP } = await import("./schools-neis.mjs");
+const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds } = await import("./schools-neis.mjs");
 
 // 소스를 직접 읽어 배선(어느 쿼리로 훑는지)을 검사한다 — transit-match.test.mjs 답습 패턴.
 const COLLECTOR_SRC = readFileSync(new URL("./schools-neis.mjs", import.meta.url), "utf8");
@@ -722,5 +722,90 @@ describe("schools 페이징 — 고유키 커서 회귀 가드 (세션539 B-1)",
     expect(COLLECTOR_SRC).not.toMatch(
       /allSchoolRows[\s\S]{0,40}\[\][\s\S]{0,300}?from\("schools"\)[\s\S]{0,200}?\.range\(/,
     );
+  });
+});
+
+// ── 세션567: --ids 지정 단지만 다시 보기 ────────────────────────
+// 배경 — 대전 서구 18행(탄방초 용문분교장 영향)의 schools.updated_at 이 전부 2026-09-22 라
+// buildEnrichedIds 의 30일 skip 에 걸려 10/22 이후에야 자연 재처리된다. 지정한 id 는 그
+// skip 을 무시하고 즉시 재처리한다.
+describe("parseIdsArg — --ids= 인자 해석", () => {
+  it("--ids=a,b,c → [\"a\",\"b\",\"c\"]", () => {
+    expect(parseIdsArg(["node", "script.mjs", "--ids=a,b,c"])).toEqual(["a", "b", "c"]);
+  });
+
+  it("공백이 섞여도 trim 한다", () => {
+    expect(parseIdsArg(["--ids= a , b ,c "])).toEqual(["a", "b", "c"]);
+  });
+
+  it("빈 항목(연속 쉼표)은 걸러낸다", () => {
+    expect(parseIdsArg(["--ids=a,,b,"])).toEqual(["a", "b"]);
+  });
+
+  it("--ids 인자가 없으면 null", () => {
+    expect(parseIdsArg(["node", "script.mjs", "--dry-run"])).toBeNull();
+  });
+
+  it("--ids= (값이 빈 문자열)이면 빈 배열", () => {
+    expect(parseIdsArg(["--ids="])).toEqual([]);
+  });
+
+  it("단일 id 도 배열로", () => {
+    expect(parseIdsArg(["--ids=ah-2021910187"])).toEqual(["ah-2021910187"]);
+  });
+});
+
+describe("selectTargetsByIds — 대상 선정(좌표 없음 제외·존재하지 않는 id 보고)", () => {
+  const apts = [
+    { id: "a", name: "A아파트", lat: 37.1, lng: 127.1 },
+    { id: "b", name: "B아파트", lat: null, lng: null }, // 좌표 없음
+    { id: "c", name: "C아파트", lat: 37.2, lng: 127.2 },
+  ];
+
+  it("좌표 있는 id 만 targets 에 들어간다", () => {
+    const { targets } = selectTargetsByIds(apts, ["a", "c"]);
+    expect(targets.map((t) => t.id)).toEqual(["a", "c"]);
+  });
+
+  it("좌표 없는 id 는 targets 에서 빠지고 noCoord 에 보고된다", () => {
+    const { targets, noCoord } = selectTargetsByIds(apts, ["a", "b"]);
+    expect(targets.map((t) => t.id)).toEqual(["a"]);
+    expect(noCoord).toEqual([{ id: "b", name: "B아파트" }]);
+  });
+
+  it("존재하지 않는 id 는 missing 에 보고되고 targets 에서 빠진다", () => {
+    const { targets, missing } = selectTargetsByIds(apts, ["a", "zzz-not-exist"]);
+    expect(targets.map((t) => t.id)).toEqual(["a"]);
+    expect(missing).toEqual(["zzz-not-exist"]);
+  });
+
+  it("forceIds 는 지정한 id 전부를 담는다(좌표 없음/존재하지 않음 포함) — 30일 skip 무시 대상", () => {
+    const { forceIds } = selectTargetsByIds(apts, ["a", "b", "zzz-not-exist"]);
+    expect(forceIds).toEqual(new Set(["a", "b", "zzz-not-exist"]));
+  });
+
+  it("혼합 — targets/missing/noCoord 이 각각 정확히 갈린다", () => {
+    const { targets, missing, noCoord } = selectTargetsByIds(apts, ["a", "b", "c", "zzz"]);
+    expect(targets.map((t) => t.id)).toEqual(["a", "c"]);
+    expect(missing).toEqual(["zzz"]);
+    expect(noCoord).toEqual([{ id: "b", name: "B아파트" }]);
+  });
+});
+
+// 세션567 — main() 이 forceIds 로 enrichedIds(30일 skip)를 실제로 무시하는지 소스로 확인한다.
+// main() 은 Supabase/Kakao 를 실제로 호출해 무거운 mocking 없이는 단위테스트가 어렵다.
+describe("--ids 배선 — 30일 skip 무시가 실제로 걸려 있다 (세션567)", () => {
+  it("forceIds 에 있는 id 를 enrichedIds 에서 지운다 — 주석 처리(무효화)되지 않은 실행문", () => {
+    // 줄머리(들여쓰기 허용)에 "//" 가 없는 실행문만 인정한다 — 주석 처리해도 부분
+    // 문자열은 그대로 남으므로 좌변(줄머리)까지 고정해야 무효화를 잡는다
+    // ([[guards-must-be-mutation-tested]] "소스 grep 가드는 주석 처리에도 매칭된다").
+    expect(COLLECTOR_SRC).toMatch(
+      /^[ \t]*for \(const id of forceIds\) enrichedIds\.delete\(id\);/m,
+    );
+  });
+
+  it("parseIdsArg/selectTargetsByIds 를 main() 에서 실제로 부른다", () => {
+    expect(COLLECTOR_SRC).toMatch(/const\s+idsArg\s*=\s*parseIdsArg\(process\.argv\);/);
+    expect(COLLECTOR_SRC).toMatch(/const\s+sel\s*=\s*selectTargetsByIds\(apts,\s*idsArg\);/);
   });
 });
