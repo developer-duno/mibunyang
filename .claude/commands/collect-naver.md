@@ -6,7 +6,8 @@ allowed-tools: Bash, Read
 
 네이버 수집을 손으로 실행하고 결과를 보고해.
 
-> ⚠️ 세션567 실측(2026-09-24): 옛 절차의 `src/crawl.mjs` 는 **없다**. `scripts/post-naver-collect.sh`(4단계)는
+> ⚠️ 세션567 실측(2026-09-24): 옛 절차의 `src/crawl.mjs` 는 루트에 **없다**(`naver-apt/src/crawl.mjs` 는 2026-03 이후
+> 어디서도 부르지 않는 옛 Node 크롤러 하위 프로젝트). `scripts/post-naver-collect.sh`(4단계)는
 > 예약에서 빠진 옛 경로(로그 마지막 2026-04-11)이고, 3단계로 미분양 `collect-unsold-kosis` 를 돌린다 — 미분양은
 > 원래 로컬 러너 **매월 9일에만** 돈다. 예약 작업 `MibunyangNaverCollect`(월/목 08:00) = `scripts/run-naver-local.bat`,
 > 손 실행용 쌍둥이 = `scripts/run-naver-local.sh`(같은 6단계, 콘솔로 진행을 보이게 일부러 로그 파일로 안 돌린다).
