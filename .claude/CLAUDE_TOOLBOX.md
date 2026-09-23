@@ -143,7 +143,7 @@
 
 | 항목 | 종류 | 용도 |
 |---|---|---|
-| `/collect-naver` | 커맨드 | 네이버 수집 + post-naver-collect 파이프라인 |
+| `/collect-naver` | 커맨드 | 네이버 수집 손 실행(`run-naver-local.sh` 6단계 — 예약 작업과 같은 순서, 세션567 정정) |
 | `score-recalc` | 스킬 (자율) | 점수 재계산 + PROFILES 가중치 sanity (세션 418 command→skill 승격) |
 | `cross-validate` | 스킬 (자율) | simplify + 5교차검증 병렬 (Review 단계 자동화) |
 | `db-quality` | 스킬 (자율) | apartments_flat 품질 지표 재측정 |

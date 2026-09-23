@@ -359,14 +359,24 @@ PostgREST 에 **행마다 다른 값을 넣는 배치 UPDATE 문법이 없어** 
 옛 값(10·지연 0)은 초당 약 25회(피크 32) 버스트였고, **DB 는 자매 레포(naver-estate-web)와 공유**다.
 실측: 2,227건 · 174초 · 실패 0 = **초당 12.8회**. 근본책(Postgres RPC 로 배열 UPDATE)은 BACKLOG.
 
-### 후처리 파이프라인 (post-naver-collect.sh)
+### 후처리 파이프라인 (`run-naver-local.bat` — 예약 작업 `MibunyangNaverCollect`, 월/목 08:00)
 
-| 단계 | 스크립트 | 역할 |
-|------|---------|------|
-| 1 | sync-naver-complex.mjs | 22개 필드 동기화 |
-| 2 | molit-units.mjs | 세대수 2차 보정 (국토부 API, 세션89 교체) |
-| 3 | collect-unsold-kosis.mjs | KOSIS 미분양률 비례배분 |
-| 4 | compute-scores.mjs | cats_cache 갱신 |
+> ⚠️ 세션567 실측(2026-09-24 `Get-ScheduledTask`): 예약 작업은 `MibunyangChildcareLocal`(매일 04:30) ·
+> `MibunyangKosisLocal`(매일 05:30, 날짜별 표 `kosis-local-runner.mjs` DAY_TABLE) · `MibunyangNaverCollect`
+> (월/목 08:00) **3개뿐**이다. 옛 `post-naver-collect.sh`(4단계, 3단계가 미분양)는 `watch-and-run.sh` 만 부르고
+> 예약이 없다(로그 마지막 2026-04-11). **미분양(`collect-unsold-kosis`)은 로컬 러너 매월 9일에만 돈다** —
+> 네이버 러너는 미분양을 안 건드린다. 이 표를 옛 경로로 믿으면 미분양 갱신 시점을 틀리게 잡는다.
+
+| 단계(bat 표기) | 스크립트 | 실패하면 |
+|------|---------|---------|
+| 1/6 | naver-collect.py (Python, `--max-minutes=120` — 자체 로그 `naver-collect-py.log`) | 중단 (`exit /b 1`) |
+| 2/6 | sync-naver-complex.mjs — 네이버 단지 필드 동기화 | 중단 |
+| 3/6 | naver-presale.mjs — 네이버 분양 일정 | 계속 (WARNING) |
+| 4/6 | molit-units.mjs — 세대수 2차 보정 (국토부 API, 세션89 교체) | 계속 (WARNING) |
+| 5/6 | calc-exclusive-ratio.mjs — 전용률 | 중단 |
+| 6/6 | compute-scores.mjs — cats_cache 갱신 | 계속 (WARNING) |
+
+손 실행 쌍둥이 = `scripts/run-naver-local.sh`(같은 6단계, 콘솔 출력) — 명령 `/collect-naver` 가 이쪽을 쓴다.
 
 ---
 
@@ -379,7 +389,7 @@ PostgREST 에 **행마다 다른 값을 넣는 배치 UPDATE 문법이 없어** 
 
 | 일자 | 실행 주체 | 추정 호출 |
 |------|-----------|----------|
-| 매월 1일 | collect-unsold-kosis (로컬 러너) | ~1 |
+| 매월 9일 | collect-unsold-kosis (로컬 러너 — `kosis-local-runner.mjs` DAY_TABLE `day: 9`, 세션567 정정: 옛 표기 "1일") | ~1 |
 | 매월 5일 | population + population-sex-age (로컬 러너, 세션550 이전), market-stats(로컬 러너 6일) | ~100 |
 | 매월 6일 | collect-trades (로컬 러너) | 1,500~3,500 (세션92: 지방 8개 region 확장 시 +500~1,500) |
 | 매월 6일 + 월/목 08:00 후 | molit-units (로컬 러너 + 네이버 파이프라인) | 50~300 (+post-naver-collect 시 추가) |

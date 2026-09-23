@@ -123,7 +123,7 @@
 |-----------|------|------|
 | `collect-infra.yml` | **수동만** | Kakao Places 인프라 — 세션 491 schedule 삭제. 매일 경로(`collect-naver-listings-incremental.yml`)가 같은 `infra-kakao.mjs` 를 무인자로 실행하므로 중복이었다 |
 | `collect-transport.yml` | **수동만** | Kakao Places 교통 — 세션 491 schedule 삭제(동일 사유, `transport-tago.mjs`). dispatch 는 `--force` 전체 재수집 창구 |
-| `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 |
+| `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 + **`ids` 입력(세션567)** = 지정 단지만 다시 계산(30일 건너뛰기 무시, env 경유·정규식 검사). 학교 점수를 손으로 반영할 땐 **이 창구로만** — 로컬엔 `SCHOOLINFO_KEY` 가 없어 점수가 달라지고, 로컬 실제 쓰기는 시작 전에 멈춘다. 먼저 `-f dry_run=true -f ids=<id,id>` 로 미리보기 |
 | `calc-exclusive-ratio.yml` | **수동만** | 전용률 계산 — 세션 491 주간 schedule 삭제. `collect-naver-listings.yml`(Core) 마지막 스텝이 같은 스크립트를 **매일** 실행해 중복이었다(주간보다 오히려 잦다) |
 | `collect-noise.yml` | 1일 | 소음 추정 |
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
@@ -139,7 +139,7 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `monitor-db-size.yml` | Supabase 테이블별 행 수 점검 (매월 1일 KST 06:00) |
-| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단. **세션 491: job 에 `if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion != 'success'` 추가** — 트리거가 성공이면 감시 잡을 안 띄운다(실측 39회 중 35회가 "이상 없음"만 찍고 1분씩 과금). 실패·취소 알림은 그대로 즉시, "빈 성공"(ok=0)만 daily 스윕으로 최대 24h 지연 |
+| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단. **세션 491: job 에 `if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion != 'success'` 추가** — 트리거가 성공이면 감시 잡을 안 띄운다(실측 39회 중 35회가 "이상 없음"만 찍고 1분씩 과금). 실패·취소 알림은 그대로 즉시, "빈 성공"(ok=0)만 daily 스윕으로 최대 24h 지연. **세션567: 월요일(KST) 스윕에 DB 권한 점검(감시 ⑩) 추가** — 서비스 열쇠로 `audit_db_permissions()` 를 불러 공개 쓰기·공개 읽기 표 명단을 대조, 달라지면 텔레그램(공개 Actions 로그엔 개수만). 수동 강제 = 입력 `force_db_permission_audit` |
 
 ### 유틸리티 (5개)
 
