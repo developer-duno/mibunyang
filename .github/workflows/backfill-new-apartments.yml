@@ -91,6 +91,8 @@ jobs:
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+      # calc-school-walk 세션566 — 1km 안에 초등학교가 없는 단지는 카카오로 더 넓게 재탐색한다.
+      KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
