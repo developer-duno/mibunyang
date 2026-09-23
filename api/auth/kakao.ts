@@ -118,6 +118,16 @@ export default withHandler({ method: "POST", cors: {}, rateLimit: "kakao", handl
       });
     }
 
+    // 4-1. 이메일 유효·인증 확인 (세션566) — 카카오 공식 문서: "유효 여부와 인증 여부를 항상 확인하고 사용".
+    // 인증 안 된 이메일로 아래 B(기존 계정 연결)·7(관리자 판별)이 되면 남의 계정·관리자 권한에 붙는다.
+    // 값이 없을 때도 거절한다(추측해서 믿지 않는다).
+    if (userData.kakao_account?.is_email_valid !== true || userData.kakao_account?.is_email_verified !== true) {
+      return res.status(400).json({
+        ok: false,
+        error: "카카오 계정의 이메일 인증이 필요합니다. 카카오 계정 설정에서 이메일 인증 후 다시 시도해 주세요.",
+      });
+    }
+
     const emailNorm = kakaoEmail.toLowerCase().trim();
 
     // 5. KV 조회 — 3분기 처리
