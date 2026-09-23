@@ -432,14 +432,17 @@ describe("scoreLocation", () => {
   it("미등록 지역도 에러 없이 계산", () => {
     expect(scoreLocation(makeApt({ region: "미등록" })).total).toBeGreaterThanOrEqual(0);
   });
-  // 세션508: 소음 미측정(null)은 중립값(65dB 구간과 동일 15점) — 옛 `?? 75`는 NOISE_TIERS
+  // 세션508: 소음 미측정(null)은 중립값(중립 15점) — 옛 `?? 75`는 NOISE_TIERS
   //   최대(70)보다 커 fallback 0점(최하)으로 떨어져 "안 재본 곳이 실측 최악보다 시끄럽다"로
   //   채점됐다(unsoldRate 세션445·hugGuarantee 세션508와 같은 결).
-  it("noise null -> 65dB 구간과 동일한 자연환경 점수 (중립 15점)", () => {
+  // 세션565 경계 변경: NOISE_TIERS 가 50/60/65/70 → 40/50/60/70 으로 바뀌어 65 는 더 이상
+  //   실제 관측값이 아니다(고유값은 40/50/60/70 뿐, 세션562 전수조사). 중립 15점과 같은
+  //   칸의 관측값(60)으로 교체한다.
+  it("noise null -> 60dB 구간과 동일한 자연환경 점수 (중립 15점)", () => {
     const unknown = scoreLocation(makeApt({ noise: null }));
-    const at65 = scoreLocation(makeApt({ noise: 65 }));
+    const at60 = scoreLocation(makeApt({ noise: 60 }));
     expect(unknown.subs.find((s) => s.name === "자연환경")?.score).toBe(
-      at65.subs.find((s) => s.name === "자연환경")?.score
+      at60.subs.find((s) => s.name === "자연환경")?.score
     );
   });
   it("noise null -> 실측 최악(70dB)보다 자연환경 점수 높음 (옛 0점 회귀 방지)", () => {

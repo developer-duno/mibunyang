@@ -7,6 +7,8 @@ import {
   LIQUIDITY_AREA_UNIT,
   DEV_NEUTRAL_BAND_PCT,
   EXCL_RATIO_TIERS,
+  NOISE_TIERS,
+  CANCEL_RATIO_TIERS,
   liquidityBand,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
@@ -153,8 +155,9 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     //    ① `landCostRatio` 는 이 단지의 원가 구성이 아니라 **시도 단위 KOSIS 대지비비율**이다
     //       (`collect-market-stats.mjs`, objLevels:1). 같은 시도 안 모든 단지가 같은 숫자를 쓰므로
     //       단지 고유 정보가 0인데, 옛 문구는 "택지비 비중 높아 가격 안정"처럼 이 단지의 원가를 단정했다.
-    //    ② 최고 분기(60% 이상)는 실측 분포(15~46)에서 **도달 0곳** — 손님에게 닿을 수 없는 기준을
-    //       기준이라 제시하고 있었다. 경계값 자체(LAND_COST_TIERS)의 재검토는 점수를 바꾸므로 별건.
+    //    ② (세션565 정정) 옛 최고 분기(60% 이상)는 실측 분포(15~57)에서 도달 0곳이었다 —
+    //       손님에게 닿을 수 없는 기준을 기준이라 제시하고 있었다. `LAND_COST_TIERS` 첫 칸을
+    //       `min:50` 으로 내려 605곳(24.6%, 값 57)이 최고점에 도달하도록 고쳤다(세션565).
     택지비비율: {
       interpret: (sc) =>
         sc >= 70 ? "이 시도 택지비 비중 높음" : sc >= 40 ? "이 시도 택지비 비중 보통" : "이 시도 택지비 비중 낮음",
@@ -191,15 +194,17 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       benchmark:
         "10개 항목 개수 합산(많아질수록 완만) — 병원 175·공원 40·카페 60 등 상위 15%가 만점, 마트는 1개면 만점",
     },
-    // 옛 기준 "55dB 이하 쾌적" 은 엔진에 존재하지 않는 경계였다(NOISE_TIERS 는 50/60/65/70).
+    // 옛 기준 "55dB 이하 쾌적" 은 엔진에 존재하지 않는 경계였다(당시 NOISE_TIERS 는 50/60/65/70).
     // 그래서 55dB 를 넘는 68곳(60dB 64곳·70dB 4곳)이 전부 "환경 쾌적"으로 표시됐다.
+    // (세션565 — NOISE_TIERS 를 40/50/60/70 으로 재설계. `≤65` 는 어떤 값도 못 받는 죽은 칸이었다.)
     자연환경: {
       // ⚠️ 조망·일조·소음이 전부 미기재(`_noView && _noNoise && _noSunlight`)면 각 서브값이
       //    중립 기본값으로 채워져도 합산이 40점 문턱 바로 밑(약 38점)이라 최저 구간으로 떨어진다 —
       //    "정보 없음"인데 "불리"라 단정하던 자리(실측: 0+22+15+12=49/128×100≈38).
       interpret: (sc, info) =>
         !hasInfoValue(info) ? "환경 정보 미수집" : sc >= 70 ? "환경 쾌적" : sc >= 40 ? "환경 보통" : "소음/조망 불리",
-      benchmark: "조망·일조·소음·대기질 종합 (소음은 50dB 이하 최고점)",
+      // 경계 숫자는 표에서 읽는다 — 표만 바꾸고 문구를 잊으면 조용히 거짓이 된다(세션565).
+      benchmark: `조망·일조·소음·대기질 종합 (소음은 ${NOISE_TIERS[0].max}dB 이하 최고점)`,
     },
     // ⚠️ 이 축의 점수는 **감점 대상 시설**(소각장·고압선·화장장·교도소)까지의 거리만 반영한다.
     //    수집기는 그 밖의 시설도 이름을 담으므로, 시설명이 적힌 1,119곳(68.0%) 중 1,008곳이
@@ -382,7 +387,8 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     },
     계약해제율: {
       interpret: (sc) => (sc >= 70 ? "계약 해제 적음" : sc >= 40 ? "해제율 보통" : "계약 해제 주의"),
-      benchmark: "3% 이하 안전",
+      // 경계 숫자는 표에서 읽는다(세션565 분위 재절단 — CANCEL_RATIO_TIERS).
+      benchmark: `${CANCEL_RATIO_TIERS[0].max}% 이하 안전`,
     },
     "치안 안전": {
       interpret: (sc) => (sc >= 70 ? "치안 우수 지역" : sc >= 40 ? "치안 보통" : "치안 취약 주의"),

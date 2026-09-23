@@ -301,7 +301,7 @@ export function scorePrice(apt: Apt): Res {
           info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음",
           detail:
             apt.landCostRatio != null
-              ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)`
+              ? `${apt.landCostRatio}% (${LAND_COST_TIERS[0].min}%↑안정, ${LAND_COST_TIERS[1].min}%↑양호, ${LAND_COST_TIERS[2].min}%↓위험)` // 경계 숫자는 표에서 읽는다(세션565)
               : "택지비 데이터 없음 (중립 50점)",
         },
       ],
@@ -423,7 +423,7 @@ export function scorePrice(apt: Apt): Res {
         info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음",
         detail:
           apt.landCostRatio != null
-            ? `${apt.landCostRatio}% (60%↑안정, 40%↑양호, 20%↓위험)`
+            ? `${apt.landCostRatio}% (${LAND_COST_TIERS[0].min}%↑안정, ${LAND_COST_TIERS[1].min}%↑양호, ${LAND_COST_TIERS[2].min}%↓위험)` // 경계 숫자는 표에서 읽는다(세션565)
             : "택지비 데이터 없음 (중립 50점)",
       },
     ],

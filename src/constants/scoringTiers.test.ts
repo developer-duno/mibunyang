@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import {
   tierMax,
   tierMaxLabel,
+  tierMin,
   IC_DIST_TIERS,
   IC_DIST_FALLBACK_LABEL,
   KTX_DIST_TIERS,
@@ -20,9 +21,16 @@ import {
   AIR_PM10_LEGEND,
   AIR_O3_LEGEND,
   AIR_ANNUAL_LEGEND,
+  NOISE_TIERS,
+  CANCEL_RATIO_TIERS,
+  CANCEL_RATIO_HIGH_SCORE,
+  LAND_COST_TIERS,
+  LAND_COST_LOW,
   type Tier,
 } from "./scoringTiers";
 import { scoreLocation } from "@/scoring/scoreLocation";
+import { calcCats } from "@/scoring/engine";
+import { SUB_CONTEXT } from "@/constants/subContext";
 
 /**
  * 세션499 정정 가드.
@@ -367,5 +375,137 @@ describe("scoreLocation 대기질 문구가 점수와 어긋나지 않는다 (�
     // 없는 경계 숫자를 지어내지는 않는다.
     expect(d).not.toContain("/PM10 좋음");
     expect(d).not.toContain("/O3 좋음");
+  });
+});
+
+/**
+ * 세션565 가드 — NOISE_TIERS · CANCEL_RATIO_TIERS · LAND_COST_TIERS 경계 변경.
+ *
+ * docs/whitepaper/judgments.md "죽은 칸" 절(세션562 전수조사)이 찾은 3개 죽은 칸을
+ * 세션565에서 사장님이 "셋 다 고치기"로 결정해 반영했다. 관측값 앵커는 **리터럴**로
+ * 적는다(파생 가드는 상수 변경을 못 잡는다 — guards-must-be-mutation-tested §"파생 가드").
+ */
+describe("NOISE_TIERS 경계는 세션565 실측 결정값이다 (관측값 앵커)", () => {
+  // noise 는 실측 소음도가 아니라 10 단위 구간 대표값 — 고유값이 딱 4종뿐이다(세션562 전수조사).
+  const OBSERVED_NOISE_VALUES = [40, 50, 60, 70];
+
+  it("경계 = 40 / 50 / 60 / 70 (리터럴 고정 — 되돌리면 red)", () => {
+    expect(NOISE_TIERS.map((t) => t.max)).toEqual([40, 50, 60, 70]);
+    expect(NOISE_TIERS.map((t) => t.score)).toEqual([30, 22, 15, 8]);
+  });
+
+  it("죽은 칸이 없다 — 관측값 4종이 전부 서로 다른 칸에 떨어진다", () => {
+    const hitTierIndex = (v: number) => NOISE_TIERS.findIndex((t) => v <= (t.max as number));
+    const hits = OBSERVED_NOISE_VALUES.map(hitTierIndex);
+    expect(hits).toEqual([0, 1, 2, 3]); // 40→0번 칸 … 70→3번 칸, 겹치는 칸이 없어야 한다
+    expect(new Set(hits).size).toBe(NOISE_TIERS.length);
+  });
+
+  it("각 관측값이 해당 칸의 점수를 그대로 받는다", () => {
+    for (const [i, v] of OBSERVED_NOISE_VALUES.entries()) {
+      expect(tierMax(v, NOISE_TIERS, 0)).toBe(NOISE_TIERS[i].score);
+    }
+  });
+
+  it("50dB 는 40dB 보다 낮은 점수를 받는다 (경계 변경 전 효과 확인, calcCats 경유)", () => {
+    const base = { region: "경기", gu: "수원시" };
+    const at40 = calcCats({ ...base, noise: 40 } as never).location.subs.find((s) => s.name === "자연환경")!.score;
+    const at50 = calcCats({ ...base, noise: 50 } as never).location.subs.find((s) => s.name === "자연환경")!.score;
+    expect(at50).toBeLessThan(at40);
+  });
+});
+
+describe("CANCEL_RATIO_TIERS 경계는 세션565 실측 결정값이다 (분위 재절단, 관측값 앵커)", () => {
+  // p25=0.7 · p50=1.2 · p80=1.6 · max=4.4 (세션562 전수조사 실측, 2,457곳)
+  const OBSERVED_QUANTILES = { p25: 0.7, p50: 1.2, p80: 1.6, max: 4.4 };
+
+  it("경계 = 0.7 / 1.2 / 1.6 / 5 (리터럴 고정 — 되돌리면 red)", () => {
+    expect(CANCEL_RATIO_TIERS.map((t) => t.max)).toEqual([0.7, 1.2, 1.6, 5]);
+    expect(CANCEL_RATIO_TIERS.map((t) => t.score)).toEqual([10, 25, 45, 65]);
+  });
+
+  it("죽은 칸이 없다 — 분위 관측값 4개가 각자 칸에 들어간다(마지막 칸은 fallback 이 안 잡아야 한다)", () => {
+    const { p25, p50, p80, max } = OBSERVED_QUANTILES;
+    expect(tierMax(p25, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE)).toBe(CANCEL_RATIO_TIERS[0].score);
+    expect(tierMax(p50, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE)).toBe(CANCEL_RATIO_TIERS[1].score);
+    expect(tierMax(p80, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE)).toBe(CANCEL_RATIO_TIERS[2].score);
+    // 오늘 실측 최댓값(4.4)은 마지막 칸(≤5)에 들어가야 한다 — fallback 으로 새면 안 된다.
+    expect(tierMax(max, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE)).toBe(CANCEL_RATIO_TIERS[3].score);
+  });
+
+  it("마지막 경계(5)를 넘는 값은 CANCEL_RATIO_HIGH_SCORE 로 떨어진다 (fallback 이 위험 최고점 이상)", () => {
+    // scoreRisk.ts 의 tierMax(apt.cancelRatio6m, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE) 와
+    // 같은 호출 형태 — fallback 이 마지막 칸(65)보다 낮으면 단조성이 깨진다.
+    expect(CANCEL_RATIO_HIGH_SCORE).toBeGreaterThanOrEqual(CANCEL_RATIO_TIERS[CANCEL_RATIO_TIERS.length - 1].score);
+    expect(tierMax(999, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_SCORE)).toBe(CANCEL_RATIO_HIGH_SCORE);
+  });
+
+  it("계약해제율 1.3% 은 0.5% 보다 위험 점수(risk)가 높다 (calcCats 경유, 100-cancelSc 반전 확인)", () => {
+    const base = { region: "경기", gu: "수원시" };
+    const safe = calcCats({ ...base, cancelRatio6m: 0.5 } as never).risk.subs.find(
+      (s) => s.name === "계약해제율"
+    )!.score;
+    const risky = calcCats({ ...base, cancelRatio6m: 1.3 } as never).risk.subs.find(
+      (s) => s.name === "계약해제율"
+    )!.score;
+    // risk 서브의 score 는 100-cancelSc(위험할수록 낮다) — 1.3%가 0.5%보다 더 위험해야 한다.
+    expect(risky).toBeLessThan(safe);
+  });
+});
+
+describe("LAND_COST_TIERS 경계는 세션565 실측 결정값이다 (관측값 앵커)", () => {
+  // 실측 고유값 13종(세션562 전수조사, 2,457곳) — 각 칸에 최소 하나씩 걸려야 한다.
+  const OBSERVED_LAND_COST_VALUES = [15, 22, 26, 31, 32, 33, 35, 40, 42, 44, 45, 46, 57];
+
+  it("경계 = min 50 / 40 / 20 (리터럴 고정 — 되돌리면 red)", () => {
+    expect(LAND_COST_TIERS.map((t) => t.min)).toEqual([50, 40, 20]);
+    expect(LAND_COST_TIERS.map((t) => t.score)).toEqual([80, 60, 40]);
+  });
+
+  it("죽은 칸이 없다 — 관측값 13종이 4칸(3표 + fallback) 전부에 최소 하나씩 떨어진다", () => {
+    const bucketOf = (v: number): number => {
+      const idx = LAND_COST_TIERS.findIndex((t) => v >= (t.min as number));
+      return idx === -1 ? LAND_COST_TIERS.length : idx; // fallback 칸은 표 길이 인덱스로 표시
+    };
+    const buckets = new Set(OBSERVED_LAND_COST_VALUES.map(bucketOf));
+    for (let i = 0; i <= LAND_COST_TIERS.length; i++) {
+      expect(buckets.has(i), `칸 ${i} 에 떨어지는 관측값이 없다`).toBe(true);
+    }
+  });
+
+  it("실측 최댓값(57)이 최고점 칸(80점)에 도달한다 — 옛 표(≥60)에서는 0곳이었다", () => {
+    expect(tierMin(57, LAND_COST_TIERS, LAND_COST_LOW)).toBe(LAND_COST_TIERS[0].score);
+  });
+
+  it("택지비 57% 은 40% 보다 높은 안전 점수를 받는다 (calcCats 경유)", () => {
+    const base = { region: "경기", gu: "수원시" };
+    const at40 = calcCats({ ...base, landCostRatio: 40 } as never).price.subs.find(
+      (s) => s.name === "택지비비율"
+    )!.score;
+    const at57 = calcCats({ ...base, landCostRatio: 57 } as never).price.subs.find(
+      (s) => s.name === "택지비비율"
+    )!.score;
+    expect(at57).toBeGreaterThan(at40);
+  });
+});
+describe("문구는 경계 숫자를 표에서 읽는다 — 표만 바꾸고 문구를 잊는 사고 방지 (세션565)", () => {
+  // 세션565 뮤테이션: 문구를 옛 기준("3% 이하 안전"·"50dB 이하 최고점")으로 되돌려도 시험 2,431개가 전부 초록이었다.
+  const base = { region: "경기", gu: "수원시" };
+
+  it("점수 탭 기준 문구(소음·계약해제율)가 표의 첫 경계를 그대로 말한다", () => {
+    expect(SUB_CONTEXT.location["자연환경"].benchmark).toContain(`소음은 ${NOISE_TIERS[0].max}dB 이하 최고점`);
+    expect(SUB_CONTEXT.risk["계약해제율"].benchmark).toBe(`${CANCEL_RATIO_TIERS[0].max}% 이하 안전`);
+  });
+
+  it("계약해제율 설명(detail)이 표의 경계를 그대로 말한다 (calcCats 경유)", () => {
+    const d = calcCats({ ...base, cancelRatio6m: 1.3 } as never).risk.subs.find((s) => s.name === "계약해제율")!.detail;
+    expect(d).toContain(`안전 ${CANCEL_RATIO_TIERS[0].max}%↓`);
+    expect(d).toContain(`위험 ${CANCEL_RATIO_TIERS[3].max}%↑`);
+  });
+
+  it("택지비비율 설명(detail)이 표의 경계를 그대로 말한다 (calcCats 경유)", () => {
+    const d = calcCats({ ...base, landCostRatio: 57 } as never).price.subs.find((s) => s.name === "택지비비율")!.detail;
+    expect(d).toContain(`${LAND_COST_TIERS[0].min}%↑안정`);
+    expect(d).toContain(`${LAND_COST_TIERS[2].min}%↓위험`);
   });
 });
