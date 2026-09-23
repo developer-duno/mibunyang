@@ -114,9 +114,16 @@ export const LineChart = memo(function LineChart({
   const allY = [...data.map((d) => d.y), ...(secondaryData || []).map((d) => d.y).filter((v) => v != null)] as number[];
   const dataMinY = Math.min(...allY),
     dataMaxY = Math.max(...allY);
-  const { ticks, min: scaleMin, max: scaleMax } = niceTicks(dataMinY, dataMaxY);
+  const isFlat = dataMinY === dataMaxY;
+  const { ticks: rawTicks, min: scaleMin, max: scaleMax } = niceTicks(dataMinY, dataMaxY);
+  // 모든 값이 같으면(flat line) 의미 없는 여백 눈금(예: 45,050/45,000/44,950) 대신 값 하나만 표시.
+  // 스케일 범위(scaleMin/scaleMax)는 그대로 둬 라인이 수직 중앙에 오는 niceTicks 불변식을 유지한다.
+  const ticks = isFlat ? [dataMinY] : rawTicks;
   const rangeY = scaleMax - scaleMin; // niceTicks 불변식 → 항상 > 0
-  const toX = (i: number, len: number) => pad.l + (i / (len - 1)) * iw;
+  // 첫/끝 점이 y축 눈금 라벨(pad.l - 4 에 우측정렬)이나 우측 여백에 닿지 않도록 안쪽으로 inset.
+  const X_INSET = 9;
+  const toX = (i: number, len: number) =>
+    len <= 1 ? pad.l + iw / 2 : pad.l + X_INSET + (i / (len - 1)) * (iw - 2 * X_INSET);
   const toY = (v: number) => pad.t + ih - ((v - scaleMin) / rangeY) * ih;
   const makePath = (pts: Array<{ y: number | null }>) =>
     pts
@@ -175,13 +182,19 @@ export const LineChart = memo(function LineChart({
           const cx = toX(i, data.length);
           const cy = toY(d.y as number);
           const above = cy > pad.t + 16;
+          // 맨 앞/뒤 라벨은 middle 정렬 시 y축 눈금 또는 우측 여백을 넘어갈 수 있어
+          // start/end 로 앵커를 바꿔 안쪽으로만 퍼지게 한다(가운데 점들은 middle 유지).
+          // 첫 점만 "start" — y축 눈금 숫자와 겹치지 않게. 마지막 점은 "middle" 그대로 둔다:
+          // "end" 로 하면 글씨가 왼쪽으로 밀려 올라오는 선과 겹친다(세션565 3배 렌더로 확인).
+          // X_INSET 덕에 가운데 정렬이어도 오른쪽 끝을 넘지 않는다.
+          const anchor = i === 0 ? "start" : "middle";
           return (
             <text
               key={`pl${i}`}
               data-pointlabel=""
               x={cx}
               y={above ? cy - 8 : cy + 16}
-              textAnchor="middle"
+              textAnchor={anchor}
               fill={C.text}
               fontSize={F.micro}
               fontWeight="600"
