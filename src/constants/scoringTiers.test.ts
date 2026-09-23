@@ -26,6 +26,32 @@ import {
   CANCEL_RATIO_HIGH_SCORE,
   LAND_COST_TIERS,
   LAND_COST_LOW,
+  SUBWAY_DIST_TIERS,
+  TRANSIT_DIST_TIERS,
+  TRANSIT_DIST_FAR_SCORE,
+  CITY_DIST_TIERS,
+  DEV_DIST_FAR_SCORE,
+  INDUSTRY_DIST_TIERS,
+  UNIT_TIERS,
+  UNIT_SMALL_SCORE,
+  PARKING_TIERS,
+  PARKING_LOW_SCORE,
+  FAR_TIERS,
+  FAR_HIGH_SCORE,
+  EXCL_RATIO_TIERS,
+  EXCL_LOW_SCORE,
+  FLOOR_TIERS,
+  FLOOR_LOW_SCORE,
+  UNSOLD_RATE_TIERS,
+  UNSOLD_HIGH_SCORE,
+  LIQUIDITY_TIERS,
+  LIQUIDITY_LOW_SCORE,
+  HOUSING_SUPPLY_LEVEL_TIERS,
+  HOUSING_SUPPLY_HIGH_SCORE,
+  POLICE_DIST_TIERS,
+  POLICE_DIST_HIGH_SCORE,
+  INIT_SALE_TIERS,
+  INIT_SALE_HIGH_RISK,
   type Tier,
 } from "./scoringTiers";
 import { scoreLocation } from "@/scoring/scoreLocation";
@@ -507,5 +533,204 @@ describe("문구는 경계 숫자를 표에서 읽는다 — 표만 바꾸고 �
     const d = calcCats({ ...base, landCostRatio: 57 } as never).price.subs.find((s) => s.name === "택지비비율")!.detail;
     expect(d).toContain(`${LAND_COST_TIERS[0].min}%↑안정`);
     expect(d).toContain(`${LAND_COST_TIERS[2].min}%↓위험`);
+  });
+});
+
+/**
+ * 세션566 가드 — "죽은 칸 없다" 전수조사(23개 `Tier[]` 표) 신규 가드 14종.
+ *
+ * ## 왜 이 가드가 있나
+ * docs/whitepaper/judgments.md "죽은 칸" 절(세션562)이 23개 표 전체를 전수조사했을 때는
+ * SCHOOL_WALK_BONUS 하나만 죽은 칸이 있었다(별도 세션이 수정 중). 그런데 그 결과를 **지키는
+ * 가드는 없었다** — 경계를 실수로 옮겨도(특히 가운데 칸 상한을 옆 칸 값 쪽으로 밀면) 테스트
+ * 전체가 초록인 채 칸이 죽는다. 아래는 각 표마다 **관측값을 리터럴로 못 박아**(파생 가드는
+ * 상수 변경을 못 잡는다 — guards-must-be-mutation-tested.md) 그 사고를 잡는다.
+ *
+ * 값은 2026-09-23 `apartments_flat`(n=2,456) 실측 각 칸의 **최빈값**이다. 경계 상수 자체를
+ * 재적는 게 아니라 "그 경계가 실제로 이 관측값을 그 칸에 떨어뜨리는가"를 확인하는 것이므로
+ * 표를 조금 조정해도(관측값이 여전히 같은 칸에 속하면) 가드는 통과한다 — 경계를 **옆 칸으로
+ * 넘길 만큼** 옮기면 비로소 빨개진다.
+ */
+describe("죽은 칸 없음 — 거리·개수 계열 표 (세션566, tierMax/tierMin 직접 호출)", () => {
+  it("SUBWAY_DIST_TIERS: 관측값 5종이 5칸에 각각 떨어진다", () => {
+    const obs = [277, 301, 574, 895, 1217]; // 칸0~4 최빈값
+    const expected = SUBWAY_DIST_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, SUBWAY_DIST_TIERS, 0))).toEqual(expected);
+    // fallback(1500m 초과)도 표의 점수(0)로 떨어진다 — 표를 넘어선 값이 새 칸으로 오인되지 않는다.
+    expect(tierMax(1509, SUBWAY_DIST_TIERS, 0)).toBe(0);
+  });
+
+  it("KTX_DIST_TIERS: 관측값 3종 + fallback이 서로 다른 칸에 떨어진다", () => {
+    expect(tierMax(2.7, KTX_DIST_TIERS, 0)).toBe(KTX_DIST_TIERS[0].score);
+    expect(tierMax(5.1, KTX_DIST_TIERS, 0)).toBe(KTX_DIST_TIERS[1].score);
+    expect(tierMax(13.6, KTX_DIST_TIERS, 0)).toBe(KTX_DIST_TIERS[2].score);
+    expect(tierMax(16.9, KTX_DIST_TIERS, 0)).toBe(0); // 15km 초과 — fallback
+  });
+
+  it("TRANSIT_DIST_TIERS: 관측값 6종 + fallback이 7칸(6표+fallback) 전부에 떨어진다", () => {
+    const obs = [0.5, 0.6, 1.3, 1.8, 2.9, 3.5];
+    const expected = TRANSIT_DIST_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE))).toEqual(expected);
+    expect(tierMax(4.2, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE)).toBe(TRANSIT_DIST_FAR_SCORE);
+  });
+
+  it("CITY_DIST_TIERS: 관측값 4종 + fallback이 5칸 전부에 떨어진다", () => {
+    const obs = [0.5, 0.7, 1.1, 2.1];
+    const expected = CITY_DIST_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, CITY_DIST_TIERS, DEV_DIST_FAR_SCORE))).toEqual(expected);
+    expect(tierMax(3.4, CITY_DIST_TIERS, DEV_DIST_FAR_SCORE)).toBe(DEV_DIST_FAR_SCORE);
+  });
+
+  it("INDUSTRY_DIST_TIERS: 관측값 4종이 4칸 전부에 떨어진다 (fallback 0건 — 마지막 칸이 상한을 덮는다)", () => {
+    const obs = [0.6, 1.9, 2.1, 3.5];
+    const expected = INDUSTRY_DIST_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, INDUSTRY_DIST_TIERS, DEV_DIST_FAR_SCORE))).toEqual(expected);
+  });
+
+  it("POLICE_DIST_TIERS: 관측값 4종이 4칸 전부에 떨어진다 (fallback 0건)", () => {
+    const obs = [279, 662, 1431, 2111];
+    const expected = POLICE_DIST_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, POLICE_DIST_TIERS, POLICE_DIST_HIGH_SCORE))).toEqual(expected);
+  });
+});
+
+describe("죽은 칸 없음 — 비율·세대수 계열 표 (세션566, calcCats 경유)", () => {
+  const base = { region: "경기", gu: "수원시" };
+
+  it("UNIT_TIERS: 관측값 4종 + fallback이 5칸 전부에 떨어진다 (상품성 '세대수' 서브)", () => {
+    const obs = [1622, 1370, 998, 660];
+    const expected = UNIT_TIERS.map((t) => t.score);
+    const got = obs.map((v) => tierMin(v, UNIT_TIERS, UNIT_SMALL_SCORE));
+    expect(got).toEqual(expected);
+    expect(tierMin(2, UNIT_TIERS, UNIT_SMALL_SCORE)).toBe(UNIT_SMALL_SCORE);
+    // calcCats 경유로도 순위가 뒤집히지 않는다 — 큰 값일수록 세대수 서브 점수가 높다.
+    const small = calcCats({ ...base, units: 660 } as never).product.subs.find((s) => s.name === "세대수")!.score;
+    const big = calcCats({ ...base, units: 1622 } as never).product.subs.find((s) => s.name === "세대수")!.score;
+    expect(big).toBeGreaterThan(small);
+  });
+
+  it("PARKING_TIERS: 관측값 3종 + fallback이 4칸 전부에 떨어진다 (상품성 '주차' 서브)", () => {
+    const obs = [1.51, 1.31, 1.2];
+    const expected = PARKING_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMin(v, PARKING_TIERS, PARKING_LOW_SCORE))).toEqual(expected);
+    expect(tierMin(1, PARKING_TIERS, PARKING_LOW_SCORE)).toBe(PARKING_LOW_SCORE);
+    const low = calcCats({ ...base, parkingRatio: 1.0 } as never).product.subs.find((s) => s.name === "주차")!.score;
+    const high = calcCats({ ...base, parkingRatio: 1.51 } as never).product.subs.find((s) => s.name === "주차")!.score;
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it("FAR_TIERS: 관측값 2종 + fallback이 3칸 전부에 떨어진다 (상품성 '용적률' 서브 — 낮을수록 높은 점수)", () => {
+    const obs = [199, 249];
+    const expected = FAR_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, FAR_TIERS, FAR_HIGH_SCORE))).toEqual(expected);
+    expect(tierMax(299, FAR_TIERS, FAR_HIGH_SCORE)).toBe(FAR_HIGH_SCORE);
+    const low = calcCats({ ...base, floorAreaRatio: 199 } as never).product.subs.find(
+      (s) => s.name === "용적률"
+    )!.score;
+    const high = calcCats({ ...base, floorAreaRatio: 299 } as never).product.subs.find(
+      (s) => s.name === "용적률"
+    )!.score;
+    expect(low).toBeGreaterThan(high);
+  });
+
+  it("EXCL_RATIO_TIERS: 관측값 3종 + fallback이 4칸 전부에 떨어진다 (상품성 '전용률' 서브)", () => {
+    const obs = [81, 77, 76];
+    const expected = EXCL_RATIO_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMin(v, EXCL_RATIO_TIERS, EXCL_LOW_SCORE))).toEqual(expected);
+    expect(tierMin(73, EXCL_RATIO_TIERS, EXCL_LOW_SCORE)).toBe(EXCL_LOW_SCORE);
+    const low = calcCats({ ...base, exclusiveRatio: 73 } as never).product.subs.find((s) => s.name === "전용률")!.score;
+    const high = calcCats({ ...base, exclusiveRatio: 81 } as never).product.subs.find(
+      (s) => s.name === "전용률"
+    )!.score;
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it("FLOOR_TIERS: 관측값 3종 + fallback이 4칸 전부에 떨어진다 (상품성 '구조' 서브)", () => {
+    const obs = [35, 25, 15];
+    const expected = FLOOR_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMin(v, FLOOR_TIERS, FLOOR_LOW_SCORE))).toEqual(expected);
+    expect(tierMin(14, FLOOR_TIERS, FLOOR_LOW_SCORE)).toBe(FLOOR_LOW_SCORE);
+    const low = calcCats({ ...base, maxFloor: 14 } as never).product.subs.find((s) => s.name === "구조")!.score;
+    const high = calcCats({ ...base, maxFloor: 35 } as never).product.subs.find((s) => s.name === "구조")!.score;
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it("UNSOLD_RATE_TIERS: 관측값 4종 + fallback이 5칸 전부에 떨어진다 (안전도 '미분양률' 서브 — 위험 반전)", () => {
+    const obs = [0.4, 6.3, 25, 50];
+    const expected = UNSOLD_RATE_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE))).toEqual(expected);
+    expect(tierMax(100, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE)).toBe(UNSOLD_HIGH_SCORE);
+    // units>1 이어야 tierMax 가 실제로 불린다(units<=1은 UNSOLD_UNKNOWN_SCORE 로 분기).
+    const safe = calcCats({ ...base, units: 500, unsoldRate: 0.4 } as never).risk.subs.find(
+      (s) => s.name === "미분양률"
+    )!.score;
+    const risky = calcCats({ ...base, units: 500, unsoldRate: 50 } as never).risk.subs.find(
+      (s) => s.name === "미분양률"
+    )!.score;
+    // risk 서브 score 는 100-위험점수(값이 클수록 안전) — 미분양률 50%가 0.4%보다 덜 안전해야 한다.
+    expect(risky).toBeLessThan(safe);
+  });
+
+  it("LIQUIDITY_TIERS: 관측값 3종 + fallback이 4칸 전부에 떨어진다 (안전도 '거래량' 서브)", () => {
+    const obs = [4094, 1780, 1506];
+    const expected = LIQUIDITY_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMin(v, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE))).toEqual(expected);
+    expect(tierMin(676, LIQUIDITY_TIERS, LIQUIDITY_LOW_SCORE)).toBe(LIQUIDITY_LOW_SCORE);
+    const low = calcCats({ ...base, recentTrades6m: 676 } as never).risk.subs.find((s) => s.name === "거래량")!.score;
+    const high = calcCats({ ...base, recentTrades6m: 4094 } as never).risk.subs.find((s) => s.name === "거래량")!.score;
+    // risk 서브 score 는 100-위험점수 — 거래가 많을수록(유동성 높을수록) 더 안전해야 한다.
+    expect(high).toBeGreaterThan(low);
+  });
+
+  it("HOUSING_SUPPLY_LEVEL_TIERS: 관측값 3종 + fallback이 4칸 전부에 떨어진다 (안전도 '공급량' 서브)", () => {
+    const obs = [93.9, 99.4, 102.5];
+    const expected = HOUSING_SUPPLY_LEVEL_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, HOUSING_SUPPLY_LEVEL_TIERS, HOUSING_SUPPLY_HIGH_SCORE))).toEqual(expected);
+    expect(tierMax(112.4, HOUSING_SUPPLY_LEVEL_TIERS, HOUSING_SUPPLY_HIGH_SCORE)).toBe(HOUSING_SUPPLY_HIGH_SCORE);
+    const low = calcCats({ ...base, housingSupplyLevel: 93.9 } as never).risk.subs.find(
+      (s) => s.name === "공급량"
+    )!.score;
+    const high = calcCats({ ...base, housingSupplyLevel: 112.4 } as never).risk.subs.find(
+      (s) => s.name === "공급량"
+    )!.score;
+    // risk 서브 score 는 100-위험점수 — 보급률이 높을수록(주택이 남을수록) 미분양 위험이 커
+    // 안전 점수는 낮아야 한다.
+    expect(low).toBeGreaterThan(high);
+  });
+
+  it("INIT_SALE_TIERS: 관측값 4종 + fallback이 5칸 전부에 떨어진다 (안전도 '초기분양률' 서브)", () => {
+    const obs = [100, 80.8, 55.7, 48.2];
+    const expected = INIT_SALE_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMin(v, INIT_SALE_TIERS, INIT_SALE_HIGH_RISK))).toEqual(expected);
+    expect(tierMin(17.2, INIT_SALE_TIERS, INIT_SALE_HIGH_RISK)).toBe(INIT_SALE_HIGH_RISK);
+    const risky = calcCats({ ...base, initialSaleRate: 17.2 } as never).risk.subs.find(
+      (s) => s.name === "초기분양률"
+    )!.score;
+    const safe = calcCats({ ...base, initialSaleRate: 100 } as never).risk.subs.find(
+      (s) => s.name === "초기분양률"
+    )!.score;
+    // risk 서브 score 는 100-위험점수 — 초기분양률이 낮을수록 더 위험해 안전 점수가 낮아야 한다.
+    expect(safe).toBeGreaterThan(risky);
+  });
+});
+
+describe("죽은 칸 없음 — AIR_QUALITY_TIERS(PM2.5) (세션566, calcCats 경유)", () => {
+  it("관측값 3종이 3칸 전부에 떨어진다 (자연환경 서브, airQuality.annual.pm25 경유)", () => {
+    const obs = [14.6, 18.63, 20.74];
+    const expected = AIR_QUALITY_TIERS.map((t) => t.score);
+    expect(obs.map((v) => tierMax(v, AIR_QUALITY_TIERS, 0))).toEqual(expected);
+  });
+
+  it("좋음(14.6)이 나쁨(20.74)보다 자연환경 점수가 높다 (calcCats 경유)", () => {
+    const base = { region: "경기", gu: "수원시" };
+    const good = calcCats({
+      ...base,
+      airQuality: { pm25: 14.6, grade: "보통", annual: { pm25: 14.6, pm10: 30, o3: 0.03 } },
+    } as never).location.subs.find((s) => s.name === "자연환경")!.score;
+    const bad = calcCats({
+      ...base,
+      airQuality: { pm25: 20.74, grade: "보통", annual: { pm25: 20.74, pm10: 30, o3: 0.03 } },
+    } as never).location.subs.find((s) => s.name === "자연환경")!.score;
+    expect(good).toBeGreaterThan(bad);
   });
 });
