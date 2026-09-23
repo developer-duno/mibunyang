@@ -300,17 +300,20 @@ export async function main() {
     }
 
     // 2. apartments unsold 추정 (KOSIS 비례배분)
-    const { data: apartments, error: aErr } = await sb
-      .from("apartments")
-      .select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count");
-
-    if (aErr) {
-      logError(PHASE, `apartments 조회 실패: ${aErr.message}`);
+    // 세션549: 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
+    // 1,000행 컷은 (a) unitsByGu(비례배분 분모)를 1/3 표본으로 계산해 값을 왜곡하고,
+    // (b) 1,000행 밖의 채움 대상·unsold_history 대상을 영영 못 건드린다.
+    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null }} AptRow */
+    /** @type {AptRow[]} */
+    let apartmentsTyped;
+    try {
+      apartmentsTyped = /** @type {any} */ (
+        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count"), sb, "id")
+      );
+    } catch (e) {
+      logError(PHASE, `apartments 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
       return;
     }
-
-    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null }} AptRow */
-    const apartmentsTyped = /** @type {AptRow[]} */ (apartments);
 
     // 시군구별 총 분양세대수 계산
     /** @type {Record<string, number>} */
