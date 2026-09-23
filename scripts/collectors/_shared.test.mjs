@@ -1099,6 +1099,26 @@ describe("resolveRegionName (통합 시도 분할)", () => {
     }
   });
 
+  // 세션567 — KOSIS C1_NM 은 "전남광주통합특별시" 가 아니라 "전남광주" 로 온다.
+  // MERGED_SIDO_RE 를 /^전남광주통합/ → /^전남광주/ 로 넓힌 뒤의 회귀 확인.
+  describe("KOSIS 원문('전남광주', 통합 접두어 없음) — 세션567", () => {
+    it("전남광주 + 북구 → 광주", () => {
+      expect(resolveRegionName("전남광주", "북구")).toBe("광주");
+    });
+
+    it("전남광주 + 순천시 → 전남", () => {
+      expect(resolveRegionName("전남광주", "순천시")).toBe("전남");
+    });
+
+    it("전남광주 + 계('소계' 성격의 시도 합계 행) → null — 못 가른다", () => {
+      expect(resolveRegionName("전남광주", "계")).toBeNull();
+    });
+
+    it("전남광주 + gu 없음 → null", () => {
+      expect(resolveRegionName("전남광주", null)).toBeNull();
+    });
+  });
+
   it("REGION_MAP 에 통합 이름이 **없다** — 단일값 표라 넣으면 27 시군구가 한쪽으로 오라벨된다", () => {
     expect(REGION_MAP["전남광주통합특별시"]).toBeUndefined();
     expect(VALID_REGIONS).not.toContain("전남광주통합특별시");

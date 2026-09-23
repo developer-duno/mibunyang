@@ -64,17 +64,13 @@ export const BIG_TABLES = [
  * ALLOWLIST — 현재 합법적인 예외(파일 + 표 + 근거 1줄). 작게 유지한다.
  * 형식: "relPath::table" → 근거.
  *
- * ⚠️ 세션566 실측 — 이 가드가 처음 돌며 찾은 진짜 위반 4건: childcare-info·childcare-info-jeju 는
- * 같은 세션에 고쳤고(ALLOWLIST 에서 뺐다), 남은 2건이 아래에 있다 — collect-unsold-kosis(보류) ·
- * collect-data phase9(옛 경로, 백로그). 나머지 1건은 스캐너 한계(api/supabase). 고치면 그 줄을 지운다.
+ * ⚠️ 세션566 실측 — 이 가드가 처음 돌며 찾은 진짜 위반 4건: childcare-info·childcare-info-jeju,
+ * collect-unsold-kosis(1,000행 컷)는 같은 세션·세션567 에 각각 고쳤다(ALLOWLIST 에서 뺐다).
+ * 남은 1건 — collect-data phase9(옛 경로, 백로그). 나머지 1건은 스캐너 한계(api/supabase).
+ * 고치면 그 줄을 지운다.
  * @type {Record<string, string>}
  */
 export const ALLOWLIST = {
-  // 보류(세션566 사장님 결정) — 1,000행 수리는 끝났지만 함께 드러난 "시 단위 매칭 실패 → 시도 합계
-  // 폴백"(L337·L280) 결함 때문에 합치지 않았다. 수리본은 보류 브랜치 hold/unsold-kosis-paging 에 있다.
-  // 폴백 결함을 고쳐 같이 합칠 때 이 줄을 지운다(10/09 로컬 러너 day 9 전).
-  "scripts/collectors/collect-unsold-kosis.mjs::apartments":
-    "L303-305: apartments 생 쿼리(1,000행 컷) — 수리본은 보류 브랜치. 시도 합계 폴백 결함(L337·L280)을 먼저 고친 뒤 함께 합친다(세션566 사장님 결정).",
   // 진짜 결함(다른 PR 대상) — complexes ~64,000행, 1,000행 초과. filter/bound 없는 select() 라
   // 오늘도 조용히 잘리고 있을 수 있다.
   "scripts/collect-data.mjs::complexes":

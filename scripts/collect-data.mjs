@@ -283,10 +283,12 @@ async function phase2_kosis(apartments) {
     }
 
     // 미분양 추정: 비례배분 (확인된 값 우선)
+    // 세션567: 시도 합계 폴백 삭제 — gu 매칭 실패 시 그 단지는 채우지 않는다(사장님 결정 ②).
+    // 진짜 수집기는 collect-unsold-kosis.mjs — 여긴 옛 수동 npm run collect 전용 경로.
     let kosisEstimated = 0;
     apartments = apartments.map(a => {
       const guMap = unsoldByRegionGu[a.region];
-      const guUnsold = guMap?.[a.gu] ?? regionTotals[a.region] ?? null;
+      const guUnsold = guMap?.[a.gu] ?? null;
 
       // 이미 확인된 unsold 있으면 유지
       if (a.unsold != null && a.unsold > 0) {
