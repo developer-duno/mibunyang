@@ -53,17 +53,18 @@
 ### A-3. 문서 리뉴얼 2단계 · 1,000행 잘림 잔여 (세션566 — 사장님 지시 "오래된 문서 전부")
 
 - 🟡 **BACKLOG 진행 중 항목 전수 점검** — 이 파일 201KB 의 대부분이 🔴/🟡/🧭 진행 중 칸이다(세션566 완료 색인 이관은 2줄 −1.4KB 뿐). 항목마다 "이미 끝났나"를 코드·DB 로 확인해 ✅ 로 바꾸고 ARCHIVE 로. 담당 1명(읽기+분류표), 반영은 메인.
-- 🟡 **폴더별 CLAUDE.md 가 공식 권장 200줄 초과** — `scripts/CLAUDE.md` 638줄·55KB · `src/scoring/CLAUDE.md` 600줄·39KB · `.github/workflows/CLAUDE.md` 316줄 · `supabase/CLAUDE.md` 227줄(code.claude.com/docs/en/memory: 파일당 200줄 목표, 넘으면 맥락 소모·준수율 하락). 글로벌 스킬 `doc-diet` 절차로 paths 규칙·이력 파일 분리.
-- 🟢 **글로벌 `~/.claude/CLAUDE.md` 266줄·21.8KB**(권장 200줄, 2026-09-23 저녁 실측) — 다른 레포 세션들도 편집 중이라 사장님 결정 사항.
+- 🟡 **폴더별 CLAUDE.md 가 공식 권장 200줄 초과** — `scripts/CLAUDE.md` 638줄·54KB · `src/scoring/CLAUDE.md` 600줄·38KB · `.github/workflows/CLAUDE.md` 316줄·29KB · `supabase/CLAUDE.md` 약 266줄(세션567 에 SQL 적용·시험 절 추가)(code.claude.com/docs/en/memory: 파일당 200줄 목표 — 세션567 검사관이 공식 문서 재확인). 글로벌 스킬 `doc-diet` 절차로 paths 규칙·이력 파일 분리.
+- 🟡 **한 번에 못 읽는 문서**(세션567 실측 — Read 도구는 1회 25,000토큰·파일 256KB 가 한도): `.claude/BACKLOG.md` 1,375줄·205KB → 한 번에 **앞 283줄만** 읽힌다(나머지는 offset·grep) · `.claude/SESSION_LOG_ARCHIVE_2026H1.md` 682KB → **통째로 거부**("exceeds maximum allowed size (256KB)") · `BACKLOG_ARCHIVE.md` 205KB. 완료 행을 ARCHIVE 로 옮기고, 아카이브는 반기·분기 단위로 쪼갠다.
+- 🟢 **글로벌 `~/.claude/CLAUDE.md` 269줄·22.4KB**(권장 200줄, 2026-09-24 실측) — 다른 레포 세션들도 편집 중이라 사장님 결정 사항. 매 세션 자동 로드 합계 ≈ 243KB(글로벌 CLAUDE.md 22.4 + 글로벌 상시 rules 92.1 + 프로젝트 CLAUDE.md 9.9 + 프로젝트 상시 rules 101.0 + MEMORY ≈ 18).
 - 🟡 **1,000행 잘림 잔여**(정적 가드 `scripts/_unbounded-query-coverage.test.mjs` ALLOWLIST·헤더) — `collect-data.mjs` phase9(complexes 생 쿼리, daily-deploy 에선 실행 안 되는 옛 경로: 정리 또는 삭제) · 가드 사각 4종(필터 걸린 대량 생 쿼리 `.in(col, 수천 개)` · 함수 경계 쿼리 빌더 · 여러 문장 커서 · 변수 표 이름).
 
-### A-4. 세션566 검사관이 찾은 것 — 마감 있는 수리
+### A-4. 세션566 검사관이 찾은 것 — 마감 있는 수리 (세션567 처리)
 
-- 🔴 **미분양 시도 합계 폴백**(10/09 로컬 러너 day 9 전) — `scripts/collectors/collect-unsold-kosis.mjs:337` `guMap?.[gu] ?? regionTotals[region]`: KOSIS 는 "천안시"·"성남시" 처럼 **시 단위**인데 우리 gu 는 "천안시 동남구" 꼴이라 안 맞으면 **시도 전체 합계를 그 구 하나에** 몰아준다(천안 동남구 87.9% → 시 단위로 바로 잡으면 13.9% · 성남 수정구 84.8% → 0.13%). regions 갱신(`:280`)·`scripts/collect-data.mjs:289` 사본도 같다. 처방(검사관 3): ① "X시 Y구" → KOSIS "X시" 매칭, 분모는 그 시 전체 ② 시도 폴백 삭제 → 못 맞추면 skip ③ 두 단어 gu 실픽스처 + 뮤테이션 ④ 임대 단지 제외(49건) ⑤ 50%↑ 는 반영하지 않고 목록 보고. 1,000행 수리본은 보류 브랜치 `hold/unsold-kosis-paging`(초안 PR) — 폴백 수리와 **함께** 합치고, 가드 ALLOWLIST 의 unsold 줄을 지운다. 사장님 결정: 수리 → dry-run 영향 표 재승인 → 반영.
-- 🔴 **학교 도보 — 분교장 누락**(9/27 11:00 `backfill-new-apartments` 정기 재계산 전) — `isSchoolPlace`(이름이 "학교"로 끝나야 함)가 "○○분교장" 을 버려 실제보다 멀게 나온다(예: 오션포레 49분 → 분교장 1,980m 면 29분). 카카오 `category_name` "학교 > 초등학교" 기준으로 판정(calc-school-walk 의 카카오 조회부터). 사장님 결정: 반경 **5km 유지(사후 승인)** · **개교 예정 학교는 넣지 않음**(왕숙1초 2028.3 등).
-- 🟠 **좌표가 틀린 행(coord_shared)에 새 도보 분**이 생겼다(ah-2025910268/269 null→16분, 자리표시 좌표 기준) — calc-school-walk 가 coord_shared 행은 카카오 조회를 건너뛰게.
-- 🟠 **감시 ⑨ 가 개수만 본다 + "늘었다" 경보는 구조상 못 울린다**(coord_shared 를 켜는 곳이 수동 flag 도구뿐) — 기준 명단(id 8곳) 대조 + 외부 API 없이 "같은 좌표에 핵심이름 2종 이상" 자동 집계.
-- 🟠 **자매 레포 통보**(naver-estate-web) — 학교 도보 막대 최댓값 15 가정(`frontend/src/components/mb/metric-bar-configs.ts`) · "초등 도보 N분"(`MbInfraOverlay.tsx`)이 이제 최대 49분 · 미분양 변동 예정.
+- ✅ **미분양 시도 합계 폴백** — #587(d806b3ca) 합침·운영 반영(2026-09-24 01:3x KST): 시 단위 매칭·폴백 삭제·임대 제외·50% 이상 11곳 보류·KOSIS **"전남광주"** 라벨(광주·전남 105곳)·세종 42곳·매물 유래 202곳 비움(null). 반영 = write 862 · clear 202 · regions 1,198 · history 3,551 — 직전 미리보기와 **3,068곳 id·값 완전 일치** 확인 뒤. 라이브 확인(두산위브 트리니뷰 구명역 96.8→9.7% 등). 1,000행 키셋(#577)은 여기 합쳐 #577 닫음. 후속 = A-6.
+- ✅ **학교 도보 — 분교장 누락** — #586(9e4302e2) 합침·반영: 공유 판정 `scripts/collectors/_school-place.mjs`(분류 "학교 > 초등학교" + 이름 분교장, 가칭·괄호 안 예정 제외) · 5km 재탐색(오션포레 49→29분) · 1km 탐색(schools-neis) 대전 서구 18행 = 탄방초 용문분교장(2025-09 개교) — `collect-schools.yml` `ids` 입력으로 반영, 학군 39(C)→68(B) · 도보 27행. 라이브 확인.
+- ✅ **coord_shared 행 도보 분** — #586: 좌표 불명 8행은 카카오 조회 0회·도보 분 **null**(사장님 결정 "비운다" — 표시가 꺼지면 다음 계산에서 자동으로 다시 채움).
+- 🟠 **감시 ⑨ 가 개수만 본다** — 다음 세션(사장님 결정 2026-09-24): 기준 명단(id 8곳) 대조 + 외부 API 없이 "같은 좌표에 핵심이름 2종 이상" 자동 집계. ⚠️ 감시 ⑩ 판정 재설계 PR 과 같은 파일(`scripts/monitor-collectors.mjs`)이라 **그 PR 합친 뒤**.
+- 🟠 **자매 레포 통보**(naver-estate-web) — 학교 도보 막대 최댓값 15 가정(`frontend/src/components/mb/metric-bar-configs.ts`) · "초등 도보 N분"(`MbInfraOverlay.tsx`) — 세션567 반영 뒤 최대값 재측정 · 미분양 202곳이 null 로 바뀜(자매 화면 표시 확인).
 
 ### A-5. Supabase 보안 고문 경고 (세션566 말미 — 사장님 스크린샷)
 
@@ -79,13 +80,33 @@
 - ✅ 정적 가드 `scripts/_rls-anon-write-policy.test.mjs` — 항상 참 쓰기 정책(로그인만 하면 참인 조건 포함) 금지 · **로그인 사용자·익명 쓰기 정책은 칸 권한 확인(ALLOWLIST) 없이 금지** · 짝 없는 `$$`·rollback 이름 탈출구 봉합(#581·#585, 뮤테이션 4종 red).
 - ✅ 새 되돌리기 파일은 `supabase/migrations/_rollbacks/` 에(본 폴더에 두면 "<최신>.sql 적용" 절차가 되돌리기를 적용한다 — #585). 🟢 본 폴더에 옛 되돌리기 12개 남음(최신 번호 아님 — 정리 후보).
 - ✅ CLAUDE.md 공유 인프라 표의 낡은 DB 표기 정정(#585).
-- 🟠 **보안 후속 — 세부는 비공개 메모리**: 2u 가입·관리자 판정 정리(2u 세션 몫, 인계 완료) · 공개 열쇠 읽기 범위 결정 · LawBrain 점검(인계 완료) · **주 1회 실제 DB 권한 점검 — 사장님 승인: 다음 세션에 설계안부터**.
+- ✅ **공개 열쇠로 읽히던 운영 표 4개 회수**(세션567 — #588 관리자 API 서비스 열쇠 전환 배포 확인 뒤 `20260924000000` 적용 2026-09-24 01:42 KST · anon 탐침 42501 · 서비스 열쇠 정상). 첫 적용본(자체검사 부분 일치)을 #589(f27138c5 — 서비스 전용 정책과 **정확히 같은 문구**만 제외)로 고친 뒤 02:33 KST 같은 파일을 다시 적용 → **적용본 = main 기록본**.
+- ✅ **주 1회 실제 DB 권한 점검(감시 ⑩) 가동** — #588(설계·구현) + #589(f27138c5: 점검 함수 SQL 오류 2개 수정 · R1 "권한 + 도달 가능한 정책" · R4 "공개 읽기 표 이름 명단 20개" · 운영 표도 R1 검사) 합침 → 2026-09-24 02:33 KST 점검 함수 운영 적용(잠금 2초·실행 30초 제한) + 회수 마이그 고친 판 재적용(적용본 = 기록본) · 서비스 열쇠 호출 정상(표 48·정책 67) · 판정 0건 · 공개 열쇠 호출 42501 · `force_db_permission_audit` 수동 run 35896537016 → 공개 로그 `⑩ 권한 점검: 통과` 한 줄 · **텔레그램 "🔎 주간 DB 권한 점검 — 이상 없음" 사장님 수신 확인**. 첫 자동 발화 9/28(월) 09:00 KST. 남은 개선 = A-6 🔴 무음 누락 · 🟠 범위 보강.
+- 🟠 **보안 후속 — 세부는 비공개 메모리**: 2u 가입·관리자 판정 정리(2u 세션 몫, 인계 완료) · LawBrain 점검(인계 완료).
 - 🟡 2u 카카오 전용 가입 제안(의견 = 찬성·2u 작업으로 따로) · 자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm` → `WITH SCHEMA extensions` — 둘 다 2u 인계 문서.
 - 결정: 미분양 이메일(비밀번호) 로그인은 넣지 않음(카카오만).
 
+### A-6. 세션567 이 새로 남긴 것 (2026-09-24)
+
+- 🔴 **미분양 KOSIS 추정치가 다음 회차부터 동결된다**(10/09 로컬 러너 day 9 **전** · 세션567 검사관 3 발견) — `shouldSkipKosisFill`(`collect-unsold-kosis.mjs:184-198` 근방)은 값이 있고·세대수 이하이고·매물 수와 다르면 "청약홈 실측"으로 보고 보존한다. **값의 출처를 적는 칸이 없어** 세션567 이 쓴 862곳도 10/09 부터 `skip_preserved` 로 빠져 9월 값에서 멈춘다(수집기는 success 라 감시에 안 잡힌다). 아래 "보존 138곳"과 **같은 뿌리** — 한 PR 로. 처방 후보: 출처 칸(`unsold_source`: applyhome·kosis) 또는 "직전 `unsold_history` 추정치와 같으면 KOSIS 유래". **"자기 출력 위에서 2회차 실행" 시험**을 넣는다(뮤테이션 8종·검사관 2회가 이걸 못 봤다).
+- 🔴 **감시 ⑩ 경보가 조용히 사라질 수 있다**(9/28 09:00 첫 발화 **전** · 검사관 3) — ⑩ 은 모든 줄을 이슈 1건에 담는데 `buildMessages`(`notify-telegram.mjs:165-184`)는 1건이 4,000자를 넘어도 안 자른다 → 텔레그램 400 → 콘솔 `[전송 스킵]` 만 남고 "이상 없음"도 안 간다. 진짜 사고(보호 대량 해제)일수록 줄이 많다. 처방: 이슈당 줄 상한(예 25줄 + "외 N건") + ⑩ 전송 실패면 exit 1(Actions 실패 메일이 두 번째 통로). 지금은 경보 0 이라 당장은 안 터진다.
+- 🟠 **감시 ⑩ 점검 범위 보강**(검사관 3 — 세부 4건은 공개 저장소라 **비공개 메모리** `project_security_open_items_2026-09-23.md` #9) — 근본책 후보 = **정의 지문 명단**(표·정책명·명령·역할·조건·RLS·권한)과 대조 — 사장님이 고른 "달라질 때 알림" 그대로이고 문자열 추론이 필요 없다. 기준선 보관 위치는 사장님 결정.
+- 🟠 **미분양 "보존 값" 138곳 조사**(10/09 로컬 러너 day 9 전 목표 · 사장님 결정 "따로 조사 뒤 결정") — `shouldSkipKosisFill` 이 청약홈 실측으로 보고 보존하는 값 941곳 중 138곳이 새 KOSIS 추정보다 20%p 이상 높다(예: 사직 하늘채 리센티아 633/690=91.7% vs 추정 6.5%). 한 번 들어간 값은 다음 회차가 안 덮는다(쓰기 1회 구조). 청약홈 무순위 실측(`collect-applyhome-seed` 회차분) vs 옛 매물·폴백 오염을 가르는 기준부터. 재료 = `node scripts/collectors/collect-unsold-kosis.mjs --dry-run --impact-out=<경로>` 의 `skip_preserved` 행. ⚠️ `unsold_history` 는 순수 KOSIS 계열이라 보존 단지는 헤드라인과 차트가 다를 수 있다(설계, 코드 주석).
+- 🟠 **schools-neis 카카오 첫 쪽 15건 상한** — `schools-neis.mjs:45` `size=15` 한 쪽만 받는다. 대전 표본은 `초15 중15 고15` 로 **세 질의 모두 상한에 닿았다** → 조밀한 동네 학군 목록이 잘리고 재수집 때마다 흔들릴 수 있다. ⚠️ 대전가장초(945m)가 9/22 목록에 없던 것은 같은 질의라 상한만으로 설명되지 않는다(카카오 장소 목록 변동 추정 — 검사관 3 정정). 처방: 표본 dry-run 으로 **포화율부터 측정** → 3쪽(최대 45건) 또는 분류 필터(`category_group_code=SC4`) · 쿼터 확인 — 반영하면 학군 점수 분포가 움직이므로 영향 표 → 사장님 승인.
+- 🟡 **`schools` 표 `trg_schools_updated` 트리거가 30일 신선도 시계를 초기화** — `--rescale-only` 는 "updated_at 을 일부러 안 건드린다"(`schools-neis.mjs:475`)지만 트리거(`init_mibunyang.sql:369-371`)가 올린다(9/22 에 2,563행 같은 날짜). ⚠️ **10/22 전후 2,563행이 한꺼번에 만료** → 약 3.6시간 → incremental 워크플로 240분 한도에서 강제 종료될 수 있다(검사관 3). 처방 후보: 트리거를 `BEFORE UPDATE OF nearby_schools` 로 · schools 단계에 `--limit` · 코드 주석 정정.
+- 🟠 **coord_shared 행의 다른 위치 값이 점수에 그대로 남는다**(6곳, 검사관 3 실측) — 도보 분만 비웠다(사장님 결정 범위). 북수원이목 2곳 학군 100(A)·병원 88, 시흥거모 2곳 학군 5(D)·병원 0 — 준공(2027-02~2028-08)까지 1~2년. coordShared 면 위치에서 나온 범주를 중립으로 채점할지 **사장님 결정**.
+- 🟡 **KOSIS "전남광주" 표기가 다른 KOSIS 수집기에서도 조용히 빠질 수 있다**(검사관 3) — 같은 `REGION_MAP[C1_NM]` 무음 continue 가 3곳 더: `collect-market-stats.mjs:111-112`(**10/06 러너**) · `collect-avg-income.mjs:97-98` · `collect-housing-supply-ratio.mjs:42-43`. `migration.mjs` 는 코드 기반이라 안전. **10/06 전** 표마다 최신 C1_NM 원문 1회 → 공용 매퍼(`resolveRegionName`)로 바꾸고 못 맞춘 이름 수를 로그에.
+- 🟡 **미분양 보류 11곳 중 8곳은 매물 유래 값 그대로**(검사관 3) — 50% 이상이라 안 썼는데 현재 값이 매물 수다. **9/24 08:00 네이버 러너가 매물 수를 바꾸면 `unsold === naver_sell_count` 판별이 깨져 영구 "보존"**된다. 판별 증거(23:58 스냅숏) = `F:/mibunyang/.omc/artifacts/session567/unsold_state.json`(깃 미추적). 보류는 로컬 로그에만 남으니 텔레그램 1줄로 · 2u(unsold 를 30여 파일에서 사용)에 통보.
+- 🟢 **미분양률 빈칸 화면 문구** — `scoreRisk.ts:226-227` 이 unsold_rate null 을 "세대수 미확인 (중립)" 이라 쓴다(세대수는 안다). 목록의 null 이 185→229 로 늘었다 → "미분양 자료 없음" 류로(손님 문구라 사장님 확인).
+- 🟢 NEIS 가 분교장을 못 찾음(학교명 일치 방식 — `schoolType` 없음, 품질 보정 누락) · `collect-schools.yml` `limit` 입력이 셸에 직접 끼워짐(`ids` 처럼 env 경유로) · `--ids` 사용 시 불필요한 옛 값 조회 1회 · 감시 ⑩ R7 detail 에 PostgREST 원문이 실릴 수 있음(오류 코드 없을 때만) · 감시 ⑩ 판정 규칙의 한계 몇 가지(세부는 비공개 메모리 #9 — 위 🟠 범위 보강과 함께).
+- 📊 세션567 수치 정정: 손님 기본 목록(미분양 있는 단지) = **1,647 → 1,603(−44)** — 빠짐 150·새로 106(검사관 3 실측, 자료 커밋 863d809d 기준). 대화 중 "순감 ~88" 은 낡은 코드 주석(`MarketSummaryWidget.tsx:76` "1,691") 기준이라 틀렸다.
+- ✅ **자동화: schools-neis 로컬 안전장치**(세션567) — GitHub Actions 밖에서 `SCHOOLINFO_KEY` 없이 실제 쓰기를 하면 DB 접근 전에 멈춘다(사장님 PC 엔 그 열쇠가 없어 점수 잣대가 달라진다 — 같은 단지 63 vs 68). `--dry-run`·`--rescale-only`·CI 는 그대로.
+
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
-- 🔴 **9/24(목) 04:30 어린이집 로컬 러너 · 08:00 네이버 러너** — 로컬 러너는 `F:\mibunyang` **작업 트리를 그대로 실행**한다(`kosis-local-runner.bat` `cd /d "%~dp0.."`). 세션566 은 마무리에 작업 트리를 main 으로 되돌렸다 — 다음 세션도 **끝날 때 작업 트리를 main·깨끗한 상태로** 둔다(admin-district-code-reform §6).
-- 🔴 **9/27(일) `backfill-new-apartments` 첫 정기 실행** — 세션566 새 `calc-school-walk`(키셋 + 카카오 5km 실제 거리) + 워크플로 `KAKAO_KEY` 주입의 첫 실전. 확인: `collector_runs` 의 school-walk success · `apartments.naver_school_walk_min` 빈칸 0 유지(세션566 기준 0/3,068).
+- 🔴 **9/24(목) 04:30 어린이집 로컬 러너 · 08:00 네이버 러너** — 로컬 러너는 `F:\mibunyang` **작업 트리를 그대로 실행**한다(`kosis-local-runner.bat` `cd /d "%~dp0.."`). 세션566·567 모두 마무리에 작업 트리를 main·깨끗한 상태로 두었다 — 다음 세션도 **끝날 때 작업 트리를 main·깨끗한 상태로** 둔다(admin-district-code-reform §6). 확인: `collector_runs` 의 childcare·네이버 계열 최근 행 status=success(세션567 이 합친 `_shared.mjs` `MERGED_SIDO_RE` 변경의 첫 실행).
+- 🔴 **9/27(일) 11:00 `backfill-new-apartments` 정기 실행** — `calc-school-walk` 가 세션567 분교장 판정 + coord_shared 비움으로 도는 첫 정기 회차. 확인: `collector_runs` school-walk success · `apartments.naver_school_walk_min` **빈칸 = coord_shared 8행뿐**(명단: ah-2024910225·ah-2025910011·ah-2025910034·ah-2025910268·ah-2025910269·ah-2025930013·ap-6025734·ap-6028554 — 이 밖의 빈칸이 생기면 조사) · 오션포레(ah-2026910156) 29분 유지.
+- 🔴 **9/28(월) 09:00 감시 ⑩ 첫 자동 발화** — 점검 함수는 9/24 02:33 적용 완료, 수동 1회 통과. 기대: 텔레그램 "🔎 주간 DB 권한 점검 — 이상 없음" 한 줄 · 공개 Actions 로그엔 `⑩ 권한 점검: 통과` 만. 경보가 오면 달라진 것(2u 마이그 등)부터 본다. ⚠️ 그 전에 A-6 🔴 "무음 누락"(줄 상한·전송 실패 exit 1)을 고쳐 두는 게 목표.
+- 🟡 **building-hub 7/15 분기 회차 누락**(세션567 감시 수동 실행에서 드러남 — "100일 미발화" 경보) — 8/15 에 Actions → 로컬 러너 이전(d46a6ac3, 국토부 해외 IP 차단)했는데, 이전 **전** 7/15 회차가 기록 없이 빠졌다(collector_runs 마지막 = 6/15·5/18, 둘 다 ok 0 skip 2000). 다음 정상 회차 = 로컬 러너 **10/15**. 자료(건물 에너지)는 세션550 기록상 화면 비노출·점수 미사용 → 손님 영향 없음. 선택지: 수동 보충(`node scripts/collectors/collect-building-hub.mjs --dry-run` 먼저) 또는 10/15 까지 대기(그때까지 매일 브리핑에 "장기 미발화" 표시).
 - 🔴 **9/29(화) 대기질 회차 확인 뒤 PR #569(infra 대기질 6칸, draft) 머지** — 그날 `mergeKeepingAnnual`·자동 재부착의 첫 실전을 먼저 본다. 머지 → 10/06 회차에 infra 6칸 3,068곳 채움 확인 → 자매 `env_air.py` 폐지 PR(자매 레포).
 - 🟡 **자매 PR [#556](https://github.com/developer-duno/naver-estate-web/pull/556)(머지 완료) 후속** — `air_quality_stations` 표만 남았다.
   ⚠️ **정정(세션556 말미 실측, 2026-09-22): `infra.air_station_name` 은 이미 정상이다.**
