@@ -88,3 +88,18 @@
 | 필터 걸린 대형 표가 timeout 으로 죽음 | §2 방향 결정 + §3 로그로 즉시 드러남 |
 | 저장 집계가 원본의 일부인데 아무도 모름 | §4 `count` 대조 한 줄 |
 | 오염된 분포로 등급 경계를 잡음 | §5 데이터 참·거짓 먼저 |
+
+## 세션566 (2026-09-23) — 정적 가드 `_unbounded-query-coverage` 신설과 그 가드가 찾은 것
+
+| 자리 | 꼴 | 피해 | 처리 |
+|---|---|---|---|
+| `calc-school-walk.mjs` | `schools` 생 쿼리 | 3,068행 중 1,000행 → 770곳 도보 분 빈칸(가산점 누락), 몇 달간 "성공 938" | PR #576 키셋 |
+| `data-audit.mjs` `fetchAllFromTable` | `.range` 루프 무정렬(7표) | 채움률 감사·백서 숫자 흔들림 | 키셋(`TABLE_KEY_COLS`) |
+| `api/upcoming.ts` | `apartments_flat` 생 쿼리(`.in` 필터) | 648건이라 잠복, 1,000건 넘으면 곧분양이 조용히 잘림 | id 커서 |
+| `monitors/applyhome-event-recurrence.mjs` | `.range` 무정렬(1,327행) | 수동 도구 | id 커서 |
+| `collect-unsold-kosis.mjs` | `apartments` 생 쿼리 | 1,000행 밖 채움 대상 미처리 + 분모(구별 세대수)도 잘린 목록 | 키셋 수리본은 **보류 브랜치** — 전량을 읽자 **"X시 Y구" 가 KOSIS "X시" 와 안 맞으면 시도 합계를 그 구에 몰아주는 폴백**(L337·L280, collect-data.mjs:289 사본)이 148건(손님 110)에 85~88% 가짜 값을 만들 것이 드러나 사장님 결정으로 폴백부터 수리 |
+| `childcare-info(-jeju).mjs` | `regions` `.order` 만(범위 없음) | 최신 1,000행만 — 지금은 최신 행이 대부분 안에 들어 피해 작음 | 키셋 후 JS 정렬 |
+| `collect-data.mjs` phase9 | `complexes` 생 쿼리 | daily-deploy(`--from-supabase-only`)에선 실행 안 되는 옛 경로 | ALLOWLIST + 백로그 |
+
+- 전수 점검 담당의 보고에는 "prices 13,716 중 1,000만 본다"(실제는 끝까지 읽되 무정렬)·"배포 9단계 매일 실패"(거짓) 같은 오판이 섞여 있었다 — 원본(코드·워크플로 인자)으로 재확인한 뒤 반영.
+- 가드 사각(파일 헤더에 기록): 필터 걸린 대량 생 쿼리 · 함수 경계 쿼리 빌더 · 여러 문장 커서 · 변수 표 이름.

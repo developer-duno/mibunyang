@@ -12,11 +12,11 @@
 > 이 묶음은 **길잡이(순서·마감)** 다. 각 항목의 상세·실측은 아래 본문 행에 있다 — 괄호 안 낱말로 이 파일을 grep 하면 나온다. 끝낸 항목은 여기서 지우고 본문 행을 ✅ 로 바꾼다.
 > 큰 순서는 세션510 사장님 결정 그대로: **① 수집기·데이터 → ② 점수 분별력 → ③ 화면 재설계**. ①② 가 상당히 정리돼 ③ 재개 여부가 결정 대기다.
 
-### A-0. 등급표 죽은 칸 3건 — ✅ 세션565 에 고침 (PR #572, 사장님 결정 "셋 다 고치기")
+### A-0. 등급표 죽은 칸 — ✅ 세션565 3건 고침(#572) · ✅ 세션566 23개 전수 + 16표 가드(#575) + 학교 도보 칸 해소(#576)
 
 - 소음 `≤40·50·60·70` · 계약해제율 `≤0.7·1.2·1.6·5` · 택지비 `≥50·40·20`. 점수 탭 기준 문구·detail 은 **표에서 숫자를 읽는다**(옛 기준 하드코딩 제거 — 문구를 옛 기준으로 되돌려도 시험 2,431개가 전부 초록이던 사각을 막음).
 - 사전·사후 비교표 = `docs/audits/2026-09-23-dead-tiers-comparison.md` — 총점 최대 ±1, 1~10위 불변, 동점이 많아 순위는 크게 움직임(세 표 동시 50계단+: 투자 546).
-- 🟢 남은 것: "죽은 칸이 없다" 가드를 **나머지 표**로 넓히기(지금 대기질 2표 + 이 3표). 판정식 = 가운데 칸 상한 < 실측 최댓값, 관측값은 리터럴 앵커로.
+- ✅ 세션566: 23개 표 전수(세션562는 14개) → 죽은 칸은 `SCHOOL_WALK_BONUS` 하나(초등 검색 1km → 도보 최대 15분) → #576 이 실제 최근접 초등학교 거리로 해소(가산점 5칸 모두 사용: +10 1,202 · +5 1,390 · 0 322 · −5 90 · −10 64). 나머지 16표에 관측값 리터럴 앵커 가드(#575). 백서 `docs/whitepaper/judgments.md` 세션566 절.
 - ⚠️ 근본 원인은 **데이터가 거칠다**(소음 값 4종·택지비 13종) — 더 촘촘한 원천이 생기면 다시 본다. `KTX` 20km 상한은 의도(재조사 금지).
 
 ### A-1. 좌표 경고 — **확대하지 않는다**(방향 확정) · 시각 검증 사각지대
@@ -37,9 +37,11 @@
   기록 = `docs/audits/2026-09-23-coord-approvals.json`(강함 30·중간 12). 반영 42 · 반영 직후 대조 일치 42 · 부속 필드 재정합 42 ·
   파생표(transport·schools 삭제, infra kakao 17칸 null) → `collect-naver-listings-incremental` 수동 실행으로 재수집.
   `coord_shared` **56 → 14**(준공 전 8 + 보류 6). 감시 ⑨ 기준 14, `past:6` 경보가 보류 6곳을 계속 알린다.
-  - **보류 6**: 오룡 39BL/40BL(1·2단지 구분 불가 — 청약홈 원 공고 세대수로 가를 것) · 인천 검단 AB19(세대 1,168 vs 네이버 856) · 동탄 A106 어울림(후보는 아테라) · 오산세교2 A-13(후보 준공 2년 차) · A2 그랜빌(후보 라포레)
   - 대조 방법 = 카카오 후보(kCands) × **네이버 `complexes`**(세대수·사용승인일·건설사) × 우리 행. ★**세대수만 같으면 안 된다**(검단 호반써밋1차 1,168=1,168 이지만 원당동·2021 준공 = 다른 단지).
-  - 🟢 남은 개선: 정정 도구가 `sim` 이 낮은 진짜 후보("S-클래스"↔"S클래스", 금강펜테리움 "3차" 유무)를 kCands 에만 남기고 못 고른다 — 공용 게이트 정규화(하이픈·차수)는 세 통로 공통이라 별건.
+- ✅ **보류 6곳 정정 완료**(세션566, PR #574 + DB 2026-09-23 08:20Z) — 청약홈 원 공고 블록별 세대수·기사·네이버 complexes 로 확정: 오룡 39BL=파르세나1단지(380)·40BL=2단지(352) · 동탄 A106=동탄아테라파밀리에(640, 브랜드 변경) · 오산 A2 그랜빌=호반써밋라포레(867) · A-13=호반써밋라프리미어(1,030) · 검단 AB19=검단호수공원역호반써밋(856 — 우리 1,168 은 molit-units 오매칭, 856·미분양률 13.4 로 정정). 기록 `docs/audits/2026-09-23-coord-approvals-session566.json`. 라이브 6곳 모두 승인 좌표와 0m.
+- ✅ **표시 3↔3 뒤바뀜 수리**(세션566, #574) — flag 도구가 "증거 있을 때만 끈다"(사람 승인 30m · 덤프 tier ok). coord_shared **14 → 8**(전부 준공 전 2027-02~2028-08, 손님 목록엔 6), 감시 ⑨ 기준 8. 규칙 = `.claude/rules/collectors/placeholder-coordinates-truth-sources.md` "좌표 부정확 표시" 절.
+- 🟠 **이름 비교 개선 — 설계 완료, 구현 대기**(세션566) — `docs/audits/2026-09-23-name-compare-design.md`(선택지 ③ "표기는 점수 안에서만 정규화 + 차수·단지·블록 번호는 맞아야 함") + 사장님 결정 4건: ① 우리만 N차 → 좌표 채우기는 시군구 일치 시 채움(정정 도구는 목록만) ② 번호만 다른 옆 단지 좌표는 빌리지 않고 빈칸 ③ 8자 이하 짧은 이름 `아파트` 꼬리 0.842 문제도 **같이** ④ 아래 seed 중복 판정은 별도.
+- 🟠 **seed `findDuplicate` 좌표 경로가 블록·차수를 안 본다**(`scripts/collectors/collect-applyhome-seed.mjs:282-285` — 500m 안이면 C3↔D3(220m, 별개 단지)도 "이미 있다"로 skip) — 사장님 결정 "별도 작업으로 고치기"(세션566). 이름 경로(264-275)의 `phaseConsistent`·`blockConflict` 를 좌표 경로에도.
 - ✅ **`LineChart` 시험 0 → 27개 + 첫 점 눈금 겹침·평평한 선 눈금 수정**(세션565, PR #571). 분양가 차트 2,801곳 중 1,500곳이 점 2~3개였다.
 - 🟢 **`useFinlifeRates` 캐시 키에 `apiPath` 없음** — 지금은 호출자가 각자 `cacheRef` 를
   만들어 **범위가 갈려 안전**하다(경고 주석 있음). 호출자가 `apiPath` 를 인자로 열거나
@@ -48,7 +50,24 @@
 > 점검 절차 정본 = 글로벌 스킬 `silent-cache-and-visual-check`(자동 발동).
 > 범용 프롬프트 사본 = [docs/prompts/cache-key-and-visual-verification.md](../docs/prompts/cache-key-and-visual-verification.md).
 
+### A-3. 문서 리뉴얼 2단계 · 1,000행 잘림 잔여 (세션566 — 사장님 지시 "오래된 문서 전부")
+
+- 🟡 **BACKLOG 진행 중 항목 전수 점검** — 이 파일 201KB 의 대부분이 🔴/🟡/🧭 진행 중 칸이다(세션566 완료 색인 이관은 2줄 −1.4KB 뿐). 항목마다 "이미 끝났나"를 코드·DB 로 확인해 ✅ 로 바꾸고 ARCHIVE 로. 담당 1명(읽기+분류표), 반영은 메인.
+- 🟡 **폴더별 CLAUDE.md 가 공식 권장 200줄 초과** — `scripts/CLAUDE.md` 638줄·55KB · `src/scoring/CLAUDE.md` 600줄·39KB · `.github/workflows/CLAUDE.md` 316줄 · `supabase/CLAUDE.md` 227줄(code.claude.com/docs/en/memory: 파일당 200줄 목표, 넘으면 맥락 소모·준수율 하락). 글로벌 스킬 `doc-diet` 절차로 paths 규칙·이력 파일 분리.
+- 🟢 **글로벌 `~/.claude/CLAUDE.md` 264줄**(권장 200줄) — 다른 레포 세션들도 편집 중이라 사장님 결정 사항.
+- 🟡 **1,000행 잘림 잔여**(정적 가드 `scripts/_unbounded-query-coverage.test.mjs` ALLOWLIST·헤더) — `collect-data.mjs` phase9(complexes 생 쿼리, daily-deploy 에선 실행 안 되는 옛 경로: 정리 또는 삭제) · 가드 사각 4종(필터 걸린 대량 생 쿼리 `.in(col, 수천 개)` · 함수 경계 쿼리 빌더 · 여러 문장 커서 · 변수 표 이름).
+
+### A-4. 세션566 검사관이 찾은 것 — 마감 있는 수리
+
+- 🔴 **미분양 시도 합계 폴백**(10/09 로컬 러너 day 9 전) — `scripts/collectors/collect-unsold-kosis.mjs:337` `guMap?.[gu] ?? regionTotals[region]`: KOSIS 는 "천안시"·"성남시" 처럼 **시 단위**인데 우리 gu 는 "천안시 동남구" 꼴이라 안 맞으면 **시도 전체 합계를 그 구 하나에** 몰아준다(천안 동남구 87.9% → 시 단위로 바로 잡으면 13.9% · 성남 수정구 84.8% → 0.13%). regions 갱신(`:280`)·`scripts/collect-data.mjs:289` 사본도 같다. 처방(검사관 3): ① "X시 Y구" → KOSIS "X시" 매칭, 분모는 그 시 전체 ② 시도 폴백 삭제 → 못 맞추면 skip ③ 두 단어 gu 실픽스처 + 뮤테이션 ④ 임대 단지 제외(49건) ⑤ 50%↑ 는 반영하지 않고 목록 보고. 1,000행 수리본은 보류 브랜치 `hold/unsold-kosis-paging`(초안 PR) — 폴백 수리와 **함께** 합치고, 가드 ALLOWLIST 의 unsold 줄을 지운다. 사장님 결정: 수리 → dry-run 영향 표 재승인 → 반영.
+- 🔴 **학교 도보 — 분교장 누락**(9/27 11:00 `backfill-new-apartments` 정기 재계산 전) — `isSchoolPlace`(이름이 "학교"로 끝나야 함)가 "○○분교장" 을 버려 실제보다 멀게 나온다(예: 오션포레 49분 → 분교장 1,980m 면 29분). 카카오 `category_name` "학교 > 초등학교" 기준으로 판정(calc-school-walk 의 카카오 조회부터). 사장님 결정: 반경 **5km 유지(사후 승인)** · **개교 예정 학교는 넣지 않음**(왕숙1초 2028.3 등).
+- 🟠 **좌표가 틀린 행(coord_shared)에 새 도보 분**이 생겼다(ah-2025910268/269 null→16분, 자리표시 좌표 기준) — calc-school-walk 가 coord_shared 행은 카카오 조회를 건너뛰게.
+- 🟠 **감시 ⑨ 가 개수만 본다 + "늘었다" 경보는 구조상 못 울린다**(coord_shared 를 켜는 곳이 수동 flag 도구뿐) — 기준 명단(id 8곳) 대조 + 외부 API 없이 "같은 좌표에 핵심이름 2종 이상" 자동 집계.
+- 🟠 **자매 레포 통보**(naver-estate-web) — 학교 도보 막대 최댓값 15 가정(`frontend/src/components/mb/metric-bar-configs.ts`) · "초등 도보 N분"(`MbInfraOverlay.tsx`)이 이제 최대 49분 · 미분양 변동 예정.
+
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
+- 🔴 **9/24(목) 04:30 어린이집 로컬 러너 · 08:00 네이버 러너** — 로컬 러너는 `F:\mibunyang` **작업 트리를 그대로 실행**한다(`kosis-local-runner.bat` `cd /d "%~dp0.."`). 세션566 은 마무리에 작업 트리를 main 으로 되돌렸다 — 다음 세션도 **끝날 때 작업 트리를 main·깨끗한 상태로** 둔다(admin-district-code-reform §6).
+- 🔴 **9/27(일) `backfill-new-apartments` 첫 정기 실행** — 세션566 새 `calc-school-walk`(키셋 + 카카오 5km 실제 거리) + 워크플로 `KAKAO_KEY` 주입의 첫 실전. 확인: `collector_runs` 의 school-walk success · `apartments.naver_school_walk_min` 빈칸 0 유지(세션566 기준 0/3,068).
 - 🔴 **9/29(화) 대기질 회차 확인 뒤 PR #569(infra 대기질 6칸, draft) 머지** — 그날 `mergeKeepingAnnual`·자동 재부착의 첫 실전을 먼저 본다. 머지 → 10/06 회차에 infra 6칸 3,068곳 채움 확인 → 자매 `env_air.py` 폐지 PR(자매 레포).
 - 🟡 **자매 PR [#556](https://github.com/developer-duno/naver-estate-web/pull/556)(머지 완료) 후속** — `air_quality_stations` 표만 남았다.
   ⚠️ **정정(세션556 말미 실측, 2026-09-22): `infra.air_station_name` 은 이미 정상이다.**
@@ -406,7 +425,6 @@
 - ✅ 손님 가치 발굴 — 관리비 낮은순 + 치안 안전순 정렬 2종 추가 (세션 474, PR #240, main 54a2480). 오늘(7/4 토) 관찰 대기 4건 미도달 + eslint 10 upstream 차단으로 자동 작업 부재 → 사장님 "우선순위 파악해 진행 + 서브에이전트 활용" → 워크플로 4후보 병렬 실측 우선순위화 → 사장님 위임("프로젝트 목적·사용자 편의·미래가치/실증·데이터 관리"). **손님 미노출 지표 정렬화**: DB엔 채워졌으나(관리비 71.3% p10~p90=3~22만원 3배차 / 치안 86.9% 등급 1~5 전구간 분산, base 직독 교차검증) 손님이 정렬할 수단 부재. **표현계층 전용**(점수·AHP·엔진·DB 무변경) — `SORTERS`(useDataPipeline.ts) comparator 2개[maintenanceLow·crimeSafe, null→Infinity 맨뒤 subwayNear 패턴 답습, 동률 종합점수 tie-break] + `SORT_OPTIONS`(관리비=green·치안=cyan, 라벨 구분) + `SortKey` union 2줄 + 대조군 12→14(toHaveLength·size·expectedKeys·has()) + 정렬 회귀 테스트 2개. **crimeSafe ≠ safe**(safe=risk 종합점수 / crimeSafe=원본 등급값). **필터는 제외**(useFilterSort 12곳+DetailPanel 5경로 = 정렬 5배 diff, 별 PR 분리 = 데이터 관리 원자성). 검증 = typecheck0·lint0·format·vitest src 3973·build exit0·code-reviewer PASS·CI(ci 4m·e2e 3m44s·Vercel headSha 매칭). 블라인드 무관(공개 데이터 표시 순서만). 상세 = 메모리 `session_2026-07-04_session474_sort_maintenance_crime.md`.
 - ✅ 신규 단지 유입 양대 경로 동시 사망 — 재고 신선도 3개월 동결 (세션 465 발굴 🔴 P0) — **세션 473 전건 해소 확정** (2026-07-04, 코드 변경 0). a·b·c 세 경로 라이브 실측: (a) 네이버 `apartments` 최신 ap-* created_at **07-03** (세션 465 스케줄러 재등록 + 470 하드닝 후 신규 유입 재개) / (b) `naver-presale` success **ok=560 07-03** (침묵 해소) / (c) 청약홈 ah-* 로스터 **1531 + 최신 created_at 07-03** (세션 466 seeding 구현 #228). **seeding 자연 cron 경로를 dry-run 리허설로 사전 검증**(run 28685183716): 좌표 정밀 중복 게이트 실전 발화(`판정 등록0·중복54·보류11`, 래미안 엘라비네 sim1.00 dist9m 정확 skip)·로스터 diff·ah-* 1531 불변(INSERT 0 안전). **정정**: dry-run 은 `recordCollectorRun` 내부 가드(`_shared.mjs:599-605`)로 collector_runs 기록 skip = monitor ⑤ 오염 방지 설계. **잔여 = 7/6(월) 11:30 KST 자연 cron 후 collector_runs 신규행(id>405) + 실 INSERT 확인 1회**(리허설이 dry 경로 증명, 관찰만). 상세 = 메모리 `session_2026-07-04_session473_applyhome_seed_rehearsal.md`.
 - ✅ dependabot #202 minor group (@types/node 26.0.0→26.0.1 · prettier 3.8.4→3.9.1) — 세션 471 머지 (2026-07-04, main 8c7a08f). prettier 3.9.1 이 `src/types/database.types.ts` 1파일 재포맷(conditional-type 괄호+union 한줄접기, 동작·타입 무변경 typecheck0 증명) → CI format:check fail. babel #220 선례로 dependabot 브랜치에 재포맷 커밋 push 후 CI green 재실행 → squash 머지 → main CI success 재확인. 운영 박제: F드라이브 exFAT 는 `npm ci`(전삭제→rolldown .node unlink EPERM) 금지, `npm install`(in-place) 사용. 상세 = 메모리 `session_2026-07-04_session471_dependabot_202.md`.
-- ✅ 청약홈 매칭 회수 검증 (P2) — 세션 465 라이브 실증 종결 (2026-07-03). `collector_runs` id=236 `applyhome-detail` 6/13 cron(`30 2 13 * *`) 자연 발화 success **ok=934 fail=0**(예측 ~916 + 이후 신규 공고 자연 증가) + `presale_schedule_official` 라이브 = **984 rows / 859 distinct 단지**(예측 916/810 초과 달성). 세션 360 처방(후보 쿼리 presale_stage 제약 제거 = 전체 apartments 확대) 2.4배 회복(393→934) 실증 확정. 상세 = BACKLOG_ARCHIVE "🟡 곧 — 완료".
 
 ## 🔴 즉시
 
@@ -1336,9 +1354,3 @@ KOSIS 통계표 검색 API(`statisticsSearch.do`)로 재선정 + raw sample 차�
 - **30초 임계값** 대비 충분 안전. M1 진입 시 .ts 파일 늘어 5~10초 예상, 30초 초과 시 `tsc -b` 도입 검토 트리거 (spec § M0-12)
 
 ## TS M0 후속 — vitest 4 projects 마이그레이션
-
-## ✅ 네이버 지도 — 세션 449에 전면 제거 (카카오 단일화)
-
-> **세션 449**: 네이버 지도(NaverMapView·naverMapHelpers·MarkerClustering.js·provider 토글)를 전면 제거하고 카카오 단일화. 근거 = 네이버 v3 POI API 부재로 구조적 열위 + 두 SDK·줌 좌표계 반대로 버그 표면 2배(세션 448 production 크래시) > 입증된 가치(사용률 미계측). 아래 후속 후보들은 전부 무효(네이버 자체가 사라짐). `VITE_NAVER_MAP_CLIENT_ID`(vite-env·CSP) 제거 완료. 👤 잔여 = `.env.example`·Vercel 대시보드 환경변수 수동 정리(있으면, 남겨도 무해).
-
-- ~~Vercel Preview 환경변수 `VITE_NAVER_MAP_CLIENT_ID`~~ · ~~색칠·인프라 오버레이 네이버화~~ — 세션 449 네이버 제거로 둘 다 무효.

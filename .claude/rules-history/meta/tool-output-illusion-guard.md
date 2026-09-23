@@ -25,3 +25,10 @@
 - `scripts/collectors/data-audit.mjs` L40 MASKED_DEFAULTS + L151 마스킹 로직 = 착시 원천
 - [[feedback-subagent-report-trust]] · [[feedback-memory-not-authoritative]] 답습
 - 본 룰 박제와 함께 data-audit.mjs 출력에 sentinel 경고 1줄 추가(세션446) — 사람이 0% 를 silent fail 로 오인하지 않게
+
+## 세션566 (2026-09-23) — 담당 보고의 합계·단정 오류 4건 (본문 §8)
+
+1. 학교 계산기 구현 담당: "빈칸→값 874" — 원본 로그 세부(+10 326 · +5 354 · 0 114 · −5 80 · −10 59) 합 933.
+2. 같은 보고: "기존값 변경 406" — 원본 347(1,280 − 933).
+3. 1,000행 전수 점검 담당: "prices 는 1,000/13,716 만 본다" — 코드는 count 기반 `.range` 루프로 끝까지 읽되 무정렬(빠짐·겹침 위험)이었다.
+4. 같은 보고: "collect-data 9단계가 daily-deploy 에서 매일 실패" — daily-deploy 는 `--from-supabase-only` 라 9단계 전에 끝난다(collect-data.mjs:1178). 거짓.

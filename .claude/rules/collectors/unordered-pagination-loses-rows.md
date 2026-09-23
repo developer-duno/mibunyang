@@ -70,6 +70,10 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
 분포로 임계를 정하는 작업(등급표·사분위 경계)은 **데이터가 참인지 먼저 확인**한 뒤에 한다.
 세션511의 "경계 먼저, 데이터 나중" 함정의 쌍둥이다 — 이번엔 **오염된 데이터로 경계를 잡았다.**
 
+### 6. 정적 가드 둘(세션566) — 통과해도 남는 사각은 §4 `count` 대조로만 잡힌다
+
+`_selectall-keycol-coverage.test.mjs`(키 칸) · `_unbounded-query-coverage.test.mjs`(필터·상한 없는 큰 표 생 쿼리 G1 · `.order` 없는 `.range` G2, 예외는 파일 안 ALLOWLIST). 사각 = 필터가 걸렸지만 1,000행을 넘는 쿼리(`.in(col, 수천 개)` 도 요청당 1,000행) · 함수 밖에서 `.range` 를 붙이는 빌더 · 여러 문장 커서 · 변수 표 이름.
+
 ## 안티 패턴
 
 - ❌ "페이징 루프가 있으니 전량 받았다" — 정렬이 없으면 **루프가 돌아도 표본이다**
@@ -77,6 +81,7 @@ const { count } = await sb.from(t).select("*", { count: "exact", head: true })./
 - ❌ "에러가 없으니 성공" — 이 결함은 에러를 안 낸다. `count` 대조만이 잡는다
 - ❌ `.order("deal_month")` 같은 **비고유** 정렬로 안심 — 동점 구간이 흔들린다(실측 64/91)
 - ❌ `catch(() => [])` 로 조용히 넘기기 — 0건이 정상처럼 보인다
+- ❌ "`collector_runs` 가 매주 success 니 전량 읽었다" — `calc-school-walk` 는 몇 달간 "성공 938" 이면서 3,068행 중 1,000행만 읽었다(세션566)
 
 > 구현 메모는 이력 파일에 있다 — 큰 표를 훑기 전에 한 번 읽을 것: `selectAll(fn, sb, keyCol)` 옵트인 커서(무키 호출은 정적 가드 `scripts/_selectall-keycol-coverage.test.mjs` 가 막는다) · fail-open 자리는 손제작 커서 유지 · 스캔 맹점 2종(여러 줄에 걸친 `.range` 루프 · `.range`/`.limit` 없는 생 쿼리) · **커서 키 ≠ 정렬 키면 행이 샌다**.
 > 답습 자산·차단 검증 이력 → [rules-history/collectors/unordered-pagination-loses-rows.md](../../rules-history/collectors/unordered-pagination-loses-rows.md)
