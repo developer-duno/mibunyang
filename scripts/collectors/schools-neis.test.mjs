@@ -27,7 +27,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds } = await import("./schools-neis.mjs");
+const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds, shouldRefuseLocalWriteWithoutSchoolInfo } = await import("./schools-neis.mjs");
 
 // 소스를 직접 읽어 배선(어느 쿼리로 훑는지)을 검사한다 — transit-match.test.mjs 답습 패턴.
 const COLLECTOR_SRC = readFileSync(new URL("./schools-neis.mjs", import.meta.url), "utf8");
@@ -807,5 +807,69 @@ describe("--ids 배선 — 30일 skip 무시가 실제로 걸려 있다 (세션5
   it("parseIdsArg/selectTargetsByIds 를 main() 에서 실제로 부른다", () => {
     expect(COLLECTOR_SRC).toMatch(/const\s+idsArg\s*=\s*parseIdsArg\(process\.argv\);/);
     expect(COLLECTOR_SRC).toMatch(/const\s+sel\s*=\s*selectTargetsByIds\(apts,\s*idsArg\);/);
+  });
+});
+
+// ── 세션567: SCHOOLINFO_KEY 없이 로컬 실쓰기 차단 ────────────────
+// 배경 — 운영 워크플로 2개(collect-schools.yml·collect-naver-listings-incremental.yml)는
+// SCHOOLINFO_KEY 를 주입해 calcDensityBonus(±5 원점수) 를 반영하지만 로컬 .env.local 에는
+// 없다. 그대로 로컬에서 실제 쓰기를 돌리면 같은 단지가 다른 잣대로 채점돼 운영 DB 에 섞인다.
+describe("shouldRefuseLocalWriteWithoutSchoolInfo — 로컬 실쓰기 차단 판정 (세션567)", () => {
+  it("로컬 + 열쇠없음 + 실제 쓰기(dry-run 아님·rescale-only 아님) → true", () => {
+    expect(shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun: false, rescaleOnly: false, hasSchoolInfoKey: false, inCI: false })).toBe(true);
+  });
+
+  it("dry-run 이면 → false (미리보기만이라 안전)", () => {
+    expect(shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun: true, rescaleOnly: false, hasSchoolInfoKey: false, inCI: false })).toBe(false);
+  });
+
+  it("rescale-only 면 → false (외부 API·점수 재료 재수집 0, 이미 저장된 값만 재계산)", () => {
+    expect(shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun: false, rescaleOnly: true, hasSchoolInfoKey: false, inCI: false })).toBe(false);
+  });
+
+  it("CI(GitHub Actions) 안이면 → false (워크플로가 열쇠를 항상 주입, 기존 경고만 동작 유지)", () => {
+    expect(shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun: false, rescaleOnly: false, hasSchoolInfoKey: false, inCI: true })).toBe(false);
+  });
+
+  it("SCHOOLINFO_KEY 가 있으면 → false (로컬이어도 같은 잣대로 채점되므로 안전)", () => {
+    expect(shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun: false, rescaleOnly: false, hasSchoolInfoKey: true, inCI: false })).toBe(false);
+  });
+
+  it("네 조건이 전부 위험(false) 방향이어야만 true — 어느 하나라도 안전 방향이면 false", () => {
+    const safeCombos = [
+      { dryRun: true, rescaleOnly: false, hasSchoolInfoKey: false, inCI: false },
+      { dryRun: false, rescaleOnly: true, hasSchoolInfoKey: false, inCI: false },
+      { dryRun: false, rescaleOnly: false, hasSchoolInfoKey: true, inCI: false },
+      { dryRun: false, rescaleOnly: false, hasSchoolInfoKey: false, inCI: true },
+    ];
+    for (const combo of safeCombos) {
+      expect(shouldRefuseLocalWriteWithoutSchoolInfo(combo)).toBe(false);
+    }
+  });
+});
+
+describe("shouldRefuseLocalWriteWithoutSchoolInfo 호출 배선 — main() 안 위치 (세션567)", () => {
+  it("main() 이 이 함수를 실제로 부르고 true 면 exit(1) 한다 — 주석 처리되지 않은 실행문", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /^[ \t]*if \(shouldRefuseLocalWriteWithoutSchoolInfo\(\{[\s\S]{0,200}?\}\)\) \{[\s\S]{0,300}?process\.exit\(1\);/m,
+    );
+  });
+
+  it("inCI 판정은 process.env.GITHUB_ACTIONS === \"true\" 를 쓴다", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /const\s+inCI\s*=\s*process\.env\.GITHUB_ACTIONS\s*===\s*"true";/,
+    );
+  });
+
+  it("호출 위치가 apartments 대상 조회(selectAll)보다 앞에 있다 — DB 접근 전에 멈춰야 한다", () => {
+    // "shouldRefuseLocalWriteWithoutSchoolInfo({" 만으로 indexOf 하면 파일 상단의
+    // 함수 선언(`export function shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun, ... })`)에
+    // 먼저 걸려 호출부 위치를 검사하지 못한다([[guards-must-be-mutation-tested]] "소스 grep
+    // 가드는 선언부에도 매칭된다") — `if (` 를 좌변에 고정해 호출문만 잡는다.
+    const guardCallIdx = COLLECTOR_SRC.indexOf("if (shouldRefuseLocalWriteWithoutSchoolInfo({");
+    const selectAptsIdx = COLLECTOR_SRC.indexOf('selectAll((s) => s.from("apartments")');
+    expect(guardCallIdx).toBeGreaterThan(-1);
+    expect(selectAptsIdx).toBeGreaterThan(-1);
+    expect(guardCallIdx).toBeLessThan(selectAptsIdx);
   });
 });

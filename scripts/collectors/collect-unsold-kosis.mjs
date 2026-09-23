@@ -592,6 +592,9 @@ export async function main() {
     // 3. unsold_history 시계열 upsert (세션134, 방향 A)
     // KOSIS 단일 API 호출 응답(3개월 범위)을 재파싱하여 월별 시계열 저장.
     // API 재호출 아님 → 쿼터 증가 0.
+    // ⚠️ 이 시계열은 **순수 KOSIS 비례배분 계열**이다 — apartments 쪽 판정(skip_preserved 청약홈 실측 존중 ·
+    //    clear_listing_derived 매물 유래 비움)을 적용하지 않는다(설계). 그래서 보존 값을 가진 단지는 헤드라인
+    //    unsold 와 차트 계열이 다를 수 있다(세션567 검사관 확인 — 보존 138곳 조사 때 함께 본다).
     // 세션567: 시군구 매칭은 resolveKosisGuKey 로 통일(시 단위·세종 포함) — 임대형 제외,
     // 새 추정 미분양률 50% 이상은 저장하지 않는다(사장님 결정).
     const allMonthsMap = parseKosisRowsAllMonths(rows);

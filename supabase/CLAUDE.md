@@ -231,6 +231,30 @@ naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 - **SQL 함수에 `SET search_path` 를 붙이면 인라인이 꺼진다** — 행마다 불리는 헬퍼는 느려진다(상가 실측: 층대 가격
   함수 약 2배 · 검색 키 함수는 측정 잡음 ±25% 안에서 느려짐 → 둘 다 되돌림).
   보안 고문 경고를 없애기 전에 그 함수가 쓰이는 쿼리의 **전후 속도**를 잰다(결과 동일 검사만으로는 못 잡는다).
+- **운영 표 4개(`collector_runs`·`api_quota_log`·`monitor_alert_state`·`monitor_daily_snapshot`)는 공개 열쇠로 못 읽는다**
+  (세션567, 2026-09-24 적용 — `20260924000000` · anon 탐침 42501). 이 표는 **서비스 열쇠로만** 읽는다 —
+  관리자 "수집기 상태" API 도 `getMibuyangSupabase()` 로 옮겼다(#588). 새 운영 표를 만들면 `"Public read"` 를 두지 않는다.
+- **Supabase 는 public 표 전부에 anon·authenticated 권한(GRANT)을 기본으로 준다 — 실제 차단은 RLS 정책.**
+  그래서 "권한이 있나"만 보는 감사는 거의 모든 표를 잡는다(세션567 감시 ⑩ 첫 실측 R1 280건). 판정은
+  **권한 + 그 쓰기를 여는 정책**의 조합으로. 거의 모든 표의 `"Service write" FOR ALL`(roles = {public}) 정책은
+  qual 이 정확히 `(auth.role() = 'service_role'::text)` 라 서비스 전용이다 — 부분 일치(`LIKE '%service_role%'`)로
+  빼면 `… OR true` 같은 위험한 정책도 빠진다.
+
+### SQL 적용·시험 (세션567 — 단위 시험·검사관이 놓친 오류 3개를 이것만 잡았다)
+
+- **합치기 전 되돌림 시험 1회**(새 함수·권한/RLS 마이그): `\set ON_ERROR_STOP on` · `SET lock_timeout='2s';` ·
+  `SET statement_timeout='30s';` · `BEGIN;` · `\i <파일>` · `SELECT <새 함수>();` · `ROLLBACK;` 뒤
+  `to_regprocedure('<함수>()') is not null` = false(흔적 0) 확인. ⚠️ DROP POLICY·REVOKE 는 가장 강한 잠금(ACCESS EXCLUSIVE)을
+  걸어 **잠금을 기다리는 동안 손님 조회도 막힌다** — `lock_timeout` 을 빼지 않는다. 트랜잭션 밖 동작(CONCURRENTLY 등)은 이 시험으로 못 본다.
+  **생성은 되는데 호출할 때만 터지는 오류**가 있다(`aclexplode` 에 빈 0차원 배열 → "ACL arrays must be one-dimensional").
+- **적용**: 파일에 BEGIN/COMMIT 이 없으면 `psql -X -v ON_ERROR_STOP=1 --single-transaction -f <파일>` — 끝의
+  자체검사(`DO $$ … RAISE EXCEPTION $$`)가 실패하면 **전부 취소**된다(세션567 에 세 번 이렇게 멈췄고 흔적 0).
+- `search_path = ''` 함수에서 **스키마를 붙이면 안 되는 것** = COALESCE·NULLIF·GREATEST·LEAST·CASE(문법 요소 —
+  `pg_catalog.coalesce(` 는 "function does not exist"). 일반 함수는 붙여도 되고 안 붙여도 된다(pg_catalog 는 항상 먼저 검색 — PostgreSQL 문서 ddl-schemas).
+- 자체검사는 **실제 DB 의 정책 모양**으로 시험한다(회수 마이그 첫 판이 서비스 전용 정책까지 "공개 정책 잔존"으로 잡아 취소됐다).
+- 접속: 이 저장소엔 DB 접속 문자열이 없다. psql 경로(자매 backend `.env`)는 **사장님 명시 지시 때만** — 아니면
+  위 되돌림 시험 SQL 을 사장님께 드려 Dashboard SQL Editor 에서 돌린다(ROLLBACK 이 있어 무해).
+- 점검 함수 `public.audit_db_permissions()`(감시 ⑩ 재료, service_role 만 실행) — 주 1회 월요일 감시가 서비스 열쇠로 부른다.
 
 ⚠️ **컴퓨트 한계 — Micro 인스턴스 hang (세션 460, 2026-06-29).** 공유 인스턴스(`t4g.micro`,
 RAM 1GB)가 mibunyang + naver-estate-web 양쪽 collector + Vercel 동시 부하에서 일시 hang →

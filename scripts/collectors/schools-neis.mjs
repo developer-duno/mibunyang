@@ -530,14 +530,36 @@ export async function rescaleOnly(sb, { dryRun, limit }) {
   return { changed, same, noData, failed };
 }
 
+// ── 세션567: 로컬 실쓰기 안전장치 (SCHOOLINFO_KEY 없이 운영 DB 쓰기 차단) ──
+// 배경 — SCHOOLINFO_KEY(학교알리미)가 있으면 calcDensityBonus 로 ±5 원점수 밀도 보정이
+// 들어가 school_score 가 달라진다. 운영 워크플로(collect-schools.yml·
+// collect-naver-listings-incremental.yml)는 이 열쇠를 넘기지만 사장님 PC `.env.local` 에는
+// 없다 — 그대로 로컬에서 실제 쓰기를 돌리면 같은 단지가 로컬/Actions 에서 다른 잣대로
+// 채점되어 운영 DB 에 섞인다(2026-09-24 실측: 같은 단지 로컬 63점 vs Actions 68점).
+// CI 안에서는 워크플로가 열쇠를 늘 주입하므로 기존 동작(경고만) 그대로 둔다.
+/**
+ * @param {{ dryRun: boolean, rescaleOnly: boolean, hasSchoolInfoKey: boolean, inCI: boolean }} opts
+ * @returns {boolean} true면 실제 쓰기를 거부해야 한다
+ */
+export function shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun, rescaleOnly, hasSchoolInfoKey, inCI }) {
+  return !dryRun && !rescaleOnly && !hasSchoolInfoKey && !inCI;
+}
+
 // ── 메인 수집 로직 ──────────────────────────────────────────────
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const limitIdx = process.argv.indexOf("--limit");
   const limit = limitIdx !== -1 ? Number(process.argv[limitIdx + 1]) : Infinity;
+  const isRescaleOnly = process.argv.includes("--rescale-only");
+  const inCI = process.env.GITHUB_ACTIONS === "true";
+
+  if (shouldRefuseLocalWriteWithoutSchoolInfo({ dryRun, rescaleOnly: isRescaleOnly, hasSchoolInfoKey: !!SCHOOLINFO_KEY, inCI })) {
+    logError(PHASE, "SCHOOLINFO_KEY 없이 로컬 실제 쓰기 거부 — 학생수 밀도 보정(±5점) 없이 운영 DB 를 채점하면 GitHub Actions 결과와 다른 잣대로 섞인다. --dry-run 으로만 미리 보거나, GitHub Actions collect-schools.yml(workflow_dispatch, ids 입력)로 반영하라.");
+    process.exit(1);
+  }
 
   // 재척도 전용 — 외부 API 를 하나도 안 부르므로 본 수집 준비 전에 갈라진다.
-  if (process.argv.includes("--rescale-only")) {
+  if (isRescaleOnly) {
     const res = await rescaleOnly(getSupabase(), { dryRun, limit });
     if (res.failed > 0) process.exit(1);
     return;
