@@ -303,7 +303,8 @@ export function scoreRisk(apt: Apt): Res {
         info: apt.cancelRatio6m != null ? `${apt.cancelRatio6m}%` : "정보 없음",
         detail:
           apt.cancelRatio6m != null
-            ? `${apt.cancelRatio6m}% (안전 3%↓, 주의 8~15%, 위험 25%↑)`
+            ? // 경계 숫자는 표에서 읽는다 — 표만 바꾸고 문구를 잊는 사고 방지(세션565)
+              `${apt.cancelRatio6m}% (안전 ${CANCEL_RATIO_TIERS[0].max}%↓, 주의 ${CANCEL_RATIO_TIERS[1].max}~${CANCEL_RATIO_TIERS[2].max}%, 위험 ${CANCEL_RATIO_TIERS[3].max}%↑)`
             : "계약해제율 데이터 없음 (중립 35점)",
       },
       {

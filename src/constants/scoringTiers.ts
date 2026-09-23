@@ -223,10 +223,15 @@ export const DIRECTION_BONUS: Record<string, number> = {
   북향: 0,
 };
 export const SUNLIGHT_DIRECTION_MAX = 38; // 일조(30) + 방향 보너스(8) 상한
+// 세션565 경계 변경 — `noise` 는 실측 소음도가 아니라 10 단위 구간 대표값이라 고유값이
+// 딱 4종(40/50/60/70)뿐이다. 옛 `≤65` 칸(60과 70 사이)은 어떤 값도 걸릴 수 없는 죽은 칸이었다
+// (docs/whitepaper/judgments.md "죽은 칸" 절, 세션562 전수조사). 칸을 실제 값에 맞췄다 —
+// 80.8%가 40, 23.7%는 미측정(NOISE_UNKNOWN_SCORE). 50dB 는 30→22, 60dB 는 22→15 로 내려가고
+// (영향 210곳), 40·70dB 는 그대로다. 사장님 결정 2026-09-23("셋 다 고치기").
 export const NOISE_TIERS: Tier[] = [
-  { max: 50, score: 30 },
-  { max: 60, score: 22 },
-  { max: 65, score: 15 },
+  { max: 40, score: 30 },
+  { max: 50, score: 22 },
+  { max: 60, score: 15 },
   { max: 70, score: 8 },
 ];
 // 소음 미측정(null) 시 중립값 (세션508 — "모르는 것을 나쁘게 단정하는" 기본값 정정).
@@ -728,11 +733,17 @@ export const PERMIT_RATIO_HIGH_ADJ = 5;
 export const PERMIT_RATIO_LOW_ADJ = -3;
 
 // scoreRisk cancelRatio6m (계약해제율: 낮을수록 안전 → 낮은 위험점수)
+// 세션565 경계 변경 — 실측 최댓값이 4.4% 인데 옛 표는 25% 까지 그려 뒀다. `≤15`·`≤25` 두 칸이
+// 0곳이고 나머지도 99.0%가 첫 칸(`≤3`)에 몰려 이 지표가 점수에 기여하지 않았다(죽은 칸,
+// docs/whitepaper/judgments.md "죽은 칸" 절). 분위(p25=0.7·p50=1.2·p80=1.6)로 다시 잘랐다.
+// 마지막 경계는 오늘 실측 최댓값 4.4가 아니라 **5로 반올림** — 오늘 데이터에 맞춰 재단한 것이
+// 아니라 여유를 둔 것이며, 오늘 기준으로는 결과가 동일하다. 5를 넘는 값은
+// `CANCEL_RATIO_HIGH_SCORE`(85, 위험 최고점)로 떨어져 단조성이 유지된다.
 export const CANCEL_RATIO_TIERS: Tier[] = [
-  { max: 3, score: 10 },
-  { max: 8, score: 25 },
-  { max: 15, score: 45 },
-  { max: 25, score: 65 },
+  { max: 0.7, score: 10 },
+  { max: 1.2, score: 25 },
+  { max: 1.6, score: 45 },
+  { max: 5, score: 65 },
 ];
 export const CANCEL_RATIO_HIGH_SCORE = 85;
 export const CANCEL_RATIO_NULL_SCORE = 35;
@@ -1064,8 +1075,12 @@ export const PUBLIC_PRESALE_BONUS = -15;
 // 비율로 재는 PERMIT_RATIO_* 가 대체한다 — 위 HOUSING_SUPPLY_LEVEL_TIERS 근처 참조.
 
 // === Price: 택지비 비율 (높을수록 가격 안정 → 높은 점수) ===
+// 세션565 경계 변경 — 실측 최댓값이 57%(고유값 13종뿐)인데 옛 첫 칸(`≥60`)은 영원히 0곳이었다
+// (죽은 칸, docs/whitepaper/judgments.md "죽은 칸" 절). 24.6%(605곳, 값 57)가 최고점 칸에
+// 못 들어가고 68.5%와 같은 60점에 몰려 있었다. 50 은 오늘 최댓값 57에 맞춘 것이 아니라
+// **반올림한 값** — 57 로 잡으면 오늘 데이터에만 맞는 경계가 된다.
 export const LAND_COST_TIERS: Tier[] = [
-  { min: 60, score: 80 }, // 택지비 60%↑ = 구조적 가격 하한
+  { min: 50, score: 80 }, // 택지비 50%↑ = 분양가의 절반 이상이 땅값 — 구조적 가격 하한
   { min: 40, score: 60 },
   { min: 20, score: 40 },
 ];
