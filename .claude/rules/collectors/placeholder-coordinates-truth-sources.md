@@ -142,6 +142,11 @@ A 단독 / K 강함 단독 → **정정** · K 약함 단독 → **보류** · K
 
 > 답습 자산 이력 → [rules-history/collectors/placeholder-coordinates-truth-sources.md](../../rules-history/collectors/placeholder-coordinates-truth-sources.md)
 
+## 좌표 부정확 표시(`coord_shared`) — 켜는 조건과 끄는 조건은 다르다 (세션566)
+
+- **켬** = tier `none` + 한 좌표에 핵심이름 2종 이상. **끔 = 증거가 있을 때만**(사람 승인 좌표 `docs/audits/*coord-approvals*.json` 30m 안 · 덤프 tier `ok`), 그 밖엔 유지(`decideFlags`). 이웃이 고쳐져 떠나면 남은 틀린 행에서 조용히 풀리던 3↔3 사고 때문 — 감시·기대값은 **명단**으로 대조한다. 덤프는 옮긴 **뒤에** 만든다.
+- 맞는 좌표인데 증거가 안 생겨 점선이 남으면 승인 기록에 한 줄 넣어 끈다(승인 취소 = 그 줄 삭제). `coreName` 에 Ⅰ/Ⅱ 정규화는 넣지 않는다(시흥거모 루체Ⅰ/Ⅱ 별개 블록). 경위 → 이력 파일.
+
 ## 관련
 
 - [[probe-must-be-self-verified]] · [[tool-output-illusion-guard]] · [[purge-to-recollect-timing]] · [[external-file-duplicate-rows]]
