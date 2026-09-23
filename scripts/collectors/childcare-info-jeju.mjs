@@ -32,7 +32,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, today, recordApiQuota, recordCollectorRun, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, today, recordApiQuota, recordCollectorRun, sleep, selectAll } from "./_shared.mjs";
 import { parseChildcareXml, extractTag, assertNoErrorCode, aggregateChildcare, pickLatestPerKey, mergePreserveCoords } from "./childcare-info.mjs";
 
 loadEnv();
@@ -136,10 +136,23 @@ async function main() {
 
   // regions 시계열 전수 → (region, gu) 별 최신행 id 맵 (childcare-info.mjs 와 동일 버그 차단).
   // PostgREST PATCH 가 order/limit 무시 → .eq(region).eq(gu) 가 제주 다중 스냅샷 전부 덮어쓰던 패턴 제거.
-  const { data: allRegions, error: regErr } = await sb.from("regions")
-    .select("id, region, gu, recorded_at, childcare")
-    .order("recorded_at", { ascending: false });
-  if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
+  // 세션549: 무정렬(+order 뿐) select 는 2,359행 표에서 1,000행만 매칭한다
+  // (unordered-pagination-loses-rows.md §1) — selectAll 커서로 전수 확보 후,
+  // pickLatestPerKey 가 기대하는 "최신 recorded_at 우선" 순서를 JS 에서 명시적으로 재정렬한다
+  // (childcare-info.mjs 답습).
+  /** @type {Array<{ id: number, region: string, gu: string | null, recorded_at: string, childcare: import("./childcare-info.mjs").ChildcareAggregate | null }>} */
+  let allRegions;
+  try {
+    allRegions = /** @type {any} */ (
+      await selectAll((s) => s.from("regions").select("id, region, gu, recorded_at, childcare"), sb, "id")
+    );
+  } catch (e) {
+    throw new Error(`regions 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  allRegions = allRegions.slice().sort((a, b) => {
+    if (a.recorded_at !== b.recorded_at) return a.recorded_at > b.recorded_at ? -1 : 1;
+    return b.id - a.id;
+  });
   const latestMap = pickLatestPerKey(allRegions ?? []);
   // 최신행 id → 기존 childcare 본문 (merge 시 좌표 보존용, childcare-info.mjs 답습).
   /** @type {Map<number, import("./childcare-info.mjs").ChildcareAggregate | null>} */

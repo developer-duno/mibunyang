@@ -23,17 +23,21 @@ if (!URL || !KEY) {
 const sb = createClient(URL, KEY);
 
 async function main() {
-  // RPC 가 없으니 클라이언트 측 집계 (페이지네이션)
+  // RPC 가 없으니 클라이언트 측 집계 (페이지네이션).
+  //
+  // ⚠️ 정렬 없는 OFFSET 페이징은 1,000행을 넘는 표에서 행을 잃는다
+  // (.claude/rules/collectors/unordered-pagination-loses-rows.md) — Postgres 는 ORDER BY 가
+  // 없으면 페이지마다 다른 표본을 줘 에러 없이 누락된다. applyhome_events 는 PK 가 `id`
+  // (SERIAL, 20260502000000_create_applyhome_events.sql) 라 그 컬럼으로 오름차순 커서 페이징한다.
   const PAGE = 1000;
   const counter = new Map();
-  let from = 0;
+  let cursor = null;
   let totalRows = 0;
 
   while (true) {
-    const { data, error } = await sb
-      .from("applyhome_events")
-      .select("apartment_id")
-      .range(from, from + PAGE - 1);
+    let q = sb.from("applyhome_events").select("id,apartment_id").order("id", { ascending: true }).limit(PAGE);
+    if (cursor != null) q = q.gt("id", cursor);
+    const { data, error } = await q;
     if (error) throw error;
     if (!data || data.length === 0) break;
     for (const row of data) {
@@ -41,7 +45,7 @@ async function main() {
     }
     totalRows += data.length;
     if (data.length < PAGE) break;
-    from += PAGE;
+    cursor = data[data.length - 1].id;
   }
 
   const apartmentTotal = counter.size;

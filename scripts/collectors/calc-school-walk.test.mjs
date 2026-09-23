@@ -8,6 +8,7 @@
  * 재탐색하는 로직 추가. planWalkUpdates 가 "이미 계산 가능(direct)" vs "재탐색 필요
  * (needLookup)" 를 정확히 가르는지가 이 정정의 핵심이라 뮤테이션 대상이다.
  */
+import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
 
 // _shared.mjs 모킹
@@ -224,6 +225,27 @@ describe("planWalkUpdates", () => {
     const { direct, needLookup } = planWalkUpdates({ apartments, schoolsById });
     expect(direct.map(d => d.id)).toEqual(["d1"]);
     expect(needLookup.map(n => n.id)).toEqual(["n1"]);
+  });
+});
+
+// ── 세션566: dry-run 은 KAKAO_KEY 부재로 exit 1 하지 않는다 ──────────────
+// main() 은 Supabase/Kakao 를 실제로 호출해 무거운 mocking 없이는 단위테스트가 어렵다
+// (guards-must-be-mutation-tested.md "테스트가 그 코드가 실제로 지나는 경로를 지나는가").
+// 대신 소스를 직접 grep 해 exit 조건에 `!dryRun` 게이트가 실제로 배선돼 있는지 확인한다.
+// ⚠️ 좌변(`if (result.fail > 0`)까지 고정 — 부분 문자열만 찾으면 선언부·주석에 걸려
+// 껍데기가 된다(guards-must-be-mutation-tested.md 세션491 사고 답습).
+describe("dry-run 은 KAKAO_KEY 부재만으로 exit 1 하지 않는다 (세션566)", () => {
+  const src = readFileSync(new URL("./calc-school-walk.mjs", import.meta.url), "utf-8");
+
+  it("exit 조건이 dryRun 을 실제로 검사한다", () => {
+    expect(src).toMatch(
+      /if \(result\.fail > 0 \|\| \(!dryRun && partialNoKey\)\) process\.exit\(1\);/,
+    );
+  });
+
+  it("dry-run 안내 로그가 실제로 찍힌다", () => {
+    expect(src).toMatch(/if \(dryRun && partialNoKey\) \{/);
+    expect(src).toMatch(/KAKAO_KEY 없음 — 재탐색 \$\{needLookup\.length\}곳은 미리보기에서 빠졌다/);
   });
 });
 
