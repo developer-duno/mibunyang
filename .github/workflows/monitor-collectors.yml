@@ -73,6 +73,11 @@ on:
         options:
           - daily
           - test
+      force_db_permission_audit:
+        description: '⑩ 주간 DB 권한 점검을 요일 무관 강제 실행(true) — 수동 확인용'
+        required: false
+        type: boolean
+        default: false
 
 # GITHUB_TOKEN 권한 명시 — 미선언 시 actions 스코프 누락 가능.
 # monitor 가 /actions/runs·/actions/workflows 로 수집기 마지막 run 시각을 조회 →
@@ -110,6 +115,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          FORCE_DB_PERMISSION_AUDIT: ${{ inputs.force_db_permission_audit && '1' || '' }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_run" ]; then
             node scripts/monitor-collectors.mjs --mode=run

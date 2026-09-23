@@ -4,7 +4,7 @@
  * 대상: sendTelegram (전송/스킵/실패), formatIssue (메시지 포맷)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelegram, formatIssue, toKst, buildMessages } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssue, formatIssueForConsole, toKst, buildMessages } from "./notify-telegram.mjs";
 
 describe("sendTelegram", () => {
   beforeEach(() => {
@@ -183,6 +183,41 @@ describe("formatIssue", () => {
     const msg = formatIssue({ kind: "fail", collector: "Collect Trades & <Stats>", detail: "d" });
     expect(msg).toContain("Collect Trades &amp; &lt;Stats&gt;");
     expect(msg).not.toContain("& <Stats>");
+  });
+});
+
+describe("formatIssueForConsole — 공개 콘솔용(감시 ⑩ 세부 은닉)", () => {
+  it("collector=db-permissions 이면 lines·detail 안의 이름을 담지 않고 개수만 낸다", () => {
+    const issue = /** @type {any} */ ({
+      kind: "nulls",
+      collector: "db-permissions",
+      detail: "주간 DB 권한 점검 — 경보 2종",
+      lines: [
+        "[R1] anon/authenticated 쓰기 권한 1건",
+        "  · public.apartments — anon INSERT (표 권한)",
+        "[R5] anon/authenticated 실행 가능 SECURITY DEFINER 함수 1개",
+        "  · public.leaky_fn",
+      ],
+      at: "2026-09-24T00:00:00Z",
+    });
+    const out = formatIssueForConsole(issue);
+    expect(out).toContain("db-permissions");
+    expect(out).toContain("경보 2종");
+    expect(out).not.toContain("apartments");
+    expect(out).not.toContain("leaky_fn");
+    expect(out).not.toContain("[R1]");
+    expect(out).not.toContain("[R5]");
+  });
+
+  it("db-permissions 가 아닌 이슈는 formatIssue 와 완전히 같은 문자열을 낸다(기존 출력 불변)", () => {
+    const issue = /** @type {any} */ ({
+      kind: "fail",
+      collector: "collect-transport",
+      conclusion: "failure",
+      detail: "cancelled · 5/17 04:00 시작",
+      url: "https://github.com/x/y/actions/runs/123",
+    });
+    expect(formatIssueForConsole(issue)).toBe(formatIssue(issue));
   });
 });
 
