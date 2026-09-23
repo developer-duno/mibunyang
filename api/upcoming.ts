@@ -24,23 +24,53 @@ export default withHandler({
   handler: handleGet,
 });
 
+const UPCOMING_SELECT = `id, name, region, gu, presaleStage, presaleMinPrice, presalePp,
+               presaleRecruitDate, presaleSchedule, presaleImageUrl, naverPresaleNo,
+               naverPresaleSeq, presaleHousingType, presaleType, presaleInquiry,
+               catsCache`;
+const UPCOMING_PAGE = 1000;
+
+/**
+ * apartments_flat 에서 presaleStage IN (분양계획/청약중/분양중) 전량을 고유 키(id) 커서로
+ * 훑는다. PostgREST 는 요청당 최대 1,000행만 주므로, 단순 `.in().select()` 하나로는 오늘
+ * 648건(세션 469 실측)이 1,000건을 넘는 날 조용히 잘린다
+ * (.claude/rules/collectors/unordered-pagination-loses-rows.md).
+ *
+ * ORDER BY 없는 OFFSET 이 아니라 `id` 오름차순 + `gt(id, cursor)` 커서라 페이지 경계에서
+ * 행이 새지 않는다. 조회 중 에러가 나면 그때까지 모은 부분 결과를 버리고 throw —
+ * 호출부가 500 으로 응답해 "일부만 조용히 반환" 을 막는다.
+ */
+async function fetchAllUpcoming(sb: any): Promise<any[]> {
+  const rows: any[] = [];
+  let cursor: any = null;
+  while (true) {
+    let q = sb
+      .from("apartments_flat")
+      .select(UPCOMING_SELECT)
+      .in("presaleStage", ALL_STAGES)
+      .order("id", { ascending: true })
+      .limit(UPCOMING_PAGE);
+    if (cursor != null) q = q.gt("id", cursor);
+    const { data, error } = await q;
+    if (error) throw error;
+    if (!data || data.length === 0) break;
+    rows.push(...data);
+    if (data.length < UPCOMING_PAGE) break;
+    cursor = data[data.length - 1].id;
+  }
+  return rows;
+}
+
 async function handleGet(req: any, res: any) {
   try {
     const sb = getSupabase();
 
-    // apartments_flat VIEW 에서 presaleStage IN (분양계획/청약중/분양중) 필터
-    const { data, error } = await sb
-      .from("apartments_flat")
-      .select(
-        `id, name, region, gu, presaleStage, presaleMinPrice, presalePp,
-               presaleRecruitDate, presaleSchedule, presaleImageUrl, naverPresaleNo,
-               naverPresaleSeq, presaleHousingType, presaleType, presaleInquiry,
-               catsCache`
-      )
-      .in("presaleStage", ALL_STAGES);
-
-    if (error) {
-      console.error("[/api/upcoming] supabase error:", error.message);
+    // apartments_flat VIEW 에서 presaleStage IN (분양계획/청약중/분양중) 필터 — 전량 커서 페이징
+    let data: any[];
+    try {
+      data = await fetchAllUpcoming(sb);
+    } catch (e: any) {
+      console.error("[/api/upcoming] supabase error:", e?.message ?? e);
       return res.status(500).json({ ok: false, error: "데이터 조회 실패" });
     }
 

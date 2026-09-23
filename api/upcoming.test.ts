@@ -2,13 +2,37 @@
 // /api/upcoming 단위 + 핸들러 통합 테스트
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
-// Supabase chainable mock — .from().select().in() 체인이 select 인자를 캡처
+// Supabase chainable mock — .from().select().in().order().limit()[.gt()] 체인이 select 인자를 캡처.
+//
+// upcoming.ts 의 fetchAllUpcoming 은 keyset 페이징이라 .in() 뒤에 .order()/.limit()/.gt() 가
+// 붙는다(단일 페이지면 .limit() 이 마지막 호출, 다음 페이지부터는 .gt() 가 마지막 호출).
+// 기존 테스트가 `mockIn.mockResolvedValueOnce(...)` 로 "이 호출의 결과" 를 정하던 관례를
+// 그대로 쓸 수 있게, mockIn(...) 이 반환하는 Promise 를 그대로 들고 다니는 thenable 빌더를
+// order()/limit()/gt() 가 공유한다 — 어느 메서드에서 await 하든 같은 결과가 나온다.
 let lastSelectArg: any = null;
 const mockIn = vi.fn();
+function chain(promise: Promise<any>): any {
+  return {
+    order: () => chain(promise),
+    limit: () => chain(promise),
+    gt: () => chain(promise),
+    then: (resolve: any, reject: any) => promise.then(resolve, reject),
+  };
+}
 const mockSelect = vi.fn((arg: any) => {
   lastSelectArg = arg;
-  return { in: mockIn };
+  return { in: (...args: any[]) => chain(Promise.resolve(mockIn(...args))) };
 });
+
+/**
+ * 여러 페이지를 순서대로 반환하도록 mockIn 을 설정한다(마지막 인자는 짧은 페이지 —
+ * fetchAllUpcoming 의 종료 조건은 "받은 행 수 < UPCOMING_PAGE"). 페이지 수만큼
+ * mockResolvedValueOnce 를 예약하는 얇은 헬퍼 — 기존 단일 페이지 테스트의
+ * mockResolvedValueOnce 관례와 호환된다(멀티 페이지가 필요한 테스트만 이걸 쓴다).
+ */
+function mockInPages(pages: Array<{ data: any[] | null; error: any }>) {
+  for (const page of pages) mockIn.mockResolvedValueOnce(page);
+}
 
 vi.mock("./_lib/supabase.js", () => ({
   getSupabase: vi.fn(() => ({ from: vi.fn(() => ({ select: mockSelect })) })),
@@ -427,5 +451,35 @@ describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방
     // 분양계획 단지는 presale_announce (4번째 색 — spec § 6-1)
     expect(body.calendar["2099-05-08"]).toEqual([{ id: "ap-1", event: "presale_announce" }]);
     expect(body.calendar["2026-05-20"]).toEqual([{ id: "ap-2", event: "winner_announce" }]);
+  });
+
+  // ── 커서 페이징 (unordered-pagination-loses-rows.md) ──────────
+  // PostgREST 는 요청당 최대 1,000행만 준다. 1,005건 중 1,000건짜리 첫 페이지(짧지 않음 →
+  // 계속) + 5건짜리 둘째 페이지(1,000 미만 → 종료)로 나눠 mockIn 에 순서대로 물리고,
+  // 핸들러가 두 페이지를 합쳐 1,005건 전부 돌려주는지 본다.
+  it("1,000행 초과(1,005건) — 두 페이지를 합쳐 전부 반환한다", async () => {
+    const page1 = Array.from({ length: 1000 }, (_, i) => ({
+      id: `ap-${String(i + 1).padStart(4, "0")}`,
+      presaleStage: "분양중",
+      presaleRecruitDate: null,
+      presaleSchedule: null,
+    }));
+    const page2 = Array.from({ length: 5 }, (_, i) => ({
+      id: `ap-${String(1000 + i + 1).padStart(4, "0")}`,
+      presaleStage: "분양중",
+      presaleRecruitDate: null,
+      presaleSchedule: null,
+    }));
+    mockInPages([
+      { data: page1, error: null },
+      { data: page2, error: null },
+    ]);
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    expect(res.status).toHaveBeenCalledWith(200);
+    const body = res.json.mock.calls[0][0];
+    expect(body.totals.sale).toBe(1005);
+    expect(mockIn).toHaveBeenCalledTimes(2);
   });
 });

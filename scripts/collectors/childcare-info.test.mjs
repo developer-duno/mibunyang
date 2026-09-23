@@ -2,14 +2,30 @@
 /**
  * childcare-info.mjs 테스트 — cpmsapi021 XML 파싱 / 시군구 집계 / GU_LAWD_MAP 답습 (세션 252 W6-D 옵션 ε)
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { readFileSync } from "fs";
+import path from "path";
+
+const selectAllMock = vi.fn();
+
+const fetchWithRetryMock = vi.fn();
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
+  return {
+    ...orig,
+    loadEnv: vi.fn(),
+    getMibuyangSupabase: vi.fn(),
+    getSupabase: vi.fn(),
+    selectAll: (/** @type {any[]} */ ...args) => selectAllMock(...args),
+    fetchWithRetry: (/** @type {any[]} */ ...args) => fetchWithRetryMock(...args),
+    sleep: vi.fn(() => Promise.resolve()), // 250+ 시군구 × 150ms 대기 제거 (테스트 속도)
+  };
 });
 
-const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode, pickLatestPerKey, mergePreserveCoords } = await import("./childcare-info.mjs");
+process.env.CHILDCARE_API_KEY = "test-key";
+
+const { parseChildcareXml, aggregateChildcare, listAllSgg, assertNoErrorCode, pickLatestPerKey, mergePreserveCoords, main } = await import("./childcare-info.mjs");
 
 describe("parseChildcareXml", () => {
   // sample 응답 박제 (2026-05-16 실 API 호출 서울 종로구 arcode=11110 응답)
@@ -238,6 +254,79 @@ describe("pickLatestPerKey", () => {
     const map = pickLatestPerKey(regions);
     expect(map.size).toBe(1);
     expect(map.has("서울|강남구")).toBe(true);
+  });
+});
+
+// ── regions 조회 — 최신 recorded_at 행이 id 순서(무정렬)로 와도 선택된다 (세션566) ──
+// pickLatestPerKey 는 순서와 무관하게 recorded_at 최댓값을 스스로 비교하지만, main() 안에서
+// selectAll 뒤 넣은 명시적 정렬이 실제로 배선돼 있는지(정렬을 빼먹지 않았는지)를 통합 경로로 검증한다.
+describe("main() — regions 최신행 선택이 입력 순서(id 오름차순=recorded_at 무순)와 무관하다", () => {
+  /** 서울 종로구 arcode = 11110 (listAllSgg 첫 항목). 그 호출만 유효 응답, 나머지는 0건. */
+  function xmlFor(/** @type {string} */ arcode) {
+    if (arcode !== "11110") return "<response></response>";
+    return `<response><item><stcode>S1</stcode><crname>테스트어린이집</crname><crcapat>10</crcapat></item></response>`;
+  }
+
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    fetchWithRetryMock.mockImplementation(async (/** @type {string} */ url) => {
+      const m = /arcode=(\d+)/.exec(url);
+      const arcode = m ? m[1] : "";
+      return { text: async () => xmlFor(arcode) };
+    });
+  });
+
+  it("id 오름차순(= recorded_at 은 뒤죽박죽)으로 와도 recorded_at 최댓값 행을 고른다", async () => {
+    // id 오름차순으로 3행 — recorded_at 은 의도적으로 순서를 뒤섞는다(오래된 id 가 더 최신일 수도).
+    const regionsUnsorted = [
+      { id: 1, region: "서울", gu: "종로구", recorded_at: "2026-01-01", childcare: null },
+      { id: 2, region: "서울", gu: "종로구", recorded_at: "2026-06-01", childcare: { marker: "SHOULD_WIN" } }, // 최신
+      { id: 3, region: "서울", gu: "종로구", recorded_at: "2026-03-01", childcare: null },
+    ];
+    selectAllMock.mockResolvedValueOnce(regionsUnsorted);
+
+    const sbUpdateMock = vi.fn(() => ({ eq: vi.fn(() => Promise.resolve({ error: null })) }));
+    const { getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
+    /** @type {any} */ (getSupabase).mockReturnValue({
+      from: vi.fn(() => ({ update: sbUpdateMock })),
+    });
+
+    await main();
+
+    // id=2(2026-06-01, 가장 최신)가 UPDATE 대상으로 선택돼야 한다.
+    // sb.from("regions").update({ childcare: merged }).eq("id", 2) 형태 호출을 확인.
+    // mergePreserveCoords(newAgg, prevChildcare) — prevChildcare 가 id=2 의 것이어야
+    // marker 는 신규 7필드가 아니므로 보존되지 않지만(신규 stcode라 신규 시설), 이 테스트는
+    // "어느 id 가 선택됐는가"를 eq 호출 인자로 직접 확인한다.
+    expect(sbUpdateMock).toHaveBeenCalledTimes(1);
+    const eqMock = /** @type {any} */ (sbUpdateMock.mock.results[0].value).eq;
+    expect(eqMock.mock.calls[0][0]).toBe("id");
+    expect(eqMock.mock.calls[0][1]).toBe(2);
+  });
+});
+
+// ── regions 조회 배선 — selectAll keyCol + 명시적 정렬 (세션566) ──
+// pickLatestPerKey 는 순서 무관하게 안전해(위 통합 테스트가 증명) 정렬 삭제 자체가 행동
+// 뮤테이션으로 안 잡힌다(뮤테이션 실측: 삭제해도 위 통합 테스트가 green). 그래서 "정렬 코드가
+// 실제로 있다"는 배선 자체는 소스 grep 으로 지킨다(좌변까지 고정 — guards-must-be-mutation-tested
+// §소스 grep 함정 — collect-unsold-kosis.test.mjs 의 "regions 조회 배선" 패턴 답습).
+describe("regions 조회 배선 — selectAll keyCol + 명시적 재정렬", () => {
+  const src = readFileSync(path.join(process.cwd(), "scripts/collectors/childcare-info.mjs"), "utf8");
+
+  it("selectAll 에 keyCol \"id\" 를 넘긴다 (무정렬 select 는 2,359행 표에서 1,000행만 매칭한다)", () => {
+    expect(src).toMatch(
+      /allRegions = [\s\S]{0,40}await selectAll\(\(s\) => s\.from\("regions"\)\.select\("id, region, gu, recorded_at, childcare"\), sb, "id"\)/,
+    );
+  });
+
+  it("selectAll 결과를 recorded_at 내림차순으로 재정렬한 뒤 pickLatestPerKey 에 넘긴다", () => {
+    expect(src).toMatch(/allRegions = allRegions\.slice\(\)\.sort\(/);
+    expect(src).toMatch(/const latestMap = pickLatestPerKey\(allRegions/);
+  });
+
+  it("조회 실패는 throw (regions 없이는 어느 행도 갱신 못 하므로 fail-open 불가)", () => {
+    expect(src).toMatch(/throw new Error\(`regions 조회 실패: /);
   });
 });
 

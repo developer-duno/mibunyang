@@ -5,6 +5,8 @@
  *  childcare-info.test.mjs 답습 자산 박힘 — 본 test 미답습)
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "fs";
+import path from "path";
 
 vi.mock("./_shared.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -64,5 +66,27 @@ describe("listJejuSgg", () => {
     for (const sgg of list) {
       expect(sgg.arcode).not.toMatch(/^50/);
     }
+  });
+});
+
+// ── regions 조회 배선 — selectAll keyCol + 명시적 정렬 (세션566, childcare-info.mjs 답습) ──
+// pickLatestPerKey 는 순서 무관하게 안전해 정렬 삭제가 행동 뮤테이션으로 안 잡힌다(childcare-info.mjs
+// 뮤테이션 실측 답습). 정렬 배선 자체는 소스 grep 으로 지킨다(좌변까지 고정).
+describe("regions 조회 배선 — selectAll keyCol + 명시적 재정렬", () => {
+  const src = readFileSync(path.join(process.cwd(), "scripts/collectors/childcare-info-jeju.mjs"), "utf8");
+
+  it("selectAll 에 keyCol \"id\" 를 넘긴다 (무정렬 select 는 2,359행 표에서 1,000행만 매칭한다)", () => {
+    expect(src).toMatch(
+      /allRegions = [\s\S]{0,40}await selectAll\(\(s\) => s\.from\("regions"\)\.select\("id, region, gu, recorded_at, childcare"\), sb, "id"\)/,
+    );
+  });
+
+  it("selectAll 결과를 recorded_at 내림차순으로 재정렬한 뒤 pickLatestPerKey 에 넘긴다", () => {
+    expect(src).toMatch(/allRegions = allRegions\.slice\(\)\.sort\(/);
+    expect(src).toMatch(/const latestMap = pickLatestPerKey\(allRegions/);
+  });
+
+  it("조회 실패는 throw (regions 없이는 어느 행도 갱신 못 하므로 fail-open 불가)", () => {
+    expect(src).toMatch(/throw new Error\(`regions 조회 실패: /);
   });
 });

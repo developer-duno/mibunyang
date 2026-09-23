@@ -325,8 +325,34 @@ function printReport(audit) {
   log(PHASE, "");
 }
 
+// ── 표별 고유 키 (unordered-pagination-loses-rows.md §1 — 페이징 커서용) ──
+// scripts/_selectall-keycol-coverage.test.mjs 의 KNOWN_UNIQUE_KEYS 와 같은 값이어야 한다.
+// 여기서 쓰는 표만 선언한다 — `builders`(PK "name", 건설사 수만큼이라 BATCH_SIZE 를 넘을
+// 일이 없는 소형 참조표)는 아래 목록에 없으면 offset 모드로 남는다(안전 — 행 수가 애초에 작다).
+/** @type {Record<string, string>} */
+const TABLE_KEY_COLS = {
+  apartments: "id",
+  apartments_flat: "id",
+  prices: "id",
+  infra: "apartment_id",
+  schools: "apartment_id",
+  transport: "apartment_id",
+  regions: "id",
+  trade_stats: "apartment_id",
+};
+
 // ── 테이블별 개별 쿼리 + 메모리 merge (VIEW 타임아웃 방지) ──
 /**
+ * ⚠️ **정렬 없는 OFFSET 페이징은 1,000행을 넘는 표에서 행을 잃는다**
+ * (.claude/rules/collectors/unordered-pagination-loses-rows.md — Postgres 는 ORDER BY 가
+ * 없으면 페이지마다 다른 표본을 준다). 이 표들(apartments 3,068·prices 13,716 등)은 전부
+ * 그 선을 넘으므로, `TABLE_KEY_COLS` 에 등재된 표는 **고유 키 커서**(order + gt, 손수 구현 —
+ * 이 함수는 `table`·`columns` 가 런타임 변수라 공용 `selectAll(fn, sb, keyCol)` 의 정적 가드
+ * `_selectall-keycol-coverage.test.mjs` 가 요구하는 "literal from()/select()" 을 만들 수 없다.
+ * 이 파일의 안전망은 대신 `scripts/_unbounded-query-coverage.test.mjs` 의 G2 — `.range(` 는
+ * 반드시 `.order(` 를 동반해야 한다 — 가 맡는다)로 훑는다. 미등재 표(builders)는 옛 offset
+ * 모드 그대로(회귀 0, 행 수가 작아 안전).
+ *
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string} table
  * @param {string} columns
@@ -337,6 +363,38 @@ function printReport(audit) {
 async function fetchAllFromTable(sb, table, columns, filterCol, filterVal) {
   /** @type {Record<string, unknown>[]} */
   const allRows = [];
+  const keyCol = TABLE_KEY_COLS[table];
+
+  if (keyCol) {
+    // 고유 키 커서 — 페이지 경계에 동률 행이 있어도 안 샌다(unordered-pagination-loses-rows.md §1).
+    /** @type {any} */
+    let cursor = null;
+    let page = 0;
+    while (true) {
+      let q = sb.from(table).select(columns).order(keyCol, { ascending: true }).limit(BATCH_SIZE);
+      if (filterCol && filterVal) q = q.eq(filterCol, filterVal);
+      if (cursor != null) q = q.gt(keyCol, cursor);
+      const { data, error } = await q;
+      if (error) {
+        if (page === 0) throw new Error(`${table} 조회 실패: ${error.message}`);
+        logError(PHASE, `${table} 배치 ${page} 실패: ${error.message}`);
+        break;
+      }
+      const batch = /** @type {Record<string, unknown>[]} */ (/** @type {unknown} */ (data || []));
+      if (batch.length === 0) break;
+      allRows.push(...batch);
+      if (batch.length < BATCH_SIZE) break;
+      cursor = batch[batch.length - 1][keyCol];
+      if (cursor == null) {
+        logError(PHASE, `${table} 커서 실패: ${keyCol} 컬럼이 select 에 없음 — 페이징 중단`);
+        break;
+      }
+      page++;
+    }
+    return allRows;
+  }
+
+  // 옛 offset 모드 (회귀 0) — TABLE_KEY_COLS 미등재 표(builders 같은 소형 참조표)만.
   let query = sb.from(table).select(columns, { count: "exact" });
   if (filterCol && filterVal) query = query.eq(filterCol, filterVal);
   query = query.range(0, BATCH_SIZE - 1);
@@ -568,12 +626,12 @@ export async function fetchAllFromView(sb, regionFilter) {
   // 2~8. 관련 테이블 병렬 쿼리
   log(PHASE, "  관련 테이블 7개 병렬 조회...");
   const [prices, infra, schools, transport, builders, regions, tradeStats] = await Promise.all([
-    fetchAllFromTable(sb, "prices", "apartment_id,area,price,pp", null, null),
+    fetchAllFromTable(sb, "prices", "id,apartment_id,area,price,pp", null, null),
     fetchAllFromTable(sb, "infra", "apartment_id,hospital,mart,conv,cafe,culture,bank,pharmacy,park,hospital_dist,mart_dist,conv_dist,cafe_dist,culture_dist,bank_dist,pharmacy_dist,park_dist,subway_dist,nearby_facilities,emergency,emergency_dist,emergency_name,emergency_type", null, null),
     fetchAllFromTable(sb, "schools", "apartment_id,school_score,school_grade,nearby_schools", null, null),
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
-    fetchAllFromTable(sb, "regions", "region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio,housing_price", null, null),
+    fetchAllFromTable(sb, "regions", "id,region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio,housing_price", null, null),
     fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m", null, null),
   ]);
 

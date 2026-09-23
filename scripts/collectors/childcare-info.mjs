@@ -36,7 +36,7 @@
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, GU_LAWD_MAP, today, recordApiQuota, recordCollectorRun, sleep } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, GU_LAWD_MAP, today, recordApiQuota, recordCollectorRun, sleep, selectAll } from "./_shared.mjs";
 
 loadEnv();
 
@@ -217,7 +217,7 @@ export function pickLatestPerKey(regions) {
   return latest;
 }
 
-async function main() {
+export async function main() {
   if (!API_KEY) {
     logError("init", "CHILDCARE_API_KEY 환경변수 필요 (info.childcare.go.kr cpmsapi021 인증키)");
     process.exit(1);
@@ -274,10 +274,25 @@ async function main() {
   // regions 시계열 전수 조회 → (region, gu) 별 최신행 id 맵 구축.
   // PostgREST PATCH 가 order/limit 을 무시해 .eq(region).eq(gu) 가 모든 과거 스냅샷을 덮어쓰던
   // 버그(쓰기량 2.5배 → statement timeout → 트랜잭션 abort) 차단 — id PK 로 최신행 1개만 갱신.
-  const { data: allRegions, error: regErr } = await sb.from("regions")
-    .select("id, region, gu, recorded_at, childcare")
-    .order("recorded_at", { ascending: false });
-  if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
+  // 세션549: 무정렬(+order 뿐) select 는 2,359행 표에서 1,000행만 매칭한다
+  // (unordered-pagination-loses-rows.md §1) — selectAll 커서로 전수 확보 후,
+  // pickLatestPerKey 가 기대하는 "최신 recorded_at 우선" 순서를 JS 에서 명시적으로 재정렬한다.
+  /** @type {Array<{ id: number, region: string, gu: string | null, recorded_at: string, childcare: ChildcareAggregate | null }>} */
+  let allRegions;
+  try {
+    allRegions = /** @type {any} */ (
+      await selectAll((s) => s.from("regions").select("id, region, gu, recorded_at, childcare"), sb, "id")
+    );
+  } catch (e) {
+    throw new Error(`regions 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  // pickLatestPerKey 는 순서에 무관하게 recorded_at 최댓값을 스스로 고르지만(내부 비교),
+  // 호출 전 정렬을 명시해 "첫 행이 최신"이라는 그 함수의 원래 전제를 그대로 지킨다.
+  // 동률(recorded_at 이 같은) 시엔 id 내림차순으로 최신 삽입분을 우선한다.
+  allRegions = allRegions.slice().sort((a, b) => {
+    if (a.recorded_at !== b.recorded_at) return a.recorded_at > b.recorded_at ? -1 : 1;
+    return b.id - a.id;
+  });
   const latestMap = pickLatestPerKey(allRegions ?? []);
   // 최신행 id → 기존 childcare 본문 (merge 시 좌표 보존용).
   /** @type {Map<number, ChildcareAggregate | null>} */

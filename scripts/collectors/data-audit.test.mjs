@@ -203,8 +203,10 @@ describe("AUDIT_FIELDS", () => {
 });
 
 // ── fetchAllFromView regions merge (세션 351 — fetch/merge 5컬럼 누락 회귀 가드) ──
-// 테이블별 mock 응답을 반환하는 Supabase 빌더. fetchAllFromTable 의
-// from(table).select(cols, opts).eq?().range(a,b) → { data, error, count } 체인 재현.
+// 테이블별 mock 응답을 반환하는 Supabase 빌더. fetchAllFromTable 이 이제 keyCol 커서
+// (order/gt/limit)로 훑으므로 그 체인도 재현한다 — order/gt/limit 은 통과만 하고,
+// 실제 결과는 range()/limit() 어느 쪽이 마지막에 불려도 같은 고정 result 를 낸다
+// (테스트 픽스처가 전부 BATCH_SIZE 미만이라 페이지 1개로 끝나는 건 그대로).
 /** @param {Record<string, Record<string, unknown>[]>} tableRows */
 function makeMockSb(tableRows) {
   return {
@@ -215,6 +217,9 @@ function makeMockSb(tableRows) {
       const builder = {
         select: () => builder,
         eq: () => builder,
+        order: () => builder,
+        gt: () => builder,
+        limit: () => Promise.resolve(result),
         range: () => Promise.resolve(result),
       };
       return builder;
@@ -235,7 +240,7 @@ describe("fetchAllFromView regions merge", () => {
       apartments: [{ id: "ah-1", region: "서울" }],
       ...EMPTY_RELATED,
       regions: [{
-        region: "서울", gu: null, recorded_at: "2026-03-20",
+        id: 1, region: "서울", gu: null, recorded_at: "2026-03-20",
         pop_growth: -0.8, supply_ratio: null, net_migration: -167,
         price_index: 232, avg_price_sqm: 16606, new_supply: 1158,
         initial_sale_rate: 100, land_cost_ratio: 59,
@@ -262,9 +267,9 @@ describe("fetchAllFromView regions merge", () => {
       ...EMPTY_RELATED,
       regions: [
         // 시군구 행이 배열 앞 — price_index NULL (덮어쓰면 안 됨)
-        { region: "서울", gu: "강남구", recorded_at: "2026-03-20", price_index: null, pop_growth: 1.0 },
+        { id: 1, region: "서울", gu: "강남구", recorded_at: "2026-03-20", price_index: null, pop_growth: 1.0 },
         // 시도 행 (gu null) — 진짜 시장지표 보유
-        { region: "서울", gu: null, recorded_at: "2026-03-20", price_index: 232, pop_growth: -0.8 },
+        { id: 2, region: "서울", gu: null, recorded_at: "2026-03-20", price_index: 232, pop_growth: -0.8 },
       ],
     });
     const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
@@ -279,8 +284,8 @@ describe("fetchAllFromView regions merge", () => {
       apartments: [{ id: "ah-1", region: "서울" }],
       ...EMPTY_RELATED,
       regions: [
-        { region: "서울", gu: null, recorded_at: "2026-01-01", price_index: 100 }, // 구
-        { region: "서울", gu: null, recorded_at: "2026-03-20", price_index: 232 }, // 최신
+        { id: 1, region: "서울", gu: null, recorded_at: "2026-01-01", price_index: 100 }, // 구
+        { id: 2, region: "서울", gu: null, recorded_at: "2026-03-20", price_index: 232 }, // 최신
       ],
     });
     const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
@@ -296,8 +301,8 @@ describe("fetchAllFromView regions merge", () => {
   // ⚠️ 순수함수(pickLatestNonNullByRegionGu)가 아니라 **진짜 merge 경로**로 잰다 —
   //    조회 키를 만드는 자리는 fetchAllFromView 안이고, 거기가 되돌아가도 순수함수는 초록이다.
   const SEJONG_REGIONS = [
-    { region: "세종", gu: "세종시", recorded_at: "2026-06-01", housing_price: 366 },
-    { region: "경기", gu: "수원시 장안구", recorded_at: "2026-06-01", housing_price: 512 },
+    { id: 1, region: "세종", gu: "세종시", recorded_at: "2026-06-01", housing_price: 366 },
+    { id: 2, region: "경기", gu: "수원시 장안구", recorded_at: "2026-06-01", housing_price: 512 },
   ];
 
   it("세종 단지는 gu 가 null 이어도 '세종|세종시' 값을 받는다", async () => {
@@ -338,6 +343,154 @@ describe("fetchAllFromView regions merge", () => {
     });
     const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
     expect(rows[0].housingPrice).toBe(512);
+  });
+});
+
+// ── fetchAllFromTable keyset 다중 페이지 (세션566) ────────────────────
+//
+// L368-393 의 keyset 커서 분기(TABLE_KEY_COLS 등재 표 — apartments/apartments_flat 등)는
+// 지금까지 전부 BATCH_SIZE(1000) 미만 픽스처만 썼다(L209 주석). 그래서 "가득 찬 첫 페이지
+// → 커서로 다음 페이지" 실제 반복 경로에 테스트가 0건이었다. `makeMockSbPaged` 는 표별로
+// 호출 순서에 따라 다른 결과를 주는 mock 빌더 체인이고, order/gt 호출을 기록해 커서가
+// 실제로 전진했는지까지 확인한다.
+//
+// ⚠️ fetchAllFromView 는 apartments 뿐 아니라 apartments_flat(뷰 id 보정)·regions 등도
+// 같은 keyset 분기를 탄다 — 그 표들은 EMPTY_RELATED_PAGED 로 빈 배열(짧은 첫 페이지)을 줘
+// 이번 가드가 겨누는 apartments 경로만 다중 페이지로 만든다.
+/**
+ * @param {Record<string, Array<Record<string, unknown>[]>>} tablePages
+ *   테이블명 → [1페이지 행배열, 2페이지 행배열, ...] (없는 테이블은 빈 배열 1페이지로 취급)
+ * @param {{ orderCalls: Array<{ table: string, col: string }>, gtCalls: Array<{ table: string, col: string, val: unknown }> }} spy
+ */
+function makeMockSbPaged(tablePages, spy) {
+  // ⚠️ keyset 루프(data-audit.mjs L373)는 페이지마다 `sb.from(table)` 을 **새로** 부른다
+  // (매 while 반복이 새 쿼리 체인을 만든다). pageIdx 를 from() 클로저 안에 두면 호출마다
+  // 0 으로 리셋돼 항상 1페이지만 돌려주는 조용한 무한루프가 된다 — 테이블별 진행 상태는
+  // from() **밖**, 이 함수 스코프에 둔다.
+  /** @type {Record<string, number>} */
+  const pageIdxByTable = {};
+  return {
+    from(/** @type {string} */ table) {
+      const pages = tablePages[table] ?? [[]];
+      // 실제 코드(L374-376)는 .limit(...) 뒤에도 .eq(/.gt( 을 체이닝할 수 있다고 가정한다
+      // (`let q = ...limit(BATCH_SIZE); if (cursor != null) q = q.gt(...)`) — 그래서 이
+      // builder 는 limit/range 를 호출해도 즉시 Promise 로 꺼지지 않고 그대로 자신을
+      // 반환한다. 실제로 resolve 되는 시점은 `await q`(then 호출)뿐이다.
+      /** @type {any} */
+      const builder = {
+        select: () => builder,
+        eq: () => builder,
+        order: (/** @type {string} */ col) => {
+          spy.orderCalls.push({ table, col });
+          return builder;
+        },
+        gt: (/** @type {string} */ col, /** @type {unknown} */ val) => {
+          spy.gtCalls.push({ table, col, val });
+          return builder;
+        },
+        limit: () => builder,
+        range: () => builder,
+        then: (/** @type {(v: any) => any} */ resolve, /** @type {(e: any) => any} */ reject) => {
+          const idx = pageIdxByTable[table] ?? 0;
+          const rows = pages[Math.min(idx, pages.length - 1)] ?? [];
+          pageIdxByTable[table] = idx + 1;
+          return Promise.resolve({ data: rows, error: null, count: rows.length }).then(
+            resolve,
+            reject,
+          );
+        },
+      };
+      return builder;
+    },
+  };
+}
+
+describe("fetchAllFromTable keyset 커서 — 가득 찬 첫 페이지 뒤 다음 페이지 (세션566)", () => {
+  const BATCH_SIZE = 1000;
+  /** id 1..N (zero-pad) 인 apartments 행 배열
+   * @param {number} start
+   * @param {number} count
+   */
+  const makeApts = (start, count) =>
+    Array.from({ length: count }, (_, i) => ({
+      id: `ah-${String(start + i).padStart(5, "0")}`,
+      region: "서울",
+    }));
+
+  const page1 = makeApts(1, BATCH_SIZE); // 가득 찬 첫 페이지 — ah-00001..ah-01000
+  const page2 = makeApts(BATCH_SIZE + 1, 5); // 짧은 두 번째 페이지 — ah-01001..ah-01005 (< BATCH_SIZE 라 멈춤)
+  const allIds = [...page1, ...page2].map((r) => r.id);
+  // apartments_flat(뷰 id 보정)도 같은 keyset 분기를 탄다 — 1,005개를 한 페이지로 주면
+  // BATCH_SIZE(1,000) 초과라 이 mock 이 페이지를 다 못 대 무한 반복에 빠진다. apartments 와
+  // 똑같이 두 페이지로 나눠 준다(이 가드가 겨누는 건 apartments 경로이므로 내용은 무관, 형태만 맞춘다).
+  const flatPage1 = allIds.slice(0, BATCH_SIZE).map((id) => ({ id }));
+  const flatPage2 = allIds.slice(BATCH_SIZE).map((id) => ({ id }));
+
+  const EMPTY_RELATED = {
+    prices: [[]], infra: [[]], schools: [[]], transport: [[]], builders: [[]],
+    regions: [[]], trade_stats: [[]],
+  };
+
+  it("모든 행이 정확히 한 번씩 반환된다 (길이 + 고유 키)", async () => {
+    /** @type {{ orderCalls: any[], gtCalls: any[] }} */
+    const spy = { orderCalls: [], gtCalls: [] };
+    const sb = makeMockSbPaged(
+      {
+        apartments: [page1, page2],
+        apartments_flat: [flatPage1, flatPage2],
+        ...EMPTY_RELATED,
+      },
+      spy,
+    );
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+
+    expect(rows).toHaveLength(BATCH_SIZE + 5);
+    expect(new Set(rows.map((r) => r.id)).size).toBe(BATCH_SIZE + 5);
+    expect(rows.map((r) => r.id).sort()).toEqual([...allIds].sort());
+  });
+
+  it("두 번째 요청이 .order(id) 와 .gt(id, 첫 페이지 마지막 키) 를 실제로 썼다", async () => {
+    /** @type {{ orderCalls: any[], gtCalls: any[] }} */
+    const spy = { orderCalls: [], gtCalls: [] };
+    const sb = makeMockSbPaged(
+      {
+        apartments: [page1, page2],
+        apartments_flat: [flatPage1, flatPage2],
+        ...EMPTY_RELATED,
+      },
+      spy,
+    );
+    await fetchAllFromView(/** @type {any} */ (sb), null);
+
+    const aptOrderCalls = spy.orderCalls.filter((c) => c.table === "apartments");
+    const aptGtCalls = spy.gtCalls.filter((c) => c.table === "apartments");
+
+    // 페이지마다 .order("id") 가 불린다 (매 요청 재호출) — 최소 2회(1·2페이지)
+    expect(aptOrderCalls.length).toBeGreaterThanOrEqual(2);
+    expect(aptOrderCalls.every((c) => c.col === "id")).toBe(true);
+
+    // 두 번째 요청은 .gt("id", <1페이지 마지막 키>) 를 쓴다 — 1페이지 요청엔 gt 가 없어야 함
+    expect(aptGtCalls).toHaveLength(1);
+    expect(aptGtCalls[0].col).toBe("id");
+    expect(aptGtCalls[0].val).toBe(page1[page1.length - 1].id); // "ah-01000"
+  });
+
+  it("짧은 두 번째 페이지(< BATCH_SIZE) 이후 3번째 요청을 하지 않는다", async () => {
+    /** @type {{ orderCalls: any[], gtCalls: any[] }} */
+    const spy = { orderCalls: [], gtCalls: [] };
+    const sb = makeMockSbPaged(
+      {
+        apartments: [page1, page2],
+        apartments_flat: [flatPage1, flatPage2],
+        ...EMPTY_RELATED,
+      },
+      spy,
+    );
+    await fetchAllFromView(/** @type {any} */ (sb), null);
+
+    // apartments 표에 대한 order 호출 수 = 정확히 페이지 수(2) — 3페이지째를 더 열면 안 됨
+    const aptOrderCalls = spy.orderCalls.filter((c) => c.table === "apartments");
+    expect(aptOrderCalls).toHaveLength(2);
   });
 });
 

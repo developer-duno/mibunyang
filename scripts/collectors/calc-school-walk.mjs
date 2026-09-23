@@ -273,8 +273,13 @@ async function main() {
   log(PHASE, "\n=== 완료 ===");
   // KAKAO_KEY 미설정으로 재탐색을 통째로 못 했으면(needLookup 존재) 부분 실행임을 알리기 위해
   // 실패로 간주해 종료코드를 비정상으로 남긴다 — 침묵한 채 "정상 종료"로 보이지 않게.
+  // 단 --dry-run 은 미리보기일 뿐이라 이 조건으로 exit 1 을 내면 안 된다(미리보기가 실패로
+  // 보임) — dry-run 에서는 경고 로그만 남기고 넘어간다. 실제 실행(non-dry-run)만 exit 1.
   const partialNoKey = !KAKAO_KEY && needLookup.length > 0;
-  if (result.fail > 0 || partialNoKey) process.exit(1);
+  if (dryRun && partialNoKey) {
+    log(PHASE, `[DRY-RUN] KAKAO_KEY 없음 — 재탐색 ${needLookup.length}곳은 미리보기에서 빠졌다`);
+  }
+  if (result.fail > 0 || (!dryRun && partialNoKey)) process.exit(1);
 }
 
 const argv1 = process.argv[1];
