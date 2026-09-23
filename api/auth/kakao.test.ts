@@ -34,6 +34,9 @@ function makeRes() {
   } as any;
 }
 
+// 카카오가 이메일과 함께 주는 유효·인증 여부(세션566 부터 둘 다 true 여야 로그인된다).
+const VERIFIED = { is_email_valid: true, is_email_verified: true };
+
 function mockKakaoFetch({ tokenOk = true, userOk = true, userPayload = {} } = {}) {
   global.fetch = vi.fn()
     .mockResolvedValueOnce({
@@ -45,7 +48,7 @@ function mockKakaoFetch({ tokenOk = true, userOk = true, userPayload = {} } = {}
     .mockResolvedValueOnce({
       ok: userOk,
       json: async () => userOk
-        ? { id: 12345, kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" } }, ...userPayload }
+        ? { id: 12345, kakao_account: { email: "kakao@test.com", ...VERIFIED, profile: { nickname: "Tester" } }, ...userPayload }
         : { msg: "user lookup failed", code: -401 },
     }) as any;
 }
@@ -172,7 +175,7 @@ describe("auth/kakao handler", () => {
   });
 
   it("카카오 phone_number 응답 시 신규 사용자에 phoneNumber 저장 (비즈앱 심사 후, 세션 427)", async () => {
-    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" }, phone_number: "+82 10-1234-5678" } } });
+    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", ...VERIFIED, profile: { nickname: "Tester" }, phone_number: "+82 10-1234-5678" } } });
     mockKv.get.mockResolvedValueOnce(null);
     mockKv.get.mockResolvedValueOnce(null);
     const res = makeRes();
@@ -183,7 +186,7 @@ describe("auth/kakao handler", () => {
   });
 
   it("기존 사용자 phoneNumber 없을 때 카카오 phone 새로 받으면 채움 (심사 후 재로그인, 세션 427)", async () => {
-    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", profile: { nickname: "Tester" }, phone_number: "+82 10-9999-8888" } } });
+    mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", ...VERIFIED, profile: { nickname: "Tester" }, phone_number: "+82 10-9999-8888" } } });
     mockKv.get.mockResolvedValueOnce("kakao@test.com");
     mockKv.get.mockResolvedValueOnce({
       email: "kakao@test.com", name: "Tester", kakaoId: "12345", status: "approved",
@@ -291,5 +294,28 @@ describe("auth/kakao handler", () => {
     await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, role: "admin" }));
     delete process.env.ADMIN_EMAIL;
+  });
+
+  // 세션566 — 카카오 공식 문서 "이메일은 유효·인증 여부를 항상 확인하고 사용".
+  // 인증 안 된 이메일이 관리자 판별·기존 계정 연결에 쓰이면 남의 계정(관리자 포함)에 붙는다.
+  describe("인증 안 된 카카오 이메일은 받지 않는다", () => {
+    const cases: Array<[string, Record<string, unknown>]> = [
+      ["인증 안 됨(is_email_verified=false)", { is_email_valid: true, is_email_verified: false }],
+      ["유효하지 않음(다른 계정에 쓰여 만료, is_email_valid=false)", { is_email_valid: false, is_email_verified: true }],
+      ["두 값이 아예 없음(추측해서 믿지 않는다)", {}],
+    ];
+    for (const [label, flags] of cases) {
+      it(`${label} → 400 · 계정 생성·연결·토큰 발급 없음 (관리자 이메일이어도)`, async () => {
+        process.env.ADMIN_EMAIL = "kakao@test.com";
+        mockKakaoFetch({ userPayload: { kakao_account: { email: "kakao@test.com", ...flags, profile: { nickname: "Tester" } } } });
+        const res = makeRes();
+        await handler({ method: "POST", body: VALID_BODY, headers: {} }, res);
+        expect(res.status).toHaveBeenCalledWith(400);
+        expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: false, error: expect.stringContaining("이메일 인증") }));
+        expect(mockKv.get).not.toHaveBeenCalled();
+        expect(mockKv.set).not.toHaveBeenCalled();
+        delete process.env.ADMIN_EMAIL;
+      });
+    }
   });
 });
