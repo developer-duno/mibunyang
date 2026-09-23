@@ -17,7 +17,7 @@ AS $$
 
     -- 관계별 권한 — anon/authenticated 의 SELECT/INSERT/UPDATE/DELETE/TRUNCATE + RLS 상태.
     'relations', (
-      SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(row), '[]'::jsonb)
+      SELECT coalesce(pg_catalog.jsonb_agg(row), '[]'::jsonb)
       FROM (
         SELECT pg_catalog.jsonb_build_object(
           'schema', n.nspname,
@@ -38,15 +38,16 @@ AS $$
           -- 칸 단위 GRANT(anon/authenticated 가 INSERT/UPDATE 가능한 컬럼) — 표 권한이 없어도
           -- 컬럼 GRANT 가 단독으로 열려 있을 수 있으므로 attacl 을 직접 펼친다(2u user_profiles 형).
           'column_write_grants', (
-            SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(DISTINCT pg_catalog.jsonb_build_object(
+            SELECT coalesce(pg_catalog.jsonb_agg(DISTINCT pg_catalog.jsonb_build_object(
               'column', a.attname,
               'grantee', r.rolname,
               'privilege', acl.privilege_type
             )), '[]'::jsonb)
             FROM pg_catalog.pg_attribute a
-            CROSS JOIN LATERAL pg_catalog.aclexplode(pg_catalog.coalesce(a.attacl, ARRAY[]::aclitem[])) AS acl
+            CROSS JOIN LATERAL pg_catalog.aclexplode(a.attacl) AS acl  -- 빈 배열(0차원)을 넣으면 "ACL arrays must be one-dimensional" 오류 — 칸 권한 있는 칸만(2026-09-24 운영 DB 실측)
             JOIN pg_catalog.pg_roles r ON r.oid = acl.grantee
             WHERE a.attrelid = c.oid
+              AND a.attacl IS NOT NULL
               AND a.attnum > 0
               AND NOT a.attisdropped
               AND r.rolname IN ('anon', 'authenticated')
@@ -62,7 +63,7 @@ AS $$
 
     -- public 스키마의 RLS 정책 전체 (표·이름·명령·역할·조건).
     'policies', (
-      SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+      SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
         'table', p.tablename,
         'name', p.policyname,
         'cmd', p.cmd,
@@ -77,7 +78,7 @@ AS $$
 
     -- anon/authenticated 가 실행 가능한 SECURITY DEFINER 함수.
     'definer_functions', (
-      SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
+      SELECT coalesce(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object(
         'schema', n.nspname,
         'name', p.proname,
         'anon_execute', pg_catalog.has_function_privilege('anon', p.oid, 'EXECUTE'),
@@ -95,7 +96,7 @@ AS $$
 
     -- public 스키마에 설치된 확장(원래 있으면 안 되는 확장 침투 감시).
     'public_extensions', (
-      SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(e.extname), '[]'::jsonb)
+      SELECT coalesce(pg_catalog.jsonb_agg(e.extname), '[]'::jsonb)
       FROM pg_catalog.pg_extension e
       JOIN pg_catalog.pg_namespace n ON n.oid = e.extnamespace
       WHERE n.nspname = 'public'
@@ -103,12 +104,12 @@ AS $$
 
     -- security_invoker 가 아닌(=security_definer 성격의) public 뷰.
     'definer_views', (
-      SELECT pg_catalog.coalesce(pg_catalog.jsonb_agg(c.relname), '[]'::jsonb)
+      SELECT coalesce(pg_catalog.jsonb_agg(c.relname), '[]'::jsonb)
       FROM pg_catalog.pg_class c
       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
       WHERE n.nspname = 'public'
         AND c.relkind = 'v'
-        AND pg_catalog.coalesce(
+        AND coalesce(
           (SELECT (option_value = 'true')
            FROM pg_catalog.pg_options_to_table(c.reloptions) o
            WHERE o.option_name = 'security_invoker'),

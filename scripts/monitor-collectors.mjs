@@ -1164,20 +1164,32 @@ export const DEFINER_FUNCTION_ALLOWLIST = {};
 export const PUBLIC_EXTENSION_ALLOWLIST = [];
 
 /**
- * R4 — 공개 SELECT 가 가능해도 되는 표(운영 표 4개 제외). **잠정 목록**이다 — 함수를 처음
- * 적용한 뒤 실측(`audit_db_permissions()` 결과)으로 확정한다.
+ * R4 — anon 이 실제로 공개 읽기 가능해도 되는 표 **이름 명단**(세션567 재실측, 세션568 재설계).
  *
- * 도출 방법: `supabase/migrations/*.sql` 을 전부 재생했을 때 `CREATE POLICY ... FOR SELECT
- * USING (true)`(또는 그와 동등한 공개 조건)가 남아 있는 표의 목록에서, 세션567 에 막은 운영
- * 표 4개(collector_runs·api_quota_log·monitor_alert_state·monitor_daily_snapshot)를 뺀 것.
- * 이 저장소는 손님 화면(apartments_flat 등)이 anon 으로 직접 읽는 구조라 그 표들은 의도된
- * 공개다 — 실제 표 이름 목록은 CLIENT_WRITE_ALLOWLIST 와 달리 저장소 밖(텔레그램)에만 상세를
- * 보낸다. 개수만 아래에 적는다: **세션567 도출 시점 잠정 12개**(마이그레이션 재생 실측,
- * 운영 표 4개 제외 후). R4 는 이 개수보다 표가 **늘었을 때만** 경보한다(운영 판단이 필요한
- * 신규 공개 표가 생겼다는 뜻이므로) — 표 이름 자체는 함수 결과(텔레그램)로만 확인한다.
- * @type {number}
+ * 옛 버전은 "표 몇 개"라는 개수만 비교했는데, 그러면 기준 표 하나를 닫고 다른 표 하나를
+ * 몰래 열어도(개수가 같으므로) 경보가 안 울린다([[expect-ids-not-counts]] 의 R4 버전).
+ * 그래서 **이름 목록**으로 바꾼다 — 개수가 아니라 "이 표들만 anon 공개 읽기여야 한다"는
+ * 집합 자체가 진실이다.
+ *
+ * 도출 방법: `audit_db_permissions()` 실측 스냅샷(2026-09-24, 운영 DB)에서
+ * `anon_select === true` 이고 anon 에 적용되는 permissive SELECT/ALL 정책이 있으며 그
+ * 정책이 service_role 전용이 아닌 표를 전부 추림(= `evaluateDbPermissions` 의 R4 판정
+ * 함수를 그대로 이 스냅샷에 돌린 결과와 동일 — `Public read` 정책 표 20개와 정확히 일치).
+ * 이 표들은 손님 화면(apartments_flat 등)이 anon 으로 직접 읽는 구조라 의도된 공개다.
+ * 공개 자료 표 이름은 anon key 로 `/rest/v1/` OpenAPI 스키마에서 이미 볼 수 있으므로
+ * 저장소에 적어도 새로 드러나는 정보가 없다.
+ *
+ * R4 는 이 명단 **밖의 표가 새로 공개 읽기**가 되거나, 명단 **안의 표가 닫혀도**(운영
+ * 판단 필요) 경보한다 — 개수만 같으면 조용하던 옛 결함을 명단 대조가 막는다.
+ * @type {string[]}
  */
-export const PUBLIC_READ_TABLE_COUNT_BASELINE = 12;
+export const PUBLIC_READ_TABLES_BASELINE = [
+  "air_station_annual", "apartments", "applyhome_cancel_respl", "applyhome_events",
+  "applyhome_unit_supply", "builders", "dev_plans", "infra", "market_stats_history",
+  "officetel_presale_schedule", "officetel_unit_supply", "presale_schedule_official",
+  "prices", "regions", "rental_schedule_official", "rental_unit_supply", "schools",
+  "trade_stats", "transport", "unsold_history",
+];
 
 /**
  * KST 기준 오늘이 월요일인가. `Intl` 로 시간대를 고정해 서버가 어느 시간대에서 돌든 같은
@@ -1197,32 +1209,39 @@ export function isKstMonday(now = new Date()) {
  * `audit_db_permissions()` RPC 결과(스냅샷)를 판정 규칙과 대조해 Issue 목록을 만든다.
  * 순수 함수 — DB 호출은 호출부(main)에서 이미 끝낸 뒤 결과만 넘긴다.
  *
- * 판정 R1~R7:
- *   R1 anon/authenticated 의 표·칸 쓰기(INSERT/UPDATE/DELETE/TRUNCATE) — CLIENT_WRITE_ALLOWLIST 밖.
+ * 판정 R1~R7 (세션568 재설계 — R1/R4 는 "표 권한이 true 인가"가 아니라 "그 역할이 실제로
+ * 도달 가능한가"를 본다. Supabase 는 모든 public 표에 anon/authenticated 쓰기 **표 권한**을
+ * 기본으로 주므로(GRANT), 표 권한만 보면 거의 모든 표가 걸려 매주 잡음 경보가 된다 — 실제
+ * 차단은 RLS 정책이 한다):
+ *   R1 anon/authenticated 가 **실제로** 쓸 수 있는 표·칸 — ①표 권한(칸은 column_write_grants)이
+ *      있고 ②RLS 가 꺼졌거나 그 역할·명령에 적용되는 permissive 정책이 있는데 그 정책이
+ *      service_role 전용이 아니고(anon 은 auth.uid() 요구 정책도 도달 불가로 봄) ③그리고
+ *      CLIENT_WRITE_ALLOWLIST 밖이면 경보. TRUNCATE 는 PostgREST 로 호출할 수 없어 제외.
+ *      authenticated 가 UPDATE 로 도달 가능하면 갱신 가능한 칸(표 권한이면 전부, 아니면
+ *      column_write_grants)을 lines 에 남긴다.
  *   R2 public 기본 표(relkind 'r'/'p') 중 RLS 꺼진 것.
  *   R3 anon/authenticated/public 대상 쓰기 정책 중 조건이 항상 참이거나 로그인 여부만 보는 것
  *      (`_rls-anon-write-policy.test.mjs` 의 `isFlagged`/`ANY_LOGGED_IN` 과 같은 판정을 재사용).
- *   R4 공개 읽기 가능 표가 PUBLIC_READ_TABLE_COUNT_BASELINE 을 넘으면.
+ *   R4 anon 이 실제로 공개 읽기 가능한 표 **명단**이 PUBLIC_READ_TABLES_BASELINE 과 다르면
+ *      (늘어도, 줄어도 — 개수가 아니라 집합 대조라 "하나 닫고 하나 여는" 뒤바뀜도 잡는다).
  *   R5 anon/authenticated 실행 가능한 SECURITY DEFINER 함수 — DEFINER_FUNCTION_ALLOWLIST 밖.
  *   R6 public 스키마에 설치된 확장 — PUBLIC_EXTENSION_ALLOWLIST 밖.
  *
  * @param {Record<string, any> | null} snapshot `audit_db_permissions()` 반환값(RPC 성공 시) 또는 null(R7 — RPC 실패).
  * @param {{
- *   opsTables?: string[],
  *   clientWriteAllowlist?: Record<string, string>,
  *   definerAllowlist?: Record<string, string>,
  *   extensionAllowlist?: string[],
- *   publicReadBaseline?: number,
+ *   publicReadTables?: string[],
  *   rpcError?: string | null,
  * }} [rules]
  * @returns {Issue[]}
  */
 export function evaluateDbPermissions(snapshot, rules = {}) {
-  const opsTables = rules.opsTables ?? OPS_TABLES;
   const clientWriteAllowlist = rules.clientWriteAllowlist ?? CLIENT_WRITE_ALLOWLIST;
   const definerAllowlist = rules.definerAllowlist ?? DEFINER_FUNCTION_ALLOWLIST;
   const extensionAllowlist = rules.extensionAllowlist ?? PUBLIC_EXTENSION_ALLOWLIST;
-  const publicReadBaseline = rules.publicReadBaseline ?? PUBLIC_READ_TABLE_COUNT_BASELINE;
+  const publicReadTables = rules.publicReadTables ?? PUBLIC_READ_TABLES_BASELINE;
 
   // R7 — RPC 자체가 실패했다. 다른 규칙은 판정할 데이터가 없으므로 여기서 끝낸다.
   if (!snapshot) {
@@ -1247,15 +1266,37 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
   const definerFunctions = /** @type {Array<Record<string, any>>} */ (snapshot.definer_functions ?? []);
   const publicExtensions = /** @type {string[]} */ (snapshot.public_extensions ?? []);
 
-  // R1 — anon/authenticated 의 표·칸 쓰기.
+  // R1 — anon/authenticated 가 "실제로" 쓸 수 있는 표·칸(표 권한 + RLS 정책 도달 가능성 둘 다 확인).
+  // TRUNCATE 는 PostgREST(REST API)로 호출할 수 없으므로 표 권한이 true 여도 실제 위협이 아니다 — 제외.
+  const WRITE_CMDS = { insert: "INSERT", update: "UPDATE", delete: "DELETE" };
   /** @type {string[]} */
   const r1 = [];
   for (const rel of relations) {
-    if (opsTables.includes(rel.name)) continue; // 운영 표는 이미 anon/authenticated 권한이 0이어야 정상 — R4 몫
-    for (const role of ["anon", "authenticated"]) {
-      for (const priv of ["insert", "update", "delete", "truncate"]) {
-        if (rel[`${role}_${priv}`] === true) {
-          r1.push(`${rel.schema}.${rel.name} — ${role} ${priv.toUpperCase()} (표 권한)`);
+    if (rel.kind !== "r") continue;
+    // ⚠️ 운영 표(OPS_TABLES)도 건너뛰지 않는다 — R4 는 **읽기**만 본다. 운영 표에 공개 쓰기 권한·정책이 다시
+    //    열리면 R1 말고는 잡을 규칙이 없다(세션567 메인 검토에서 발견 — 첫 판은 "R4 몫"이라며 건너뛰었다).
+    for (const role of /** @type {Array<"anon" | "authenticated">} */ (["anon", "authenticated"])) {
+      for (const [priv, cmd] of Object.entries(WRITE_CMDS)) {
+        if (rel[`${role}_${priv}`] !== true) continue; // ①표 권한 자체가 없으면 도달 불가
+        const reach = reachablePolicy(
+          policies,
+          rel,
+          role,
+          /** @type {"SELECT" | "INSERT" | "UPDATE" | "DELETE"} */ (cmd),
+        );
+        if (!reach.reachable) continue; // ②RLS 가 실제로 막고 있으면 표 권한이 있어도 안전
+        const key = `${rel.name}::${reach.policyName ?? "(RLS 꺼짐)"}`;
+        if (key in clientWriteAllowlist) continue; // ③검토 완료 목록
+        const via = reach.policyName ? `정책="${reach.policyName}"` : "RLS 꺼짐";
+        r1.push(`${rel.schema}.${rel.name} — ${role} ${cmd} 실제 도달 가능 (${via})`);
+        // authenticated 가 UPDATE 로 도달하면 "무엇을 갱신할 수 있는지"(칸 목록)를 남긴다 —
+        // 표 권한이면 사실상 전 칸, column_write_grants 가 있으면 그 칸만(2u 구멍과 같은 모양).
+        if (role === "authenticated" && cmd === "UPDATE") {
+          const cols = /** @type {Array<Record<string, any>>} */ (rel.column_write_grants ?? [])
+            .filter((g) => g.grantee === "authenticated" && g.privilege === "UPDATE")
+            .map((g) => g.column);
+          const colList = cols.length > 0 ? cols.join(", ") : "(칸 권한 제한 없음 — 표 전체)";
+          r1.push(`  └ 갱신 가능한 칸: ${colList}`);
         }
       }
     }
@@ -1299,14 +1340,23 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
     lines.push(`[R3] 항상 참(또는 로그인만 하면 참) 쓰기 정책 ${r3.length}건`, ...r3.map((l) => `  · ${l}`));
   }
 
-  // R4 — 공개 읽기 가능 표(RLS 꺼짐 또는 anon/public SELECT 정책 존재)가 기준을 넘었나.
-  const publicReadTables = relations
-    .filter((r) => r.kind === "r")
-    .filter((r) => r.anon_select === true || r.authenticated_select === true)
-    .map((r) => r.name);
-  if (publicReadTables.length > publicReadBaseline) {
+  // R4 — anon 이 실제로 공개 읽기 가능한 표 **명단**을 PUBLIC_READ_TABLES_BASELINE 과 대조.
+  // 개수만 비교하면 "기준 표 하나를 닫고 다른 표 하나를 여는" 뒤바뀜이 숨는다 — 집합 대조로 막는다.
+  const actualPublicRead = new Set(
+    relations
+      .filter((r) => r.kind === "r")
+      .filter((r) => r.anon_select === true)
+      .filter((r) => reachablePolicy(policies, r, "anon", "SELECT").reachable)
+      .map((r) => r.name),
+  );
+  const baselineSet = new Set(publicReadTables);
+  const added = [...actualPublicRead].filter((n) => !baselineSet.has(n)).sort();
+  const removed = [...baselineSet].filter((n) => !actualPublicRead.has(n)).sort();
+  if (added.length > 0 || removed.length > 0) {
     lines.push(
-      `[R4] 공개 읽기 가능 표 ${publicReadTables.length}개 (기준 ${publicReadBaseline}개) — 새 공개 표가 생겼을 수 있습니다`,
+      `[R4] 공개 읽기 표 명단이 기준과 다릅니다 — 신규 ${added.length}개 / 사라짐 ${removed.length}개`,
+      ...added.map((n) => `  · 신규(명단 밖): ${n}`),
+      ...removed.map((n) => `  · 사라짐(기준 안): ${n}`),
     );
   }
 
@@ -1332,7 +1382,7 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
       kind: "nulls",
       collector: "db-permissions",
       detail: `주간 DB 권한 점검 — 경보 ${[r1, r2, r3, r5, r6].filter((a) => a.length > 0).length}종` +
-        (publicReadTables.length > publicReadBaseline ? " (+R4)" : ""),
+        ((added.length > 0 || removed.length > 0) ? " (+R4)" : ""),
       lines,
       at: new Date().toISOString(),
     },
@@ -1365,6 +1415,65 @@ function isAlwaysTrueForRoles(expr, roles) {
     "(auth.uid()isnotnull)",
   ]);
   return ANY_LOGGED_IN.has(n) && roles.some((r) => r === "authenticated" || r === "public");
+}
+
+/**
+ * `USING`/`WITH CHECK` 표현식이 정확히 "service_role 만 통과"하는 정확한 문구인지 —
+ * 부분 일치(`.includes("service_role")`)로 판정하면 `auth.role() = 'service_role' OR true`
+ * 처럼 실제로는 누구나 통과하는 위험한 정책까지 서비스 전용으로 오분류해 R1/R4 가 놓친다.
+ * 이 저장소의 실제 서비스 전용 정책 43개(2026-09-24 운영 스냅샷 실측)는 전부 qual 이
+ * 정확히 아래 문구이고 with_check 는 null 이다 — 그 정확한 형태와 완전히 같을 때만 인정한다.
+ * @param {string | null} expr
+ * @returns {boolean}
+ */
+function isServiceRoleOnly(expr) {
+  if (expr == null) return false; // null(제약 없음)은 서비스 전용이 아니라 오히려 더 위험 — 별도로 걸린다
+  const n = String(expr).toLowerCase().replace(/\s+/g, "");
+  return n === "(auth.role()='service_role'::text)";
+}
+
+/**
+ * 표현식이 "로그인해야만 통과"하는 조건인지 — `auth.uid()` 를 쓰거나(own-row 패턴) 명시적으로
+ * `auth.role() = 'authenticated'` 를 요구하는 형태. 비로그인(anon)은 `auth.uid()` 가 항상 null
+ * 이고 `auth.role()` 도 `'authenticated'` 가 될 수 없으므로, 이런 정책은 anon 에게 도달 불가다.
+ * @param {string | null} expr
+ * @returns {boolean}
+ */
+function requiresLogin(expr) {
+  if (expr == null) return false;
+  const n = String(expr).toLowerCase();
+  if (/auth\.uid\(\)/.test(n)) return true;
+  return /auth\.role\(\)\s*=\s*'authenticated'/.test(n.replace(/::text/g, ""));
+}
+
+/**
+ * `role` 이 `rel` 표에 `cmd`(SELECT/INSERT/UPDATE/DELETE)로 **실제로** 도달 가능한지 —
+ * RLS 가 꺼져 있거나, 그 역할·명령에 적용되는 permissive 정책 중 service_role 전용이
+ * 아니고(anon 이면 auth.uid() 요구도 아닌) 정책이 하나라도 있으면 도달 가능.
+ * @param {Array<Record<string, any>>} policies
+ * @param {Record<string, any>} rel
+ * @param {"anon" | "authenticated"} role
+ * @param {"SELECT" | "INSERT" | "UPDATE" | "DELETE"} cmd
+ * @returns {{ reachable: boolean, policyName: string | null }}
+ */
+function reachablePolicy(policies, rel, role, cmd) {
+  const applicable = policies.filter((p) => {
+    if (p.table !== rel.name) return false;
+    if (p.permissive === false) return false;
+    if (!(p.cmd === cmd || p.cmd === "ALL")) return false;
+    const roles = /** @type {string[]} */ (p.roles ?? []).map((r) => String(r).toLowerCase());
+    return roles.includes(role) || roles.includes("public");
+  });
+  if (applicable.length === 0) {
+    // 매칭되는 permissive 정책이 없으면 RLS 기본값(deny)이 적용된다 — RLS 가 꺼졌을 때만 도달 가능.
+    return { reachable: rel.rls_enabled !== true, policyName: null };
+  }
+  for (const p of applicable) {
+    if (isServiceRoleOnly(p.qual) || isServiceRoleOnly(p.with_check)) continue;
+    if (role === "anon" && (requiresLogin(p.qual) || requiresLogin(p.with_check))) continue;
+    return { reachable: true, policyName: p.name };
+  }
+  return { reachable: false, policyName: null };
 }
 
 // ── I/O 래퍼 (실제 API·DB 호출) ─────────────────────────────
