@@ -63,6 +63,25 @@
  * | `B_complex` | C 단독이 sim ≥0.9 + 차수 일관 | ❌ 보고만 |
  * | `conflict` | K·A 가 서로 >300m | ❌ 보고만 |
  * | `none` | 출처 없음 | ❌ 보고만 |
+ * | `A_human` | `--approve` 로 사람이 고른 좌표가 도구 후보(K·kCands·A·C) 하나와 30m 이내 | ✅ |
+ *
+ * ### 원래 질의가 아무것도 못 고르면 — 개발지구·블록 접두를 떼고 한 번 더 (세션565)
+ *
+ * `"파주 운정3지구 A5블록 제일풍경채 그랑퍼스트"` 처럼 이름 앞에 사업지 코드가 붙으면 카카오
+ * 키워드 검색이 0건이다(세션563 조사 56곳이 전부 `none`). 카카오 POI 는 `"별하람마을1단지제일
+ * 풍경채그랑퍼스트아파트"` 처럼 **브랜드 부분**만 담는다. 그래서 원래 질의의 pick 이 **없을 때만**
+ * `stripDevAreaPrefix` 로 브랜드를 떼어 `"<시도> <시군구> <브랜드>"` → `"<브랜드>"` 순으로 다시
+ * 묻는다(`resolveKakao`). 이 경로는 **시군구 게이트를 켠다**(브랜드만의 질의는 전국 공용이다).
+ * 자격 있는 후보가 100m 넘게 떨어진 두 곳 이상이면 고르지 않는다(`kAmbiguous`).
+ * 여기서 고른 K 도 `classify`·게이트 ①②를 그대로 지난다 — 게이트는 하나도 풀지 않았다.
+ *
+ * ### 사람 승인 — `--approve=<json>` (세션565)
+ *
+ * `[{ id, lat, lng, note? }]`. 분석·게이트 ② 가 **끝난 뒤**, 등급 집계·덤프 **전**에 적용한다
+ * (그래서 승인한 행은 강등되지 않고 요약·`applySet` 에 보인다). 승인 좌표가 그 행의 후보 좌표와
+ * 30m 안에서 맞지 않으면 반영하지 않는다 — 손으로 친 좌표가 아니라 **출처가 있는 좌표**만 쓴다.
+ * `--only-ids=<json>` 은 분석 대상만 그 id 로 좁힌다(후보 풀 밖이어도 강제로 포함).
+ * 두 인자 다 `--apply` 와 함께 쓸 수 없다 — `--out` 으로 덤프를 만들고 `--apply-from` 으로 반영한다.
  *
  * ### `(예정)` 단독과 300~500m 회색지대는 왜 옮기지 않나 (세션544 왕숙 실측)
  *
@@ -141,6 +160,8 @@
  *   node scripts/fix-placeholder-addresses.mjs --apply-from=<덤프>                                 # 그 덤프 그대로 미리보기(재분석 0)
  *   node scripts/fix-placeholder-addresses.mjs --apply-from=<덤프> --apply                         # 그 덤프 그대로 반영 → …applied.json
  *   node scripts/fix-placeholder-addresses.mjs --refit-fields --ids-file=<덤프>.applied.json --apply  # 그 반영분 부속 필드
+ *   node scripts/fix-placeholder-addresses.mjs --only-ids=<id json> --out=<덤프>                     # 그 id 만 분석(후보 풀 밖도)
+ *   node scripts/fix-placeholder-addresses.mjs --only-ids=<id json> --approve=<승인 json> --out=<덤프> # + 사람 승인 → 그 덤프를 --apply-from
  *
  * ⚠️ 파이프(`| tail`)를 붙이지 마라 — SIGPIPE 로 중간에 죽는다(`pipe-kills-collector.md`).
  * 파일로 리다이렉트할 것.
@@ -191,6 +212,7 @@ import {
 import {
   cleanName, shortRegion, pickKakaoCandidate, isPreciseGeocode,
   PHASE_RE, extractPhases, phaseConsistent, blockConflict,
+  KAKAO_MIN_SIM, KAKAO_SUB_MIN_LEN,
 } from "./collectors/_kakao-poi.mjs";
 export { extractPhases, phaseConsistent };
 
@@ -249,8 +271,14 @@ const KAKAO_GAP_MS = 200;
 /** 광역시·특별시 — 시/군이 아니라 **구(군)** 단위로 키를 만든다. */
 export const METRO_REGIONS = new Set(["서울", "부산", "대구", "인천", "광주", "대전", "울산"]);
 
-/** `--apply` 가 실제로 반영하는 등급. */
-export const APPLY_TIERS = new Set(["A2", "B_apply", "B_kakao_strong"]);
+/**
+ * `--apply` 가 실제로 반영하는 등급.
+ *
+ * `A_human`(세션565) = 사람이 `--approve` 로 승인한 좌표가 도구 후보 하나와 30m 안에서 맞은 행.
+ * 게이트 ①·② 가 보류한 행도 사람이 보고 고르면 여기로 온다 — 판정은 사람이 했고, 도구는
+ * "그 좌표가 실제 출처 후보 중 하나인가" 만 확인한다(`promoteApproved`).
+ */
+export const APPLY_TIERS = new Set(["A2", "B_apply", "B_kakao_strong", "A_human"]);
 
 /**
  * **한 후보를 둘 이상이 가리키면 전부 보류** — 전체 결과를 가로질러 보는 게이트 (세션564).
@@ -788,7 +816,7 @@ export const KNOWN_BOOLEAN_FLAGS = [
   "--force-timing",
 ];
 /** `--flag=값` 꼴로 써야 하는 인자. */
-export const KNOWN_VALUE_FLAGS = ["--limit", "--out", "--ids-file", "--apply-from"];
+export const KNOWN_VALUE_FLAGS = ["--limit", "--out", "--ids-file", "--apply-from", "--approve", "--only-ids"];
 
 /**
  * 알 수 없는 인자·값이 빈 인자를 찾아낸다(세션543).
@@ -1088,6 +1116,435 @@ export function verifyApplied(fileRows, dbRowsAfter) {
  */
 export function purgeTargetIds(okIds, alreadyIds) {
   return [...new Set([...(okIds ?? []).map(String), ...(alreadyIds ?? []).map(String)])];
+}
+
+// ── 개발지구·블록 접두 떼기 + 추가 K 시도 (세션565) ────────────────────────
+// 세션563 조사 56곳은 세 출처가 모두 실패(`none`)했다. 대부분 이름 앞에 "…지구 A10블록" 같은
+// 사업지 코드가 붙어 카카오 키워드 검색이 0건이었다. 원래 질의가 **아무것도 못 고른 행에 한해**
+// 브랜드만 떼어 다시 묻는다 — 원래 질의로 고른 행은 한 비트도 바뀌지 않는다(`resolveKakao`).
+
+/** 개발지구 토큰 — `오룡지구`·`세교2지구`·`공공주택지구`·`검단신도시`·`아산탕정일반산업단지`·`…택지`. */
+const DEV_AREA_SUFFIX_RE = /(지구|신도시|산업단지|택지)$/;
+/**
+ * 접미어 없이 쓰이는 신도시명 — **2026-09-23 서베이 56곳에서 실제로 본 것만** 적었다.
+ * 넓히지 마라: 지명 사전을 키우면 브랜드의 일부(`강서자이 에코델타` 의 `에코델타`)까지 지운다.
+ */
+const KNOWN_DEV_AREAS = new Set(["에코델타시티", "부산에코델타", "파주운정"]);
+/** 주택유형 — 단지 이름이 아니라 공급 방식이라 카카오 POI 이름에 없다. 토큰 단위로만 뗀다. */
+const HOUSING_TYPE_WORDS = new Set(["공공분양주택", "공공분양", "신혼희망타운", "행복주택", "국민임대", "공공임대"]);
+/** 토큰 전체가 블록 표기 — `39BL`·`A10블록`·`C-2BL`·`D1-2BL`·`2-A3블록`(앞 "2-" 까지)·`AB19블록`·`7블록`. */
+const BLOCK_TOKEN_RE = /^(?:\d+-)?[A-Za-z]{0,2}-?\d+(?:-\d+)?(?:BL|블록|블럭)$/i;
+/**
+ * 브랜드 끝에 붙은 블록 — `퍼스티움A-5BL`·`부천대장A5`. 앞부분은 **한글로 끝나야** 한다
+ * (`AB19블록` 을 `A` + `B19블록` 으로 쪼개지 않게). 숫자만 붙은 `그랜드마크2` 는 안 걸린다.
+ */
+const GLUED_BLOCK_RE = /^(.*[가-힣])([A-Za-z]{1,2}-?\d+(?:-\d+)?(?:BL|블록|블럭)?)$/i;
+/**
+ * 붙은 블록을 떼고 남은 앞부분이 이보다 짧으면 브랜드가 아니라 **지명 + 블록 코드**로 본다
+ * (`부천대장A5` → `부천대장` 은 부천 대장지구다). `e편한세상대장퍼스티움` 은 11자라 브랜드.
+ */
+const GLUED_BRAND_MIN_LEN = 5;
+/** 떼고 남은 브랜드의 최소 길이(공백 제거). 이보다 짧으면 검색어로 못 쓴다. */
+const STRIPPED_MIN_LEN = 4;
+
+/**
+ * 단지명에서 **개발지구·블록·주택유형 접두**를 떼어 브랜드 부분만 남긴다.
+ *
+ *   `"남악 오룡지구 39BL 오룡 푸르지오 파르세나"` → `"오룡 푸르지오 파르세나"`
+ *   `"아산탕정지구 2-A3블록 한들물빛도시 예미지"` → `"한들물빛도시 예미지"`
+ *   `"에코델타시티 대성베르힐 17블록"`          → `"대성베르힐"` (뒤의 블록도 뗀다)
+ *
+ * 규칙: `cleanName` 결과를 토큰으로 나눠 ①주택유형 토큰은 버리고 ②"뒤에 브랜드가 남는 마지막
+ * 개발지구/블록 토큰"까지를 접두로 보고 **그 앞의 지명(`남악`·`파주`)과 함께** 뗀다 ③접두 뒤에
+ * 남은 블록 토큰도 뗀다. 뒤에 붙은 개발지구명은 브랜드의 일부라 남긴다. 단지 차수(`3차`)는 남긴다.
+ *
+ * @param {unknown} name 원래 단지명
+ * @returns {string | null} 브랜드, 또는 자신 있게 못 가르면 `null`
+ *   (결과가 `cleanName` 과 같다 = 뗄 게 없었다 / 공백 제거 4자 미만 = 검색어로 너무 흔하다)
+ */
+export function stripDevAreaPrefix(name) {
+  const base = cleanName(name);
+  if (!base) return null;
+  /** @type {{ text: string, kind: "brand" | "dev" | "block" }[]} */
+  const toks = [];
+  for (const t of base.split(" ")) {
+    if (HOUSING_TYPE_WORDS.has(t)) continue;
+    if (BLOCK_TOKEN_RE.test(t)) {
+      toks.push({ text: t, kind: "block" });
+      continue;
+    }
+    if (DEV_AREA_SUFFIX_RE.test(t) || KNOWN_DEV_AREAS.has(t)) {
+      toks.push({ text: t, kind: "dev" });
+      continue;
+    }
+    const g = GLUED_BLOCK_RE.exec(t);
+    if (g) {
+      // 앞부분이 브랜드로 충분히 길면 블록만 떼고, 아니면 토큰 전체가 사업지 코드다.
+      toks.push(g[1].length >= GLUED_BRAND_MIN_LEN ? { text: g[1], kind: "brand" } : { text: t, kind: "block" });
+      continue;
+    }
+    toks.push({ text: t, kind: "brand" });
+  }
+  let cut = -1;
+  for (let i = 0; i < toks.length; i++) {
+    if (toks[i].kind !== "brand" && toks.slice(i + 1).some((x) => x.kind === "brand")) cut = i;
+  }
+  const out = toks
+    .slice(cut + 1)
+    .filter((x) => x.kind !== "block")
+    .map((x) => x.text)
+    .join(" ");
+  if (out.replace(/\s+/g, "").length < STRIPPED_MIN_LEN) return null;
+  if (out === base) return null;
+  return out;
+}
+
+/** 자격 있는 카카오 후보가 이만큼 넘게 떨어져 두 곳 이상이면 **모호** — 고르지 않는다. */
+export const KAKAO_AMBIGUOUS_M = 100;
+/** 행에 기록하는 카카오 후보 수(검토용). */
+export const KAKAO_CANDS_MAX = 3;
+
+/**
+ * @typedef {{ name: string, addr: string, lat: number, lng: number, sim: number, distM: number | null, qualified: boolean }} KakaoCand
+ * @typedef {{
+ *   kPick: { doc: any, sim: number, strong: boolean } | null,
+ *   kPath: "original" | "stripped-region" | "stripped-name" | null,
+ *   kQuery: string | null,
+ *   kAmbiguous: boolean,
+ *   kCands: KakaoCand[],
+ * }} KakaoResolution
+ */
+
+/**
+ * 카카오 결과를 **게이트 통과 후보 목록**으로 풀어 본다 — `pickKakaoCandidate` 는 최선 1개만 주므로
+ * "여럿이 자격을 갖췄나(모호)" 와 "사람이 검토할 후보" 를 여기서 만든다.
+ *
+ * ⚠️ 카테고리·지역·좌표 게이트를 **다시 쓰지 않는다** — 드리프트를 막으려고 `pickKakaoCandidate` 를
+ * 문서 1건씩 불러 재사용한다. 게이트만 보려면 질의를 그 장소명 자신으로 준다(sim=1 이라 이름
+ * 하한이 무의미해진다). 이름 자격은 `_kakao-poi.mjs` L323·L325·L330 과 같은 식이다:
+ * `sim ≥ KAKAO_MIN_SIM`, 또는 공백 제거 질의가 장소명의 부분문자열이고 질의 ≥ `KAKAO_SUB_MIN_LEN`자이며
+ * 게이트 통과 문서 중 그런 부분문자열 매치가 **정확히 1건**.
+ *
+ * @param {unknown} query 이름 비교에 쓰는 질의(원래 경로 = cleanName, 추가 경로 = 브랜드)
+ * @param {any[] | null | undefined} docs 카카오 documents
+ * @param {string | null} sidoPrefix
+ * @param {string | null | undefined} gu 주면 시군구 게이트까지
+ * @param {{ lat: number | null, lng: number | null } | null} cur 현재 DB 좌표(`distM` 기준)
+ * @returns {{
+ *   pick: { doc: any, sim: number, strong: boolean } | null,
+ *   ambiguous: boolean,
+ *   cands: KakaoCand[],
+ * }}
+ */
+export function analyzeKakaoDocs(query, docs, sidoPrefix, gu, cur) {
+  const q = String(query ?? "");
+  const qn = q.replace(/\s+/g, "");
+  /** @type {{ d: any, name: string, lat: number, lng: number, sim: number, sub: boolean }[]} */
+  const gated = [];
+  for (const d of docs ?? []) {
+    const name = String(d?.place_name ?? "");
+    if (!name || !qn) continue;
+    if (!pickKakaoCandidate(name, [d], sidoPrefix, gu)) continue; // 게이트만(카테고리·지역·좌표)
+    gated.push({
+      d,
+      name,
+      lat: parseFloat(d.y),
+      lng: parseFloat(d.x),
+      sim: stringSimilarity(q, name),
+      sub: name.replace(/\s+/g, "").includes(qn),
+    });
+  }
+  const subCount = gated.filter((g) => g.sub).length;
+  const qualifies = (/** @type {{ sim: number, sub: boolean }} */ g) =>
+    g.sim >= KAKAO_MIN_SIM || (g.sub && qn.length >= KAKAO_SUB_MIN_LEN && subCount === 1);
+  const qualified = gated.filter(qualifies);
+  let ambiguous = false;
+  for (let i = 0; i < qualified.length && !ambiguous; i++) {
+    for (let j = i + 1; j < qualified.length; j++) {
+      const a = qualified[i];
+      const b = qualified[j];
+      if (haversineMeters(a.lat, a.lng, b.lat, b.lng) > KAKAO_AMBIGUOUS_M) {
+        ambiguous = true;
+        break;
+      }
+    }
+  }
+  const cands = gated
+    .slice()
+    .sort((a, b) => b.sim - a.sim)
+    .slice(0, KAKAO_CANDS_MAX)
+    .map((g) => ({
+      name: g.name,
+      addr: String(g.d?.address_name ?? g.d?.road_address_name ?? ""),
+      lat: g.lat,
+      lng: g.lng,
+      sim: Number(g.sim.toFixed(3)),
+      distM:
+        cur && cur.lat != null && cur.lng != null
+          ? Math.round(haversineMeters(cur.lat, cur.lng, g.lat, g.lng))
+          : null,
+      qualified: qualifies(g),
+    }));
+  const pick = ambiguous ? null : pickKakaoCandidate(q, docs, sidoPrefix, gu);
+  return { pick, ambiguous, cands };
+}
+
+/**
+ * K 출처를 정한다 — 원래 질의, 그리고 **그것이 아무것도 못 골랐을 때만** 브랜드 질의 두 번.
+ *
+ * 원래 경로는 세션564 까지와 **같은 호출**이다: `pickKakaoCandidate(name, docs, sidoPrefix)`
+ * (gu 없이). 여기서 고르면 곧바로 반환한다 — 추가 호출 0회, 판정 불변(회귀 0).
+ *
+ * 추가 경로(`stripped-region` → `stripped-name`)는 첫 pick 에서 멈추고, **모호하면 멈춘 채 고르지
+ * 않는다**(더 넓은 질의로 다시 물어 우연히 하나만 보이는 것은 모호함이 풀린 게 아니다).
+ * 시군구 게이트를 켠다(브랜드만의 질의는 전국 공용이라). 시도를 모르면 추가 경로를 타지 않는다 —
+ * `pickKakaoCandidate` 는 `sidoPrefix` 가 없으면 지역 게이트를 **통째로 건너뛴다**.
+ *
+ * @param {{ name: string, rawName: unknown, sidoPrefix: string | null, gu: string | null, cur: { lat: number | null, lng: number | null } | null }} ctx
+ *   `name` = `cleanName(rawName)`(원래 질의), `rawName` = 원래 단지명
+ * @param {(q: string) => Promise<any[]>} fetchDocs 카카오 키워드 호출(요청 간격은 이 함수가 지킨다)
+ * @returns {Promise<KakaoResolution>}
+ */
+export async function resolveKakao({ name, rawName, sidoPrefix, gu, cur }, fetchDocs) {
+  /** @type {KakaoResolution} */
+  const out = { kPick: null, kPath: null, kQuery: null, kAmbiguous: false, kCands: [] };
+  if (!name) return out;
+  const docs = await fetchDocs(name);
+  out.kPick = pickKakaoCandidate(name, docs, sidoPrefix);
+  out.kCands = analyzeKakaoDocs(name, docs, sidoPrefix, null, cur).cands;
+  if (out.kPick) {
+    out.kPath = "original";
+    out.kQuery = name;
+    return out;
+  }
+  if (!sidoPrefix) return out;
+  const brand = stripDevAreaPrefix(rawName);
+  if (!brand) return out;
+  /** @type {["stripped-region" | "stripped-name", string][]} */
+  const attempts = [
+    ["stripped-region", [sidoPrefix, gu, brand].filter(Boolean).join(" ")],
+    ["stripped-name", brand],
+  ];
+  /** @type {Set<string>} */
+  const asked = new Set();
+  for (const [path, q] of attempts) {
+    if (asked.has(q)) continue;
+    asked.add(q);
+    const r = analyzeKakaoDocs(brand, await fetchDocs(q), sidoPrefix, gu, cur);
+    out.kQuery = q;
+    if (r.cands.length > 0) out.kCands = r.cands;
+    if (r.ambiguous) {
+      out.kAmbiguous = true;
+      out.kPath = path;
+      return out;
+    }
+    if (r.pick) {
+      out.kPick = r.pick;
+      out.kPath = path;
+      return out;
+    }
+  }
+  return out;
+}
+
+// ── 사람 승인 `--approve` · 분석 대상 제한 `--only-ids` (세션565) ────────────
+
+/** 승인 좌표가 도구 후보와 이 거리 안이어야 반영한다 — 손으로 친 좌표가 아니라 출처 좌표를 쓴다. */
+export const APPROVE_MATCH_M = 30;
+
+/**
+ * 한 행의 **출처가 있는 후보 좌표** 전부 — 채택한 K·A·C 와 검토용 kCands.
+ * @param {any} r
+ * @returns {{ lat: number, lng: number, addr: string | null, source: "K" | "A" | "C" }[]}
+ */
+function approvalCandidates(r) {
+  /** @type {{ lat: number, lng: number, addr: string | null, source: "K" | "A" | "C" }[]} */
+  const out = [];
+  /** @param {any} p @param {string|null} addr @param {"K"|"A"|"C"} source */
+  const push = (p, addr, source) => {
+    const lat = Number(p?.lat);
+    const lng = Number(p?.lng);
+    if (p?.lat == null || p?.lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+    out.push({ lat, lng, addr: addr || null, source });
+  };
+  const s = r?.srcCoords ?? {};
+  push(s.K, s.K?.addr ?? null, "K");
+  push(s.A, s.A?.addr ?? null, "A");
+  push(s.C, null, "C");
+  for (const c of r?.kCands ?? []) push(c, c?.addr ?? null, "K");
+  return out;
+}
+
+/**
+ * `--approve` 목록을 반영한다 — 승인 좌표가 그 행의 후보 좌표와 `APPROVE_MATCH_M` 안이면 `A_human`.
+ *
+ * ⚠️ **반드시 `demoteMultiPointed` 뒤, 등급 집계·덤프 앞**에서 부른다. 앞에서 부르면 게이트 ② 가
+ * 승인한 행을 다시 강등하고, 뒤에서 부르면 요약·`applySet` 에 승인이 안 보인다(세션564 배선 결함 꼴).
+ *
+ * 세션565 — `complexNo` 가 있으면 이 행의 자체 후보(K/A/C)가 아니라 **네이버 complexes 표에서
+ * 직접** 좌표를 가져온다(사장님이 승인한 정답이 도구 후보 밖에 있는 9곳을 위함). 그 경로는
+ * `newAddress` 를 승인의 `address` 로 채운다 — `complexes` 표엔 주소 컬럼이 없고, 비워두면
+ * `applyCoordFixes` 가 옛 자리표시 주소를 그대로 쓴다(§ 컨텍스트).
+ * `complexNo` 가 없으면 기존 방식대로 후보를 대조하되, 후보 주소가 비어 있으면 승인의
+ * `address` 로 보강한다 — 둘 다 비면 승인하지 않는다(주소 없는 A_human 을 만들지 않는다).
+ *
+ * @param {any[]} rows 분석을 마친 전체 행 — **제자리에서 고친다**(tier·reason·source·newLat/newLng·newAddress·distM)
+ * @param {{ id: string, lat: number, lng: number, note?: string, complexNo?: string, address?: string }[] | null | undefined} approvals
+ * @param {Map<string, any> | null | undefined} [complexesByNo] complex_no → { complex_no, complex_name, latitude, longitude, ... }
+ * @returns {{ promoted: string[], mismatched: { id: string, nearestM: number | null }[], unknown: string[] }}
+ */
+export function promoteApproved(rows, approvals, complexesByNo) {
+  /** @type {Map<string, any>} */
+  const byId = new Map();
+  for (const r of rows ?? []) byId.set(String(r?.id ?? ""), r);
+  /** @type {string[]} */
+  const promoted = [];
+  /** @type {{ id: string, nearestM: number | null }[]} */
+  const mismatched = [];
+  /** @type {string[]} */
+  const unknown = [];
+  for (const ap of approvals ?? []) {
+    const id = String(ap?.id ?? "");
+    const r = byId.get(id);
+    if (!r) {
+      unknown.push(id);
+      continue;
+    }
+
+    if (ap?.complexNo) {
+      const cx = complexesByNo?.get(String(ap.complexNo));
+      const cLat = Number(cx?.latitude);
+      const cLng = Number(cx?.longitude);
+      if (!cx || !Number.isFinite(cLat) || !Number.isFinite(cLng)) {
+        mismatched.push({ id, nearestM: null });
+        logError(PHASE, `  ⚠️ 승인 complexNo 를 찾을 수 없다(또는 좌표 없음): ${id} → ${ap.complexNo}`);
+        continue;
+      }
+      const d = haversineMeters(ap.lat, ap.lng, cLat, cLng);
+      if (d > APPROVE_MATCH_M) {
+        mismatched.push({ id, nearestM: Math.round(d) });
+        continue;
+      }
+      const addr = typeof ap.address === "string" ? ap.address.trim() : "";
+      if (!addr) {
+        mismatched.push({ id, nearestM: Math.round(d) });
+        logError(PHASE, `  ⚠️ 승인 complexNo 는 맞는데 address 가 없다: ${id}`);
+        continue;
+      }
+      r.tier = "A_human";
+      r.reason = `사람 승인(네이버 단지 ${ap.complexNo}): ${ap.note ?? ""}`;
+      r.source = "C_human";
+      r.newLat = cLat;
+      r.newLng = cLng;
+      r.newAddress = addr;
+      r.distM = r.lat != null && r.lng != null ? Math.round(haversineMeters(r.lat, r.lng, cLat, cLng)) : null;
+      promoted.push(id);
+      continue;
+    }
+
+    /** @type {ReturnType<typeof approvalCandidates>[number] | null} */
+    let best = null;
+    let bestD = Infinity;
+    for (const c of approvalCandidates(r)) {
+      const d = haversineMeters(ap.lat, ap.lng, c.lat, c.lng);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    if (!best || bestD > APPROVE_MATCH_M) {
+      mismatched.push({ id, nearestM: best ? Math.round(bestD) : null });
+      continue;
+    }
+    const fallbackAddr = typeof ap.address === "string" ? ap.address.trim() : "";
+    const addr = best.addr || fallbackAddr || null;
+    if (!addr) {
+      mismatched.push({ id, nearestM: Math.round(bestD) });
+      logError(PHASE, `  ⚠️ 승인 좌표는 후보와 일치하는데 주소가 없다(후보·승인 둘 다 비어 있음): ${id}`);
+      continue;
+    }
+    r.tier = "A_human";
+    r.reason = `사람 승인: ${ap.note ?? ""}`;
+    r.source = best.source;
+    r.newLat = best.lat;
+    r.newLng = best.lng;
+    r.newAddress = addr;
+    r.distM =
+      r.lat != null && r.lng != null ? Math.round(haversineMeters(r.lat, r.lng, best.lat, best.lng)) : null;
+    promoted.push(id);
+  }
+  return { promoted, mismatched, unknown };
+}
+
+/**
+ * `--approve=<json>` 파일을 읽는다 — `[{ id, lat, lng, note?, complexNo?, address? }]`. 경로는
+ * `--out`·`--apply-from` 과 같은 **cwd 기준**(절대경로 권장). 형식이 하나라도 틀리면 throw —
+ * 조용히 일부만 쓰지 않는다.
+ *
+ * `complexNo`(네이버 complex_no)·`address` 는 선택이다 — 세션565: 사장님이 승인한 정답이
+ * 도구 후보(K/A/C) 밖에 있는 9곳을 위한 확장. 둘 다 있으면 `promoteApproved` 가 네이버
+ * complexes 표에서 직접 좌표를 가져오고, `address` 를 그대로 화면 주소로 쓴다. 값이 있는데
+ * 빈 문자열이면 형식 오류로 거부한다(빈 채로 통과시켜 "주소 없는 승인"을 만들지 않는다).
+ *
+ * @param {string} p
+ * @returns {{ id: string, lat: number, lng: number, note?: string, complexNo?: string, address?: string }[]}
+ */
+export function readApprovals(p) {
+  const abs = resolve(p);
+  if (!existsSync(abs)) throw new Error(`--approve 파일 없음: ${abs}`);
+  const j = /** @type {any} */ (JSON.parse(readFileSync(abs, "utf8")));
+  if (!Array.isArray(j)) throw new Error(`--approve 형식 오류(배열이어야 한다): ${abs}`);
+  /** @type {Set<string>} */
+  const seen = new Set();
+  return j.map((/** @type {any} */ x, /** @type {number} */ i) => {
+    const id = typeof x?.id === "string" ? x.id.trim() : "";
+    if (!id) throw new Error(`--approve ${i}번째 항목에 id 가 없다`);
+    if (seen.has(id)) throw new Error(`--approve 에 같은 id 가 두 번: ${id}`);
+    seen.add(id);
+    if (typeof x.lat !== "number" || typeof x.lng !== "number" || !Number.isFinite(x.lat) || !Number.isFinite(x.lng)) {
+      throw new Error(`--approve ${id}: lat/lng 가 유한 숫자가 아니다`);
+    }
+    /** @type {string | undefined} */
+    let complexNo;
+    if (x.complexNo !== undefined) {
+      if (typeof x.complexNo !== "string" || !x.complexNo.trim()) {
+        throw new Error(`--approve ${id}: complexNo 는 비어 있지 않은 문자열이어야 한다`);
+      }
+      complexNo = x.complexNo.trim();
+    }
+    /** @type {string | undefined} */
+    let address;
+    if (x.address !== undefined) {
+      if (typeof x.address !== "string" || !x.address.trim()) {
+        throw new Error(`--approve ${id}: address 는 비어 있지 않은 문자열이어야 한다`);
+      }
+      address = x.address.trim();
+    }
+    return {
+      id,
+      lat: x.lat,
+      lng: x.lng,
+      ...(typeof x.note === "string" ? { note: x.note } : {}),
+      ...(complexNo !== undefined ? { complexNo } : {}),
+      ...(address !== undefined ? { address } : {}),
+    };
+  });
+}
+
+/**
+ * `--only-ids` 대상 — 후보 풀이 아니라 **전체 apartments** 에서 고른다. 이미 `ok` 로 정정된 행은
+ * 주소·좌표 공유 풀에서 빠지므로, 풀에서 고르면 요청한 id 가 조용히 빠진다.
+ * @param {any[]} apts 전체 apartments
+ * @param {string[]} ids
+ * @returns {{ targets: any[], missing: string[] }}
+ */
+export function selectOnlyIdTargets(apts, ids) {
+  const want = new Set((ids ?? []).map(String));
+  const targets = (apts ?? [])
+    .filter((a) => want.has(String(a?.id)))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  const found = new Set(targets.map((a) => String(a.id)));
+  return { targets, missing: [...want].filter((id) => !found.has(id)) };
 }
 
 // ────────────────────────────── 외부 호출 ──────────────────────────────
@@ -1465,6 +1922,8 @@ async function main() {
   const outPath = strArg(argv, "--out");
   const idsFile = strArg(argv, "--ids-file");
   const applyFrom = strArg(argv, "--apply-from");
+  const approvePath = strArg(argv, "--approve");
+  const onlyIdsPath = strArg(argv, "--only-ids");
 
   // ⚠️ `numArg` 는 숫자가 아니거나 0 이하면 **null**(= "제한 없음")을 준다. `--limit=abc`·`--limit=0` 이
   // 조용히 전 단지 대상이 되는 자리다 — 값이 있는데 숫자로 못 읽히면 실행하지 않는다(세션543 · G6).
@@ -1491,11 +1950,24 @@ async function main() {
   // `--limit=0` 은 numArg 가 null 로 지워 버려서 "안 준 것" 처럼 보인다.
   // `--include-weak` 도 배타다: 반영 집합은 덤프의 `applySet` 이 정하지 이 플래그가 정하지 않는다(F2).
   const hasFlag = (/** @type {string} */ f) => argv.some((a) => a === f || a.startsWith(`${f}=`));
-  if (hasFlag("--apply-from") && ["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak"].some(hasFlag)) {
+  if (hasFlag("--apply-from") && ["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak", "--approve", "--only-ids"].some(hasFlag)) {
     logError(
       PHASE,
-      "--apply-from 은 --refit-fields·--ids-file·--limit·--out·--include-weak 과 함께 쓸 수 없다 (덤프가 곧 반영 목록이다)",
+      "--apply-from 은 --refit-fields·--ids-file·--limit·--out·--include-weak·--approve·--only-ids 와 함께 쓸 수 없다 (덤프가 곧 반영 목록이다)",
     );
+    process.exit(1);
+  }
+  // 세션565 — 사람 승인·대상 제한은 **미리보기 전용**이다. 반영은 그 덤프를 `--apply-from` 으로 한다
+  // (전체 재분석 `--apply` 는 외부 응답이 그 순간 달라지면 본 것과 다른 것을 반영한다 — 세션542).
+  // refit/ids-file 은 분석을 하지 않으므로 두 인자가 조용히 무시된다 — 그것도 막는다.
+  if (["--approve", "--only-ids"].some(hasFlag) && ["--apply", "--refit-fields", "--ids-file"].some(hasFlag)) {
+    logError(PHASE, "--approve·--only-ids 는 미리보기(--out)에서만 쓴다 — 반영은 그 덤프를 --apply-from 으로");
+    process.exit(1);
+  }
+  // --only-ids 는 "이 id 전부"라는 뜻이다. --limit 가 뒤에서 잘라 내면 승인한 id 일부가 조용히 빠진다
+  // (세션565 검사관 지적 — 빠진 id 는 --approve 에서 '모르는 id' 로만 보인다).
+  if (hasFlag("--only-ids") && hasFlag("--limit")) {
+    logError(PHASE, "--only-ids 와 --limit 는 함께 쓸 수 없다 — --only-ids 의 id 가 잘려 나간다");
     process.exit(1);
   }
   // ⏰ purge 시간 가드 — **세 경로(레거시 --apply · --ids-file · --apply-from)가 전부 이 한 자리를
@@ -1512,6 +1984,12 @@ async function main() {
       process.exit(1);
     }
   }
+
+  // 파일 형식 오류는 20분짜리 분석을 다 돌린 **뒤**가 아니라 지금 죽는다.
+  const approvals = approvePath ? readApprovals(approvePath) : null;
+  const onlyIds = onlyIdsPath ? readIdsFile(onlyIdsPath) : null;
+  if (approvals) log(PHASE, `--approve: ${approvals.length}건 (${resolve(String(approvePath))})`);
+  if (onlyIds) log(PHASE, `--only-ids: ${onlyIds.length}건`);
 
   const sb = getSupabase();
 
@@ -1665,6 +2143,13 @@ async function main() {
   }
 
   let targets = allCandidates.slice().sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  if (onlyIds) {
+    // 후보 풀이 아니라 전체에서 고른다 — 이미 정정돼 풀에서 빠진 행도 요청하면 분석한다.
+    const sel = selectOnlyIdTargets(apts, onlyIds);
+    targets = sel.targets;
+    log(PHASE, `--only-ids — 분석 대상 ${targets.length}곳으로 제한 (후보 풀 밖 ${targets.filter((a) => !byId.has(String(a.id))).length}곳 포함)`);
+    for (const id of sel.missing) logError(PHASE, `  --only-ids 의 id 가 apartments 에 없다: ${id}`);
+  }
   if (limit) {
     targets = targets.slice(0, limit);
     log(PHASE, `⚠️ --limit=${limit} — 개발용 표본이다. 전체 판정이 아니다.`);
@@ -1742,14 +2227,18 @@ async function main() {
     // ── K: 카카오 키워드 POI ──
     /** @type {{lat:number,lng:number,strong:boolean,planned:boolean,sim:number}|null} */
     let K = null;
+    // 원래 질의가 못 고르면(세션565) 개발지구·블록 접두를 뗀 브랜드로 두 번 더 묻는다 — `resolveKakao`.
+    const kr = await resolveKakao(
+      { name, rawName: apt.name, sidoPrefix, gu: apt.gu ?? null, cur: { lat: apt.lat, lng: apt.lng } },
+      async (q) => {
+        const d = await kakaoKeyword(q);
+        await sleep(KAKAO_GAP_MS);
+        return d;
+      },
+    );
     /** @type {{doc:any,sim:number,strong:boolean}|null} */
-    let kPick = null;
-    if (name) {
-      const docs = await kakaoKeyword(name);
-      await sleep(KAKAO_GAP_MS);
-      kPick = pickKakaoCandidate(name, docs, sidoPrefix);
-      K = buildKakaoInput(kPick);
-    }
+    const kPick = kr.kPick;
+    K = buildKakaoInput(kPick);
 
     const verdict = classify({ cur: { lat: apt.lat, lng: apt.lng }, K, A, C });
     /** @type {{lat:number,lng:number}|null} */
@@ -1794,6 +2283,17 @@ async function main() {
       complexPhase: cBest ? cPhase : null,
       complexSupports:
         C && picked ? haversineMeters(C.lat, C.lng, picked.lat, picked.lng) <= NEAR_M : null,
+      // 세션565 — K 를 어느 질의로 얻었나 · 모호해서 안 골랐나 · 검토용 후보 상위 3.
+      kPath: kr.kPath,
+      kQuery: kr.kQuery,
+      kAmbiguous: kr.kAmbiguous,
+      kCands: kr.kCands,
+      // `--approve` 가 대조할 출처 좌표 — 채택 여부와 무관하게 세 출처를 남긴다.
+      srcCoords: {
+        K: K ? { lat: K.lat, lng: K.lng, addr: String(kPick?.doc?.address_name ?? "") || null } : null,
+        A: A ? { lat: A.lat, lng: A.lng, addr: applyAddr || null } : null,
+        C: C ? { lat: C.lat, lng: C.lng } : null,
+      },
     });
   }
 
@@ -1813,6 +2313,22 @@ async function main() {
     );
   }
 
+  // ── 사람 승인 (세션565) — 게이트 ② **뒤**(승인이 다시 강등되지 않게), 등급 집계 **앞**(요약·applySet 에 보이게).
+  /** @type {string[]} */
+  let approvedIds = [];
+  if (approvals) {
+    /** @type {Map<string, any>} */
+    const complexesByNo = new Map();
+    for (const c of complexes) complexesByNo.set(String(c.complex_no), c);
+    const ap = promoteApproved(rows, approvals, complexesByNo);
+    approvedIds = ap.promoted;
+    log(PHASE, `\n사람 승인: ${ap.promoted.length}곳 A_human · 후보 불일치 ${ap.mismatched.length} · 모르는 id ${ap.unknown.length}`);
+    for (const m of ap.mismatched) {
+      logError(PHASE, `  승인 좌표가 도구 후보와 다르다 — 반영 안 함 (${m.id}, 가장 가까운 후보 ${m.nearestM ?? "없음"}m)`);
+    }
+    for (const id of ap.unknown) logError(PHASE, `  ⚠️ 승인 목록의 id 가 이번 분석 대상에 없다: ${id}`);
+  }
+
   /** @type {Record<string, number>} */
   const tally = {};
   for (const r of rows) tally[r.tier] = (tally[r.tier] ?? 0) + 1;
@@ -1822,6 +2338,12 @@ async function main() {
     log(PHASE, `  ${t.padEnd(16)} ${String(n).padStart(5)}`);
   }
   log(PHASE, `  ${"(그중 진짜 자리표시)".padEnd(16)} ${String(truePlaceholders.size).padStart(5)}`);
+  const strippedRows = rows.filter((r) => r.kPath === "stripped-region" || r.kPath === "stripped-name");
+  log(
+    PHASE,
+    `  ${"(접두 뗀 질의로 K)".padEnd(16)} ${String(strippedRows.filter((r) => !r.kAmbiguous).length).padStart(5)}` +
+      ` · 모호해서 안 고름 ${rows.filter((r) => r.kAmbiguous).length}`,
+  );
 
   const applyTiers = new Set(APPLY_TIERS);
   if (includeWeak) applyTiers.add("B_kakao_weak");
@@ -1868,6 +2390,8 @@ async function main() {
           rosterSize: roster.size,
           includeWeak,
           limit: limit ?? null,
+          onlyIds: onlyIds ? onlyIds.length : null,
+          approved: approvedIds,
           applySet: fixList.map((r) => String(r.id)),
           tally,
           rows,

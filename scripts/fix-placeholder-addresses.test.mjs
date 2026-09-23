@@ -65,6 +65,14 @@ import {
   demoteMultiPointed,
   FAR_MAX_M,
   APPLY_MIN_SIM,
+  stripDevAreaPrefix,
+  analyzeKakaoDocs,
+  resolveKakao,
+  promoteApproved,
+  readApprovals,
+  selectOnlyIdTargets,
+  APPROVE_MATCH_M,
+  KAKAO_AMBIGUOUS_M,
 } from "./fix-placeholder-addresses.mjs";
 
 /**
@@ -459,8 +467,8 @@ describe("classify — 등급 판정", () => {
     expect(NEAR_M).toBe(300);
   });
 
-  it("--apply 가 반영하는 등급은 셋뿐", () => {
-    expect([...APPLY_TIERS].sort()).toEqual(["A2", "B_apply", "B_kakao_strong"]);
+  it("--apply 가 반영하는 등급은 넷뿐 (세션565 A_human = 사람 승인 추가)", () => {
+    expect([...APPLY_TIERS].sort()).toEqual(["A2", "A_human", "B_apply", "B_kakao_strong"]);
   });
 });
 
@@ -1021,7 +1029,7 @@ describe("validateArgv — 모르는 인자로는 실행하지 않는다 (세션
       "--include-weak",
       "--force-timing",
     ]);
-    expect(KNOWN_VALUE_FLAGS).toEqual(["--limit", "--out", "--ids-file", "--apply-from"]);
+    expect(KNOWN_VALUE_FLAGS).toEqual(["--limit", "--out", "--ids-file", "--apply-from", "--approve", "--only-ids"]);
   });
 });
 
@@ -1092,7 +1100,7 @@ describe("selectApplyFromRows — 덤프의 applySet 만 반영한다 (등급 �
     expect(out.rejected.map((r) => r.id).sort()).toEqual(["d", "e", "g"]);
     for (const r of out.rejected) expect(r.reason).toMatch(/등급/);
     // APPLY_TIERS 와 같은 집합을 쓴다 — 두 곳이 갈리면 `--apply` 와 다른 것을 반영하게 된다
-    expect([...APPLY_TIERS].sort()).toEqual(["A2", "B_apply", "B_kakao_strong"]);
+    expect([...APPLY_TIERS].sort()).toEqual(["A2", "A_human", "B_apply", "B_kakao_strong"]);
   });
 
   it("★ B_kakao_weak 은 applySet 에 들어 있으면 통과한다 (덤프가 --include-weak 로 만들어졌다)", () => {
@@ -1438,7 +1446,7 @@ describe("배선 — --apply-from 모드가 실제로 연결돼 있다 (소스 g
   it("★ 배타 검사는 원시 argv 존재로 본다 (--limit=0 이 null 로 사라지는 함정) + --include-weak 포함", () => {
     expect(SRC).toContain("a === f || a.startsWith(`${f}=`)");
     expect(SRC).toMatch(
-      /if \(hasFlag\("--apply-from"\) && \["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak"\]\.some\(hasFlag\)\)/
+      /if \(hasFlag\("--apply-from"\) && \["--refit-fields", "--ids-file", "--limit", "--out", "--include-weak", "--approve", "--only-ids"\]\.some\(hasFlag\)\)/
     );
   });
 
@@ -1683,5 +1691,531 @@ describe("게이트 ② — 같은 좌표를 여럿이 가리키면 전부 보�
     // 5자리에서 갈리는 쌍 — 약 1m 차이지만 다른 자리로 본다
     const diff = [row("a", 37.51001), row("b", 37.51002)];
     expect(demoteMultiPointed(diff).demoted).toBe(0);
+  });
+});
+
+// ── 세션565 — 개발지구·블록 접두 떼기 · 추가 K 시도 · 사람 승인 ──────────────────
+//
+// 세션563 조사 56곳(`docs/audits/2026-09-23-coord-shared-survey.json`)은 세 출처 모두 실패했다.
+// 원래 질의가 **아무것도 못 고른 행에만** 브랜드 질의를 더 하고, 사람이 고른 좌표는 **출처 후보와
+// 30m 안일 때만** 반영한다. 원래 경로의 판정은 한 비트도 바뀌지 않아야 한다.
+
+describe("stripDevAreaPrefix — 서베이 56곳 이름 전수 (세션565)", () => {
+  // 기대값은 이름을 한 줄씩 읽고 정했다(관측값이 아니다). null = 자신 있게 못 가른다.
+  /** @type {Record<string, string | null>} */
+  const TABLE = {
+    "고양덕은 DMC리버파크자이(A4BL)": null, // 지구·블록 토큰 없음(괄호 블록은 cleanName 이 뗐다) — 뗄 게 없다
+    "고양덕은 DMC리버포레자이(A7BL)": null,
+    "남악 오룡지구 39BL 오룡 푸르지오 파르세나": "오룡 푸르지오 파르세나",
+    "남악 오룡지구 40BL 오룡 푸르지오 파르세나": "오룡 푸르지오 파르세나",
+    "화성 비봉지구 B3블록 예미지 센트럴에듀": "예미지 센트럴에듀",
+    "남악 오룡지구 36BL 남악오룡 시티프라디움": "남악오룡 시티프라디움",
+    "오산 세교2지구 A10블록 칸타빌 더퍼스트": "칸타빌 더퍼스트",
+    "오산 세교2지구 A10블록 칸타빌 더퍼스트(2차)": "칸타빌 더퍼스트",
+    "에코델타시티 푸르지오 센터파크(18블록) 공공분양주택(1차)": "푸르지오 센터파크",
+    "검단신도시 금강펜테리움 3차 센트럴파크(1차)": "금강펜테리움 3차 센트럴파크", // 단지 차수는 남긴다
+    "파주 운정신도시 A39BL 호반써밋(임의공급 2차)": "호반써밋",
+    "검단신도시 금강펜테리움 3차 센트럴파크(2차)": "금강펜테리움 3차 센트럴파크",
+    "동탄 A107블록 숨마데시앙 무순위(1차)": "숨마데시앙", // 블록 앞 지명(동탄)까지 뗀다
+    "동탄 A106블록 어울림파밀리에 무순위(1차)": "어울림파밀리에",
+    "오산세교2지구 A2블록 호반써밋 그랜빌(무순위1차)": "호반써밋 그랜빌",
+    "시흥장현 공공주택지구 C4블록 유승한내들 퍼스트파크(계약취소주택)": "유승한내들 퍼스트파크",
+    "아산탕정일반산업단지 D1-2BL 호반써밋 그랜드마크2 계약취소주택": "호반써밋 그랜드마크2",
+    "아산탕정지구 2-A3블록 한들물빛도시 예미지": "한들물빛도시 예미지", // "2-" 가 남지 않는다
+    "에코델타시티 7블록 호반써밋": "호반써밋",
+    "아산탕정일반산업단지 D1-2BL 호반써밋 그랜드마크2 (무순위 1차)": "호반써밋 그랜드마크2",
+    "화성비봉 공공주택지구 B2블록 호반써밋": "호반써밋",
+    "오산세교2지구 A-13블록 호반써밋": "호반써밋",
+    "부산에코델타 7블록 호반써밋 스마트시티(무순위 1차)": "호반써밋 스마트시티", // "스마트시티"는 브랜드
+    "북수원이목지구 디에트르 더 리체Ⅰ": "디에트르 더 리체Ⅰ",
+    "시흥 장현지구 C-2BL 모아미래도 에듀포레": "모아미래도 에듀포레",
+    "아산탕정일반산업단지 D1-2BL 호반써밋 그랜드마크Ⅱ(계약취소주택)": "호반써밋 그랜드마크Ⅱ",
+    "부산 에코델타시티 한양수자인 21블록": "한양수자인", // 뒤의 블록도 뗀다
+    "에코델타시티 대성베르힐 17블록": "대성베르힐",
+    "부산에코델타 7블록 호반써밋 스마트시티": "호반써밋 스마트시티",
+    "무안 오룡지구 우미린 1차(43BL)": "우미린 1차",
+    "무안 오룡지구 우미린 2차(44BL)": "우미린 2차",
+    "북수원이목지구 대방 디에트르 더 리체Ⅰ(무순위 2차)": "대방 디에트르 더 리체Ⅰ", // 대방 = 시행사(브랜드)
+    "파주운정 경남아너스빌 리버(A48블록)(무순위)": "경남아너스빌 리버",
+    "북수원이목지구 대방 디에트르 더 리체Ⅰ(3차)": "대방 디에트르 더 리체Ⅰ",
+    "파주 운정신도시 A39BL 호반써밋": "호반써밋",
+    "파주 운정3지구 A5블록 제일풍경채 그랑퍼스트": "제일풍경채 그랑퍼스트",
+    "파주 운정3지구 A7블록 제일풍경채 3차 그랑포레": "제일풍경채 3차 그랑포레",
+    "파주 운정3지구 A10블록 제일풍경채 2차 그랑베뉴": "제일풍경채 2차 그랑베뉴",
+    "파주운정 경남아너스빌 리버(A48블록)(2차)": "경남아너스빌 리버",
+    "시흥거모지구 대방 엘리움 더 루체Ⅰ(S-2BL)": "대방 엘리움 더 루체Ⅰ",
+    "시흥거모지구 대방 엘리움 더 루체Ⅱ(B-2BL)": "대방 엘리움 더 루체Ⅱ",
+    "강서자이 에코델타(20블록) 공공분양주택": "강서자이 에코델타", // 주택유형만 뗀다 — 뒤의 에코델타는 브랜드 일부
+    "파주운정 경남아너스빌 리버(A48블록)": "경남아너스빌 리버",
+    "제일풍경채 검단Ⅳ": null, // 뗄 게 없다
+    "인천 검단신도시 AB19블록 호반써밋": "호반써밋",
+    "파주 운정3지구 A5블록 제일풍경채 그랑퍼스트(2차)": "제일풍경채 그랑퍼스트",
+    "파주 운정신도시 A11블록 중흥S-클래스 에듀하이": "중흥S-클래스 에듀하이",
+    "e편한세상대장퍼스티움A-5BL 신혼희망타운": "e편한세상대장퍼스티움", // 브랜드에 붙은 블록만 뗀다
+    "부천대장A5 행복주택": null, // 붙은 블록을 떼면 "부천대장" = 지명(대장지구) — 브랜드가 없다
+  };
+
+  it("★ 표가 서베이 56행의 이름을 **전부** 덮는다 — 서베이가 늘면 여기서 red", () => {
+    const survey = /** @type {{ name: string }[]} */ (
+      JSON.parse(readFileSync(new URL("../docs/audits/2026-09-23-coord-shared-survey.json", import.meta.url), "utf8"))
+    );
+    expect(survey).toHaveLength(56);
+    const missing = survey.map((r) => r.name).filter((n) => !(n in TABLE));
+    expect(missing).toEqual([]);
+  });
+
+  for (const [name, want] of Object.entries(TABLE)) {
+    it(`${name} → ${want === null ? "null" : want}`, () => {
+      expect(stripDevAreaPrefix(name)).toBe(want);
+    });
+  }
+
+  it("단지 차수(브랜드 안 N차)는 남긴다 — 회차만 cleanName 이 뗀다", () => {
+    expect(stripDevAreaPrefix("검단신도시 금강펜테리움 3차 센트럴파크")).toBe("금강펜테리움 3차 센트럴파크");
+  });
+
+  it("빈 이름·뗄 게 없는 이름은 null", () => {
+    expect(stripDevAreaPrefix("")).toBe(null);
+    expect(stripDevAreaPrefix(null)).toBe(null);
+    expect(stripDevAreaPrefix("힐스테이트 부천옥길")).toBe(null);
+  });
+
+  it("떼고 남은 브랜드가 4자 미만이면 null (검색어로 너무 흔하다)", () => {
+    expect(stripDevAreaPrefix("남악 오룡지구 39BL 자이")).toBe(null);
+    expect(stripDevAreaPrefix("남악 오룡지구 39BL 더샵자이")).toBe("더샵자이"); // 4자는 통과(경계)
+  });
+});
+
+describe("resolveKakao · analyzeKakaoDocs — 원래 질의가 못 고를 때만 브랜드로 다시 묻는다 (세션565)", () => {
+  /** @param {string} name @param {string} addr @param {number} lat @param {number} [lng] */
+  const doc = (name, addr, lat, lng = 126.75) => ({
+    place_name: name,
+    address_name: addr,
+    category_name: "부동산 > 주거시설 > 아파트",
+    x: String(lng),
+    y: String(lat),
+  });
+  const RAW = "파주 운정3지구 A5블록 제일풍경채 그랑퍼스트";
+  const CUR_P = { lat: 37.7, lng: 126.75 };
+  /**
+   * 질의별 응답을 정해 두고 부른 질의를 기록하는 가짜 카카오.
+   * @param {Record<string, any[]>} byQuery
+   */
+  const fakeKakao = (byQuery) => {
+    /** @type {string[]} */
+    const calls = [];
+    /** @param {string} q */
+    const fetchDocs = async (q) => {
+      calls.push(q);
+      return byQuery[q] ?? [];
+    };
+    return { calls, fetchDocs };
+  };
+  /** @param {string} rawName @param {string | null} [sido] @param {string | null} [gu] */
+  const ctx = (rawName, sido = "경기", gu = "파주시") => ({
+    name: cleanName(rawName),
+    rawName,
+    sidoPrefix: sido,
+    gu,
+    cur: CUR_P,
+  });
+  // 실측 sim(stringSimilarity): 질의 "제일풍경채 그랑퍼스트" 기준
+  const PICKABLE = doc("제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 1", 37.71); // sim 0.870
+  const VILLAGE1 = doc("별하람마을1단지제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 1", 37.71); // sim 0.645 · 부분문자열
+  const VILLAGE2 = doc("별하람마을2단지제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 2", 37.76); // sim 0.645 · 부분문자열
+
+  it("★ 픽스처 sim 이 문턱 양쪽에 놓였는지 먼저 확인 (탐침 자기검증)", () => {
+    expect(pickKakaoCandidate("제일풍경채 그랑퍼스트", [PICKABLE], "경기")?.sim ?? 0).toBeGreaterThan(0.7);
+    const v = pickKakaoCandidate("제일풍경채 그랑퍼스트", [VILLAGE1], "경기");
+    expect(v?.sim ?? 1).toBeLessThan(0.7); // 하한 미만인데
+    expect(v?.strong).toBe(true); // 유일한 부분문자열이라 구제된다
+  });
+
+  it("🔴 원래 질의로 고르면 추가 질의를 **하지 않는다** — 회귀 0", async () => {
+    const name = "힐스테이트부천옥길";
+    const k = fakeKakao({ [name]: [doc(name, "경기 부천시 옥길동 1", 37.48)] });
+    const r = await resolveKakao({ name, rawName: "파주 운정3지구 A5블록 힐스테이트부천옥길", sidoPrefix: "경기", gu: "파주시", cur: CUR_P }, k.fetchDocs);
+    expect(k.calls).toEqual([name]); // 원래 질의 1회뿐
+    expect(r.kPath).toBe("original");
+    expect(r.kPick?.doc.place_name).toBe(name);
+    // ⚠️ 원래 경로는 gu 를 쓰지 않는다(세션564 까지와 같은 호출) — 부천시 doc 이 파주시 행에 그대로 뽑혔다
+  });
+
+  it("★ 원래 질의가 0건이면 '<시도> <시군구> <브랜드>' 로 다시 묻고, 거기서 고르면 멈춘다", async () => {
+    const k = fakeKakao({ "경기 파주시 제일풍경채 그랑퍼스트": [VILLAGE1] });
+    const r = await resolveKakao(ctx(RAW), k.fetchDocs);
+    expect(k.calls).toEqual([cleanName(RAW), "경기 파주시 제일풍경채 그랑퍼스트"]);
+    expect(r.kPath).toBe("stripped-region");
+    expect(r.kQuery).toBe("경기 파주시 제일풍경채 그랑퍼스트");
+    expect(r.kPick?.doc.place_name).toBe(VILLAGE1.place_name);
+    expect(r.kAmbiguous).toBe(false);
+  });
+
+  it("★ 시군구 질의도 못 고르면 브랜드만으로 — 세 번째 질의", async () => {
+    const k = fakeKakao({ "제일풍경채 그랑퍼스트": [PICKABLE] });
+    const r = await resolveKakao(ctx(RAW), k.fetchDocs);
+    expect(k.calls).toEqual([cleanName(RAW), "경기 파주시 제일풍경채 그랑퍼스트", "제일풍경채 그랑퍼스트"]);
+    expect(r.kPath).toBe("stripped-name");
+    expect(r.kPick?.doc.place_name).toBe(PICKABLE.place_name);
+  });
+
+  it("🔴 추가 경로는 시군구 게이트를 쓴다 — 같은 이름이라도 다른 시군구 doc 은 거부", async () => {
+    const other = doc("제일풍경채그랑퍼스트아파트", "경기 고양시 덕양구 덕은동 1", 37.6);
+    const rej = await resolveKakao(ctx(RAW), fakeKakao({ "제일풍경채 그랑퍼스트": [other] }).fetchDocs);
+    expect(rej.kPick).toBe(null);
+    // 양성 대조군 — 같은 doc 이 파주시 주소면 고른다(게이트가 무조건 거부하는 게 아니다)
+    const ok = await resolveKakao(ctx(RAW), fakeKakao({ "제일풍경채 그랑퍼스트": [PICKABLE] }).fetchDocs);
+    expect(ok.kPick).not.toBe(null);
+  });
+
+  it("🔴 시도를 모르면 추가 경로를 타지 않는다 — 지역 게이트가 통째로 꺼지는 자리", async () => {
+    const k = fakeKakao({ "제일풍경채 그랑퍼스트": [PICKABLE] });
+    const r = await resolveKakao(ctx(RAW, null, null), k.fetchDocs);
+    expect(k.calls).toEqual([cleanName(RAW)]);
+    expect(r.kPick).toBe(null);
+  });
+
+  it("브랜드를 못 떼면(null) 추가 질의 없음", async () => {
+    const k = fakeKakao({});
+    await resolveKakao(ctx("제일풍경채 검단Ⅳ", "인천", "검단구"), k.fetchDocs);
+    expect(k.calls).toEqual(["제일풍경채 검단Ⅳ"]);
+  });
+
+  it("🔴 자격 있는 후보가 100m 넘게 떨어진 두 곳이면 고르지 않는다(kAmbiguous) + 거기서 멈춘다", async () => {
+    const a = doc("제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 1", 37.71);
+    const b = doc("제일풍경채그랑퍼스트아파트", "경기 파주시 목동동 2", 37.76); // 약 5.6km
+    const k = fakeKakao({ "경기 파주시 제일풍경채 그랑퍼스트": [a, b], "제일풍경채 그랑퍼스트": [PICKABLE] });
+    const r = await resolveKakao(ctx(RAW), k.fetchDocs);
+    expect(r.kAmbiguous).toBe(true);
+    expect(r.kPick).toBe(null);
+    expect(r.kPath).toBe("stripped-region");
+    expect(k.calls).toHaveLength(2); // 더 넓은 질의로 넘어가 우연히 하나만 보이는 것을 막는다
+    expect(r.kCands).toHaveLength(2);
+    expect(r.kCands.map((c) => c.distM)).toEqual([
+      Math.round(haversineMeters(CUR_P.lat, CUR_P.lng, 37.71, 126.75)),
+      Math.round(haversineMeters(CUR_P.lat, CUR_P.lng, 37.76, 126.75)),
+    ]);
+  });
+
+  it("같은 자리(100m 이내)의 중복 POI 는 모호가 아니다 — 고른다", async () => {
+    // 픽스처 실측: 37.71 ↔ 37.7104 = 약 44m
+    expect(haversineMeters(37.71, 126.75, 37.7104, 126.75)).toBeLessThan(KAKAO_AMBIGUOUS_M);
+    const a = doc("제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 1", 37.71);
+    const b = doc("제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 1", 37.7104);
+    const r = await resolveKakao(ctx(RAW), fakeKakao({ "경기 파주시 제일풍경채 그랑퍼스트": [a, b] }).fetchDocs);
+    expect(r.kAmbiguous).toBe(false);
+    expect(r.kPick).not.toBe(null);
+  });
+
+  it("★ 부분문자열 구제의 유일성은 **전체**에서 센다 — 둘이면 둘 다 자격 없음(pickKakaoCandidate 와 같은 판정)", () => {
+    const both = analyzeKakaoDocs("제일풍경채 그랑퍼스트", [VILLAGE1, VILLAGE2], "경기", "파주시", CUR_P);
+    expect(both.pick).toBe(null);
+    expect(both.ambiguous).toBe(false); // 자격 없는 후보끼리는 모호로 세지 않는다
+    expect(pickKakaoCandidate("제일풍경채 그랑퍼스트", [VILLAGE1, VILLAGE2], "경기", "파주시")).toBe(null);
+    expect(both.cands.map((c) => c.qualified)).toEqual([false, false]); // 검토용으론 남긴다
+    // 양성 대조군 — 하나뿐이면 구제되어 자격이 있다
+    const one = analyzeKakaoDocs("제일풍경채 그랑퍼스트", [VILLAGE1], "경기", "파주시", CUR_P);
+    expect(one.pick?.doc.place_name).toBe(VILLAGE1.place_name);
+    expect(one.cands[0].qualified).toBe(true);
+  });
+
+  it("kCands 는 게이트(카테고리·지역) 통과분만, sim 내림차순 최대 3개", () => {
+    const docs = [
+      doc("한울마을전혀다른아파트", "경기 파주시 와동동 9", 37.72), // sim 0.095
+      PICKABLE, // 0.870
+      VILLAGE1, // 0.645
+      doc("제일풍경채그랑퍼스트아파트", "경기 파주시 와동동 1", 37.7101), // 0.870
+      { ...PICKABLE, category_name: "부동산 > 중개업소" }, // 게이트 탈락
+    ];
+    const r = analyzeKakaoDocs("제일풍경채 그랑퍼스트", docs, "경기", "파주시", CUR_P);
+    expect(r.cands).toHaveLength(3);
+    expect(r.cands.map((c) => c.sim)).toEqual([0.87, 0.87, 0.645]);
+    expect(r.cands.every((c) => c.addr.startsWith("경기 파주시"))).toBe(true);
+  });
+
+  it("원래 경로도 kCands 를 남긴다(검토용) — 판정과 무관", async () => {
+    const k = fakeKakao({ [cleanName(RAW)]: [VILLAGE1] }); // 원래 질의(접두 포함)는 부분문자열이 아니라 못 고른다
+    const r = await resolveKakao(ctx(RAW), k.fetchDocs);
+    expect(r.kCands.map((c) => c.name)).toEqual([VILLAGE1.place_name]);
+  });
+});
+
+describe("promoteApproved — 사람 승인은 출처 후보와 30m 안일 때만 A_human (세션565)", () => {
+  /** @param {any} over */
+  const mk = (over) => ({
+    id: "x",
+    name: "n",
+    tier: "none",
+    reason: "출처 없음",
+    source: null,
+    lat: CUR.lat,
+    lng: CUR.lng,
+    newLat: null,
+    newLng: null,
+    newAddress: null,
+    distM: null,
+    kCands: [],
+    srcCoords: { K: null, A: null, C: null },
+    ...over,
+  });
+
+  it("★ 픽스처 거리 실측 — 22m 는 안, 44m 는 밖", () => {
+    expect(APPROVE_MATCH_M).toBe(30);
+    expect(haversineMeters(FAR.lat, FAR.lng, FAR2.lat, FAR2.lng)).toBeLessThan(APPROVE_MATCH_M);
+    expect(haversineMeters(FAR.lat, FAR.lng, 37.5104, 127.0)).toBeGreaterThan(APPROVE_MATCH_M);
+  });
+
+  it("🔴 kCands 후보와 30m 안 → A_human · 좌표는 **후보 좌표**(손으로 친 값 아님) · 주소도 후보 것", () => {
+    const rows = [
+      mk({ kCands: [{ name: "P", addr: "경기 파주시 와동동 1", lat: FAR.lat, lng: FAR.lng, sim: 0.6, distM: 1112, qualified: false }] }),
+    ];
+    const res = promoteApproved(rows, [{ id: "x", lat: FAR2.lat, lng: FAR2.lng, note: "현장 확인" }]);
+    expect(res.promoted).toEqual(["x"]);
+    expect(rows[0].tier).toBe("A_human");
+    expect(rows[0].reason).toBe("사람 승인: 현장 확인");
+    expect(rows[0].newLat).toBe(FAR.lat);
+    expect(rows[0].newLng).toBe(FAR.lng);
+    expect(rows[0].newAddress).toBe("경기 파주시 와동동 1");
+    expect(rows[0].source).toBe("K");
+    expect(rows[0].distM).toBe(Math.round(haversineMeters(CUR.lat, CUR.lng, FAR.lat, FAR.lng)));
+    expect(APPLY_TIERS.has(rows[0].tier)).toBe(true);
+  });
+
+  it("A 출처 좌표와 맞아도 승격 — 주소는 청약홈 표기", () => {
+    const rows = [mk({ srcCoords: { K: null, A: { ...FAR, addr: "경기도 파주시 와동동 1" }, C: null } })];
+    promoteApproved(rows, [{ id: "x", lat: FAR.lat, lng: FAR.lng }]);
+    expect(rows[0].tier).toBe("A_human");
+    expect(rows[0].source).toBe("A");
+    expect(rows[0].newAddress).toBe("경기도 파주시 와동동 1");
+  });
+
+  it("🔴 30m 밖이면 반영 안 함 — 등급·좌표 그대로 + 가장 가까운 거리 보고", () => {
+    const rows = [mk({ srcCoords: { K: { ...FAR, addr: "a" }, A: null, C: null } })];
+    const res = promoteApproved(rows, [{ id: "x", lat: 37.5104, lng: 127.0 }]);
+    expect(res.promoted).toEqual([]);
+    expect(res.mismatched).toEqual([{ id: "x", nearestM: 44 }]);
+    expect(rows[0].tier).toBe("none");
+    expect(rows[0].newLat).toBe(null);
+  });
+
+  it("후보가 하나도 없으면 반영 안 함(nearestM null)", () => {
+    const rows = [mk({})];
+    expect(promoteApproved(rows, [{ id: "x", lat: 37.5, lng: 127.0 }]).mismatched).toEqual([{ id: "x", nearestM: null }]);
+    expect(rows[0].tier).toBe("none");
+  });
+
+  it("모르는 id 는 unknown 으로 알린다", () => {
+    const res = promoteApproved([mk({})], [{ id: "nope", lat: 37.5, lng: 127.0 }]);
+    expect(res.unknown).toEqual(["nope"]);
+  });
+
+  it("★ 게이트 ② **뒤**에 승인하면 살아남는다 — 강등된 행도 사람이 고르면 A_human, 나머지는 B_multi 그대로", () => {
+    const rows = [
+      mk({ id: "a", tier: "B_kakao_strong", newLat: FAR.lat, newLng: FAR.lng, srcCoords: { K: { ...FAR, addr: "k" }, A: null, C: null } }),
+      mk({ id: "b", tier: "B_kakao_strong", newLat: FAR.lat, newLng: FAR.lng, srcCoords: { K: { ...FAR, addr: "k" }, A: null, C: null } }),
+    ];
+    expect(demoteMultiPointed(rows).demoted).toBe(2);
+    promoteApproved(rows, [{ id: "a", lat: FAR.lat, lng: FAR.lng, note: "39BL = 1단지" }]);
+    expect(rows.map((r) => r.tier)).toEqual(["A_human", "B_multi"]);
+    // 등급 집계(main 의 tally)와 applySet(fixList) 이 이 순서 뒤에서 계산되면 승인이 보인다
+    const applySet = rows.filter((r) => APPLY_TIERS.has(r.tier) && r.newLat != null).map((r) => r.id);
+    expect(applySet).toEqual(["a"]);
+    // ⚠️ 반대로 승인 **뒤**에 게이트 ② 를 돌리면 사람이 고른 행이 다시 강등된다 — 그래서 순서가 가드다
+    const again = [mk({ id: "c", tier: "A_human", newLat: 1, newLng: 1 }), mk({ id: "d", tier: "A_human", newLat: 1, newLng: 1 })];
+    expect(demoteMultiPointed(again).demoted).toBe(2);
+  });
+
+  it("★ --apply-from 이 A_human 행을 반영 대상으로 받는다 (APPLY_TIERS 파생)", () => {
+    const rows = [{ id: "h", tier: "A_human", lat: CUR.lat, lng: CUR.lng, newLat: FAR.lat, newLng: FAR.lng }];
+    const out = selectApplyFromRows({ rows, applySet: ["h"], rosterSize: 1 });
+    expect(out.rows.map((r) => r.id)).toEqual(["h"]);
+    expect(out.rejected).toEqual([]);
+  });
+
+  describe("complexNo 승인 — 도구 후보 밖의 네이버 단지를 직접 지정 (세션565)", () => {
+    /** @param {any} over */
+    const cx = (over) => new Map([["cx-1", { complex_no: "cx-1", complex_name: "테스트단지", latitude: FAR.lat, longitude: FAR.lng, ...over }]]);
+
+    it("🔴 complexNo 일치 + 30m 안 + address 있음 → C_human, 좌표는 **complexes 표** 것, 주소는 승인 값", () => {
+      const rows = [mk({ kCands: [{ name: "다른곳", addr: "다른 주소", lat: FARWAY.lat, lng: FARWAY.lng, sim: 0.5, distM: 99999, qualified: false }] })];
+      const res = promoteApproved(
+        rows,
+        [{ id: "x", lat: FAR2.lat, lng: FAR2.lng, complexNo: "cx-1", address: "경기 파주시 진짜주소 1", note: "네이버 단지로 확정" }],
+        cx({}),
+      );
+      expect(res.promoted).toEqual(["x"]);
+      expect(rows[0].tier).toBe("A_human");
+      expect(rows[0].source).toBe("C_human");
+      expect(rows[0].newLat).toBe(FAR.lat);
+      expect(rows[0].newLng).toBe(FAR.lng);
+      expect(rows[0].newAddress).toBe("경기 파주시 진짜주소 1");
+      expect(APPLY_TIERS.has(rows[0].tier)).toBe(true);
+    });
+
+    it("🔴 complexNo 가 complexesByNo 에 없으면 승격 안 함", () => {
+      const rows = [mk({})];
+      const res = promoteApproved(
+        rows,
+        [{ id: "x", lat: FAR.lat, lng: FAR.lng, complexNo: "없는번호", address: "주소" }],
+        cx({}),
+      );
+      expect(res.promoted).toEqual([]);
+      expect(res.mismatched).toEqual([{ id: "x", nearestM: null }]);
+      expect(rows[0].tier).toBe("none");
+    });
+
+    it("🔴 complexNo 는 맞는데 승인 좌표가 그 단지에서 30m 넘게 떨어지면 승격 안 함", () => {
+      const rows = [mk({})];
+      const res = promoteApproved(
+        rows,
+        [{ id: "x", lat: 37.5104, lng: 127.0, complexNo: "cx-1", address: "주소" }],
+        cx({}),
+      );
+      expect(res.promoted).toEqual([]);
+      expect(res.mismatched).toEqual([{ id: "x", nearestM: 44 }]);
+      expect(rows[0].tier).toBe("none");
+    });
+
+    it("🔴 complexNo 는 맞고 거리도 맞는데 address 가 없으면 승격 안 함", () => {
+      const rows = [mk({})];
+      const res = promoteApproved(rows, [{ id: "x", lat: FAR2.lat, lng: FAR2.lng, complexNo: "cx-1" }], cx({}));
+      expect(res.promoted).toEqual([]);
+      expect(rows[0].tier).toBe("none");
+      expect(rows[0].newAddress).toBe(null);
+    });
+
+    it("complexNo 의 좌표 자체가 없으면(latitude null) 승격 안 함", () => {
+      const rows = [mk({})];
+      const res = promoteApproved(
+        rows,
+        [{ id: "x", lat: FAR.lat, lng: FAR.lng, complexNo: "cx-1", address: "주소" }],
+        cx({ latitude: null }),
+      );
+      expect(res.promoted).toEqual([]);
+      expect(rows[0].tier).toBe("none");
+    });
+  });
+
+  describe("후보 주소가 비어 있을 때 승인의 address 로 보강 (세션565)", () => {
+    it("🔴 kCands 후보에 addr 가 없고 승인에 address 가 있으면 승인 address 를 쓴다", () => {
+      const rows = [mk({ kCands: [{ name: "P", addr: null, lat: FAR.lat, lng: FAR.lng, sim: 0.6, distM: 1112, qualified: false }] })];
+      const res = promoteApproved(rows, [{ id: "x", lat: FAR2.lat, lng: FAR2.lng, address: "손으로 채운 주소" }]);
+      expect(res.promoted).toEqual(["x"]);
+      expect(rows[0].tier).toBe("A_human");
+      expect(rows[0].newAddress).toBe("손으로 채운 주소");
+      expect(rows[0].newLat).toBe(FAR.lat);
+    });
+
+    it("🔴 후보 addr 도 없고 승인 address 도 없으면 승격 안 함(주소 없는 A_human 금지)", () => {
+      const rows = [mk({ kCands: [{ name: "P", addr: null, lat: FAR.lat, lng: FAR.lng, sim: 0.6, distM: 1112, qualified: false }] })];
+      const res = promoteApproved(rows, [{ id: "x", lat: FAR2.lat, lng: FAR2.lng }]);
+      expect(res.promoted).toEqual([]);
+      expect(rows[0].tier).toBe("none");
+      expect(rows[0].newAddress).toBe(null);
+    });
+  });
+});
+
+describe("readApprovals — 승인 파일 형식 (세션565)", () => {
+  const dir = mkdtempSync(join(tmpdir(), "s565-approve-"));
+  /** @param {string} name @param {any} body */
+  const write = (name, body) => {
+    const p = join(dir, name);
+    writeFileSync(p, JSON.stringify(body));
+    return p;
+  };
+
+  it("★ 정상 파일을 읽는다(note 는 선택)", () => {
+    const p = write("ok.json", [{ id: "ah-1", lat: 37.5, lng: 127.0, note: "확인" }, { id: "ah-2", lat: 35.1, lng: 129.0 }]);
+    expect(readApprovals(p)).toEqual([{ id: "ah-1", lat: 37.5, lng: 127.0, note: "확인" }, { id: "ah-2", lat: 35.1, lng: 129.0 }]);
+  });
+
+  it("🔴 같은 id 두 번 · 숫자 아닌 좌표 · 배열 아님 · id 없음 → 던진다", () => {
+    expect(() => readApprovals(write("dup.json", [{ id: "a", lat: 1, lng: 1 }, { id: "a", lat: 2, lng: 2 }]))).toThrow(/두 번/);
+    expect(() => readApprovals(write("str.json", [{ id: "a", lat: "37.5", lng: 127 }]))).toThrow(/유한 숫자/);
+    expect(() => readApprovals(write("obj.json", { id: "a", lat: 1, lng: 1 }))).toThrow(/배열/);
+    expect(() => readApprovals(write("noid.json", [{ lat: 1, lng: 1 }]))).toThrow(/id/);
+  });
+
+  it("★ complexNo·address 를 함께 읽는다 (세션565)", () => {
+    const p = write("cx.json", [{ id: "ah-1", lat: 37.5, lng: 127.0, complexNo: "cx-1", address: "경기 파주시 진짜주소 1" }]);
+    expect(readApprovals(p)).toEqual([
+      { id: "ah-1", lat: 37.5, lng: 127.0, complexNo: "cx-1", address: "경기 파주시 진짜주소 1" },
+    ]);
+  });
+
+  it("🔴 complexNo·address 가 빈 문자열이면 던진다(빈 채로 통과시켜 주소 없는 승인을 만들지 않는다)", () => {
+    expect(() => readApprovals(write("emptycx.json", [{ id: "a", lat: 1, lng: 1, complexNo: "" }]))).toThrow(/complexNo/);
+    expect(() => readApprovals(write("emptyaddr.json", [{ id: "a", lat: 1, lng: 1, address: "" }]))).toThrow(/address/);
+    expect(() => readApprovals(write("numcx.json", [{ id: "a", lat: 1, lng: 1, complexNo: 123 }]))).toThrow(/complexNo/);
+  });
+});
+
+describe("selectOnlyIdTargets — --only-ids 는 후보 풀 밖도 강제로 분석한다 (세션565)", () => {
+  it("★ 전체 apartments 에서 고른다 · 없는 id 는 missing · id 순 정렬", () => {
+    const apts = [{ id: "ah-3" }, { id: "ah-1" }, { id: "ah-9" }];
+    const r = selectOnlyIdTargets(apts, ["ah-3", "ah-1", "ah-404"]);
+    expect(r.targets.map((a) => a.id)).toEqual(["ah-1", "ah-3"]);
+    expect(r.missing).toEqual(["ah-404"]);
+  });
+});
+
+describe("배선 — 추가 K 시도·사람 승인·--only-ids 가 main 에 연결돼 있다 (세션565, 소스 grep)", () => {
+  it("주석 제거가 검사 대상을 먹지 않았다 (스트리퍼 자체 점검)", () => {
+    for (const s of ["resolveKakao", "promoteApproved", "selectOnlyIdTargets", "readApprovals", "demoteMultiPointed(rows)"]) {
+      expect(SRC, s).toContain(s);
+    }
+  });
+
+  it("★ 메인 루프가 resolveKakao 의 pick 을 K 로 쓴다 (gu 까지 넘긴다)", () => {
+    expect(SRC).toMatch(/const kr = await resolveKakao\(\s*\{ name, rawName: apt\.name, sidoPrefix, gu: apt\.gu \?\? null,/);
+    expect(SRC).toMatch(/const kPick = kr\.kPick;\s*K = buildKakaoInput\(kPick\);/);
+    // 옛 인라인 호출이 남아 두 번 묻지 않는다
+    expect(SRC).not.toMatch(/kPick = pickKakaoCandidate\(name, docs, sidoPrefix\);\s*K = buildKakaoInput/);
+  });
+
+  it("★ 원래 경로는 gu 없이 — 세션564 까지와 같은 호출(회귀 0)", () => {
+    expect(SRC).toMatch(/out\.kPick = pickKakaoCandidate\(name, docs, sidoPrefix\);\s*out\.kCands = /);
+  });
+
+  it("★ 행에 kPath·kQuery·kAmbiguous·kCands·srcCoords 를 남긴다", () => {
+    for (const f of ["kPath: kr.kPath,", "kQuery: kr.kQuery,", "kAmbiguous: kr.kAmbiguous,", "kCands: kr.kCands,", "srcCoords: {"]) {
+      expect(SRC, f).toContain(f);
+    }
+  });
+
+  it("★ 순서 — 게이트 ② → 사람 승인 → 등급 집계 → 덤프", () => {
+    const demote = SRC.indexOf("const multi = demoteMultiPointed(rows);");
+    const promote = SRC.indexOf("const ap = promoteApproved(rows, approvals, complexesByNo);");
+    const tally = SRC.indexOf("const tally = {};");
+    const fix = SRC.indexOf("const fixList = rows.filter(");
+    const dumpApproved = SRC.indexOf("approved: approvedIds,");
+    for (const i of [demote, promote, tally, fix, dumpApproved]) expect(i).toBeGreaterThan(-1);
+    expect(demote).toBeLessThan(promote);
+    expect(promote).toBeLessThan(tally);
+    expect(promote).toBeLessThan(fix);
+    expect(fix).toBeLessThan(dumpApproved);
+  });
+
+  it("★ --only-ids 는 후보 풀을 대체한다(풀 밖 id 도 분석)", () => {
+    expect(SRC).toMatch(/if \(onlyIds\) \{[^}]*const sel = selectOnlyIdTargets\(apts, onlyIds\);\s*targets = sel\.targets;/);
+  });
+
+  it("★ --approve·--only-ids 는 --apply·--refit-fields·--ids-file 과 함께 못 쓴다 — DB 접근 전에 죽는다", () => {
+    expect(SRC).toMatch(
+      /if \(\["--approve", "--only-ids"\]\.some\(hasFlag\) && \["--apply", "--refit-fields", "--ids-file"\]\.some\(hasFlag\)\) \{[^;]*;\s*process\.exit\(1\);/
+    );
+    expect(SRC.indexOf('if (["--approve", "--only-ids"].some(hasFlag)')).toBeLessThan(SRC.indexOf("const sb = getSupabase();"));
+    // 파일 형식 오류도 DB·20분 분석 전에
+    expect(SRC.indexOf("const approvals = approvePath ? readApprovals(approvePath) : null;")).toBeLessThan(
+      SRC.indexOf("const sb = getSupabase();")
+    );
+  });
+
+  it("★ --only-ids 와 --limit 는 함께 못 쓴다 — --limit 가 승인 대상 id 를 조용히 잘라 낸다(세션565 검사관)", () => {
+    expect(SRC).toMatch(/if \(hasFlag\("--only-ids"\) && hasFlag\("--limit"\)\) \{[^;]*;\s*process\.exit\(1\);/);
+    expect(SRC.indexOf('if (hasFlag("--only-ids") && hasFlag("--limit"))')).toBeLessThan(
+      SRC.indexOf("const sb = getSupabase();")
+    );
   });
 });
