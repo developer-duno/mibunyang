@@ -62,6 +62,9 @@ import {
   INFRA_KAKAO_KINDS,
   ID_CHUNK,
   chunkIds,
+  demoteMultiPointed,
+  FAR_MAX_M,
+  APPLY_MIN_SIM,
 } from "./fix-placeholder-addresses.mjs";
 
 /**
@@ -567,7 +570,7 @@ describe("buildKakaoInput — K 조립이 planned 를 채운다 (세션544 배�
       sim: 0.9,
       strong: true,
     });
-    expect(k).toEqual({ lat: 37.51, lng: 127.0, strong: true, planned: true });
+    expect(k).toEqual({ lat: 37.51, lng: 127.0, strong: true, planned: true, sim: 0.9 });
   });
 
   it("(예정) 이 없으면 planned=false", () => {
@@ -576,7 +579,15 @@ describe("buildKakaoInput — K 조립이 planned 를 채운다 (세션544 배�
       sim: 0.9,
       strong: false,
     });
-    expect(k).toEqual({ lat: 37.51, lng: 127.0, strong: false, planned: false });
+    expect(k).toEqual({ lat: 37.51, lng: 127.0, strong: false, planned: false, sim: 0.9 });
+  });
+
+  it("⚠️ sim 을 그대로 실어 보낸다 — 게이트①(APPLY_MIN_SIM)이 이 값을 읽는다 (세션564)", () => {
+    // 이 배선이 끊기면 sim 이 undefined 가 되어 게이트가 **조용히 통과**시킨다.
+    for (const sim of [0.42, 0.8, 1.0]) {
+      const k = buildKakaoInput({ doc: { y: "37.51", x: "127.0", place_name: "X" }, sim, strong: true });
+      expect(k?.sim, String(sim)).toBe(sim);
+    }
   });
 
   it("place_name 이 없어도 죽지 않는다", () => {
@@ -1582,5 +1593,95 @@ describe("ID_CHUNK · chunkIds", () => {
     expect(uses).toHaveLength(2);
     // 손으로 자르는 옛 꼴이 남아 있지 않다
     expect(SRC).not.toMatch(/ids\.slice\(i, i \+ chunk\)/);
+  });
+});
+
+describe("게이트 ① — 너무 멀거나 이름이 덜 닮으면 반영하지 않는다 (세션564)", () => {
+  // ★ 픽스처 거리를 실측으로 잠근다(탐침 자기검증) — 문턱을 사이에 두는지가 이 테스트의 전부다.
+  it("★ 픽스처가 문턱 양쪽에 놓였는지 먼저 확인한다", () => {
+    expect(Math.round(haversineMeters(CUR.lat, CUR.lng, FAR.lat, FAR.lng))).toBeLessThan(FAR_MAX_M);
+    expect(Math.round(haversineMeters(CUR.lat, CUR.lng, FARWAY.lat, FARWAY.lng))).toBeGreaterThan(FAR_MAX_M);
+  });
+
+  it("3km 안 + 이름 충분히 닮음 → 반영 대상(B_kakao_strong)", () => {
+    const v = classify({ cur: CUR, K: { ...FAR, strong: true, sim: 0.95 } });
+    expect(v.tier).toBe("B_kakao_strong");
+  });
+
+  it("🔴 3km 밖이면 보고만(B_kakao_far) — '오산 호반써밋 → 호반써밋동탄 9km' 실사례", () => {
+    const v = classify({ cur: CUR, K: { ...FARWAY, strong: true, sim: 0.95 } });
+    expect(v.tier).toBe("B_kakao_far");
+    expect(v.reason).toMatch(/km/);
+  });
+
+  it("🔴 이름이 덜 닮으면 보고만(B_kakao_weak) — sim 0.80·0.57·0.42 가 전부 다른 단지였다", () => {
+    for (const sim of [0.84, 0.8, 0.57, 0.42]) {
+      const v = classify({ cur: CUR, K: { ...FAR, strong: true, sim } });
+      expect(v.tier, String(sim)).toBe("B_kakao_weak");
+    }
+  });
+
+  it("문턱 경계값(APPLY_MIN_SIM 정확히)은 통과한다 — '미만' 이 조건이다", () => {
+    expect(classify({ cur: CUR, K: { ...FAR, strong: true, sim: APPLY_MIN_SIM } }).tier).toBe("B_kakao_strong");
+  });
+
+  it("⚠️ sim 이 없으면(옛 호출자) 게이트를 건너뛴다 — 배선이 끊겨도 기존 동작은 유지", () => {
+    expect(classify({ cur: CUR, K: { ...FAR, strong: true } }).tier).toBe("B_kakao_strong");
+  });
+
+  it("⚠️ K↔A 가 맞장구치면(A2) 이 게이트를 타지 않는다 — 두 출처 일치가 더 강한 근거다", () => {
+    const v = classify({ cur: CUR, K: { ...FARWAY, strong: true, sim: 0.4 }, A: FARWAY });
+    expect(v.tier).toBe("A2");
+  });
+});
+
+describe("게이트 ② — 같은 좌표를 여럿이 가리키면 전부 보류 (세션564)", () => {
+  /** @param {string} id @param {number} lat @param {string} tier */
+  const row = (id, lat, tier = "B_kakao_strong") =>
+    ({ id, tier, reason: "", newLat: lat, newLng: 127.0, kakaoName: "어떤아파트" });
+
+  it("🔴 둘이 같은 좌표를 가리키면 둘 다 B_multi — 'DMC리버파크자이·리버포레자이' 실사례", () => {
+    const rows = [row("a", 37.51), row("b", 37.51)];
+    const r = demoteMultiPointed(rows);
+    expect(r.demoted).toBe(2);
+    expect(rows.map((x) => x.tier)).toEqual(["B_multi", "B_multi"]);
+    expect(rows[0].reason).toMatch(/2곳이 가리킴/);
+  });
+
+  it("혼자 가리키면 그대로 둔다", () => {
+    const rows = [row("a", 37.51), row("b", 37.52)];
+    expect(demoteMultiPointed(rows).demoted).toBe(0);
+    expect(rows.map((x) => x.tier)).toEqual(["B_kakao_strong", "B_kakao_strong"]);
+  });
+
+  it("⚠️ 반영 대상이 아닌 행은 세지 않는다 — 보고만 하는 행끼리 겹쳐도 강등할 게 없다", () => {
+    const rows = [row("a", 37.51, "B_gray"), row("b", 37.51, "B_gray")];
+    expect(demoteMultiPointed(rows).demoted).toBe(0);
+  });
+
+  it("⚠️ 반영 대상 하나 + 보고만 하나가 겹치면 강등하지 않는다 — 실제로 경쟁하는 게 아니다", () => {
+    const rows = [row("a", 37.51), row("b", 37.51, "B_gray")];
+    expect(demoteMultiPointed(rows).demoted).toBe(0);
+  });
+
+  it("셋이 겹치면 셋 다 강등한다", () => {
+    const rows = [row("a", 37.51), row("b", 37.51), row("c", 37.51)];
+    expect(demoteMultiPointed(rows).demoted).toBe(3);
+    expect(rows[0].reason).toMatch(/3곳이 가리킴/);
+  });
+
+  it("좌표가 없으면 건너뛴다(A2 등 다른 출처로 정해진 행)", () => {
+    const rows = [{ id: "a", tier: "B_kakao_strong", newLat: null, newLng: null },
+                  { id: "b", tier: "B_kakao_strong", newLat: null, newLng: null }];
+    expect(demoteMultiPointed(rows).demoted).toBe(0);
+  });
+
+  it("⚠️ 소수 5자리로 반올림해 묶는다 — 그보다 잘게 다르면 다른 자리로 본다", () => {
+    // 5자리 반올림이 같은 쌍(직접 확인: 둘 다 "37.51000")
+    const same = [row("a", 37.5100001), row("b", 37.5100004)];
+    expect(demoteMultiPointed(same).demoted).toBe(2);
+    // 5자리에서 갈리는 쌍 — 약 1m 차이지만 다른 자리로 본다
+    const diff = [row("a", 37.51001), row("b", 37.51002)];
+    expect(demoteMultiPointed(diff).demoted).toBe(0);
   });
 });
