@@ -54,7 +54,7 @@
 
 - 🟡 **BACKLOG 진행 중 항목 전수 점검** — 이 파일 201KB 의 대부분이 🔴/🟡/🧭 진행 중 칸이다(세션566 완료 색인 이관은 2줄 −1.4KB 뿐). 항목마다 "이미 끝났나"를 코드·DB 로 확인해 ✅ 로 바꾸고 ARCHIVE 로. 담당 1명(읽기+분류표), 반영은 메인.
 - 🟡 **폴더별 CLAUDE.md 가 공식 권장 200줄 초과** — `scripts/CLAUDE.md` 638줄·55KB · `src/scoring/CLAUDE.md` 600줄·39KB · `.github/workflows/CLAUDE.md` 316줄 · `supabase/CLAUDE.md` 227줄(code.claude.com/docs/en/memory: 파일당 200줄 목표, 넘으면 맥락 소모·준수율 하락). 글로벌 스킬 `doc-diet` 절차로 paths 규칙·이력 파일 분리.
-- 🟢 **글로벌 `~/.claude/CLAUDE.md` 264줄**(권장 200줄) — 다른 레포 세션들도 편집 중이라 사장님 결정 사항.
+- 🟢 **글로벌 `~/.claude/CLAUDE.md` 266줄·21.8KB**(권장 200줄, 2026-09-23 저녁 실측) — 다른 레포 세션들도 편집 중이라 사장님 결정 사항.
 - 🟡 **1,000행 잘림 잔여**(정적 가드 `scripts/_unbounded-query-coverage.test.mjs` ALLOWLIST·헤더) — `collect-data.mjs` phase9(complexes 생 쿼리, daily-deploy 에선 실행 안 되는 옛 경로: 정리 또는 삭제) · 가드 사각 4종(필터 걸린 대량 생 쿼리 `.in(col, 수천 개)` · 함수 경계 쿼리 빌더 · 여러 문장 커서 · 변수 표 이름).
 
 ### A-4. 세션566 검사관이 찾은 것 — 마감 있는 수리
@@ -64,6 +64,23 @@
 - 🟠 **좌표가 틀린 행(coord_shared)에 새 도보 분**이 생겼다(ah-2025910268/269 null→16분, 자리표시 좌표 기준) — calc-school-walk 가 coord_shared 행은 카카오 조회를 건너뛰게.
 - 🟠 **감시 ⑨ 가 개수만 본다 + "늘었다" 경보는 구조상 못 울린다**(coord_shared 를 켜는 곳이 수동 flag 도구뿐) — 기준 명단(id 8곳) 대조 + 외부 API 없이 "같은 좌표에 핵심이름 2종 이상" 자동 집계.
 - 🟠 **자매 레포 통보**(naver-estate-web) — 학교 도보 막대 최댓값 15 가정(`frontend/src/components/mb/metric-bar-configs.ts`) · "초등 도보 N분"(`MbInfraOverlay.tsx`)이 이제 최대 49분 · 미분양 변동 예정.
+
+### A-5. Supabase 보안 고문 경고 5건 (세션566 말미 — 사장님 스크린샷)
+
+⚠️ **전제: 이 DB 의 anon key 는 공개돼 있다** — 자매 2u.pe.kr 로그인 화면 JS 에 실려 있다(2026-09-23 실측, JWT role=anon). [supabase/CLAUDE.md](../supabase/CLAUDE.md) "공유 DB 컨텍스트".
+
+- ✅ 경고 0024 ×2 — `consults`·`subscribers` anon INSERT `true` 정책 삭제(#580, 운영 적용 완료). 공개 열쇠 탐침 **23502(열림) → 42501(닫힘)**. 상담 API 는 service key 로 저장.
+- ✅ 경고 0014 — `pg_trgm` → `extensions` 스키마(운영 적용 완료). 자매 검색 라이브 200 · "자이" 197=197 · 색인 `idx_apartments_name_trgm` 계속 사용.
+- 🟠 **경고 "Leaked Password Protection"** — 사장님 1클릭(`supabase.com/dashboard/project/rwdtljipvmqpazrimyns/auth/providers?provider=Email`, Pro). 2u 로그인 설정이다. 켰는지 = 보안 고문 새로고침으로 확인.
+- 🟠 **경고 "Insufficient MFA Options"** — 2u 로그인(Supabase Auth 계정 1개) 몫. 2u 에 MFA 등록 화면이 없어 옵션만 켜면 효과 0 → 자매 세션 통보.
+- 🟡 **공개 열쇠로 읽히는 표 20개** — 공개 데이터(apartments·prices·regions 등)와 운영 표 4개(`collector_runs`·`api_quota_log`·`monitor_alert_state`·`monitor_daily_snapshot`). 개인정보는 없다(구독자·상담 0행). 사이트가 정적 JSON 으로 이미 내보내는 값이 대부분이나, 화면에 없는 칸·대량 긁기 부하(자매 V031 이 공유 4표에서 막은 이유)는 남는다 → anon SELECT 회수 여부 사장님 결정(우리 API·자매가 anon 으로 읽는 경로를 먼저 전수).
+- 🟡 **자매 V002 `CREATE EXTENSION IF NOT EXISTS pg_trgm`** — 새 DB 에선 다시 public 에 깔린다 → `WITH SCHEMA extensions` 로(자매 세션 통보).
+- ✅ **2u `user_profiles` 자기 등급 올리기 구멍 — 운영 DB 에서 막음**(사장님 승인). 가입 개방·이메일 확인 꺼짐 + RLS 가 행만 막고 칸은 안 막아 가입자가 자기 `role`·`status`·`paid_until`·`email` 을 고칠 수 있었고, 2u `deps.py` 는 role=admin 또는 profile.email∈ADMIN_EMAILS 로 관리자 통과 → anon·authenticated 쓰기 권한 회수(전후 탐침: 허용 → permission denied). 기록 = 자매 V062 PR · 2u 인계 = 2u 메모리 `handoff_from_mibunyang_2026-09-23_security_kakao.md`.
+- 🔴 **미분양 카카오 로그인이 인증 안 된 이메일로 관리자·기존 계정을 판정**(`api/auth/kakao.ts:107·139·191`) — 카카오 공식 문서 "유효·인증 여부를 항상 확인". 사장님 결정 = `is_email_valid`·`is_email_verified` 둘 다 true 인 이메일만 받기(아니면 안내 후 거절).
+- 🟡 **2u 카카오 전용 가입 제안**(사장님 질문, 의견 = 찬성·2u 작업으로 따로) — 정할 것: 비즈 앱 공유/신규 · 관리자를 user_id 로 · 기존 계정 이전 · 비상 로그인. 2u 인계 문서에 기록.
+- 🟡 **2u `user_profiles` 의 로그인 계정 없는 admin/approved 26행**(gmail, 5/31~9/12, 로그인 이력 0) — 지금은 로그인 불가라 위험 없음, 삭제는 사장님 승인.
+- 🟢 미분양 세션 토큰이 localStorage(검사관 Low — XSS 통로 0건이라 급하지 않음) · 결정: 미분양 이메일(비밀번호) 로그인은 **넣지 않음**(카카오만).
+- 🟡 **문서 확인** — CLAUDE.md "naver-estate-web DB = `gcfckzqrcujktloilwpz`" 인데 2u backend·프론트는 모두 `rwdtljipvmqpazrimyns` 를 가리킨다(실측).
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - 🔴 **9/24(목) 04:30 어린이집 로컬 러너 · 08:00 네이버 러너** — 로컬 러너는 `F:\mibunyang` **작업 트리를 그대로 실행**한다(`kosis-local-runner.bat` `cd /d "%~dp0.."`). 세션566 은 마무리에 작업 트리를 main 으로 되돌렸다 — 다음 세션도 **끝날 때 작업 트리를 main·깨끗한 상태로** 둔다(admin-district-code-reform §6).
