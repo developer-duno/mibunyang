@@ -28,6 +28,15 @@ import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
 import { buildBriefing, splitRuns } from "./monitor-briefing.mjs";
 import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
 import { groupSharedCoords } from "./fix-placeholder-addresses.mjs";
+import {
+  DB_PERM_ITEMS_PER_RULE,
+  capRuleItems,
+  requiresLogin,
+  isServiceRoleOnly,
+  isRestrictive,
+  evaluatePermissionDrift,
+  describeDriftOk,
+} from "./_perm-fingerprint.mjs";
 
 loadEnv();
 
@@ -1272,24 +1281,17 @@ export function isKstMonday(now = new Date()) {
   return weekday === "Mon";
 }
 
-/** 규칙(R1~R6) 하나가 텔레그램 메시지에 싣는 항목 줄 상한. 넘치면 "… 외 N건" 으로 접는다
- * (세션568) — 한 규칙이 수백 줄이면 텔레그램 400 으로 통째로 전송 스킵되어 다른 규칙까지
- * 사람에게 안 보이므로, 규칙마다 상한을 둬 나머지 규칙의 머리줄이 살아남게 한다. */
-export const DB_PERM_ITEMS_PER_RULE = 10;
+/** 규칙 하나가 텔레그램 메시지에 싣는 항목 줄 상한(세션568). 지문 비교와 같이 쓰려고
+ * 세션569 에 `_perm-fingerprint.mjs` 로 옮겼다 — 기존 시험 import 호환을 위해 여기서 다시 내보낸다. */
+export { DB_PERM_ITEMS_PER_RULE };
 
 /**
- * 항목 목록을 `DB_PERM_ITEMS_PER_RULE` 개까지만 남기고 넘치면 "… 외 N건" 한 줄을 덧붙인다.
- * 머리줄(`[Rn] … N건`)의 개수는 이 함수가 건드리지 않는다 — 호출부에서 자르기 전 전체
- * 개수를 이미 박아 넣는다.
- * @param {string[]} lines 이미 "  · " 접두가 붙은 항목 줄들
- * @returns {string[]}
+ * R8 — 정의자 뷰(security_invoker 가 참이 아닌 public 뷰)로 둬도 되는 이름 → 이유. 비워 둔다
+ * (세션569 — 운영 뷰 2개는 모두 security_invoker=on 이다. 옛 점검 함수가 'on' 을 글자 'true' 로
+ * 비교해 정의자 뷰로 잘못 모았는데, 판정 규칙이 없어 경보도 없었다).
+ * @type {Record<string, string>}
  */
-function capRuleItems(lines) {
-  if (lines.length <= DB_PERM_ITEMS_PER_RULE) return lines;
-  const shown = lines.slice(0, DB_PERM_ITEMS_PER_RULE);
-  const omitted = lines.length - DB_PERM_ITEMS_PER_RULE;
-  return [...shown, `  · … 외 ${omitted}건`];
-}
+export const DEFINER_VIEW_ALLOWLIST = {};
 
 /**
  * `audit_db_permissions()` RPC 결과(스냅샷)를 판정 규칙과 대조해 Issue 목록을 만든다.
@@ -1312,12 +1314,17 @@ function capRuleItems(lines) {
  *      (늘어도, 줄어도 — 개수가 아니라 집합 대조라 "하나 닫고 하나 여는" 뒤바뀜도 잡는다).
  *   R5 anon/authenticated 실행 가능한 SECURITY DEFINER 함수 — DEFINER_FUNCTION_ALLOWLIST 밖.
  *   R6 public 스키마에 설치된 확장 — PUBLIC_EXTENSION_ALLOWLIST 밖.
+ *   R8 정의자 뷰(security_invoker 가 참이 아닌 public 뷰) — DEFINER_VIEW_ALLOWLIST 밖(세션569).
+ *   (세션569 보강) R4 는 표 권한뿐 아니라 칸 SELECT 권한(anon_select_any)도 본다 · 제한(RESTRICTIVE)
+ *   정책은 도달 근거에서 뺀다 · "로그인 필수"는 정확한 모양 목록일 때만(requiresLogin).
+ *   권한 정의 지문(승인 뒤 바뀌었나)은 별도 판정 `evaluatePermissionDrift`(_perm-fingerprint.mjs).
  *
  * @param {Record<string, any> | null} snapshot `audit_db_permissions()` 반환값(RPC 성공 시) 또는 null(R7 — RPC 실패).
  * @param {{
  *   clientWriteAllowlist?: Record<string, string>,
  *   definerAllowlist?: Record<string, string>,
  *   extensionAllowlist?: string[],
+ *   definerViewAllowlist?: Record<string, string>,
  *   publicReadTables?: string[],
  *   rpcError?: string | null,
  * }} [rules]
@@ -1328,6 +1335,7 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
   const definerAllowlist = rules.definerAllowlist ?? DEFINER_FUNCTION_ALLOWLIST;
   const extensionAllowlist = rules.extensionAllowlist ?? PUBLIC_EXTENSION_ALLOWLIST;
   const publicReadTables = rules.publicReadTables ?? PUBLIC_READ_TABLES_BASELINE;
+  const definerViewAllowlist = rules.definerViewAllowlist ?? DEFINER_VIEW_ALLOWLIST;
 
   // R7 — RPC 자체가 실패했다. 다른 규칙은 판정할 데이터가 없으므로 여기서 끝낸다.
   if (!snapshot) {
@@ -1351,6 +1359,7 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
   const policies = /** @type {Array<Record<string, any>>} */ (snapshot.policies ?? []);
   const definerFunctions = /** @type {Array<Record<string, any>>} */ (snapshot.definer_functions ?? []);
   const publicExtensions = /** @type {string[]} */ (snapshot.public_extensions ?? []);
+  const definerViews = /** @type {string[]} */ (snapshot.definer_views ?? []);
 
   // R1 — anon/authenticated 가 "실제로" 쓸 수 있는 표·칸(표 권한 + RLS 정책 도달 가능성 둘 다 확인).
   // TRUNCATE 는 PostgREST(REST API)로 호출할 수 없으므로 표 권한이 true 여도 실제 위협이 아니다 — 제외.
@@ -1379,7 +1388,7 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
         // 표 권한이면 사실상 전 칸, column_write_grants 가 있으면 그 칸만(2u 구멍과 같은 모양).
         if (role === "authenticated" && cmd === "UPDATE") {
           const cols = /** @type {Array<Record<string, any>>} */ (rel.column_write_grants ?? [])
-            .filter((g) => g.grantee === "authenticated" && g.privilege === "UPDATE")
+            .filter((g) => (g.grantee === "authenticated" || g.grantee === "PUBLIC") && g.privilege === "UPDATE")
             .map((g) => g.column);
           const colList = cols.length > 0 ? cols.join(", ") : "(칸 권한 제한 없음 — 표 전체)";
           r1.push(`  └ 갱신 가능한 칸: ${colList}`);
@@ -1407,7 +1416,7 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
   /** @type {string[]} */
   const r3 = [];
   for (const p of policies) {
-    if (p.permissive === false) continue;
+    if (isRestrictive(p)) continue; // 제한 정책은 스스로 통과시키지 못한다("RESTRICTIVE" 문자열, 세션569 ⑤)
     if (p.cmd === "SELECT") continue;
     const roles = /** @type {string[]} */ (p.roles ?? []).map((r) => String(r).toLowerCase());
     if (!roles.some((r) => RISKY_ROLES_MONITOR.has(r))) continue;
@@ -1431,7 +1440,8 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
   const actualPublicRead = new Set(
     relations
       .filter((r) => r.kind === "r")
-      .filter((r) => r.anon_select === true)
+      // 표 권한 또는 칸 하나라도 SELECT 권한(anon_select_any, 세션569 ⑥) — 칸 권한만으로도 그 칸은 읽힌다.
+      .filter((r) => r.anon_select === true || r.anon_select_any === true)
       .filter((r) => reachablePolicy(policies, r, "anon", "SELECT").reachable)
       .map((r) => r.name),
   );
@@ -1461,13 +1471,20 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
     lines.push(`[R6] public 스키마에 설치된 확장 ${r6.length}개`, ...capRuleItems(r6.map((n) => `  · ${n}`)));
   }
 
+  // R8 — 정의자 뷰(security_invoker 가 참이 아닌 뷰). 뷰는 만든 사람 권한으로 밑 표를 읽으므로
+  // RLS 를 건너뛴다. `CREATE OR REPLACE VIEW` 에서 WITH 를 빼먹으면 옵션이 비워져 이 상태가 된다.
+  const r8 = definerViews.filter((n) => !(n in definerViewAllowlist));
+  if (r8.length > 0) {
+    lines.push(`[R8] 정의자 뷰(security_invoker 아님) ${r8.length}개`, ...capRuleItems(r8.map((n) => `  · ${n}`)));
+  }
+
   if (lines.length === 0) return [];
 
   return [
     {
       kind: "nulls",
       collector: "db-permissions",
-      detail: `주간 DB 권한 점검 — 경보 ${[r1, r2, r3, r5, r6].filter((a) => a.length > 0).length}종` +
+      detail: `주간 DB 권한 점검 — 경보 ${[r1, r2, r3, r5, r6, r8].filter((a) => a.length > 0).length}종` +
         ((added.length > 0 || removed.length > 0) ? " (+R4)" : ""),
       lines,
       at: new Date().toISOString(),
@@ -1518,34 +1535,8 @@ function isAlwaysTrueForRoles(expr, roles) {
   return ANY_LOGGED_IN.has(n) && roles.some((r) => r === "authenticated" || r === "public");
 }
 
-/**
- * `USING`/`WITH CHECK` 표현식이 정확히 "service_role 만 통과"하는 정확한 문구인지 —
- * 부분 일치(`.includes("service_role")`)로 판정하면 `auth.role() = 'service_role' OR true`
- * 처럼 실제로는 누구나 통과하는 위험한 정책까지 서비스 전용으로 오분류해 R1/R4 가 놓친다.
- * 이 저장소의 실제 서비스 전용 정책 43개(2026-09-24 운영 스냅샷 실측)는 전부 qual 이
- * 정확히 아래 문구이고 with_check 는 null 이다 — 그 정확한 형태와 완전히 같을 때만 인정한다.
- * @param {string | null} expr
- * @returns {boolean}
- */
-function isServiceRoleOnly(expr) {
-  if (expr == null) return false; // null(제약 없음)은 서비스 전용이 아니라 오히려 더 위험 — 별도로 걸린다
-  const n = String(expr).toLowerCase().replace(/\s+/g, "");
-  return n === "(auth.role()='service_role'::text)";
-}
-
-/**
- * 표현식이 "로그인해야만 통과"하는 조건인지 — `auth.uid()` 를 쓰거나(own-row 패턴) 명시적으로
- * `auth.role() = 'authenticated'` 를 요구하는 형태. 비로그인(anon)은 `auth.uid()` 가 항상 null
- * 이고 `auth.role()` 도 `'authenticated'` 가 될 수 없으므로, 이런 정책은 anon 에게 도달 불가다.
- * @param {string | null} expr
- * @returns {boolean}
- */
-function requiresLogin(expr) {
-  if (expr == null) return false;
-  const n = String(expr).toLowerCase();
-  if (/auth\.uid\(\)/.test(n)) return true;
-  return /auth\.role\(\)\s*=\s*'authenticated'/.test(n.replace(/::text/g, ""));
-}
+// isServiceRoleOnly(서비스 전용 정확 문구)·requiresLogin(로그인 필수 정확 모양 목록)·isRestrictive 는
+// 세션569 에 `_perm-fingerprint.mjs` 로 옮겼다 — 첫 기준선 주의 항목(A1·A9)과 같은 잣대를 쓰기 위해서다.
 
 /**
  * `role` 이 `rel` 표에 `cmd`(SELECT/INSERT/UPDATE/DELETE)로 **실제로** 도달 가능한지 —
@@ -1560,7 +1551,7 @@ function requiresLogin(expr) {
 function reachablePolicy(policies, rel, role, cmd) {
   const applicable = policies.filter((p) => {
     if (p.table !== rel.name) return false;
-    if (p.permissive === false) return false;
+    if (isRestrictive(p)) return false; // "RESTRICTIVE" 문자열(세션569 ⑤) — 옛 `=== false` 비교는 한 번도 안 맞았다
     if (!(p.cmd === cmd || p.cmd === "ALL")) return false;
     const roles = /** @type {string[]} */ (p.roles ?? []).map((r) => String(r).toLowerCase());
     return roles.includes(role) || roles.includes("public");
@@ -1783,6 +1774,19 @@ export async function fetchDbPermissionsSnapshot(sbArg) {
   const { data, error } = await sb.rpc("audit_db_permissions");
   if (error) return { snapshot: null, error: error.code ?? error.message ?? "unknown" };
   return { snapshot: /** @type {Record<string, any>} */ (data), error: null };
+}
+
+/**
+ * 감시 ⑩ 지문 입력 — `permission_drift_snapshot()` RPC 1회(현재 지문 + 현재 기준선, 같은 시점).
+ * 실패해도 throw 하지 않는다 — `evaluatePermissionDrift` 가 실행 실패 이슈로 만든다.
+ * @param {any} [sbArg] 테스트 주입용. 생략하면 getSupabase()(service_role).
+ * @returns {Promise<{ snapshot: any, error: string | null }>}
+ */
+export async function fetchPermissionDriftSnapshot(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  const { data, error } = await sb.rpc("permission_drift_snapshot");
+  if (error) return { snapshot: null, error: error.code ?? error.message ?? "unknown" };
+  return { snapshot: data, error: null };
 }
 
 /**
@@ -2457,28 +2461,46 @@ async function main() {
     //    직접 재는 실측 점검. 기존 서비스 키(getSupabase)만 쓰고 새 비밀값은 만들지 않는다.
     //    다른 점검을 막지 않도록 fail-open — ⑦⑨ 와 같은 패턴.
     const forcePermAudit = process.env.FORCE_DB_PERMISSION_AUDIT === "1";
+    //    세션569: R1~R8(지금 위험한 모양인가) 옆에 권한 정의 지문(승인 뒤 바뀌었나)을 병행한다 —
+    //    둘은 각각 try/catch(한쪽 실패가 다른 쪽을 막지 않는다). "이상 없음" 은 두 판정 합계 0 이고
+    //    둘 다 예외 없이 끝났을 때만 보낸다.
     if (isKstMonday() || forcePermAudit) {
+      /** @type {Issue[]} */
+      let permIssues = [];
+      let permCheckCrashed = false;
+      /** @type {any} */
+      let driftSnapshot = null;
       try {
         const { snapshot, error } = await fetchDbPermissionsSnapshot();
-        const permIssues = evaluateDbPermissions(snapshot, { rpcError: error });
-        if (permIssues.length === 0) {
-          console.log("[monitor] ⑩ 권한 점검: 통과 (월요일 리마인드)");
-          // 경보가 0건이면 issues 에는 안 실리므로(다른 이상이 없으면 "이상 없음"으로 조용히
-          // 끝난다), 월요일에 사람이 "점검이 실제로 돌긴 했다"를 알 수 있게 한 줄만 별도 발송.
-          if (process.env.GITHUB_ACTIONS) {
-            const remindResult = await sendTelegram("🔎 <b>주간 DB 권한 점검</b> — 이상 없음");
-            if (!remindResult.sent) {
-              console.log(`[monitor] ⑩ 권한 점검 리마인드 전송 실패 — Actions 를 실패로 끝내 실패 메일을 두 번째 통로로 쓴다: ${remindResult.reason}`);
-              process.exitCode = 1;
-            }
-          }
-        } else {
-          console.log(`[monitor] ⑩ 권한 점검: 경보 ${permIssues.length}건(세부는 텔레그램)`);
-        }
-        issues = issues.concat(permIssues);
+        permIssues = permIssues.concat(evaluateDbPermissions(snapshot, { rpcError: error }));
       } catch (err) {
-        console.log(`[monitor] ⑩ 권한 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+        permCheckCrashed = true;
+        console.log(`[monitor] ⑩ 권한 점검(R 규칙) 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
       }
+      try {
+        const { snapshot: drift, error: driftError } = await fetchPermissionDriftSnapshot();
+        driftSnapshot = drift;
+        permIssues = permIssues.concat(evaluatePermissionDrift(drift, { rpcError: driftError }));
+      } catch (err) {
+        permCheckCrashed = true;
+        console.log(`[monitor] ⑩ 권한 지문 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+      }
+      if (permIssues.length === 0 && !permCheckCrashed) {
+        console.log("[monitor] ⑩ 권한 점검: 통과 (월요일 리마인드)");
+        // 경보가 0건이면 issues 에는 안 실리므로(다른 이상이 없으면 "이상 없음"으로 조용히
+        // 끝난다), 월요일에 사람이 "점검이 실제로 돌긴 했다"를 알 수 있게 한 줄만 별도 발송.
+        if (process.env.GITHUB_ACTIONS) {
+          const okInfo = describeDriftOk(driftSnapshot);
+          const remindResult = await sendTelegram(`🔎 <b>주간 DB 권한 점검</b> — 이상 없음${okInfo.suffix}${okInfo.notice ? `\n${okInfo.notice}` : ""}`);
+          if (!remindResult.sent) {
+            console.log(`[monitor] ⑩ 권한 점검 리마인드 전송 실패 — Actions 를 실패로 끝내 실패 메일을 두 번째 통로로 쓴다: ${remindResult.reason}`);
+            process.exitCode = 1;
+          }
+        }
+      } else if (permIssues.length > 0) {
+        console.log(`[monitor] ⑩ 권한 점검: 경보 ${permIssues.length}건(세부는 텔레그램)`);
+      }
+      issues = issues.concat(permIssues);
     }
 
     // ★ 매일 아침 현황 브리핑 (세션 478) — 이상 유무 무관 daily 마다 1통. L1138 early-return 앞에서
