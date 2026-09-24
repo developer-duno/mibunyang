@@ -53,29 +53,37 @@ export const DEV_ZONE_SUFFIXES = [
 ].sort((a, b) => b.length - a.length);
 
 /** 핵심어가 이보다 짧으면 판정하지 않는다(한 글자 포함은 우연 일치가 너무 흔하다). */
+// ⚠️ 2글자 핵심어는 브랜드명과 겹칠 수 있다(예: "제일"·"효성"·"장기" — 2026-09-24 실측 0칸). 사장님 결정으로 2글자 유지.
 const DEV_ZONE_KEYWORD_MIN = 2;
 
-/** "부천시 오정구" → "부천", "시흥시" → "시흥", "검단구" → "검단". 시·군·구를 떼고 2글자 미만이면 null. */
-function stripAdminSuffix(token: string | undefined): string | null {
-  const t = (token ?? "").trim();
-  const core = t.replace(/[시군구]$/, "");
-  return core.length >= 2 && core !== t ? core : null;
+/** "부천시 오정구" → "부천", "시흥시" → "시흥", "인천" → "인천"(광역시 약칭). 시·군·구를 떼고 2글자 미만이면 null. */
+function adminNameCore(token: string | undefined): string | null {
+  const core = (token ?? "").trim().replace(/[시군구]$/, "");
+  return core.length >= 2 ? core : null;
 }
 
 /**
  * 지구명 원문에서 핵심어를 뽑는다(순수 함수).
  * ① 끝의 숫자 제거("부천대장2"→"부천대장") ② 접미어 제거(긴 것부터, 한 번)
- * ③ 그 단지의 시·군 이름 접두 제거(gu·region 첫 토큰에서 시/군/구를 뗀 것 — "시흥거모"→"거모")
+ * ③ 그 단지의 시·군 이름·시도 약칭 접두 제거(gu·region 첫 토큰에서 시/군/구를 뗀 것, 둘 다·순서 무관
+ *    — "시흥거모"→"거모"). 지구명이 **시 이름 그 자체**면("순천"·"안성1"·"인천") 빈 문자열이 된다 —
+ *    이름에 도시명이 든 단지가 가짜 좌표 곁 그 도시 지구 점수를 되살리지 않게(세션569 검사관).
  * → 2글자 미만이면 null.
  */
 export function devZoneKeyword(zoneName: string, gu?: string | null, region?: string | null): string | null {
   let k = zoneName.replace(/\s+/g, "").replace(/\d+$/, "");
   const suffix = DEV_ZONE_SUFFIXES.find((sfx) => k.endsWith(sfx) && k.length > sfx.length);
   if (suffix) k = k.slice(0, -suffix.length);
-  for (const prefix of [stripAdminSuffix(gu?.split(/\s+/)[0]), stripAdminSuffix(region?.split(/\s+/)[0])]) {
-    if (prefix && k.startsWith(prefix) && k.length > prefix.length) {
-      k = k.slice(prefix.length);
-      break;
+  const prefixes = [adminNameCore(gu?.split(/\s+/)[0]), adminNameCore(region?.split(/\s+/)[0])].filter(
+    (p): p is string => p != null
+  );
+  for (let stripped = true; stripped;) {
+    stripped = false;
+    for (const prefix of prefixes) {
+      if (k.startsWith(prefix)) {
+        k = k.slice(prefix.length);
+        stripped = true;
+      }
     }
   }
   return k.length >= DEV_ZONE_KEYWORD_MIN ? k : null;

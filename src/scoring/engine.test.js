@@ -3151,6 +3151,14 @@ describe("좌표 의심 단지의 이름-지구 일치 예외 — 그 칸의 개
     expect(devZoneKeyword("판교제2도시첨단산업단지", null, null)).toBe("판교제2");
     expect(devZoneKeyword("시흥A지구", "시흥시", "경기")).toBeNull();
   });
+  it("지구명이 그 단지의 시 이름·시도 약칭 그 자체면 불일치 — 도시명이 든 단지 이름으로 되살리지 않는다(세션569 검사관)", () => {
+    expect(devZoneKeyword("순천", "순천시", "전남")).toBeNull();
+    expect(nameMatchesDevZone("순천 오네뜨센트럴", "순천", "순천시", "전남")).toBe(false);
+    expect(devZoneKeyword("안성1", "안성시", "경기")).toBeNull();
+    expect(nameMatchesDevZone("안성 아양 금호어울림", "안성1", "안성시", "경기")).toBe(false);
+    expect(devZoneKeyword("인천", "중구", "인천")).toBeNull();
+    expect(nameMatchesDevZone("인천 영종 하늘도시", "인천", "중구", "인천")).toBe(false);
+  });
   it("포함 판정 — 참(시흥거모 도시개발 · 부천대장 산업개발 2곳)", () => {
     expect(nameMatchesDevZone(SIHEUNG_1.name, "시흥거모공공주택지구", "시흥시", "경기")).toBe(true);
     expect(nameMatchesDevZone(BUCHEON_A5.name, "부천대장2", "부천시 오정구", "경기")).toBe(true);
