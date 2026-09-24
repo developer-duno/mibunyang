@@ -3,6 +3,7 @@
  * 학군 정보 수집기 — Kakao Places + NEIS 교육정보 기반
  *
  * 초·중·고 검색 → NEIS 상세 보강 → 학군 점수 계산 → schools 테이블 업데이트
+ * 카카오 검색 = 학교 분류(SC4)만 · 한 질의에 is_end 까지 최대 3쪽(45건) (세션569 — 옛: 분류 없이 1쪽 15건)
  *
  * 사용법:
  *   node scripts/collectors/schools-neis.mjs              (Supabase UPDATE)
@@ -34,18 +35,44 @@ const SCHOOLINFO_BASE = "https://www.schoolinfo.go.kr/openApi.do";
 export { isSchoolPlace };
 
 // ── Kakao Places API ────────────────────────────────────────────
+/** 세션569: 한 질의에서 받는 최대 쪽 수. 쪽당 15건(카카오 size 상한)이라 최대 45건. */
+export const KAKAO_MAX_PAGES = 3;
+
 /**
+ * 카카오 키워드 검색 — 학교 분류(SC4)만, `meta.is_end` 가 참이 될 때까지 최대 3쪽.
+ *
+ * 세션569 측정(표본 40곳): 분류 없이 첫 쪽 15건만 받으면 24곳에서 목록이 잘렸고, 첫 쪽의
+ * 60~69%가 학교 아닌 잡음(학교부속시설·유치원·충전소·ATM·카셰어링)이었다. SC4 로 잡음을
+ * 빼고, 남은 학교가 15건을 넘으면 다음 쪽을 받는다. 대안·특수학교 일부가 SC4 밖이라
+ * 빠지는 것은 사장님 결정으로 수용(2026-09-24).
+ * 공식 문서: page 1~45 · size 1~15 · is_end=false 면 page 를 올려 다음 쪽 요청 가능.
+ *
  * @param {number} lat
  * @param {number} lng
  * @param {string} keyword
  * @param {number} radius
  * @returns {Promise<Array<Record<string, any>>>}
  */
-async function searchKakao(lat, lng, keyword, radius) {
-  const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15`;
-  const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
-  const data = await res.json();
-  return data.documents || [];
+export async function searchKakao(lat, lng, keyword, radius) {
+  /** @type {Array<Record<string, any>>} */
+  const docs = [];
+  const seen = new Set();
+  for (let page = 1; page <= KAKAO_MAX_PAGES; page++) {
+    if (page > 1) await sleep(100); // 쪽 사이 간격 = 질의 사이 간격과 같다
+    const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&category_group_code=SC4&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=15&page=${page}`;
+    const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
+    const data = await res.json();
+    for (const d of data.documents || []) {
+      // 쪽 경계에서 같은 장소가 겹쳐 나오면 한 번만 센다(id 없는 문서는 그대로 둔다)
+      if (d.id != null) {
+        if (seen.has(d.id)) continue;
+        seen.add(d.id);
+      }
+      docs.push(d);
+    }
+    if (data.meta?.is_end !== false) break;
+  }
+  return docs;
 }
 
 // ── NEIS 교육정보 API ───────────────────────────────────────────

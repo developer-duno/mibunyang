@@ -29,7 +29,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds, shouldRefuseLocalWriteWithoutSchoolInfo, selectProcessList } = await import("./schools-neis.mjs");
+const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds, shouldRefuseLocalWriteWithoutSchoolInfo, selectProcessList, searchKakao, KAKAO_MAX_PAGES } = await import("./schools-neis.mjs");
+const sharedMock = await import("./_shared.mjs");
 
 // 소스를 직접 읽어 배선(어느 쿼리로 훑는지)을 검사한다 — transit-match.test.mjs 답습 패턴.
 const COLLECTOR_SRC = readFileSync(new URL("./schools-neis.mjs", import.meta.url), "utf8");
@@ -988,5 +989,87 @@ describe("마이그레이션 — schools 트리거가 nearby_schools 컬럼 지�
     );
     expect(rollbackSql).toMatch(/CREATE TRIGGER trg_schools_updated\s+BEFORE UPDATE ON public\.schools/);
     expect(rollbackSql).not.toMatch(/UPDATE OF nearby_schools/);
+  });
+});
+
+// ── searchKakao — SC4 분류 + is_end 까지 최대 3쪽 (세션569) ─────────
+// 세션569 측정: 분류 없이 1쪽 15건만 받으면 표본 40곳 중 24곳에서 학교 목록이 잘렸다.
+// fetchWithRetry 를 가짜 응답으로 바꿔 요청 URL·쪽 반복·상한·중복 제거를 본다.
+describe("searchKakao — SC4 + is_end 까지 최대 3쪽 (세션569)", () => {
+  const fetchMock = vi.mocked(sharedMock.fetchWithRetry);
+
+  /**
+   * @param {number} n 문서 수
+   * @param {boolean} isEnd
+   * @param {number} [startId]
+   */
+  function page(n, isEnd, startId = 1) {
+    const documents = Array.from({ length: n }, (_, i) => ({ id: String(startId + i), place_name: `학교${startId + i}`, distance: String(100 + startId + i) }));
+    return /** @type {any} */ ({ json: async () => ({ documents, meta: { is_end: isEnd } }) });
+  }
+
+  it("요청 URL 에 category_group_code=SC4 와 기존 파라미터(sort·radius·size)가 들어간다", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(page(3, true));
+    await searchKakao(37.5, 127.0, "초등학교", 1000);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain("category_group_code=SC4");
+    expect(url).toContain("sort=distance");
+    expect(url).toContain("radius=1000");
+    expect(url).toContain("size=15");
+    expect(url).toContain("page=1");
+  });
+
+  it("1쪽 15건(is_end=false) + 2쪽 2건(is_end=true) → 17건, 호출 2회, 2쪽은 page=2", async () => {
+    fetchMock.mockReset();
+    vi.mocked(sharedMock.sleep).mockClear();
+    fetchMock.mockResolvedValueOnce(page(15, false, 1)).mockResolvedValueOnce(page(2, true, 16));
+    const docs = await searchKakao(37.5, 127.0, "중학교", 2000);
+    expect(docs).toHaveLength(17);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 쪽 사이 대기 — 2쪽이면 정확히 1번, 기존 질의 간격과 같은 100ms
+    expect(sharedMock.sleep).toHaveBeenCalledTimes(1);
+    expect(sharedMock.sleep).toHaveBeenCalledWith(100);
+    expect(String(fetchMock.mock.calls[1][0])).toContain("page=2");
+    expect(docs.map((d) => d.id)).toEqual(Array.from({ length: 17 }, (_, i) => String(i + 1))); // 쪽 순서대로 이어 붙임
+  });
+
+  it("1쪽이 is_end=true 면 호출 1회로 끝난다", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(page(5, true));
+    const docs = await searchKakao(37.5, 127.0, "고등학교", 2000);
+    expect(docs).toHaveLength(5);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("meta 가 없는 응답이면 다음 쪽을 부르지 않는다(호출 1회)", async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(/** @type {any} */ ({ json: async () => ({ documents: [{ id: "1", place_name: "학교1", distance: "100" }] }) }))
+      .mockResolvedValueOnce(page(15, true, 2));
+    const docs = await searchKakao(37.5, 127.0, "초등학교", 1000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(docs).toHaveLength(1);
+  });
+
+  it("3쪽에도 is_end=false 면 3쪽에서 멈춘다(호출 3회, 45건)", async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(page(15, false, 1))
+      .mockResolvedValueOnce(page(15, false, 16))
+      .mockResolvedValueOnce(page(15, false, 31))
+      .mockResolvedValueOnce(page(15, false, 46));
+    const docs = await searchKakao(37.5, 127.0, "중학교", 2000);
+    expect(KAKAO_MAX_PAGES).toBe(3);
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(docs).toHaveLength(45);
+  });
+
+  it("쪽 경계에서 겹친 같은 id 는 한 번만 담는다", async () => {
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(page(15, false, 1)).mockResolvedValueOnce(page(3, true, 14)); // 14·15 중복
+    const docs = await searchKakao(37.5, 127.0, "초등학교", 1000);
+    expect(docs).toHaveLength(16);
+    expect(new Set(docs.map((d) => d.id)).size).toBe(16);
   });
 });
