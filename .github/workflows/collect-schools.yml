@@ -83,14 +83,15 @@ jobs:
             ARGS="--dry-run"
           fi
           if [ -n "$LIMIT" ]; then
-            if ! printf '%s' "$LIMIT" | grep -Eq '^[0-9]{1,5}$'; then
+            # grep 은 줄 단위라 "1(줄바꿈)--rescale-only" 같은 값이 첫 줄만 보고 통과한다 — bash 정규식으로 값 전체를 본다(세션569).
+            if [[ ! "$LIMIT" =~ ^[0-9]{1,5}$ ]]; then
               echo "::error::limit 형식 오류 — 숫자(1~5자리)만"
               exit 1
             fi
             ARGS="$ARGS --limit $LIMIT"
           fi
           if [ -n "$IDS" ]; then
-            if ! printf '%s' "$IDS" | grep -Eq '^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$'; then
+            if [[ ! "$IDS" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]]; then
               echo "::error::ids 형식 오류 — 영문·숫자·-·_ 로 된 id 를 쉼표로만 구분"
               exit 1
             fi

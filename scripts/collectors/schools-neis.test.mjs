@@ -1105,6 +1105,10 @@ describe("pickBranchRow — 끝 일치 + 유일할 때만 (세션569)", () => {
   it("본교 행만 있으면 null — 본교 정보를 분교에 붙이지 않는다", () => {
     expect(pickBranchRow(KAKAO_YONGMUN, [NEIS_ROW_TANBANG])).toBeNull();
   });
+  it("(가상) 이름 가운데에 대상 문자열이 든 행('…용문분교장부설유치원')만 있으면 null — 끝 일치만 인정", () => {
+    const mid = { ...NEIS_ROW_YONGMUN, SCHUL_NM: "대전탄방초등학교용문분교장부설유치원", SD_SCHUL_CODE: "8888888" };
+    expect(pickBranchRow(KAKAO_YONGMUN, [mid])).toBeNull();
+  });
   it("(가상) 같은 분교장 이름이 다른 본교 밑에 둘 → 카카오 이름에 본교가 없으면 null, 있으면 그 본교 것", () => {
     const other = { ...NEIS_ROW_YONGMUN, SCHUL_NM: "경기가상초등학교용문분교장", SD_SCHUL_CODE: "9999999" };
     expect(pickBranchRow("용문분교장", [NEIS_ROW_YONGMUN, other])).toBeNull();
