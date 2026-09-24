@@ -21,7 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
-import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -248,7 +248,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -927,6 +927,103 @@ export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLV
 }
 
 /**
+ * ⑫(a) 만료 경보 여유(일) — KOSIS 수집기는 매월 9일 1회라, 만료 뒤 다음 회차까지 applyhome 으로 남는 게
+ * 정상이다. 그 한 주기(최대 31일) + 여유를 넘겨도 applyhome 이면 경보.
+ */
+export const APPLYHOME_EXPIRY_ALERT_GRACE_DAYS = 35;
+
+/** ⑫ 경보 detail 에 펼칠 단지 수 — 나머지는 "외 N곳". */
+export const APPLYHOME_UNSOLD_SAMPLE_LIMIT = 8;
+
+/**
+ * ⑫ 청약홈(applyhome) 출처 미분양 값 점검 — 만료 기준 C6(세션569, 사장님 결정 2026-09-24 🟡8).
+ *
+ * 세 명단을 **id 로** 본다(개수만 비교하면 명단이 뒤바뀐 것을 놓친다 — expect-ids-not-counts):
+ *   (a) 공고일 + 6개월 + 여유(35일)가 지났는데 아직 applyhome — KOSIS 가 덮었어야 하는데 못 덮었다
+ *       (매칭 실패·50% 보류·임대 등 — 그 값이 영구 동결될 수 있다)
+ *   (b) 공고일(unsold_as_of)이 빈 applyhome — 만료를 판정할 수 없어 영구 존중된다
+ *   (c) 평형별 미달 0 인데 unsold > 0 인 applyhome — 경쟁률 수집기가 0 으로 안 바꾼 행
+ *       (값이 다른 회차 것이라 건너뛴 경우 — 사람이 회차를 확인해야 한다)
+ * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
+ * (`ALWAYS_DEDUP_KINDS`, ⑨ 와 같은 방식).
+ *
+ * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
+ *   applyhome 출처 행(다른 출처가 섞여 있어도 걸러낸다).
+ * @param {{ now?: Date }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkApplyhomeUnsold(rows, opts = {}) {
+  const now = opts.now ?? new Date();
+  const graceNow = new Date(now.getTime() - APPLYHOME_EXPIRY_ALERT_GRACE_DAYS * 86400000);
+  const ah = rows.filter((r) => r?.unsold_source === "applyhome" && r?.id);
+  const expired = ah.filter((r) => isApplyhomeExpired(r.unsold_as_of, graceNow) === true);
+  const noDate = ah.filter((r) => isApplyhomeExpired(r.unsold_as_of, now) == null);
+  const soldOutPositive = ah.filter((r) => r.competition_shortfall === 0 && (r.unsold ?? 0) > 0);
+
+  /** @param {typeof ah} list */
+  const idsOf = (list) => list.map((r) => String(r.id)).sort();
+  /** @param {typeof ah} list */
+  const sample = (list) => {
+    const shown = list.slice(0, APPLYHOME_UNSOLD_SAMPLE_LIMIT).map((r) => `${r.name ?? r.id}(${r.id})`);
+    const rest = list.length - shown.length;
+    return `${shown.join(" · ")}${rest > 0 ? ` 외 ${rest}곳` : ""}`;
+  };
+
+  /** @type {Issue[]} */
+  const issues = [];
+  if (expired.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(a) 공고 ${APPLYHOME_EXPIRY_MONTHS}개월이 지났는데 아직 청약홈 값인 단지 ${expired.length}곳 — ${sample(expired)}`,
+      lines: [
+        `KOSIS 수집기(매월 9일)가 공고일 + ${APPLYHOME_EXPIRY_MONTHS}개월이 지난 청약홈 값을 덮었어야 하는데 못 덮었습니다(여유 ${APPLYHOME_EXPIRY_ALERT_GRACE_DAYS}일 포함).`,
+        "그 지역 KOSIS 매칭 실패·추정률 50% 이상 보류·임대형이면 값이 그대로 남습니다 — 최근 kosis-unsold 로그의 [C6 만료] 줄을 보세요.",
+      ],
+      at: `expired:${fingerprintIds(idsOf(expired))}`,
+    });
+  }
+  if (noDate.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(b) 공고일(unsold_as_of)이 빈 청약홈 값 ${noDate.length}곳 — ${sample(noDate)}`,
+      lines: [
+        "공고일이 없으면 만료를 판정할 수 없어 청약홈 값이 영구히 존중됩니다.",
+        "청약홈 공고 원문에서 그 값을 만든 공고의 공고일을 찾아 backfill-unsold-source.mjs --plan= 으로 채우세요.",
+      ],
+      at: `nodate:${fingerprintIds(idsOf(noDate))}`,
+    });
+  }
+  if (soldOutPositive.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(c) 경쟁률은 평형별 미달 0(완판)인데 미분양 값이 남은 청약홈 단지 ${soldOutPositive.length}곳 — ${sample(soldOutPositive)}`,
+      lines: [
+        "경쟁률 수집기는 값이 그 경쟁률 회차의 것(값 = 그 회차 공급 수)일 때만 0 으로 바꿉니다.",
+        "값이 다른 회차(뒤 회차의 잔여·임의 공고) 것이면 건너뜁니다 — 어느 회차 값인지 사람이 확인하세요.",
+      ],
+      at: `soldout:${fingerprintIds(idsOf(soldOutPositive))}`,
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑫ 대상 행 — applyhome 출처만(전체 3,068행 중 수십 곳). 칸이 없으면(마이그 전) 조회가 실패하고
+ * 호출부가 fail-open 으로 넘긴다.
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
+async function fetchApplyhomeUnsoldRows() {
+  return /** @type {Array<Record<string, any>>} */ (await selectAll(
+    (s) => s.from("apartments").select("id, name, unsold, unsold_source, unsold_as_of, competition_shortfall").eq("unsold_source", "applyhome"),
+    getSupabase(),
+    "id",
+  ));
+}
+
+/**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
  * 진앙 패턴 (세션 391): population(매월 5일)이 net_migration 없는 새 recorded_at 행을
@@ -1081,7 +1178,7 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
  * daily 에서도 dedup 할 **이슈 종류**(세션569). ⑪ 은 수집기 이름(market-stats 등)이 ②⑤ 와 겹쳐서
  * 수집기 이름으로 묶으면 그쪽 리마인드까지 막힌다 — 그래서 종류로 가른다.
  */
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved"]);
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold"]); // ⑫ 도 사람이 고쳐야 풀린다(세션569)
 
 /**
  * @param {Issue} issue
@@ -2543,7 +2640,7 @@ async function main() {
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk, { maxAgeHours: 36 }));
   } else {
-    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦⑧⑨⑩⑪)
+    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦⑧⑨⑩⑪⑫)
     // ⚠️ ①③ 은 GitHub Actions REST(actions/runs·workflows)에 의존한다. 로컬 PC 처럼
     //    GITHUB_REPOSITORY/GITHUB_TOKEN 이 없으면 fetchRecentRuns 가 [] 를 반환해
     //    "모든 워크플로가 한 번도 안 돔" 으로 오판 → 미발화 알림이 전부 오탐 발송된다
@@ -2653,6 +2750,16 @@ async function main() {
       issues = issues.concat(regionIssues);
     } catch (err) {
       console.log(`[monitor] ⑪ 시도 이름 못 맞춤 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // ⑫ 청약홈 출처 미분양 값 — 만료 기준 C6 의 세 명단(세션569). 매일 본다. ⑦ 과 같은 이유로 fail-open.
+    try {
+      const ahRows = await fetchApplyhomeUnsoldRows();
+      const ahIssues = checkApplyhomeUnsold(ahRows);
+      console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length}곳 → 이상 ${ahIssues.length}건`);
+      issues = issues.concat(ahIssues);
+    } catch (err) {
+      console.log(`[monitor] ⑫ 청약홈 미분양 값 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).

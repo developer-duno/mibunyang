@@ -23,11 +23,11 @@ describe("apartments 명단 페이징 — 고유키 커서 (세션543 W2)", () =
     // `selectAll(fn, sb)` 는 ORDER BY 없는 `.range()` 경로다(`_shared.mjs`).
     // apartments 는 2,600행+ 이라 페이지마다 다른 표본이 와서 **에러 없이** 행을 잃는다
     // (`unordered-pagination-loses-rows.md`).
-    expect(PAGING_SRC).toMatch(/select\("id"\),\s*sb,\s*"id",/);
+    expect(PAGING_SRC).toMatch(/select\("id, unsold, unsold_source"\),\s*sb,\s*"id",/); // 세션569: 완판 판정용 칸 추가
   });
 
   it("★ select 에 그 키가 실제로 들어 있다 — 없으면 selectAll 이 커서를 못 만들어 throw 한다", () => {
-    expect(PAGING_SRC).toContain('select("id")');
+    expect(PAGING_SRC).toContain('select("id, unsold, unsold_source")');
   });
 });
 
@@ -71,6 +71,7 @@ describe("aggregateByApartment — 가중평균 경쟁률 계산", () => {
       rate: 5,
       supply: 100,
       applicants: 500,
+      shortfall: 0, // 세션569 C6 — 신청 500 ≥ 공급 100
       raw_rows: rows,
     });
   });
@@ -151,9 +152,9 @@ describe("aggregateByApartment — 가중평균 경쟁률 계산", () => {
 describe("buildEventsFromAggregated — events 객체 빌드", () => {
   it("매칭된 단지만 events 반환 (apartment_id 형식 ah-{no})", () => {
     const aggregated = {
-      "2024A": { rate: 5, supply: 100, applicants: 500, raw_rows: [] },
-      "2024B": { rate: 3, supply: 50, applicants: 150, raw_rows: [] },
-      "2024X": { rate: 1, supply: 30, applicants: 30, raw_rows: [] }, // 매칭 안 됨
+      "2024A": { rate: 5, supply: 100, applicants: 500, shortfall: null, raw_rows: [] },
+      "2024B": { rate: 3, supply: 50, applicants: 150, shortfall: null, raw_rows: [] },
+      "2024X": { rate: 1, supply: 30, applicants: 30, shortfall: null, raw_rows: [] }, // 매칭 안 됨
     };
     const apartments = [{ id: "ah-2024A" }, { id: "ah-2024B" }];
     const result = buildEventsFromAggregated(aggregated, apartments, "2026-05-02");
@@ -173,11 +174,11 @@ describe("buildEventsFromAggregated — events 객체 빌드", () => {
   it("빈 입력 처리", () => {
     expect(buildEventsFromAggregated({}, [], "2026-05-02")).toEqual([]);
     expect(buildEventsFromAggregated({}, [{ id: "ah-X" }], "2026-05-02")).toEqual([]);
-    expect(buildEventsFromAggregated({ "X": { supply: 1, applicants: 1, rate: 1, raw_rows: [] } }, [], "2026-05-02")).toEqual([]);
+    expect(buildEventsFromAggregated({ "X": { supply: 1, applicants: 1, rate: 1, shortfall: null, raw_rows: [] } }, [], "2026-05-02")).toEqual([]);
   });
 
   it("필드 매핑 정확성 (supply/applicants/rate/recorded_at 모두 정확히 들어감)", () => {
-    const aggregated = { "Y": { supply: 7, applicants: 13, rate: 1.857, raw_rows: [] } };
+    const aggregated = { "Y": { supply: 7, applicants: 13, rate: 1.857, shortfall: null, raw_rows: [] } };
     const apartments = [{ id: "ah-Y" }];
     const result = buildEventsFromAggregated(aggregated, apartments, "2026-12-31");
 
@@ -199,7 +200,7 @@ describe("buildEventsFromAggregated — events 객체 빌드", () => {
       { HOUSE_MANAGE_NO: "Z", HOUSE_TY: "059.99A", SUPLY_HSHLDCO: 30, REQ_CNT: "60", CMPET_RATE: "2.00" },
       { HOUSE_MANAGE_NO: "Z", HOUSE_TY: "084.97B", SUPLY_HSHLDCO: 20, REQ_CNT: "20", CMPET_RATE: "1.00" },
     ];
-    const aggregated = { "Z": { supply: 50, applicants: 80, rate: 1.6, raw_rows: rawRows } };
+    const aggregated = { "Z": { supply: 50, applicants: 80, rate: 1.6, shortfall: null, raw_rows: rawRows } };
     const apartments = [{ id: "ah-Z" }];
     const result = buildEventsFromAggregated(aggregated, apartments, "2026-05-13");
 

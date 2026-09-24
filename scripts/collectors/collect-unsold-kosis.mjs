@@ -10,8 +10,12 @@
  *   node scripts/collectors/collect-unsold-kosis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/collect-unsold-kosis.mjs --dry-run --impact-out=<경로>   (계획 전체를 JSON 저장)
+ *
+ * 청약홈(applyhome) 값 만료 C6(세션569): applyhome 값은 공고일(unsold_as_of) + 6개월까지만 존중하고,
+ * 지나면 KOSIS 가 덮는다. 공고일이 비면 존중을 유지하되 APPLYHOME_NO_DATE 마커로 기록한다
+ * (규칙 정본 = shouldSkipKosisFill·planUnsoldUpdates 머리말, 기간·판정 함수 = _shared.mjs isApplyhomeExpired).
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
 import { isLeasePresale } from "../../src/constants/leaseTypes.mjs";
 import { writeFileSync } from "node:fs";
 
@@ -145,24 +149,41 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
  *
  * ## 지금 규칙(존중 여부만 — "무엇을 쓸지"는 planUnsoldUpdates 가 정한다)
  * 1. 지역·구·세대수(≤1) 무효 → 존중(=skip, 채울 재료가 없다)
- * 2. `unsold_source === "applyhome"` → **항상 존중**(청약홈 단지별 실측은 구 단위 비례배분보다 정확)
+ * 2. `unsold_source === "applyhome"` → 존중(청약홈 단지별 실측은 구 단위 비례배분보다 정확) — **단 C6(세션569)**:
+ *    공고일(`unsold_as_of`) + 6개월이 지났으면 존중하지 않는다(KOSIS 가 정한다). 공고일이 비었으면
+ *    판정할 수 없으므로 존중을 유지한다(호출부가 `skip_applyhome_no_date` 로 세고 경고 마커를 남긴다).
  * 3. `unsold === 0 && unsold_source == null` → 존중(옛 완판 실측 — 출처가 없던 시절의 값이라도
  *    "0"은 계측이지 빈칸이 아니다. **출처가 kosis/applyhome 이면 이 규칙에 해당 안 됨** — applyhome
  *    은 2번에서 이미 걸러졌고, kosis 는 자기 값이므로 KOSIS 최신 회차가 덮는다(자기잠금 방지))
  * 4. 그 밖(출처 kosis·출처 NULL 인 값>0·값 자체 없음) → **KOSIS 가 정한다**(존중 안 함, false)
  *
- * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null; naver_sell_count?: number | null; unsold_source?: string | null }} apt
+ * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null; naver_sell_count?: number | null; unsold_source?: string | null; unsold_as_of?: string | null }} apt
+ * @param {Date} [now] 만료 판정 기준 시각 — 호출부가 넣는다(시험이 실제 시각에 기대지 않게). 없으면 지금.
  * @returns {boolean} true 면 이 단지는 KOSIS 로 채우지 않는다(기존 값 존중)
  */
-export function shouldSkipKosisFill(apt) {
+export function shouldSkipKosisFill(apt, now = new Date()) {
   const guOk = !!apt.gu || apt.region === "세종"; // 세션567: 세종은 gu=null 이 정상 구조
   if (!apt.region || !guOk || !apt.units || apt.units <= 1) return true;
-  if (apt.unsold_source === "applyhome") return true; // 청약홈 실측은 항상 존중
+  // 청약홈 실측은 공고일 + 6개월까지만 존중(C6). 공고일이 없으면(null) 판정 불가 → 존중 유지.
+  if (apt.unsold_source === "applyhome") return applyhomeStatus(apt, now) !== "expired";
   // ⚠️ `unsold === 0` 은 옛 "다 팔렸다"는 단지별 실측이다 — 단, **출처가 없을 때만**(NULL).
   //    출처가 kosis 면 자기 자신이 쓴 0 이므로 최신 KOSIS 회차가 덮어써야 한다(자기잠금 방지,
   //    검사관 M3 지적). applyhome 은 위 2번에서 이미 걸러졌다.
   if (apt.unsold === 0 && apt.unsold_source == null) return true;
   return false; // 그 밖(kosis 출처·NULL 출처 값>0·값 없음)은 전부 KOSIS 가 정한다
+}
+
+/**
+ * applyhome 값의 만료 상태(세션569 C6). DB 접근 없는 순수 함수.
+ * @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt
+ * @param {Date} now
+ * @returns {"not_applyhome" | "no_date" | "valid" | "expired"}
+ */
+export function applyhomeStatus(apt, now) {
+  if (apt.unsold_source !== "applyhome") return "not_applyhome";
+  const expired = isApplyhomeExpired(apt.unsold_as_of, now, APPLYHOME_EXPIRY_MONTHS);
+  if (expired == null) return "no_date";
+  return expired ? "expired" : "valid";
 }
 
 /**
@@ -209,7 +230,9 @@ export function resolveKosisGuKey(region, gu, guMap) {
  * ## 판정 순서 (사장님 결정 2026-09-24 3차 — 위에서부터)
  * 1. 무효(지역·구·세대수≤1) → `skip_invalid`
  * 2. 임대형(presale_type) → `skip_lease`(분모에서도 제외)
- * 3. `unsold_source === "applyhome"` → `skip_preserved`(항상 존중)
+ * 3. `unsold_source === "applyhome"` → `skip_preserved`(존중). **C6(세션569)**: 공고일 + 6개월이 지났으면
+ *    존중하지 않고 5번으로 간다(행에 `applyhomeExpired: true` 표시 — 전이표에서 따로 센다). 공고일이
+ *    비었으면 `skip_applyhome_no_date`(존중 유지 + 경고 마커 APPLYHOME_NO_DATE).
  * 4. `unsold === 0 && unsold_source == null`(옛 완판 실측) → `skip_preserved`
  * 5. 그 밖(출처 kosis·NULL 출처 값>0·값 없음) → **KOSIS 가 정한다**:
  *    a. `kosisKey` 없음 또는 그 구 데이터 자체가 응답에 없음 → `skip_no_match`(값 유지) + 경고
@@ -232,12 +255,13 @@ export function resolveKosisGuKey(region, gu, guMap) {
  * (`shouldSkipKosisFill` 이 kosis 출처를 항상 false 로 돌려주므로).
  *
  * @param {{
- *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null }>;
+ *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null; unsold_as_of?: string | null }>;
  *   unsoldByRegionGu: UnsoldByRegionGu;
- * }} params
+ *   now?: Date;
+ * }} params  now = applyhome 만료 판정 기준 시각(없으면 지금 — main 은 항상 넣는다)
  * @returns {Array<{
  *   id: string; name: string; region: string | null; gu: string | null;
- *   action: "write" | "write_zero" | "hold_ge50" | "skip_preserved" | "skip_lease" | "skip_no_match" | "skip_no_estimate" | "skip_invalid";
+ *   action: "write" | "write_zero" | "hold_ge50" | "skip_preserved" | "skip_applyhome_no_date" | "skip_lease" | "skip_no_match" | "skip_no_estimate" | "skip_invalid";
  *   kosisKey: string | null;
  *   guUnsold: number | null;
  *   totalUnitsInGu: number | null;
@@ -246,9 +270,10 @@ export function resolveKosisGuKey(region, gu, guMap) {
  *   currentUnsold: number | null;
  *   currentRate: number | null;
  *   currentSource: string | null;
+ *   applyhomeExpired: boolean;
  * }>}
  */
-export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
+export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date() }) {
   // 1단계 — 각 단지의 kosisKey 를 먼저 계산한다(분모를 그 키 단위로 모으기 위해).
   // "천안시 동남구"·"천안시 서북구" 는 서로 다른 gu 지만 같은 kosisKey("천안시")로 모여야
   // "분모는 그 시 전체"(사장님 결정 ①)가 성립한다. 임대형은 분모에서도 제외(사장님 결정 ④).
@@ -278,6 +303,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
       newEstimate: null, newRate: null,
       currentUnsold: apt.unsold, currentRate: apt.unsold_rate,
       currentSource: apt.unsold_source ?? null,
+      applyhomeExpired: applyhomeStatus(apt, now) === "expired",
     };
 
     // 규칙 1 — 무효(지역·구·세대수<=1). shouldSkipKosisFill 도 이 조건에서 true 를 주지만,
@@ -298,7 +324,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
     // 규칙 3·4 — shouldSkipKosisFill 이 존중으로 판정한 값(applyhome·NULL출처 완판)은 KOSIS
     // 매칭을 시도하지도 않고 그대로 존중한다. 새 추정치는 참고용으로 계산해 함께 기록한다.
     // (여기 도달했다는 것은 이미 규칙1 무효 검사를 통과했다는 뜻이다.)
-    if (shouldSkipKosisFill(apt)) {
+    if (shouldSkipKosisFill(apt, now)) {
       const guMapForRef = apt.region ? unsoldByRegionGu[apt.region] : undefined;
       const kosisKeyForRef = keyByAptId.get(apt.id) ?? null;
       /** @type {number | null} */
@@ -314,7 +340,9 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
           if (refResult) { refEstimate = refResult.estimated; refRate = refResult.unsoldRate; }
         }
       }
-      plan.push({ ...base, action: "skip_preserved", kosisKey: kosisKeyForRef, newEstimate: refEstimate, newRate: refRate });
+      // C6 — 공고일 빈 applyhome 은 존중하되 따로 센다(조용히 넘기면 영구 동결 — 경고 마커로 올린다).
+      const preservedAction = applyhomeStatus(apt, now) === "no_date" ? "skip_applyhome_no_date" : "skip_preserved";
+      plan.push({ ...base, action: preservedAction, kosisKey: kosisKeyForRef, newEstimate: refEstimate, newRate: refRate });
       continue;
     }
 
@@ -375,6 +403,18 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
   }
 
   return plan;
+}
+
+/**
+ * KOSIS 가 단지 값을 쓸 때의 UPDATE 내용(write·write_zero 공용). DB 접근 없는 순수 함수.
+ * `unsold_as_of` 는 null 로 비운다(세션569 C6 검사관) — 만료된 applyhome 행을 덮을 때 출처 kosis 인 행에
+ * 옛 공고일이 남으면 감시 ⑫·다음 판정이 그 날짜를 청약홈 값의 공고일로 오해한다.
+ * @param {number | null} unsold
+ * @param {number | null} unsoldRate
+ * @param {string} [nowIso]
+ */
+export function kosisWritePayload(unsold, unsoldRate, nowIso = new Date().toISOString()) {
+  return { unsold, unsold_rate: unsoldRate, unsold_source: "kosis", unsold_as_of: null, updated_at: nowIso };
 }
 
 /** 0-쓰기 차단기 기본 임계(%) — `--expect-zero` 로 우회하지 않으면 이 비율로 판정한다. @type {number} */
@@ -441,6 +481,8 @@ export async function main() {
 
   let ok = 0;
   let errorMessage = /** @type {string | undefined} */ (undefined);
+  /** C6 공고일 빈 applyhome 경고 마커(세션569) — status 는 그대로 두고 error_message 에만 남긴다. @type {string | null} */
+  let noDateMarker = null;
   try {
     if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
@@ -548,24 +590,39 @@ export async function main() {
     // 2. apartments unsold 추정 (KOSIS 비례배분) — 계획만 세운다, 아직 쓰지 않는다.
     // 세션549: 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
     // 세션566: apartments 는 selectAll(..., "id") 로 전수 확보한다(1,000행 컷 수리).
-    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null }} AptRow */
+    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null; unsold_as_of: string | null }} AptRow */
     /** @type {AptRow[]} */
     let apartmentsTyped;
     try {
       apartmentsTyped = /** @type {any} */ (
-        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source"), sb, "id")
+        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of"), sb, "id")
       );
     } catch (e) {
+      // 세션569 검사관: return 하면 finally 가 success ok=0 으로 조용히 기록한다(마이그보다 머지가 먼저라
+      // 새 칸 조회가 실패하는 사고를 감시가 못 잡는다). throw 해서 collector_runs 에 failure 로 남긴다.
       logError(PHASE, `apartments 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
-      return;
+      throw new Error(`apartments 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
     }
 
-    const plan = planUnsoldUpdates({ apartments: apartmentsTyped, unsoldByRegionGu });
+    const plan = planUnsoldUpdates({ apartments: apartmentsTyped, unsoldByRegionGu, now });
 
     /** @type {Record<string, number>} */
     const actionCounts = {};
     for (const p of plan) actionCounts[p.action] = (actionCounts[p.action] || 0) + 1;
     log(PHASE, `apartments 계획: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")}`);
+
+    // C6(세션569) — 만료된 applyhome 은 이번 회차 KOSIS 판정을 받는다(전이표에서 따로 센다).
+    //   로그는 **실제로 쓰는 행**(write·write_zero)만 적는다 — 보류(hold_ge50)·매칭 실패는 값이 그대로다.
+    const expiredPlans = plan.filter((p) => p.applyhomeExpired);
+    const expiredWrites = expiredPlans.filter((p) => p.action === "write" || p.action === "write_zero");
+    if (expiredPlans.length > 0) {
+      log(PHASE, `[C6 만료] 공고 ${APPLYHOME_EXPIRY_MONTHS}개월 지난 applyhome ${expiredPlans.length}건 중 KOSIS 로 씀 ${expiredWrites.length}건${expiredWrites.length > 0 ? `: ${expiredWrites.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate}`).join(", ")}` : ""}`);
+    }
+    const noDateIds = plan.filter((p) => p.action === "skip_applyhome_no_date").map((p) => p.id);
+    noDateMarker = formatApplyhomeNoDate(noDateIds);
+    if (noDateMarker) {
+      logError(PHASE, `[경고][C6 공고일 없음] applyhome ${noDateIds.length}건은 만료를 판정할 수 없어 존중 유지 — unsold_as_of 를 채워야 한다: ${noDateIds.join(", ")}`);
+    }
 
     const heldIds = plan.filter((p) => p.action === "hold_ge50").map((p) => `${p.name}(${p.id})`);
     if (heldIds.length > 0) {
@@ -602,6 +659,7 @@ export async function main() {
       try {
         writeFileSync(impactOutPath, JSON.stringify({
           generatedAt: new Date().toISOString(), actionCounts, breaker,
+          applyhomeExpiredCount: expiredPlans.length, applyhomeNoDateIds: noDateIds,
           regionUpdateCount: regionUpdates.length, plan,
         }, null, 2), "utf8");
         log(PHASE, `[IMPACT] 계획 ${plan.length}행 저장(breaker 포함): ${impactOutPath}`);
@@ -653,12 +711,7 @@ export async function main() {
         continue;
       }
 
-      const { error } = await sb.from("apartments").update({
-        unsold: p.newEstimate,
-        unsold_rate: p.newRate,
-        unsold_source: "kosis",
-        updated_at: new Date().toISOString(),
-      }).eq("id", p.id);
+      const { error } = await sb.from("apartments").update(kosisWritePayload(p.newEstimate, p.newRate)).eq("id", p.id);
 
       if (error) logError(PHASE, `  ${p.name} UPDATE 실패: ${error.message}`);
       else aptUpdated++;
@@ -679,12 +732,7 @@ export async function main() {
         continue;
       }
 
-      const { error } = await sb.from("apartments").update({
-        unsold: 0,
-        unsold_rate: 0,
-        unsold_source: "kosis",
-        updated_at: new Date().toISOString(),
-      }).eq("id", p.id);
+      const { error } = await sb.from("apartments").update(kosisWritePayload(0, 0)).eq("id", p.id);
 
       if (error) logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${error.message}`);
       else aptZeroed++;
@@ -773,8 +821,8 @@ export async function main() {
     throw err;
   } finally {
     await recordCollectorRun(PHASE, errorMessage
-      ? { ok, status: "failure", errorMessage }
-      : { ok });
+      ? { ok, status: "failure", errorMessage: joinRunMessage(errorMessage, noDateMarker) }
+      : (noDateMarker ? { ok, errorMessage: noDateMarker } : { ok }));
   }
 }
 
