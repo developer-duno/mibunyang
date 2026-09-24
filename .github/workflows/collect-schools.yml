@@ -75,16 +75,23 @@ jobs:
           SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
           # 입력을 스크립트에 직접 끼우지 않고 환경변수로 받아 형식을 검사한다(명령 주입 방지, 세션567).
           IDS: ${{ inputs.ids }}
+          # limit 도 같은 방식 — 셸에 직접 끼우면 `1; <명령>` 같은 값이 그대로 실행된다(세션569).
+          LIMIT: ${{ inputs.limit }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="--dry-run"
           fi
-          if [ -n "${{ inputs.limit }}" ]; then
-            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          if [ -n "$LIMIT" ]; then
+            # grep 은 줄 단위라 "1(줄바꿈)--rescale-only" 같은 값이 첫 줄만 보고 통과한다 — bash 정규식으로 값 전체를 본다(세션569).
+            if [[ ! "$LIMIT" =~ ^[0-9]{1,5}$ ]]; then
+              echo "::error::limit 형식 오류 — 숫자(1~5자리)만"
+              exit 1
+            fi
+            ARGS="$ARGS --limit $LIMIT"
           fi
           if [ -n "$IDS" ]; then
-            if ! printf '%s' "$IDS" | grep -Eq '^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$'; then
+            if [[ ! "$IDS" =~ ^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$ ]]; then
               echo "::error::ids 형식 오류 — 영문·숫자·-·_ 로 된 id 를 쉼표로만 구분"
               exit 1
             fi

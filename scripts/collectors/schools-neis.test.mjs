@@ -1073,3 +1073,122 @@ describe("searchKakao — SC4 + is_end 까지 최대 3쪽 (세션569)", () => {
     expect(new Set(docs.map((d) => d.id)).size).toBe(16);
   });
 });
+
+// ── 세션569: NEIS 분교장 매칭 ──────────────────────────────────
+// 픽스처 = 2026-09-24 NEIS schoolInfo 실응답(필드 일부). "탄방초등학교" 조회 → 본교+분교 2건,
+// "용문분교장" 조회 → 분교 1건, "탄방초등학교 용문분교장"(카카오 표기, 공백) 조회 → 0건(INFO-200).
+const { branchQueryName, pickBranchRow } = await import("./schools-neis.mjs");
+const NEIS_ROW_TANBANG = { SCHUL_NM: "대전탄방초등학교", SCHUL_KND_SC_NM: "초등학교", FOND_SC_NM: "공립", ATPT_OFCDC_SC_CODE: "G10", SD_SCHUL_CODE: "7451116", FOND_YMD: "19740301" };
+const NEIS_ROW_YONGMUN = { SCHUL_NM: "대전탄방초등학교용문분교장", SCHUL_KND_SC_NM: "초등학교", FOND_SC_NM: "공립", ATPT_OFCDC_SC_CODE: "G10", SD_SCHUL_CODE: "7451353", FOND_YMD: "20250901" };
+const KAKAO_YONGMUN = "탄방초등학교 용문분교장"; // DB schools.nearby_schools 실표기(18행)
+
+describe("branchQueryName — 분교 이름이면 분교 부분만 (세션569)", () => {
+  it("카카오 실표기 '탄방초등학교 용문분교장' → '용문분교장'", () => {
+    expect(branchQueryName(KAKAO_YONGMUN)).toBe("용문분교장");
+  });
+  it("공백 없는 표기도 같은 결과", () => {
+    expect(branchQueryName("탄방초등학교용문분교장")).toBe("용문분교장");
+  });
+  it("분교가 아닌 학교는 null — 기존 조회 경로 그대로", () => {
+    expect(branchQueryName("대전탄방초등학교")).toBeNull();
+    expect(branchQueryName("강남중학교")).toBeNull();
+  });
+});
+
+describe("pickBranchRow — 끝 일치 + 유일할 때만 (세션569)", () => {
+  it("'용문분교장' 실응답 1건 → 분교 행(7451353)", () => {
+    expect(pickBranchRow(KAKAO_YONGMUN, [NEIS_ROW_YONGMUN])?.SD_SCHUL_CODE).toBe("7451353");
+  });
+  it("'탄방초등학교' 실응답(본교+분교) → 본교가 아니라 분교 행", () => {
+    expect(pickBranchRow(KAKAO_YONGMUN, [NEIS_ROW_TANBANG, NEIS_ROW_YONGMUN])?.SD_SCHUL_CODE).toBe("7451353");
+  });
+  it("본교 행만 있으면 null — 본교 정보를 분교에 붙이지 않는다", () => {
+    expect(pickBranchRow(KAKAO_YONGMUN, [NEIS_ROW_TANBANG])).toBeNull();
+  });
+  it("(가상) 이름 가운데에 대상 문자열이 든 행('…용문분교장부설유치원')만 있으면 null — 끝 일치만 인정", () => {
+    const mid = { ...NEIS_ROW_YONGMUN, SCHUL_NM: "대전탄방초등학교용문분교장부설유치원", SD_SCHUL_CODE: "8888888" };
+    expect(pickBranchRow(KAKAO_YONGMUN, [mid])).toBeNull();
+  });
+  it("(가상) 같은 분교장 이름이 다른 본교 밑에 둘 → 카카오 이름에 본교가 없으면 null, 있으면 그 본교 것", () => {
+    const other = { ...NEIS_ROW_YONGMUN, SCHUL_NM: "경기가상초등학교용문분교장", SD_SCHUL_CODE: "9999999" };
+    expect(pickBranchRow("용문분교장", [NEIS_ROW_YONGMUN, other])).toBeNull();
+    expect(pickBranchRow(KAKAO_YONGMUN, [NEIS_ROW_YONGMUN, other])?.SD_SCHUL_CODE).toBe("7451353");
+  });
+});
+
+describe("fetchNeisSchoolInfo 분교장 배선 — NEIS_KEY 있을 때 (세션569)", () => {
+  /** @param {Array<Record<string, any>>} rows */
+  const resp = (rows) => /** @type {any} */ ({ json: async () => (rows.length ? { schoolInfo: [{ head: [] }, { row: rows }] } : { RESULT: { CODE: "INFO-200" } }) });
+
+  /** NEIS_KEY 를 켠 새 모듈 인스턴스(모듈 상수라 다시 불러와야 한다) */
+  async function freshWithKey() {
+    process.env.NEIS_KEY = "test-neis";
+    vi.resetModules();
+    const mod = await import("./schools-neis.mjs");
+    const shared = await import("./_shared.mjs");
+    delete process.env.NEIS_KEY;
+    return { mod, fetchMock: vi.mocked(shared.fetchWithRetry) };
+  }
+
+  it("분교 이름은 분교 부분('용문분교장')으로 조회하고 분교 행 정보를 붙인다", async () => {
+    const { mod, fetchMock } = await freshWithKey();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(resp([NEIS_ROW_TANBANG, NEIS_ROW_YONGMUN]));
+    const info = await mod.fetchNeisSchoolInfo(KAKAO_YONGMUN);
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain(`SCHUL_NM=${encodeURIComponent("용문분교장")}`);
+    expect(url).not.toContain(encodeURIComponent(KAKAO_YONGMUN));
+    expect(url).toContain("pSize=100");
+    expect(info?.neisCode).toBe("7451353");
+    expect(info?.schoolType).toBe("공립");
+    expect(info?.founded).toBe(2025);
+  });
+
+  it("분교 행을 못 맞추면 null — 본교(rows[0])로 떨어지지 않는다", async () => {
+    const { mod, fetchMock } = await freshWithKey();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(resp([NEIS_ROW_TANBANG]));
+    expect(await mod.fetchNeisSchoolInfo(KAKAO_YONGMUN)).toBeNull();
+  });
+
+  it("분교가 아닌 학교는 옛 경로 그대로(원래 이름·pSize=5·정확 일치 우선)", async () => {
+    const { mod, fetchMock } = await freshWithKey();
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(resp([NEIS_ROW_TANBANG, NEIS_ROW_YONGMUN]));
+    const info = await mod.fetchNeisSchoolInfo("대전탄방초등학교");
+    const url = String(fetchMock.mock.calls[0][0]);
+    expect(url).toContain(`SCHUL_NM=${encodeURIComponent("대전탄방초등학교")}`);
+    expect(url).toContain("pSize=5");
+    expect(info?.neisCode).toBe("7451116");
+  });
+
+  it("실행 끝에 '분교장 미매칭 N' 을 로그로 남긴다 — 주석 아닌 실행문", () => {
+    expect(COLLECTOR_SRC).toMatch(/^[ \t]*if \(NEIS_KEY\) log\(PHASE, `분교장 NEIS 매칭 \$\{neisBranchMatched\} · 분교장 미매칭 \$\{neisBranchUnmatched\}`\);/m);
+  });
+});
+
+// ── 세션569: --ids 경로의 불필요한 조회 제거 ────────────────────
+// --ids 면 대상이 전부 forceIds 라 전체 schools 조회(30일 skip·오래된 순 정렬 재료)가 쓰이지
+// 않고, 옛 값(oldById)은 dry-run 출력에만 쓰인다. 줄머리 고정 = 주석 처리 무효화도 잡는다.
+describe("--ids 조회 절약 배선 (세션569)", () => {
+  it("--ids 면 전체 schools 조회를 건너뛴다(없으면 옛 조회 그대로)", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /^[ \t]*const allSchoolRows = idsArg != null \? \[\] : \/\*\* @type \{Array<Record<string, any>>\} \*\/ \(\r?\n[ \t]*await selectAll\(\(s\) => s\.from\("schools"\)\.select\("apartment_id, nearby_schools, updated_at"\), sb, "apartment_id"\)/m,
+    );
+  });
+
+  it("옛 값(oldById)은 dry-run 일 때만 조회한다", () => {
+    expect(COLLECTOR_SRC).toMatch(/^[ \t]*if \(dryRun && forceIds\.size > 0\) \{/m);
+    expect(COLLECTOR_SRC).not.toMatch(/^[ \t]*if \(forceIds\.size > 0\) \{/m);
+  });
+
+  it("oldById 를 읽는 곳은 dry-run 분기 안 한 곳뿐이다", () => {
+    const reads = [...COLLECTOR_SRC.matchAll(/oldById\.get\(/g)];
+    expect(reads).toHaveLength(1);
+    const at = /** @type {number} */ (reads[0].index);
+    const dryIdx = COLLECTOR_SRC.lastIndexOf("if (dryRun) {", at);
+    const upsertIdx = COLLECTOR_SRC.indexOf('from("schools").upsert(', at);
+    expect(dryIdx).toBeGreaterThan(-1);
+    expect(upsertIdx).toBeGreaterThan(at); // 실제 쓰기(upsert)보다 앞 = dry-run 분기 안
+  });
+});

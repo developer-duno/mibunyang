@@ -88,6 +88,42 @@ export function normalizeSchoolName(name) {
   return name.replace(/\s+/g, "").replace(/[()]/g, "");
 }
 
+// ── 세션569: NEIS 분교장 매칭 ────────────────────────────────
+// 실측(2026-09-24 NEIS schoolInfo 3회): SCHUL_NM 은 **부분(포함) 일치**다 — "탄방초등학교" →
+// "대전탄방초등학교"·"대전탄방초등학교용문분교장" 2건, "용문분교장" → 1건. 분교장은 본교와
+// **별도 행·별도 학교코드**(7451353, 본교 7451116)이고 이름에 공백이 없으며 앞에 지역명("대전")이
+// 붙는다. 카카오 이름 "탄방초등학교 용문분교장" 은 **공백 때문에** 0건(INFO-200) — 그래서 분교장
+// 행에 schoolType 이 안 붙었다. 처방 = 분교 이름이면 분교 부분("용문분교장")만으로 조회하고,
+// 응답 중 공백 뺀 이름이 카카오 이름(공백 뺌)으로 **끝나는** 행이 딱 1건일 때만 채택한다.
+// 끝 일치를 요구하는 이유 — 부분 일치라 같은 분교장 이름이 다른 본교 밑에서도 걸릴 수 있고,
+// 옛 방식처럼 rows[0](본교 등)으로 떨어지면 남의 학교 정보가 붙는다. 못 맞추면 null(보정 없음).
+/** 분교장 NEIS 매칭 집계 — 실행 끝 로그용 */
+let neisBranchMatched = 0;
+let neisBranchUnmatched = 0;
+
+/** 카카오 학교 이름이 분교(장)이면 NEIS 에 던질 분교 부분만 돌려준다. 아니면 null.
+ * @param {string} schoolName
+ * @returns {string | null}
+ */
+export function branchQueryName(schoolName) {
+  const compact = normalizeSchoolName(schoolName);
+  if (!/분교장?$/.test(compact)) return null;
+  const m = /학교(.+?분교장?)$/.exec(compact);
+  return m ? m[1] : compact;
+}
+
+/** 분교 부분으로 받은 NEIS 행 중 카카오 이름과 맞는 행 1건을 고른다(끝 일치·유일할 때만).
+ * @param {string} schoolName 카카오 이름
+ * @param {Array<Record<string, any>>} rows NEIS schoolInfo row 배열
+ * @returns {Record<string, any> | null}
+ */
+export function pickBranchRow(schoolName, rows) {
+  const key = /** @param {string} n */ (n) => normalizeSchoolName(n).replace(/분교장$/, "분교");
+  const want = key(schoolName);
+  const hits = (rows ?? []).filter((r) => typeof r?.SCHUL_NM === "string" && key(r.SCHUL_NM).endsWith(want));
+  return hits.length === 1 ? hits[0] : null;
+}
+
 /** NEIS 학교기본정보 조회 — schoolType, founded, highSchoolType 반환
  * @param {string} schoolName
  */
@@ -97,7 +133,11 @@ export async function fetchNeisSchoolInfo(schoolName) {
   const cacheKey = normalizeSchoolName(schoolName);
   if (neisCache.has(cacheKey)) return neisCache.get(cacheKey);
 
-  const url = `${NEIS_BASE}/schoolInfo?KEY=${NEIS_KEY}&Type=json&pIndex=1&pSize=5&SCHUL_NM=${encodeURIComponent(schoolName)}`;
+  // 세션569: 분교(장)는 분교 부분만으로 넓게(pSize 100) 조회한다 — 위 주석.
+  const branchQuery = branchQueryName(schoolName);
+  const query = branchQuery ?? schoolName;
+  const pSize = branchQuery ? 100 : 5;
+  const url = `${NEIS_BASE}/schoolInfo?KEY=${NEIS_KEY}&Type=json&pIndex=1&pSize=${pSize}&SCHUL_NM=${encodeURIComponent(query)}`;
 
   try {
     const res = await fetchWithRetry(url);
@@ -106,13 +146,27 @@ export async function fetchNeisSchoolInfo(schoolName) {
 
     const rows = data?.schoolInfo?.[1]?.row;
     if (!rows || rows.length === 0) {
+      if (branchQuery) neisBranchUnmatched++;
       neisCache.set(cacheKey, null);
       return null;
     }
 
-    // 정확히 매칭되는 학교 우선, 없으면 첫 번째 결과 사용
-    const exact = rows.find(/** @param {Record<string, any>} r */ (r) => normalizeSchoolName(r.SCHUL_NM) === cacheKey);
-    const row = exact || rows[0];
+    /** @type {Record<string, any>} */
+    let row;
+    if (branchQuery) {
+      const branchRow = pickBranchRow(schoolName, rows);
+      if (!branchRow) {
+        neisBranchUnmatched++;
+        neisCache.set(cacheKey, null);
+        return null;
+      }
+      neisBranchMatched++;
+      row = branchRow;
+    } else {
+      // 정확히 매칭되는 학교 우선, 없으면 첫 번째 결과 사용
+      const exact = rows.find(/** @param {Record<string, any>} r */ (r) => normalizeSchoolName(r.SCHUL_NM) === cacheKey);
+      row = exact || rows[0];
+    }
 
     const info = {
       schoolType: row.FOND_SC_NM || null,            // 공립 / 사립 / 국립
@@ -127,6 +181,7 @@ export async function fetchNeisSchoolInfo(schoolName) {
     return info;
   } catch (err) {
     logError(PHASE, `NEIS 조회 실패 (${schoolName}): ${err instanceof Error ? err.message : String(err)}`);
+    if (branchQuery) neisBranchUnmatched++;
     neisCache.set(cacheKey, null);
     return null;
   }
@@ -673,7 +728,9 @@ async function main() {
   // 세션539 B-1: 무정렬 OFFSET → 고유키(apartment_id) 커서. rescaleOnly()(L444)가 이미
   // 같은 테이블을 .order("apartment_id") 로 훑는 정답 패턴 — 여기 main() 만 빠져 있었다
   // (unordered-pagination-loses-rows.md §1). schools 는 apartment_id 가 1행=1단지 고유키.
-  const allSchoolRows = /** @type {Array<Record<string, any>>} */ (
+  // 세션569: --ids 면 전체 조회를 건너뛴다 — 대상이 전부 forceIds 라 enrichedIds(30일 skip)도
+  // updatedAtById(오래된 순 정렬)도 쓰이지 않는다(selectProcessList 의 rest 가 비어 있다).
+  const allSchoolRows = idsArg != null ? [] : /** @type {Array<Record<string, any>>} */ (
     await selectAll((s) => s.from("schools").select("apartment_id, nearby_schools, updated_at"), sb, "apartment_id")
   );
   const enrichedIds = buildEnrichedIds(allSchoolRows, staleThresholdMs);
@@ -682,9 +739,10 @@ async function main() {
   // dry-run + --ids 확장 출력용 옛 값(school_score/school_grade 포함) 조회 — 위 allSchoolRows
   // 는 회귀 가드(schools-neis.test.mjs "고유키 커서")가 select 문자열을 리터럴로 고정해
   // 컬럼을 늘릴 수 없으므로, 지정된 소수 id 에 한해 별도로 조회한다.
+  // 세션569: 옛 값은 아래 dry-run 출력에만 쓰이므로 실제 쓰기 실행에서는 조회하지 않는다.
   /** @type {Map<string, Record<string, any>>} */
   let oldById = new Map();
-  if (forceIds.size > 0) {
+  if (dryRun && forceIds.size > 0) {
     const { data: oldRows } = await sb
       .from("schools")
       .select("apartment_id, nearby_schools, school_score, school_grade")
@@ -788,6 +846,7 @@ async function main() {
 
   log(PHASE, `\n=== 완료: 갱신 ${updated}, 건너뜀 ${skipped} ===`);
   if (NEIS_KEY) log(PHASE, `NEIS API 호출: ${neisApiCalls}건, schoolInfo 캐시: ${neisCache.size}건, classInfo 캐시: ${classCache.size}건`);
+  if (NEIS_KEY) log(PHASE, `분교장 NEIS 매칭 ${neisBranchMatched} · 분교장 미매칭 ${neisBranchUnmatched}`);
   if (SCHOOLINFO_KEY) log(PHASE, `학교알리미 API 호출: ${schoolInfoApiCalls}건, 지역 캐시: ${studentCache.size}건`);
 
   if (!dryRun && NEIS_KEY) await recordApiQuota(PHASE, "NEIS_KEY", neisApiCalls);
