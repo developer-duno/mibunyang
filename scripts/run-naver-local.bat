@@ -5,6 +5,12 @@ cd /d "%~dp0.."
 set "LOG=%~dp0..\naver-collect.log"
 set "PYLOG=%~dp0..\naver-collect-py.log"
 echo [%date% %time%] naver collect start >> "%LOG%"
+REM Session 570: record pipeline start/finish in collector_runs as "naver-pipeline" so the
+REM monitor can tell whether all 6 steps finished (steps 4-6 were cut 3 weeks in a row by PC
+REM restarts and nothing alerted). record-pipeline-run.mjs always exits 0.
+call node scripts\record-pipeline-run.mjs start >> "%LOG%" 2>&1
+set WARN=0
+set "WARN_NAMES="
 
 REM env is loaded by each step itself (naver-collect.py has its own .env.local parser;
 REM every .mjs calls _shared.mjs loadEnv). No batch env pre-load needed.
@@ -37,6 +43,7 @@ REM --max-minutes: cap step 1 so steps 2-6 always get to run (see scripts/CLAUDE
 %PY_CMD% scripts/collectors/naver-collect.py --max-minutes=120 >> "%PYLOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] ERROR: naver-collect.py failed - reason in naver-collect-py.log >> "%LOG%"
+  call node scripts\record-pipeline-run.mjs failed --step=1 --name=naver-collect >> "%LOG%" 2>&1
   exit /b 1
 )
 
@@ -45,6 +52,7 @@ echo [%date% %time%] === 2/6 sync naver to apartments === >> "%LOG%"
 call node scripts/collectors/sync-naver-complex.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] ERROR: sync-naver-complex.mjs failed >> "%LOG%"
+  call node scripts\record-pipeline-run.mjs failed --step=2 --name=sync-naver >> "%LOG%" 2>&1
   exit /b 1
 )
 
@@ -53,6 +61,8 @@ echo [%date% %time%] === 3/6 naver presale info (pre.land) === >> "%LOG%"
 call node scripts/collectors/naver-presale.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] WARNING: naver-presale.mjs failed - non-fatal >> "%LOG%"
+  set /a WARN+=1
+  set "WARN_NAMES=!WARN_NAMES!,naver-presale"
 )
 REM reset errorlevel so a non-fatal WARNING above does not fail the next step
 verify >nul
@@ -62,6 +72,8 @@ echo [%date% %time%] === 4/6 units correction (molit-units) === >> "%LOG%"
 call node scripts/collectors/molit-units.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] WARNING: molit-units.mjs failed - non-fatal >> "%LOG%"
+  set /a WARN+=1
+  set "WARN_NAMES=!WARN_NAMES!,molit-units"
 )
 REM reset errorlevel
 verify >nul
@@ -71,6 +83,7 @@ echo [%date% %time%] === 5/6 exclusive ratio === >> "%LOG%"
 call node scripts/collectors/calc-exclusive-ratio.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] ERROR: calc-exclusive-ratio.mjs failed >> "%LOG%"
+  call node scripts\record-pipeline-run.mjs failed --step=5 --name=calc-exclusive-ratio >> "%LOG%" 2>&1
   exit /b 1
 )
 
@@ -79,7 +92,12 @@ echo [%date% %time%] === 6/6 recompute scores === >> "%LOG%"
 call node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] WARNING: compute-scores.mjs failed - non-fatal >> "%LOG%"
+  set /a WARN+=1
+  set "WARN_NAMES=!WARN_NAMES!,compute-scores"
 )
 
+REM finish record: ok = steps without a warning, skip = warned (non-fatal) steps
+set /a OK_STEPS=6-WARN
+call node scripts\record-pipeline-run.mjs done --collector=naver-pipeline --ok=!OK_STEPS! --skip=!WARN! "--warn=!WARN_NAMES!" >> "%LOG%" 2>&1
 echo [%date% %time%] naver collect done >> "%LOG%"
 echo Done!

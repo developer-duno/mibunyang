@@ -20,6 +20,7 @@ const LABELS = {
   fetchTradeRows: "⑧ 지역×월 거래 점검",
   fetchRegionRuns: "⑪ 시도 이름 못 맞춤 점검",
   fetchAhRows: "⑫ 청약홈 미분양 값 점검",
+  fetchFailureRuns: "⑬ 로컬 수집기 실패 점검",
 };
 
 /** 전부 정상으로 도는 가짜 조회 — 판정 결과(이상)는 나올 수 있지만 실행 실패는 없다. */
@@ -33,6 +34,10 @@ function okDeps() {
     fetchAhRows: async () => [
       { id: "ah-x", name: "만료단지", unsold: 10, unsold_source: "applyhome", unsold_as_of: "2020-01-01", competition_shortfall: 3 },
     ],
+    // 방금 끝난 차단기 실패 1행 — ⑬ 이 실제로 돌았다는 표지(이상 1건이 나와야 한다)
+    fetchFailureRuns: async () => [
+      { collector: "kosis-unsold", status: "failure", ok_count: 0, fail_count: 0, error_message: "차단기", finished_at: new Date().toISOString() },
+    ],
   };
 }
 
@@ -44,6 +49,7 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     const issues = await runDailyGuardedChecks(okDeps());
     expect(failed(issues)).toEqual([]);
     expect(issues.some((i) => i.kind === "applyhome-unsold")).toBe(true); // ⑫ 가 실제로 돌았다
+    expect(issues.some((i) => i.kind === "local-failure")).toBe(true); // ⑬ 이 실제로 돌았다(세션570)
   });
 
   for (const [dep, label] of Object.entries(LABELS)) {
@@ -67,13 +73,14 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     expect(issues.some((i) => i.kind === "applyhome-unsold")).toBe(true);
   });
 
-  it("다섯 다 실패하면 5건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) 그대로", async () => {
+  it("여섯 다 실패하면 6건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑬(세션570) 그대로", async () => {
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
-      fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom,
+      fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchFailureRuns: boom,
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
+      "⑬ 로컬 수집기 실패 점검",
     ]);
   });
 });

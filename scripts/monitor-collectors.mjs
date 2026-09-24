@@ -248,7 +248,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -388,6 +388,16 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-a(빈 성공 3연속)는 이 수집기에선 구조적으로 안 울린다 — 시간예산에 잘리면 status="partial" 이라
   //   연속이 끊기고, 3회가 다 success 여도 가장 오래된 행이 7~11일 전이라 14일 임계를 못 넘는다.
   { collector: "naver-collect",    stale_days: 14, owner: "네이버 매물·시세 1단계 (로컬 월/목 08:00)" },
+  // naver-pipeline = run-naver-local.bat 6단계 **완주 기록**(세션570, scripts/record-pipeline-run.mjs done/failed).
+  //   왜 등재하나: 9/10·9/17·9/24 세 주 연속 4~6단계가 끊겼는데(점심 무렵 PC 재시작 = 예약 작업 결과 267014)
+  //   어느 감시도 울리지 않았다 — 단계별 수집기 행만 있고 "끝까지 갔다"는 행이 없었기 때문이다.
+  //   ⚠️ 이 값만 4 인 이유: 발화가 월·목 08:00 이라 정상 간격이 월→목 3일·목→월 4일이다. 4 면 한 회차를
+  //   놓쳤을 때 **다음 회차 전에** 잡는다(목요일이 끊기면 마지막 완주가 월요일 → 토요일 09:00 감시에서 4일 초과).
+  //   14(자매 naver-collect 기준)로 두면 세 회차를 연달아 놓쳐야 울린다 — 이번 사고가 딱 그 모양이었다.
+  //   ⑤-b 미발화만 의미가 있다: 재시작으로 죽으면 행 자체가 없고, 치명 실패(failure)는 ⑬ 이 당일 잡는다.
+  //   ⚠️ 부작용: 이 배열에 들면 ② 빈 성공 점검(idempotentCollectorSet)에서 빠진다 — naver-pipeline 의
+  //   ok 는 6-경고수라 success 로 끝나면 최소 3(치명 단계 1·2·5 는 경고가 될 수 없다)이어서 ② 가 볼 것이 없다.
+  { collector: "naver-pipeline",   stale_days: 4,  owner: "네이버 로컬 파이프라인 완주 기록 (월·목 08:00, bat 끝 1행 — 목요일 회차가 끊기면 토요일 09:00 울린다)" },
   // naver-devplan = 네이버 개발계획(도로·철도·역·지구) — 세션 517 에 로컬 러너 매월 20일로 크론 편입.
   //   네이버 IP 가 필요해 GH 러너에서 못 돌리고, 편입 전까지는 **어느 스케줄에도 없어** 사람이
   //   손으로 부를 때만 돌았다(세션 510b 지적 → 516 재확인). GH run 이 없어 ①③ 대상 밖 →
@@ -1074,6 +1084,88 @@ async function fetchApplyhomeUnsoldRows() {
 }
 
 /**
+ * ⑬ 창(시간) — daily 가 24시간마다 돌고 큐 지연을 흡수하려 2시간 여유를 둔다. 창이 겹쳐 같은 행을
+ * 두 번 보면 `ALWAYS_DEDUP_KINDS`(kind+collector+at=finished_at)가 두 번째를 막는다.
+ */
+export const LOCAL_FAILURE_WINDOW_HOURS = 26;
+
+/**
+ * ⑬ 실패 비율 하한 — 이 비율 이상이 실패여야 울린다. naver-presale 은 1,301건 중 4건(0.3%) 실패로도
+ * status=failure 를 남기는데(지역명 못 맞춤 등 개별 건), 그건 수집이 통째로 망가진 게 아니다.
+ */
+export const LOCAL_FAILURE_RATIO_LIMIT = 0.1;
+
+/**
+ * ⑬ 로컬 수집기 실패 명단(세션570).
+ *
+ * 왜 따로 보나: 로컬 러너(Windows 예약 작업)가 돌리는 수집기가 `collector_runs.status=failure` 로
+ * 끝나도 **어느 감시에도 안 보였다** — ① 은 GitHub 실행만, ② 는 success 행만(:521), ⑤ 는 신선도만 본다
+ * (failure 도 "돌긴 돌았다" 라 신선하다). 그래서 10/09 미분양 러너가 차단기로 failure 로 끝나도 무음이었다.
+ *
+ * 판정 = `status === "failure"` 이고 (`ok_count` 0 **또는** 실패 비율 ≥ `LOCAL_FAILURE_RATIO_LIMIT`).
+ *   ok 0 은 비율 1 로 계산돼 비율 조건 하나로 합쳐진다(합 0 인 차단기 행도 1).
+ *   - 울림: kosis-unsold 차단기(ok 0) · naver-pipeline 치명 단계 실패(STEP_FAILED 마커, ok ≤ 4 · fail 1 → 비율 ≥ 20%)
+ *   - 침묵: naver-presale 4/1301(0.3%) · naver-collect `partial`(시간 상한 정상 중단) · success 행
+ * ⚠️ GitHub 워크플로 수집기가 failure 행을 남기면 ① 과 겹쳐 두 번 알릴 수 있다(판정은 이름이 아니라 상태로 한다).
+ * `at` = `finished_at` 이라 같은 행은 한 번만 알리고(dedup), 창(26시간) 밖으로 나가면 자연 소멸한다.
+ *
+ * @param {Array<{ collector?: string|null, status?: string|null, ok_count?: number|null, fail_count?: number|null, error_message?: string|null, finished_at?: string|null }>} rows
+ *   최근 창 안의 collector_runs 행(status 무관).
+ * @param {{ now?: Date, windowHours?: number, ratioLimit?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkLocalFailures(rows, opts = {}) {
+  const now = opts.now ?? new Date();
+  const windowHours = opts.windowHours ?? LOCAL_FAILURE_WINDOW_HOURS;
+  const ratioLimit = opts.ratioLimit ?? LOCAL_FAILURE_RATIO_LIMIT;
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const r of rows) {
+    if (r?.status !== "failure" || !r.finished_at) continue;
+    const ageH = (now.getTime() - new Date(r.finished_at).getTime()) / 3600000;
+    if (!(ageH <= windowHours)) continue;
+    const ok = r.ok_count ?? 0;
+    const fail = r.fail_count ?? 0;
+    // ok 0 이면 비율은 늘 1 이다 — fail>0 이면 fail/fail, 합이 0(차단기처럼 한 건도 안 건드리고 멈춤)이면 1 로 본다.
+    const ratio = ok + fail > 0 ? fail / (ok + fail) : 1;
+    if (ratio < ratioLimit) continue;
+    const name = r.collector ?? "(이름 없음)";
+    const msg = (r.error_message ?? "").trim();
+    const when = toKst(r.finished_at) ?? r.finished_at;
+    issues.push({
+      kind: "local-failure",
+      collector: name,
+      detail: `status=failure · 성공 ${ok} · 실패 ${fail}${msg ? ` · ${msg.slice(0, 80)}` : ""} · ${when}`,
+      lines: [
+        `실패 비율 ${(ratio * 100).toFixed(1)}% (${fail}/${ok + fail}) — 성공 0건이거나 ${Math.round(ratioLimit * 100)}% 이상이면 알립니다.`,
+        `[조치] 로그 = ${name} 를 돌린 로컬 러너 로그 파일(naver-collect.log · kosis-local.log · childcare-local.log) / collector_runs.error_message`,
+      ],
+      at: r.finished_at,
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑬ 대상 행 — 최근 `hours` 시간 안에 끝난 collector_runs 중 status=failure 만(하루 0~몇 행).
+ * 판정 함수는 status 를 다시 보므로 여기서 거르는 것은 조회량을 줄일 뿐이다.
+ * @param {number} [hours]
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
+async function fetchRecentFailureRuns(hours = LOCAL_FAILURE_WINDOW_HOURS) {
+  const since = new Date(Date.now() - hours * 3600000).toISOString();
+  const { data, error } = await getSupabase()
+    .from("collector_runs")
+    .select("collector,status,ok_count,fail_count,error_message,finished_at")
+    .eq("status", "failure")
+    .gte("finished_at", since)
+    .order("finished_at", { ascending: false })
+    .limit(1000);
+  if (error) throw new Error(`collector_runs 실패 행 조회 실패: ${error.message}`);
+  return data ?? [];
+}
+
+/**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
  * 진앙 패턴 (세션 391): population(매월 5일)이 net_migration 없는 새 recorded_at 행을
@@ -1228,7 +1320,9 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
  * daily 에서도 dedup 할 **이슈 종류**(세션569). ⑪ 은 수집기 이름(market-stats 등)이 ②⑤ 와 겹쳐서
  * 수집기 이름으로 묶으면 그쪽 리마인드까지 막힌다 — 그래서 종류로 가른다.
  */
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold"]); // ⑫ 도 사람이 고쳐야 풀린다(세션569)
+// ⑫ 도 사람이 고쳐야 풀린다(세션569). ⑬ local-failure 는 at=finished_at(행마다 고유)이라 같은 실패 행을
+// 창(26시간)이 겹친 이튿날 한 번 더 알리지 않게 dedup 한다(세션570) — 새 실패 행은 새 키라 그대로 울린다.
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure"]);
 
 /**
  * @param {Issue} issue
@@ -2135,7 +2229,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 다섯(⑦ → ⑨ → ⑧ → ⑪ → ⑫, 옛 main 순서 그대로)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 여섯(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬, 옛 main 순서 그대로 + ⑬ 세션570)을 돌려 이슈를 합친다.
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -2143,6 +2237,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchTradeRows?: () => ReturnType<typeof fetchTradeMonthRows>,
  *   fetchRegionRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
+ *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
  */
@@ -2152,6 +2247,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchTradeRows = deps.fetchTradeRows ?? (() => fetchTradeMonthRows());
   const fetchRegionRuns = deps.fetchRegionRuns ?? fetchRegionUnresolvedRuns;
   const fetchAhRows = deps.fetchAhRows ?? fetchApplyhomeUnsoldRows;
+  const fetchFailureRuns = deps.fetchFailureRuns ?? (() => fetchRecentFailureRuns());
   /** @type {Issue[]} */
   let issues = [];
 
@@ -2208,6 +2304,14 @@ export async function runDailyGuardedChecks(deps = {}) {
     const holdCount = ahRows.filter((r) => r?.unsold_source === "hold").length;
     console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length - holdCount}곳 · hold ${holdCount}곳 → 이상 ${ahIssues.length}건`);
     return ahIssues;
+  }));
+
+  // ⑬ 로컬 수집기 실패 명단 — collector_runs.status=failure 는 ①②⑤ 어디에도 안 보였다(세션570).
+  issues = issues.concat(await runFailOpenCheck("⑬ 로컬 수집기 실패 점검", async () => {
+    const failRows = await fetchFailureRuns();
+    const failIssues = checkLocalFailures(failRows);
+    console.log(`[monitor] ⑬ 로컬 수집기 실패 점검: 최근 ${LOCAL_FAILURE_WINDOW_HOURS}시간 failure ${failRows.length}행 → 이상 ${failIssues.length}건`);
+    return failIssues;
   }));
 
   return issues;
@@ -2805,7 +2909,7 @@ async function main() {
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk, { maxAgeHours: 36 }));
   } else {
-    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦⑧⑨⑩⑪⑫)
+    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦⑧⑨⑩⑪⑫⑬)
     // ⚠️ ①③ 은 GitHub Actions REST(actions/runs·workflows)에 의존한다. 로컬 PC 처럼
     //    GITHUB_REPOSITORY/GITHUB_TOKEN 이 없으면 fetchRecentRuns 가 [] 를 반환해
     //    "모든 워크플로가 한 번도 안 돔" 으로 오판 → 미발화 알림이 전부 오탐 발송된다
@@ -2861,7 +2965,7 @@ async function main() {
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
