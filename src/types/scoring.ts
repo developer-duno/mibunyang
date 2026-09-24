@@ -169,6 +169,10 @@ export interface Apt {
   _noMaint?: boolean;
   /** area 가 84 로 눌리기 전 원본 null/미기재 여부(세션508 계열 관례). scorePrice 가 면적 버킷 매칭 대상에서 제외할 때 사용. */
   _noArea?: boolean;
+  /** 좌표 자리표시 의심(VIEW `apartments_flat` — 세션560) — true 면 이 단지 좌표를 다른 단지가 함께 쓴다. */
+  coordShared?: boolean;
+  /** sanitize 가 `coordShared === true` 를 보고 세우는 플래그(세션568). scoreLocation/scoreRisk 의 좌표 파생 sub 를 중립 처리할 때 쓴다. */
+  _coordUnknown?: boolean;
 
   // 추가 필드 (도메인 확장 — strict 회피)
   [key: string]: unknown;

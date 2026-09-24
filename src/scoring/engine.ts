@@ -147,6 +147,10 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     _noDiscount: apt.discountPct == null,
     _noCashback: apt.cashback == null,
     _noMaint: apt.avgMaintenanceCost == null,
+    // 좌표 자리표시 의심(세션568) — coordShared=true 면 이 단지의 좌표를 다른 단지와 공유하고
+    // 있어, 그 좌표로 재는 값(교통·생활인프라·대기질·혐오시설·치안 경찰거리)을 믿을 수 없다.
+    // scoreLocation/scoreRisk 가 이 플래그를 보고 해당 sub 를 중립값+"위치 확인 중" 으로 채점한다.
+    _coordUnknown: apt.coordShared === true,
   };
 }
 

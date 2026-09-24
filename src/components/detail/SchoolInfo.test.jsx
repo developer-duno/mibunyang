@@ -218,4 +218,49 @@ describe("SchoolInfo", () => {
       expect(container.innerHTML).toBe("");
     });
   });
+
+  // 사장님 추가 결정(세션568-3) — 학교 이름·거리·등급·도보 분은 좌표로 잰 값이라
+  // 좌표 공유 시 이 단지 것이 아니다. 경고문 대신 값 자체를 감추고 사실 한 줄만 남긴다.
+  describe("좌표 자리표시 의심 — 이름·거리는 감추고 '위치 확인 중' 한 줄 (세션568-3)", () => {
+    it("coordShared=true 면 학교 이름·거리·등급이 안 보이고 '위치 확인 중' 한 줄만 보인다", () => {
+      const apt = makeApt({
+        coordShared: true,
+        schoolGrade: "A",
+        naverSchoolWalkMin: 3,
+        nearbySchools: [
+          { name: "영통초등학교", type: "초", distance: 300 },
+          { name: "영통중학교", type: "중", distance: 800 },
+        ],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      expect(screen.getByText("학군 정보")).toBeTruthy(); // 양성 앵커 — 카드가 그려졌다
+      expect(screen.getByText("위치 확인 중")).toBeTruthy();
+      expect(screen.queryByText("영통초등학교")).toBeNull();
+      expect(screen.queryByText("영통중학교")).toBeNull();
+      expect(screen.queryByText("A")).toBeNull();
+      expect(screen.queryByText("초등 도보 3분")).toBeNull();
+      expect(screen.queryByText(/전체.*학교 보기/)).toBeNull();
+    });
+
+    it("경고 문구는 없다 — 신뢰도 변명이 아니라 사실 서술", () => {
+      const apt = makeApt({
+        coordShared: true,
+        nearbySchools: [{ name: "영통초등학교", type: "초", distance: 300 }],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      expect(screen.queryByText(/정확하지 않을 수 있습니다/)).toBeNull();
+    });
+
+    it("coordShared=false 면 기존과 완전히 같다 — 이름·거리가 그대로 보인다 (양성 앵커)", () => {
+      const apt = makeApt({
+        coordShared: false,
+        schoolGrade: "A",
+        nearbySchools: [{ name: "영통초등학교", type: "초", distance: 300 }],
+      });
+      render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
+      expect(screen.getByText("영통초등학교")).toBeTruthy();
+      expect(screen.getByText("A")).toBeTruthy();
+      expect(screen.queryByText("위치 확인 중")).toBeNull();
+    });
+  });
 });

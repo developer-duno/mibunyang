@@ -127,3 +127,33 @@ describe("좌표 자리표시 경고 — 일부러 두지 않는다 (세션563)"
     expect(container.querySelector('[data-field="coordShared"]')).toBeNull();
   });
 });
+
+/**
+ * 사장님 추가 결정(세션568-3) — 경고문 대신 **틀린 값 자체를 안 보여준다**.
+ * 역 이름·노선·거리는 좌표로 잰 값이라 좌표 공유 시 이 단지 것이 아니다.
+ * "위치 확인 중"은 신뢰도 변명이 아니라 사실 서술이라 세션563 가드(경고문 없음)와 충돌하지 않는다.
+ */
+describe("좌표 자리표시 의심 — 이름·거리는 감추고 '위치 확인 중' 한 줄 (세션568-3)", () => {
+  it("coordShared=true 면 역 이름·거리·IC·KTX 값이 안 보이고 '위치 확인 중' 한 줄만 보인다", () => {
+    render(<TransportCard apt={apt({ subwayName: "왕십리역", subwayLines: "2호선", icDist: 5, coordShared: true })} />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("위치 확인 중")).toBeInTheDocument();
+    expect(screen.queryByText("왕십리역")).toBeNull();
+    expect(screen.queryByText("2호선")).toBeNull();
+    expect(screen.queryByText("5km")).toBeNull();
+  });
+
+  it("경고 문구는 여전히 없다 (세션563 가드와 공존)", () => {
+    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.queryByText(/위치가 정확하지 않을 수 있습니다/)).toBeNull();
+  });
+
+  it("coordShared=false 면 기존과 완전히 같다 — 이름·거리가 그대로 보인다 (양성 앵커)", () => {
+    render(<TransportCard apt={apt({ subwayName: "왕십리역", icDist: 5, coordShared: false })} />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(screen.getByText("왕십리역")).toBeInTheDocument();
+    expect(screen.getByText("5km")).toBeInTheDocument();
+    expect(screen.queryByText("위치 확인 중")).toBeNull();
+  });
+});

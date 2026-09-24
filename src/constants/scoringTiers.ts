@@ -525,6 +525,21 @@ export const NOXIOUS_DIST_THRESHOLD = 500; // m — 이 거리 이상이면 감�
 export const NOXIOUS_REDUCTION = 0.5;
 export const NOXIOUS_PEN_CAP = -15;
 
+// === 좌표 자리표시 의심(coordShared) 단지의 "모름(중립)" 상수 (세션568, 사장님 결정) ===
+//
+// `apartments.coord_shared = true` 는 이 단지의 좌표를 다른 이름의 단지가 함께 쓰고 있다는
+// 뜻이다(지오코딩이 구청 등 대표 장소로 떨어진 자리표시). 그 좌표로 재는 값(교통·생활인프라·
+// 대기질·혐오시설·치안 경찰거리)은 전부 "이 단지의 것"이 아니라 "그 대표 장소의 것"이라
+// 믿을 수 없다 — 값이 없는 게 아니라 **잘못된 값이 있는** 상태다.
+//
+// 기존 null 중립 상수가 있는 축(대기질 `AIR_QUALITY_DEFAULT`, 치안 경찰거리
+// `POLICE_DIST_NULL_SCORE`)은 그 상수를 그대로 재사용한다 — "모름"이라는 뜻이 이미 같다.
+// 새로 정의가 필요한 두 축(교통·생활인프라)은 그 sub 만점의 **절반**을 중립값으로 삼는다
+// (다른 unknown 상수들과 같은 원칙 — src/scoring/CLAUDE.md "unknown(null) 처리 원칙" 참조).
+// 둘 다 0~100 정규화된 sub 총점이라 만점은 100, 중립은 50.
+export const COORD_UNKNOWN_TRANSPORT_SCORE = 50;
+export const COORD_UNKNOWN_INFRA_SCORE = 50;
+
 // === Product ===
 export const UNIT_TIERS: Tier[] = [
   { min: 1500, score: 15 },

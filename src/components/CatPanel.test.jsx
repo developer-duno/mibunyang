@@ -179,6 +179,39 @@ describe("CatPanel", () => {
       expand();
       expect(count(/개발지구 없음/)).toBeGreaterThan(0);
     });
+
+    // 좌표 자리표시 의심(세션568) — "위치 확인 중" info 는 판정 배지를 숨긴다.
+    // ⚠️ 뮤테이션 대상: CatPanel.tsx isNoDataInfo 의 `if (info.includes("위치 확인 중")) return true;`
+    //    이 줄을 지우면 아래 두 테스트가 red 여야 한다.
+    it('info="위치 확인 중" 이면 판정 문구를 숨긴다 (location 교통 sub)', () => {
+      const cat = makeCat({ label: "입지·생활권", subs: [{ name: "교통", score: 50, info: "위치 확인 중" }] });
+      render(<CatPanel cat={cat} k="location" />);
+      expand();
+      expect(count("위치 확인 중")).toBeGreaterThan(0);
+      expect(count(/교통 보통/)).toBe(0);
+      expect(count(/교통 우수/)).toBe(0);
+    });
+
+    it('info="위치 확인 중" 이면 판정 문구를 숨긴다 (future 산업개발 sub, 0점이어도 "없음" 판정 안 남)', () => {
+      const cat = makeCat({ label: "미래가치", subs: [{ name: "산업개발", score: 0, info: "위치 확인 중" }] });
+      render(<CatPanel cat={cat} k="future" />);
+      expand();
+      expect(count("위치 확인 중")).toBeGreaterThan(0);
+      expect(count(/산업단지 멀어 약함/)).toBe(0);
+      expect(count(/산업단지 없음/)).toBe(0);
+    });
+
+    // 보완(세션568-2) — 학군도 좌표 파생이라 같은 필터를 탄다. 폴백 50점은
+    // subContext.ts "학교 접근 보통"(≥50) 구간에 정확히 걸리므로, 필터가 없으면 그 문구가 샌다.
+    it('info="위치 확인 중" 이면 학군 판정 문구도 숨긴다 (score=50 이 "학교 접근 보통" 구간과 겹침)', () => {
+      const cat = makeCat({ label: "입지·생활권", subs: [{ name: "학군", score: 50, info: "위치 확인 중" }] });
+      render(<CatPanel cat={cat} k="location" />);
+      expand();
+      expect(count("위치 확인 중")).toBeGreaterThan(0);
+      expect(count(/학교 접근 보통/)).toBe(0);
+      expect(count(/학교 접근 우수/)).toBe(0);
+      expect(count(/학교 접근 미흡/)).toBe(0);
+    });
   });
 
   // ── 미래가치 3축: 값이 있는데 "없음"이라 말하지 않는다 (세션512) ────────────────

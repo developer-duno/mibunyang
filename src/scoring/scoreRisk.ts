@@ -200,8 +200,13 @@ export function scoreRisk(apt: Apt): Res {
       ? CRIME_SAFETY_NULL_SCORE
       : ((CRIME_SAFETY_SCORES as Record<string, number>)[String(apt.crimeSafetyGrade)] ?? CRIME_SAFETY_NULL_SCORE);
   const policeDist = apt.policeDist as number | null | undefined;
+  // 좌표 자리표시 의심(세션568) — 경찰관서 거리는 이 단지 좌표로 잰 값이라, 좌표가 다른
+  // 단지와 공유되면 이 단지 것이 아니다. 범죄등급(gradeRisk)은 행정구역(region+gu) 기준이라
+  // 좌표와 무관 — 영향 없음. 기존 "데이터 없음" 중립값을 그대로 쓴다(POLICE_DIST_NULL_SCORE).
   const policeRisk: number =
-    policeDist == null ? POLICE_DIST_NULL_SCORE : tierMax(policeDist, POLICE_DIST_TIERS, POLICE_DIST_HIGH_SCORE);
+    apt._coordUnknown || policeDist == null
+      ? POLICE_DIST_NULL_SCORE
+      : tierMax(policeDist, POLICE_DIST_TIERS, POLICE_DIST_HIGH_SCORE);
   const crimeSc = gradeRisk * 0.7 + policeRisk * 0.3;
   const risk =
     unsoldSc * 0.14 +
@@ -318,16 +323,22 @@ export function scoreRisk(apt: Apt): Res {
         //    `경찰 685m` 만 남겼고, 그 상태로 판정이 "치안 우수 지역"이라 말했다(177곳) —
         //    경찰서까지의 거리 하나로 동네 치안을 단정한 셈이다. 등급은 점수의 0.7 을 차지한다.
         //    "미수집"을 넣으면 `CatPanel.isNoDataInfo` 가 판정·기준선을 함께 감춘다(기존 장치 재사용).
+        // 좌표 자리표시 의심(세션568) — 경찰관서 거리는 이 단지 좌표로 잰 값이라 믿을 수 없다.
+        //   범죄등급(행정구역 기준)은 좌표와 무관하므로 그대로 보여준다.
         info:
           [
             apt.crimeSafetyGrade != null ? `${apt.crimeSafetyGrade}등급` : "범죄등급 미수집",
-            policeDist != null ? `경찰 ${policeDist}m` : null,
+            apt._coordUnknown ? "경찰거리 위치 확인 중" : policeDist != null ? `경찰 ${policeDist}m` : null,
           ]
             .filter(Boolean)
             .join(" · ") || "정보 없음",
         detail: [
           apt.crimeSafetyGrade != null ? `범죄등급 ${apt.crimeSafetyGrade}등급 (1=최안전~5=최위험)` : "범죄등급 미수집",
-          policeDist != null ? `경찰관서 ${policeDist}m (${apt.police ?? 0}개/3km)` : "경찰관서 미수집",
+          apt._coordUnknown
+            ? "경찰관서 거리 위치 확인 중 — 정확한 좌표가 확인되면 다시 계산합니다"
+            : policeDist != null
+              ? `경찰관서 ${policeDist}m (${apt.police ?? 0}개/3km)`
+              : "경찰관서 미수집",
         ].join(" · "),
       },
       {
