@@ -16,7 +16,7 @@ on:
         type: boolean
         default: false
       limit:
-        description: '처리 건수 제한 (사전 검증용, 빈 값 = 전체)'
+        description: '처리 건수 제한 — 대상 중 updated_at 오래된 순으로 이 건수만(세션568, 빈 값 = 전체)'
         required: false
         type: string
         default: ''

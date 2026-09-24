@@ -9,6 +9,8 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -27,7 +29,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds, shouldRefuseLocalWriteWithoutSchoolInfo } = await import("./schools-neis.mjs");
+const { calcRawScore, calcScore, rescaleSchoolScore, RESCALE_ANCHORS_MIRROR, GRADE_TIERS_MIRROR, GRADE_FALLBACK_MIRROR, gradeFromScore, isSchoolPlace, calcQualityBonus, normalizeSchoolName, fetchNeisSchoolInfo, enrichWithNeis, getAcademicYear, fetchNeisClassInfo, fetchStudentBulk, enrichWithStudents, calcDensityBonus, buildEnrichedIds, STALE_DAYS_FOR_SKIP, parseIdsArg, selectTargetsByIds, shouldRefuseLocalWriteWithoutSchoolInfo, selectProcessList } = await import("./schools-neis.mjs");
 
 // 소스를 직접 읽어 배선(어느 쿼리로 훑는지)을 검사한다 — transit-match.test.mjs 답습 패턴.
 const COLLECTOR_SRC = readFileSync(new URL("./schools-neis.mjs", import.meta.url), "utf8");
@@ -871,5 +873,120 @@ describe("shouldRefuseLocalWriteWithoutSchoolInfo 호출 배선 — main() 안 �
     expect(guardCallIdx).toBeGreaterThan(-1);
     expect(selectAptsIdx).toBeGreaterThan(-1);
     expect(guardCallIdx).toBeLessThan(selectAptsIdx);
+  });
+});
+
+// ── 세션568: --limit 의미 수정 — 오래된 순 + 굶주림 방지 ────────────
+// 배경 — 옛 로직(targets.slice(0, limit))은 좌표 있는 단지를 id 순으로 앞에서부터 잘라
+// skip 판정보다 먼저 상한을 적용했다. --limit 을 걸면 id 순 뒤쪽의 진짜 오래된 단지가
+// 영영 처리되지 않았다(굶주림). selectProcessList 는 신선한 행을 먼저 걸러내고, 나머지를
+// updated_at 오래된 순(행 없음/null 이 맨 앞)으로 정렬한 뒤 상한을 자른다.
+describe("selectProcessList — 오래된 순 상한 + 굶주림 방지 (세션568)", () => {
+  /**
+   * @param {string} id
+   * @param {Record<string, unknown>} [extra]
+   */
+  const T = (id, extra = {}) => ({ id, name: id, lat: 37.0, lng: 127.0, ...extra });
+
+  it("id 순서상 뒤쪽에 몰린 오래된 행도 상한 안에 들어간다 — 굶주림 방지", () => {
+    // a·b·c 는 신선(최근), z 는 오래됨(가장 먼저 처리돼야 함). id 순으로 자르면 z 는 영영 안 뽑힌다.
+    const targets = [T("a"), T("b"), T("c"), T("z")];
+    const enrichedIds = new Set(); // 전부 처리 대상(신선하지 않음) — updated_at 로만 순서를 가른다
+    const updatedAtById = new Map([
+      ["a", "2026-09-20T00:00:00.000Z"],
+      ["b", "2026-09-21T00:00:00.000Z"],
+      ["c", "2026-09-22T00:00:00.000Z"],
+      ["z", "2020-01-01T00:00:00.000Z"], // 가장 오래됨 — id 순으로는 맨 뒤지만 결과에선 맨 앞
+    ]);
+    const { toProcess } = selectProcessList(targets, enrichedIds, updatedAtById, 1);
+    expect(toProcess.map((t) => t.id)).toEqual(["z"]);
+  });
+
+  it("신선한(30일 이내 보강 완료) 단지는 상한 안에서도 제외된다", () => {
+    const targets = [T("fresh"), T("stale")];
+    const enrichedIds = new Set(["fresh"]);
+    const updatedAtById = new Map([
+      ["fresh", "2026-09-23T00:00:00.000Z"],
+      ["stale", "2020-01-01T00:00:00.000Z"],
+    ]);
+    const { toProcess, skippedFresh } = selectProcessList(targets, enrichedIds, updatedAtById, 10);
+    expect(toProcess.map((t) => t.id)).toEqual(["stale"]);
+    expect(skippedFresh).toBe(1);
+  });
+
+  it("오래된 순 정렬 — updated_at 없음(null/undefined)이 가장 먼저 처리된다", () => {
+    const targets = [T("has-date"), T("never-collected")];
+    const enrichedIds = new Set();
+    const updatedAtById = new Map([["has-date", "2026-01-01T00:00:00.000Z"]]); // never-collected 는 맵에 없음
+    const { toProcess } = selectProcessList(targets, enrichedIds, updatedAtById, 10);
+    expect(toProcess.map((t) => t.id)).toEqual(["never-collected", "has-date"]);
+  });
+
+  it("--ids(forceIds) 지정분은 30일 skip 도 상한도 무시하고 전부 포함된다", () => {
+    // forced 2건 + limit 1 이어도 forced 는 전부 포함되고, 남는 자리가 있으면 rest 에서 채운다.
+    const targets = [T("forced-1"), T("forced-2"), T("rest-old"), T("rest-new")];
+    const enrichedIds = new Set(["forced-1"]); // forceIds 가 없으면 skip 됐을 것 — forceIds 가 이를 무시
+    const updatedAtById = new Map([
+      ["forced-1", "2026-09-23T00:00:00.000Z"],
+      ["forced-2", "2026-09-23T00:00:00.000Z"],
+      ["rest-old", "2020-01-01T00:00:00.000Z"],
+      ["rest-new", "2026-09-23T00:00:00.000Z"],
+    ]);
+    const forceIds = new Set(["forced-1", "forced-2"]);
+    const { toProcess } = selectProcessList(targets, enrichedIds, updatedAtById, 1, forceIds);
+    // forced 2건이 상한(1)을 넘어도 전부 포함 — rest 는 상한 초과로 0건 채택
+    expect(toProcess.map((t) => t.id)).toEqual(["forced-1", "forced-2"]);
+  });
+
+  it("limit 이 Infinity 면 전부 포함(오래된 순 정렬만)", () => {
+    const targets = [T("a"), T("b")];
+    const enrichedIds = new Set();
+    const updatedAtById = new Map([
+      ["a", "2026-09-23T00:00:00.000Z"],
+      ["b", "2020-01-01T00:00:00.000Z"],
+    ]);
+    const { toProcess, deferred } = selectProcessList(targets, enrichedIds, updatedAtById, Infinity);
+    expect(toProcess.map((t) => t.id)).toEqual(["b", "a"]);
+    expect(deferred).toBe(0);
+  });
+});
+
+describe("main() 배선 — selectProcessList 를 실제로 쓴다 (세션568)", () => {
+  it("targets 는 candidates.slice(0, limit) 대신 selectProcessList 의 toProcess 다", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /const\s*\{\s*toProcess:\s*targets,\s*skippedFresh,\s*deferred\s*\}\s*=\s*selectProcessList\(candidates,\s*enrichedIds,\s*updatedAtById,\s*limit,\s*forceIds\);/,
+    );
+    // 옛 "candidates 확정 직후 slice(0, limit)" 패턴이 되살아나면 굶주림이 재발한다
+    expect(COLLECTOR_SRC).not.toMatch(/targets\s*=\s*targets\.slice\(0,\s*limit\);/);
+  });
+});
+
+// ── 세션568: schools.updated_at 트리거를 nearby_schools 컬럼 지정으로 좁힌 마이그레이션 ──
+describe("마이그레이션 — schools 트리거가 nearby_schools 컬럼 지정이다 (세션568)", () => {
+  const MIGRATIONS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "supabase", "migrations");
+  const MIGRATION_FILE = "20260924000300_schools_updated_trigger_nearby_only.sql";
+  const migrationSql = readFileSync(path.join(MIGRATIONS_DIR, MIGRATION_FILE), "utf8");
+
+  it("CREATE TRIGGER trg_schools_updated 가 UPDATE OF nearby_schools 를 쓴다", () => {
+    expect(migrationSql).toMatch(
+      /CREATE TRIGGER trg_schools_updated\s+BEFORE UPDATE OF nearby_schools ON public\.schools/,
+    );
+  });
+
+  it("DROP TRIGGER IF EXISTS 로 옛 트리거를 먼저 지운다", () => {
+    expect(migrationSql).toMatch(/DROP TRIGGER IF EXISTS trg_schools_updated ON public\.schools;/);
+  });
+
+  it("자체검사(DO $$ … RAISE EXCEPTION)가 있다", () => {
+    expect(migrationSql).toMatch(/DO \$\$[\s\S]*RAISE EXCEPTION[\s\S]*\$\$;/);
+  });
+
+  it("되돌리기 파일이 존재하고 원래 형태(컬럼 지정 없는 BEFORE UPDATE)로 되돌린다", () => {
+    const rollbackSql = readFileSync(
+      path.join(MIGRATIONS_DIR, "_rollbacks", "20260924000301_rollback_schools_updated_trigger_nearby_only.sql"),
+      "utf8",
+    );
+    expect(rollbackSql).toMatch(/CREATE TRIGGER trg_schools_updated\s+BEFORE UPDATE ON public\.schools/);
+    expect(rollbackSql).not.toMatch(/UPDATE OF nearby_schools/);
   });
 });
