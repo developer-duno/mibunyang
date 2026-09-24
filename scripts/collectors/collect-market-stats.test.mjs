@@ -334,4 +334,23 @@ describe("main() REGION_UNRESOLVED 마커 기록", () => {
     expect(arg.errorMessage).toBeUndefined();
     exitSpy.mockRestore();
   });
+
+  it("실패(예외) + 마커 → errorMessage 에 '실패 사유 | 마커' 로 함께 실리고 status=failure", async () => {
+    const { upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
+    upsertBatch.mockRejectedValueOnce(new Error("upsert boom"));
+    fetchWithRetryMock.mockResolvedValue({
+      json: async () => [
+        makeRow("서울", null, "202601", "100.0"),
+        makeRow("전남광주", null, "202601", "95.0"),
+      ],
+    });
+    await expect(main()).rejects.toThrow("upsert boom");
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "market-stats",
+      expect.objectContaining({
+        status: "failure",
+        errorMessage: "upsert boom | REGION_UNRESOLVED n=5: 전남광주(통합 시도 합계)",
+      }),
+    );
+  });
 });

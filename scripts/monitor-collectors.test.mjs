@@ -2026,11 +2026,23 @@ describe("⑪ dedup — 지문 = 마커 해시 + 연속 구간 첫 실행 시각
     return fresh;
   };
 
-  it("같은 지문 → 다음 날 0건, 다음 달 같은 마커가 이어져도 0건", () => {
+  it("같은 지문 → 다음 날 0건, 다음 달 n 만 늘어난 같은 이름 마커가 이어져도 0건", () => {
+    // 실제 상황: market-stats 의 n = 지표 × 조회 창 기간 수라 라벨이 바뀐 뒤 매달 늘어난다(5 → 10)
+    const oct = "REGION_UNRESOLVED n=5: 광주전남";
+    const nov = "REGION_UNRESOLVED n=10: 광주전남";
     const sent = new Set();
-    expect(day({ "market-stats": [run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(1);
-    expect(day({ "market-stats": [run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
-    expect(day({ "market-stats": [run(A, "2026-11-05T20:30:00Z"), run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+    expect(day({ "market-stats": [run(oct, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(1);
+    expect(day({ "market-stats": [run(oct, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+    expect(day({ "market-stats": [run(nov, "2026-11-05T20:30:00Z"), run(oct, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+  });
+
+  it("같은 이름 집합이면 n·이름 순서가 달라도 같은 지문 → 0건", () => {
+    const sent = new Set();
+    day({ "market-stats": [run("REGION_UNRESOLVED n=2: 광주전남, 알수없음", "2026-10-05T20:30:00Z")] }, sent);
+    expect(day({ "market-stats": [
+      run("REGION_UNRESOLVED n=7: 알수없음, 광주전남", "2026-11-05T20:30:00Z"),
+      run("REGION_UNRESOLVED n=2: 광주전남, 알수없음", "2026-10-05T20:30:00Z"),
+    ] }, sent)).toHaveLength(0);
   });
 
   it("지문 변화(이름이 늘어남) → 1건", () => {

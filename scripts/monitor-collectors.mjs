@@ -895,7 +895,9 @@ export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLV
       if (parseRegionUnresolved(r.error_message)) streakStart = r.finished_at ?? streakStart;
       // 마커 없는 실패 실행은 구간을 끊지도 늘리지도 않는다(KOSIS 가 안 와 판정 자체가 없었다)
     }
-    const fp = fingerprintIds([`${collector}|${parsed.n}|${parsed.names.join(",")}`]);
+    // n 은 지문에 넣지 않는다 — market-stats 의 n 은 "지표 × 조회 창 기간 수"라 라벨이 바뀐 뒤
+    // 몇 달 동안 매달 늘어 매달 재알림이 된다(검사관 지적). n 은 본문에만, 이름은 정렬해서.
+    const fp = fingerprintIds([`${collector}|${[...parsed.names].sort().join(",")}`]);
     const shown = parsed.names.slice(0, REGION_UNRESOLVED_NAME_LIMIT);
     const rest = parsed.names.length - shown.length;
     const nameText = `${shown.join(", ")}${rest > 0 ? ` 외 ${rest}건` : ""}`;
@@ -2649,7 +2651,7 @@ async function main() {
     const fresh = mode === "run" ? freshScoped : issues.filter((i) => !isAlwaysDedup(i) || freshScoped.includes(i));
     issues = fresh;
     if (issues.length === 0) {
-      console.log("[monitor] 새 이상 없음 (전부 이미 알림, mode=run)");
+      console.log(`[monitor] 새 이상 없음 (전부 이미 알림, mode=${mode})`);
       return;
     }
   }
