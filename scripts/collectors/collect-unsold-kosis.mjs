@@ -377,12 +377,66 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
   return plan;
 }
 
+/** 0-쓰기 차단기 기본 임계(%) — `--expect-zero` 로 우회하지 않으면 이 비율로 판정한다. @type {number} */
+export const DEFAULT_ZERO_RATIO_LIMIT = 10;
+
+/**
+ * "값>0 인데 0 으로 바뀌는" 행 비율을 판정한다(세션568-4·568-5 개정). DB 접근 없는 순수 함수.
+ *
+ * ## 세션568-5 — 우회 방식이 "임계를 낮춘다"에서 "정확한 개수를 안다"로 바뀌었다
+ *
+ * `expectZero` 가 주어지면(사장님이 사전에 전이표를 보고 실제로 0 이 될 행 수를 안다는 뜻),
+ * **비율(10%)이 아니라 그 개수와 정확히 같을 때만** 통과시킨다. 하나라도 다르면(더 많아도,
+ * 적어도) 발동 — 사장님이 예상 못 한 추가 변화가 섞여 있다는 신호이기 때문이다. `expectZero`
+ * 가 없으면(null) 기본 10% 비율 판정 그대로.
+ *
+ * @param {ReturnType<typeof planUnsoldUpdates>} plan
+ * @param {number | null} expectZero 지정하면 zeroChanges 가 이 값과 정확히 같을 때만 통과. null 이면 비율(10%) 판정.
+ * @returns {{ fired: boolean; zeroChanges: number; denominator: number; ratio: number; limit: number; expectZero: number | null }}
+ */
+export function evaluateZeroBreaker(plan, expectZero) {
+  const kosisJudgedNonZero = plan.filter((p) =>
+    (p.currentUnsold ?? 0) > 0 &&
+    ["write", "write_zero", "hold_ge50", "skip_no_match", "skip_no_estimate"].includes(p.action),
+  );
+  const willBecomeZero = kosisJudgedNonZero.filter((p) => p.action === "write_zero");
+  const denominator = kosisJudgedNonZero.length;
+  const ratio = denominator > 0 ? (willBecomeZero.length / denominator) * 100 : 0;
+  const fired = expectZero != null
+    ? willBecomeZero.length !== expectZero
+    : (denominator > 0 && ratio > DEFAULT_ZERO_RATIO_LIMIT);
+  return { fired, zeroChanges: willBecomeZero.length, denominator, ratio, limit: DEFAULT_ZERO_RATIO_LIMIT, expectZero: expectZero ?? null };
+}
+
+/**
+ * `--expect-zero=<N>` 인자를 파싱한다. 없으면 null(기본 비율 판정), 음수·비수치면 무효로
+ * 보고 null 로 폴백하며 경고 로그를 남긴다(호출부에서 로그).
+ *
+ * @param {string[]} argv
+ * @returns {{ expectZero: number | null; explicit: boolean; invalid: boolean; raw: string | null }}
+ */
+export function parseExpectZeroArg(argv) {
+  const arg = argv.find((a) => a.startsWith("--expect-zero="));
+  if (!arg) return { expectZero: null, explicit: false, invalid: false, raw: null };
+  const raw = arg.slice("--expect-zero=".length);
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+    return { expectZero: null, explicit: false, invalid: true, raw };
+  }
+  return { expectZero: n, explicit: true, invalid: false, raw };
+}
+
 // 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로
 // 남는 사각 정정 (PR #97 collect-regional-economy 패턴 답습).
 export async function main() {
   const dryRun = process.argv.includes("--dry-run");
   const impactOutArg = process.argv.find((a) => a.startsWith("--impact-out="));
   const impactOutPath = impactOutArg ? impactOutArg.slice("--impact-out=".length) : null;
+  const expectZeroParsed = parseExpectZeroArg(process.argv);
+  if (expectZeroParsed.invalid) {
+    logError(PHASE, `--expect-zero 값이 유효하지 않음(${expectZeroParsed.raw}) — 무시하고 기본 비율(${DEFAULT_ZERO_RATIO_LIMIT}%) 판정 사용`);
+  }
+  log(PHASE, `차단기 임계 ${DEFAULT_ZERO_RATIO_LIMIT}% · expect-zero ${expectZeroParsed.expectZero != null ? `${expectZeroParsed.expectZero}(지정)` : "없음"}`);
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   let ok = 0;
@@ -446,7 +500,13 @@ export async function main() {
 
     log(PHASE, `시도별 미분양: ${Object.entries(regionTotals).map(([r, v]) => `${r}=${v}`).join(", ")}`);
 
-    // 1. regions 테이블 업데이트
+    // 세션568-5 — 차단기 판정을 "DB 에 무엇이든 쓰기 전"으로 옮긴다. 옛 순서(regions 먼저
+    // 쓰고 apartments 단계에서 차단기가 던지면)는 regions 는 이미 반영되고 apartments 만
+    // 안 쓰이는 **부분 반영**을 낳는다(사장님·검사관 지적). 새 순서: regions 는 갱신 대상
+    // 목록만 계산(쓰지 않음) → apartments 계획(plan) → 차단기 판정 → (통과했을 때만)
+    // regions 쓰기 → apartments write/write_zero 쓰기.
+
+    // 1. regions 갱신 대상 계산 (쓰기는 뒤로 미룬다)
     // 세션549: 무정렬 select 는 2,249행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
     // selectAll 은 조회 실패 시 throw 하므로, 기존 fail-open(로그만 남기고 계속) 의미를 try/catch 로 보존한다.
     /** @type {Array<{ id: string; region: string; gu: string | null; regional_unsold: number | null }> | null} */
@@ -461,12 +521,12 @@ export async function main() {
       rErr = { message: e instanceof Error ? e.message : String(e) };
     }
 
-    let regUpdated = 0;
+    /** @type {Array<{ id: string; region: string; gu: string | null; regional_unsold: number | null; newValue: number }>} */
+    const regionUpdates = [];
     if (rErr) {
       logError(PHASE, `regions 조회 실패: ${rErr.message}`);
     } else {
       for (const reg of /** @type {Array<{ id: string; region: string; gu: string | null; regional_unsold: number | null }>} */ (regions)) {
-        if (isInterrupted()) break;  // 세션 321: graceful shutdown
         const guMap = unsoldByRegionGu[reg.region];
 
         // 세션567: 시군구 매칭도 resolveKosisGuKey 로 통일 — 시도 합계 폴백 삭제.
@@ -481,24 +541,11 @@ export async function main() {
         }
 
         if (unsoldValue == null || unsoldValue === reg.regional_unsold) continue;
-
-        if (dryRun) {
-          log(PHASE, `  [DRY-RUN] regions ${reg.region} ${reg.gu || ""}: ${reg.regional_unsold} → ${unsoldValue}`);
-          regUpdated++;
-          continue;
-        }
-
-        const { error } = await sb.from("regions").update({
-          regional_unsold: unsoldValue,
-        }).eq("id", reg.id);
-
-        if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
-        else regUpdated++;
+        regionUpdates.push({ ...reg, newValue: unsoldValue });
       }
-      log(PHASE, `regions 갱신: ${regUpdated}건`);
     }
 
-    // 2. apartments unsold 추정 (KOSIS 비례배분)
+    // 2. apartments unsold 추정 (KOSIS 비례배분) — 계획만 세운다, 아직 쓰지 않는다.
     // 세션549: 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
     // 세션566: apartments 는 selectAll(..., "id") 로 전수 확보한다(1,000행 컷 수리).
     /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null }} AptRow */
@@ -538,22 +585,63 @@ export async function main() {
       logError(PHASE, `[경고][매칭실패] kosis 출처 ${kosisNoMatch.length}건이 이번 회차 매칭 실패(skip_no_match) — 값 유지, 지역 응답 누락 의심(시도: ${regionsMissing.join(", ") || "?"}): ${sample.join(", ")}${kosisNoMatch.length > 10 ? ` 외 ${kosisNoMatch.length - 10}건` : ""}`);
     }
 
-    // 검사관 H1 차단기(세션568-3 갱신) — "지금 값 > 0 인데 0 으로 바뀌는" 행(write_zero 이면서
-    // currentUnsold > 0)이 "지금 값 > 0 인 대상 행"(이번 회차 KOSIS 판정을 받은 행 중 값이
-    // 있던 것) 전체의 10% 를 넘으면 0 쓰기를 전부 멈춘다(그 행들은 값 유지) — KOSIS 응답이
-    // 광범위하게 이상해졌을 때(예: 여러 시도가 한꺼번에 0 을 준다) 대량 오염을 막는 안전망이다.
-    // 분모 = "이번 회차에 KOSIS 판정을 받는 대상(규칙 5)" 중 지금 값이 0 초과인 행 전체.
-    const kosisJudgedNonZero = plan.filter((p) =>
-      (p.currentUnsold ?? 0) > 0 &&
-      ["write", "write_zero", "hold_ge50", "skip_no_match", "skip_no_estimate"].includes(p.action),
-    );
-    const willBecomeZero = kosisJudgedNonZero.filter((p) => p.action === "write_zero");
-    if (kosisJudgedNonZero.length > 0 && willBecomeZero.length / kosisJudgedNonZero.length > 0.1) {
-      throw new Error(
-        `KOSIS 0-쓰기 차단기 발동 — 값>0 인데 0 으로 바뀌는 행 ${willBecomeZero.length}/${kosisJudgedNonZero.length} ` +
-        `(${((willBecomeZero.length / kosisJudgedNonZero.length) * 100).toFixed(1)}%) 가 10% 를 초과해 0 쓰기를 전부 중단합니다(해당 행은 값 유지)`,
-      );
+    // 3. 검사관 H1 차단기(세션568-5 최종 개정) — "지금 값 > 0 인데 0 으로 바뀌는" 행
+    // (write_zero 이면서 currentUnsold > 0)이 "지금 값 > 0 인 대상 행"(이번 회차 KOSIS
+    // 판정을 받은 행 중 값이 있던 것) 전체의 10% 를 넘으면 발동한다. `--expect-zero=<N>` 이
+    // 있으면(사장님이 전이표로 미리 아는 정확한 개수) 비율 대신 그 개수와 정확히 같을
+    // 때만 통과 — DB 에 무엇이든 쓰기 **전**에 판정하므로, regions 쓰기가 apartments 보다
+    // 앞서던 옛 순서에서 나던 부분 반영이 사라진다.
+    const breaker = evaluateZeroBreaker(plan, expectZeroParsed.expectZero);
+    log(PHASE, `0-쓰기 차단기 판정: ${breaker.zeroChanges}/${breaker.denominator} = ${breaker.ratio.toFixed(1)}% (임계 ${breaker.limit}%${breaker.expectZero != null ? ` · expect-zero=${breaker.expectZero}` : ""}, ${breaker.fired ? "발동" : "미발동"})`);
+
+    // impact-out 은 차단기 발동·정상 종료 어느 경우든 항상 쓴다(계획을 세운 시점의 전체
+    // 그림을 남겨야 사람이 판단할 수 있다 — 차단기가 막았다고 계획 자체가 사라지면 무엇이
+    // 왜 막혔는지 재구성할 방법이 없다). regionUpdates 개수도 함께 남겨 부분 반영 여부를
+    // 사후에 점검할 수 있게 한다.
+    if (impactOutPath) {
+      try {
+        writeFileSync(impactOutPath, JSON.stringify({
+          generatedAt: new Date().toISOString(), actionCounts, breaker,
+          regionUpdateCount: regionUpdates.length, plan,
+        }, null, 2), "utf8");
+        log(PHASE, `[IMPACT] 계획 ${plan.length}행 저장(breaker 포함): ${impactOutPath}`);
+      } catch (e) {
+        logError(PHASE, `impact-out 저장 실패: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
+
+    if (breaker.fired) {
+      const msg = `KOSIS 0-쓰기 차단기 발동 — 값>0 인데 0 으로 바뀌는 행 ${breaker.zeroChanges}/${breaker.denominator} ` +
+        `(${breaker.ratio.toFixed(1)}%)${breaker.expectZero != null ? ` (expect-zero=${breaker.expectZero} 와 불일치)` : ` 가 임계 ${breaker.limit}% 를 초과`}` +
+        ` — regions·apartments 어느 것도 쓰지 않고 전체를 중단합니다`;
+      if (dryRun) {
+        // dry-run 은 미리보기라 아무것도 안 쓴다 — 경고만 남기고 정상 종료(exit 0).
+        logError(PHASE, `[DRY-RUN 경고] ${msg}`);
+        ok = 0;
+        return;
+      }
+      throw new Error(msg);
+    }
+
+    // 4. 차단기를 통과했을 때만 실제로 쓴다 — regions 먼저, 그 다음 apartments.
+    let regUpdated = 0;
+    for (const reg of regionUpdates) {
+      if (isInterrupted()) break;  // 세션 321: graceful shutdown
+
+      if (dryRun) {
+        log(PHASE, `  [DRY-RUN] regions ${reg.region} ${reg.gu || ""}: ${reg.regional_unsold} → ${reg.newValue}`);
+        regUpdated++;
+        continue;
+      }
+
+      const { error } = await sb.from("regions").update({
+        regional_unsold: reg.newValue,
+      }).eq("id", reg.id);
+
+      if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
+      else regUpdated++;
+    }
+    log(PHASE, `regions 갱신: ${regUpdated}건`);
 
     let aptUpdated = 0;
     for (const p of plan) {
@@ -602,20 +690,8 @@ export async function main() {
       else aptZeroed++;
     }
 
-    const zeroRatioPct = kosisJudgedNonZero.length > 0
-      ? ((willBecomeZero.length / kosisJudgedNonZero.length) * 100).toFixed(1)
-      : "0.0";
-    log(PHASE, `KOSIS 0-쓰기: ${aptZeroed}건 (값>0 대비 0 으로 바뀜 ${willBecomeZero.length}/${kosisJudgedNonZero.length} = ${zeroRatioPct}%, 차단기 기준 10%)`);
+    log(PHASE, `KOSIS 0-쓰기: ${aptZeroed}건 (값>0 대비 0 으로 바뀜 ${breaker.zeroChanges}/${breaker.denominator} = ${breaker.ratio.toFixed(1)}%, 차단기 기준 ${breaker.limit}%)`);
     log(PHASE, `요약 — action 별: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")} · KOSIS 출처 갱신(write) ${aptUpdated} · 0-쓰기 ${aptZeroed} · 보류(≥${UNRELIABLE_RATE_THRESHOLD}%) ${heldIds.length}`);
-
-    if (impactOutPath) {
-      try {
-        writeFileSync(impactOutPath, JSON.stringify({ generatedAt: new Date().toISOString(), actionCounts, plan }, null, 2), "utf8");
-        log(PHASE, `[IMPACT] 계획 ${plan.length}행 저장: ${impactOutPath}`);
-      } catch (e) {
-        logError(PHASE, `impact-out 저장 실패: ${e instanceof Error ? e.message : String(e)}`);
-      }
-    }
 
     // 3. unsold_history 시계열 upsert (세션134, 방향 A)
     // KOSIS 단일 API 호출 응답(3개월 범위)을 재파싱하여 월별 시계열 저장.

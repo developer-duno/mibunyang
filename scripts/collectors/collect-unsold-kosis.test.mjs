@@ -33,7 +33,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_KEY = "test-key";
 
-const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, main } =
+const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, evaluateZeroBreaker, parseExpectZeroArg, main } =
   await import("./collect-unsold-kosis.mjs");
 const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -583,7 +583,87 @@ describe("main() — write_zero 가 dry-run 로그·ok 카운트·DB 반영에 �
 });
 
 // ── 차단기 — 값>0 인데 0 으로 바뀌는 행이 10% 초과 시 0 쓰기 전부 중단 (사장님 결정) ──
-describe("main() — 0-쓰기 차단기 발동", () => {
+// ── parseExpectZeroArg — 세션568-5 ──
+describe("parseExpectZeroArg", () => {
+  it("인자 없으면 null(기본 비율 판정)", () => {
+    const r = parseExpectZeroArg(["node", "script.mjs"]);
+    expect(r.expectZero).toBeNull();
+    expect(r.explicit).toBe(false);
+    expect(r.invalid).toBe(false);
+  });
+
+  it("정수 지정 → 그 값", () => {
+    const r = parseExpectZeroArg(["--expect-zero=285"]);
+    expect(r.expectZero).toBe(285);
+    expect(r.explicit).toBe(true);
+    expect(r.invalid).toBe(false);
+  });
+
+  it("0 도 유효한 지정값이다", () => {
+    const r = parseExpectZeroArg(["--expect-zero=0"]);
+    expect(r.expectZero).toBe(0);
+    expect(r.explicit).toBe(true);
+  });
+
+  it("음수·비수치·소수는 무효 → null + invalid:true", () => {
+    expect(parseExpectZeroArg(["--expect-zero=-1"])).toMatchObject({ expectZero: null, invalid: true });
+    expect(parseExpectZeroArg(["--expect-zero=abc"])).toMatchObject({ expectZero: null, invalid: true });
+    expect(parseExpectZeroArg(["--expect-zero=1.5"])).toMatchObject({ expectZero: null, invalid: true });
+  });
+});
+
+// ── evaluateZeroBreaker — 세션568-5: 비율(기본) vs expect-zero(정확 일치) ──
+describe("evaluateZeroBreaker", () => {
+  /** @param {number} n write_zero(값>0→0) 대상 건수 */
+  function makePlan(n, nonZeroTotal = 10) {
+    /** @type {any[]} */
+    const plan = [];
+    for (let i = 0; i < n; i++) plan.push({ id: `z${i}`, action: "write_zero", currentUnsold: 5 });
+    for (let i = n; i < nonZeroTotal; i++) plan.push({ id: `w${i}`, action: "write", currentUnsold: 5 });
+    return plan;
+  }
+
+  it("expectZero 없음(null) — 비율 10% 초과 시 발동", () => {
+    const r = evaluateZeroBreaker(makePlan(2, 10), null); // 20% > 10%
+    expect(r.fired).toBe(true);
+    expect(r.zeroChanges).toBe(2);
+    expect(r.denominator).toBe(10);
+  });
+
+  it("expectZero 없음(null) — 정확히 10% 이하면 미발동", () => {
+    const r = evaluateZeroBreaker(makePlan(1, 10), null); // 10%, 경계
+    expect(r.fired).toBe(false);
+  });
+
+  it("expectZero=N 지정 — zeroChanges 가 N 과 정확히 같으면 통과(미발동), 개수가 커도(50%) 통과", () => {
+    const r = evaluateZeroBreaker(makePlan(5, 10), 5); // 50% 지만 expectZero=5 와 일치
+    expect(r.fired).toBe(false);
+    expect(r.zeroChanges).toBe(5);
+  });
+
+  it("expectZero=N 지정 — N+1(더 많음) 이면 발동", () => {
+    const r = evaluateZeroBreaker(makePlan(6, 10), 5);
+    expect(r.fired).toBe(true);
+  });
+
+  it("expectZero=N 지정 — N-1(더 적음) 이어도 발동", () => {
+    const r = evaluateZeroBreaker(makePlan(4, 10), 5);
+    expect(r.fired).toBe(true);
+  });
+
+  it("expectZero=N 지정 — 비율은 10% 이하로 안전해도 N 불일치면 발동한다(비율 무시 확인)", () => {
+    const r = evaluateZeroBreaker(makePlan(1, 100), 5); // 1%(안전) 이지만 expectZero=5 와 불일치(1≠5)
+    expect(r.fired).toBe(true);
+  });
+
+  it("breaker 결과에 limit·expectZero 필드가 실린다", () => {
+    const r = evaluateZeroBreaker(makePlan(3, 10), 3);
+    expect(r.limit).toBe(10);
+    expect(r.expectZero).toBe(3);
+  });
+});
+
+describe("main() — 0-쓰기 차단기 (세션568-5: DB 쓰기 전 판정 + expect-zero)", () => {
   beforeEach(() => {
     selectAllMock.mockReset();
     fetchWithRetryMock.mockReset();
@@ -591,8 +671,9 @@ describe("main() — 0-쓰기 차단기 발동", () => {
     getSupabase.mockReset();
   });
 
-  it("값>0 대비 0 으로 바뀌는 비율이 10% 초과 → 0 쓰기 0건, collector_runs 실패 기록, rethrow", async () => {
-    // 값>0 인 대상 5건 중 1건이 write_zero(20% > 10%) — 차단기 발동 조건.
+  /** regions 1건(갱신 대상) + apartments 5건(1건 write_zero, 4건 write) 픽스처 */
+  function makeFixture() {
+    const regions = [{ id: "reg-1", region: "경기", gu: "수원시", regional_unsold: 999 }];
     const apartments = [
       { id: "z1", name: "영전환1", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: null, presale_type: null, unsold_source: null },
       { id: "w1", name: "정상1", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
@@ -600,11 +681,17 @@ describe("main() — 0-쓰기 차단기 발동", () => {
       { id: "w3", name: "정상3", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
       { id: "w4", name: "정상4", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
     ];
-    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
-    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+    const kosisRows = [
       { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" },
       { C1_NM: "경기", C2_NM: "성남시", PRD_DE: "202601", DT: "20" },
-    ] });
+    ];
+    return { regions, apartments, kosisRows };
+  }
+
+  it("비율 10% 초과(20%) + --apply → regions·apartments 어느 쪽도 UPDATE 0건, collector_runs 실패 기록, rethrow", async () => {
+    const { regions, apartments, kosisRows } = makeFixture();
+    selectAllMock.mockResolvedValueOnce(regions).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows });
 
     /** @type {any[]} */
     const updateCalls = [];
@@ -627,12 +714,110 @@ describe("main() — 0-쓰기 차단기 발동", () => {
       process.argv = originalArgv;
     }
 
-    // 0 쓰기 0건 — 어떤 apartments UPDATE 도 unsold:0 페이로드를 보내지 않았다.
-    expect(updateCalls.filter((c) => c.table === "apartments" && c.payload.unsold === 0)).toHaveLength(0);
+    // 세션568-5 핵심 — DB 쓰기 전 판정이므로 regions UPDATE 도 0건이어야 한다(옛 부분 반영 버그 재발 방지).
+    expect(updateCalls.filter((c) => c.table === "regions")).toHaveLength(0);
+    expect(updateCalls.filter((c) => c.table === "apartments")).toHaveLength(0);
     expect(recordCollectorRun).toHaveBeenCalledWith(
       "kosis-unsold",
       expect.objectContaining({ status: "failure" }),
     );
+  });
+
+  it("--expect-zero=1 (실제 write_zero 1건과 일치) → 차단기 통과, regions·apartments 정상 반영", async () => {
+    const { regions, apartments, kosisRows } = makeFixture();
+    selectAllMock.mockResolvedValueOnce(regions).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows });
+
+    /** @type {any[]} */
+    const updateCalls = [];
+    getSupabase.mockReturnValue({
+      from: (/** @type {string} */ table) => ({
+        update: (/** @type {any} */ payload) => ({
+          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
+            updateCalls.push({ table, payload, id });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run"), "--expect-zero=1"];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+    }
+
+    expect(updateCalls.filter((c) => c.table === "regions").length).toBeGreaterThan(0);
+    expect(updateCalls.some((c) => c.table === "apartments" && c.payload.unsold === 0)).toBe(true);
+  });
+
+  it("--expect-zero=2 (실제 1건과 불일치) → 차단기 발동, rethrow", async () => {
+    const { regions, apartments, kosisRows } = makeFixture();
+    selectAllMock.mockResolvedValueOnce(regions).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows });
+    getSupabase.mockReturnValue({
+      from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
+    });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run"), "--expect-zero=2"];
+    try {
+      await expect(main()).rejects.toThrow(/차단기 발동/);
+    } finally {
+      process.argv = originalArgv;
+    }
+  });
+
+  it("dry-run + 차단기 발동 → exit 0(reject 안 함), impact-out 에 breaker 포함 저장", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { readFileSync, rmSync } = await import("node:fs");
+    const impactPath = path.join(os.tmpdir(), `s568_5_breaker_${Date.now()}.json`);
+
+    const { regions, apartments, kosisRows } = makeFixture();
+    selectAllMock.mockResolvedValueOnce(regions).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run", `--impact-out=${impactPath}`];
+    try {
+      await expect(main()).resolves.not.toThrow();
+      const parsed = JSON.parse(readFileSync(impactPath, "utf8"));
+      expect(parsed.breaker).toBeDefined();
+      expect(parsed.breaker.fired).toBe(true);
+      expect(parsed.breaker.zeroChanges).toBe(1);
+      expect(parsed.breaker.denominator).toBe(5);
+    } finally {
+      process.argv = originalArgv;
+      try { rmSync(impactPath); } catch { /* noop */ }
+    }
+  });
+
+  it("차단기 미발동(정상) 시에도 impact-out 에 breaker 가 fired:false 로 저장된다", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { readFileSync, rmSync } = await import("node:fs");
+    const impactPath = path.join(os.tmpdir(), `s568_5_normal_${Date.now()}.json`);
+
+    // write_zero 없이 전부 write — 차단기 미발동 픽스처.
+    const apartments = [
+      { id: "w1", name: "정상1", region: "경기", gu: "수원시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
+    ];
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "10" }] });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run", `--impact-out=${impactPath}`];
+    try {
+      await main();
+      const parsed = JSON.parse(readFileSync(impactPath, "utf8"));
+      expect(parsed.breaker.fired).toBe(false);
+    } finally {
+      process.argv = originalArgv;
+      try { rmSync(impactPath); } catch { /* noop */ }
+    }
   });
 });
 
