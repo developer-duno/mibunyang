@@ -405,6 +405,18 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
   return plan;
 }
 
+/**
+ * KOSIS 가 단지 값을 쓸 때의 UPDATE 내용(write·write_zero 공용). DB 접근 없는 순수 함수.
+ * `unsold_as_of` 는 null 로 비운다(세션569 C6 검사관) — 만료된 applyhome 행을 덮을 때 출처 kosis 인 행에
+ * 옛 공고일이 남으면 감시 ⑫·다음 판정이 그 날짜를 청약홈 값의 공고일로 오해한다.
+ * @param {number | null} unsold
+ * @param {number | null} unsoldRate
+ * @param {string} [nowIso]
+ */
+export function kosisWritePayload(unsold, unsoldRate, nowIso = new Date().toISOString()) {
+  return { unsold, unsold_rate: unsoldRate, unsold_source: "kosis", unsold_as_of: null, updated_at: nowIso };
+}
+
 /** 0-쓰기 차단기 기본 임계(%) — `--expect-zero` 로 우회하지 않으면 이 비율로 판정한다. @type {number} */
 export const DEFAULT_ZERO_RATIO_LIMIT = 10;
 
@@ -586,8 +598,10 @@ export async function main() {
         await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of"), sb, "id")
       );
     } catch (e) {
+      // 세션569 검사관: return 하면 finally 가 success ok=0 으로 조용히 기록한다(마이그보다 머지가 먼저라
+      // 새 칸 조회가 실패하는 사고를 감시가 못 잡는다). throw 해서 collector_runs 에 failure 로 남긴다.
       logError(PHASE, `apartments 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
-      return;
+      throw new Error(`apartments 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
     }
 
     const plan = planUnsoldUpdates({ apartments: apartmentsTyped, unsoldByRegionGu, now });
@@ -598,12 +612,11 @@ export async function main() {
     log(PHASE, `apartments 계획: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")}`);
 
     // C6(세션569) — 만료된 applyhome 은 이번 회차 KOSIS 판정을 받는다(전이표에서 따로 센다).
+    //   로그는 **실제로 쓰는 행**(write·write_zero)만 적는다 — 보류(hold_ge50)·매칭 실패는 값이 그대로다.
     const expiredPlans = plan.filter((p) => p.applyhomeExpired);
+    const expiredWrites = expiredPlans.filter((p) => p.action === "write" || p.action === "write_zero");
     if (expiredPlans.length > 0) {
-      /** @type {Record<string, number>} */
-      const byAction = {};
-      for (const p of expiredPlans) byAction[p.action] = (byAction[p.action] || 0) + 1;
-      log(PHASE, `[C6 만료] 공고 ${APPLYHOME_EXPIRY_MONTHS}개월 지난 applyhome ${expiredPlans.length}건 → KOSIS 판정(${Object.entries(byAction).map(([a, n]) => `${a}=${n}`).join(", ")}): ${expiredPlans.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate ?? "유지"}`).join(", ")}`);
+      log(PHASE, `[C6 만료] 공고 ${APPLYHOME_EXPIRY_MONTHS}개월 지난 applyhome ${expiredPlans.length}건 중 KOSIS 로 씀 ${expiredWrites.length}건${expiredWrites.length > 0 ? `: ${expiredWrites.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate}`).join(", ")}` : ""}`);
     }
     const noDateIds = plan.filter((p) => p.action === "skip_applyhome_no_date").map((p) => p.id);
     noDateMarker = formatApplyhomeNoDate(noDateIds);
@@ -698,12 +711,7 @@ export async function main() {
         continue;
       }
 
-      const { error } = await sb.from("apartments").update({
-        unsold: p.newEstimate,
-        unsold_rate: p.newRate,
-        unsold_source: "kosis",
-        updated_at: new Date().toISOString(),
-      }).eq("id", p.id);
+      const { error } = await sb.from("apartments").update(kosisWritePayload(p.newEstimate, p.newRate)).eq("id", p.id);
 
       if (error) logError(PHASE, `  ${p.name} UPDATE 실패: ${error.message}`);
       else aptUpdated++;
@@ -724,12 +732,7 @@ export async function main() {
         continue;
       }
 
-      const { error } = await sb.from("apartments").update({
-        unsold: 0,
-        unsold_rate: 0,
-        unsold_source: "kosis",
-        updated_at: new Date().toISOString(),
-      }).eq("id", p.id);
+      const { error } = await sb.from("apartments").update(kosisWritePayload(0, 0)).eq("id", p.id);
 
       if (error) logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${error.message}`);
       else aptZeroed++;

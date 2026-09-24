@@ -250,7 +250,7 @@ describe("B — planApplyhomeUnsold (그 값의 회차 평형별 미달 0 → 0,
 
   it("지금 운영 applyhome 8곳(2026-09-21 경쟁률) — 전부 keep(첫 실행 0 쓰기 0건)", () => {
     const eight = [
-      [0, 128, 96], [0, 8, 1], [3, 311, 199], [0, 130, 69], [2, 48, 2], [63, 63, 57], [130, 270, 96], [106, 106, 98],
+      [0, 128, 98], [0, 8, 1], [3, 311, 203], [0, 130, 58], [2, 48, 2], [63, 63, 57], [130, 270, 96], [106, 106, 98],
     ];
     for (const [unsold, supply, shortfall] of eight) {
       expect(planApplyhomeUnsold({ unsold, unsold_source: "applyhome" }, { supply, shortfall }).action).toBe("keep");

@@ -1366,3 +1366,43 @@ describe("parseKosisRows/parseKosisRowsAllMonths — 전남광주 통합 시도 
     expect(result["광주"]?.["북구"]).toEqual({ "202607": 30 });
   });
 });
+
+// ── 세션569 C6 검사관 후속 — 조회 실패는 failure 로, KOSIS 쓰기는 공고일을 비운다 ──
+describe("C6 후속 (세션569 검사관)", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("apartments 조회가 실패하면(예: 마이그 전 unsold_as_of 칸 없음) success ok=0 이 아니라 failure 로 기록한다", async () => {
+    selectAllMock
+      .mockResolvedValueOnce([]) // regions
+      .mockRejectedValueOnce(new Error('column apartments.unsold_as_of does not exist')); // apartments
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "10" }] });
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run"];
+    try {
+      await expect(main()).rejects.toThrow(/apartments 조회 실패/);
+    } finally {
+      process.argv = originalArgv;
+    }
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", expect.objectContaining({
+      status: "failure",
+      errorMessage: expect.stringContaining("apartments 조회 실패"),
+    }));
+  });
+
+  it("KOSIS 쓰기 내용은 출처 kosis + unsold_as_of null(만료된 applyhome 을 덮을 때 옛 공고일이 남지 않게)", async () => {
+    const { kosisWritePayload } = await import("./collect-unsold-kosis.mjs");
+    expect(kosisWritePayload(50, 10, "T")).toEqual({ unsold: 50, unsold_rate: 10, unsold_source: "kosis", unsold_as_of: null, updated_at: "T" });
+    expect(kosisWritePayload(0, 0, "T").unsold_as_of).toBeNull();
+  });
+
+  it("write·write_zero 두 쓰기 경로가 모두 kosisWritePayload 를 쓴다(소스)", () => {
+    const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
+    expect(src).toContain('update(kosisWritePayload(p.newEstimate, p.newRate)).eq("id", p.id)');
+    expect(src).toContain('update(kosisWritePayload(0, 0)).eq("id", p.id)');
+    expect(src).not.toMatch(/unsold_source: "kosis",\s*updated_at/);
+  });
+});

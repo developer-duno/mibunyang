@@ -28,6 +28,8 @@
  * 청약홈 값 만료 기준 C6 로 `apartments.unsold_as_of` 가 생겼다. 계획 행의 `expect` 에
  * `unsold_as_of`(보통 null — seed 가 이미 채웠으면 덮지 않게)를 넣을 수 있도록 조회 칸에 더했다.
  * `set` 은 원래 칸 제한이 없다. ⚠️ 이 칸은 마이그 20260924000500 적용 뒤에만 조회된다.
+ * **규약: 출처를 applyhome 으로 set 할 땐 unsold_as_of(그 값을 만든 공고의 공고일)도 같이 set 한다**
+ * — 안 그러면 KOSIS 수집기가 만료를 판정하지 못해 그 값을 영구 존중한다(감시 ⑫-b 경보).
  *
  * ## 사용법
  *   node scripts/backfill-unsold-source.mjs --plan=<계획.json>                (dry-run, 기본)
