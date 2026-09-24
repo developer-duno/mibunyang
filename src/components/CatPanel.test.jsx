@@ -139,6 +139,30 @@ describe("CatPanel", () => {
       expect(count(/주변 대비 합리적/)).toBeGreaterThan(0);
     });
 
+    // 세션568: scoreRisk 가 unsoldUnknown 을 원인별로 가른 문구("세대수 미확인" / "미분양 자료 없음")
+    // 둘 다 isNoDataInfo 에 걸려 판정("분양 순조"/"미분양 주의"/"미분양 심각")이 안 붙어야 한다.
+    it('미분양률 info="미분양 자료 없음 (중립)" 면 판정 문구를 숨긴다', () => {
+      const cat = makeCat({
+        label: "리스크",
+        subs: [{ name: "미분양률", score: 60, info: "미분양 자료 없음 (중립)" }],
+      });
+      render(<CatPanel cat={cat} k="risk" />);
+      expand();
+      expect(count("미분양 자료 없음 (중립)")).toBeGreaterThan(0);
+      expect(count(/분양 순조|미분양 주의|미분양 심각/)).toBe(0);
+    });
+
+    it('미분양률 info="세대수 미확인 (중립)" 면 판정 문구를 숨긴다', () => {
+      const cat = makeCat({
+        label: "리스크",
+        subs: [{ name: "미분양률", score: 60, info: "세대수 미확인 (중립)" }],
+      });
+      render(<CatPanel cat={cat} k="risk" />);
+      expand();
+      expect(count("세대수 미확인 (중립)")).toBeGreaterThan(0);
+      expect(count(/분양 순조|미분양 주의|미분양 심각/)).toBe(0);
+    });
+
     // ⚠️ "없음"은 미수집이 **아니다** — 측정했고 결과가 없다는 사실이다.
     //    실측: future 개발계획 3,925건(점수 0 = 진짜 약점)과 혐오시설 478건(점수 100 = 좋은 소식).
     //    이걸 미수집으로 뭉개면 좋은 소식까지 사라진다.

@@ -80,7 +80,8 @@ function isNoDataInfo(info?: string): boolean {
     info.startsWith("정보 없음") ||
     info.startsWith("데이터 부재") ||
     info.includes("미수집") ||
-    info.includes("미확인")
+    info.includes("미확인") ||
+    info.includes("자료 없음")
   );
 }
 
