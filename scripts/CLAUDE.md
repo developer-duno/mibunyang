@@ -26,4 +26,4 @@
 
 - `_perm-fingerprint.mjs` — 권한 지문 비교·경보 판정·주의 항목(A1~A9) 추출. 순수 함수(DB 호출 없음), 감시 ⑩ 이 쓴다.
 - `perm-baseline.mjs` — 권한 기준선 미리보기·`--make-expect`·`--accept --expect-file`(사장님 승인 뒤). 로컬 전용 — `GITHUB_ACTIONS` 면 실행 거부.
-- `monitor-collectors.mjs` 감시 ⑪ = `checkRegionUnresolved`(kind `region-unresolved`, KOSIS 시도 이름 못 맞춤 마커) · ⑫ = `checkApplyhomeUnsold`(청약홈 미분양 값 만료 — PR #606 합친 뒤).
+- `monitor-collectors.mjs` 감시 ⑪ = `checkRegionUnresolved`(kind `region-unresolved`, KOSIS 시도 이름 못 맞춤 마커) · ⑫ = `checkApplyhomeUnsold`(청약홈 미분양 값 만료 — #606 합침(25b1d09f)).
