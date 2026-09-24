@@ -363,3 +363,21 @@ describe("main() — 계획 파일 모드", () => {
     expect(liveDb.b.unsold_source).toBeNull(); // b 는 반영 안 됨(경합 창이 닫혔다)
   });
 });
+
+// ── 세션569 C6 — unsold_as_of(청약홈 값의 공고일) expect·set ──
+describe("unsold_as_of 계획 행 (세션569 C6)", () => {
+  it("expect.unsold_as_of=null 이면 DB 가 null 일 때만 통과 — seed 가 이미 채운 공고일을 덮지 않는다", () => {
+    const row = planRow({ op: "set_asof", expect: { unsold: 3, unsold_source: "applyhome", unsold_as_of: null }, set: { unsold_as_of: "2026-04-03" } });
+    expect(checkPlanRow(row, /** @type {any} */ (dbRow({ unsold: 3, unsold_source: "applyhome", unsold_as_of: null }))).ok).toBe(true);
+    const r = checkPlanRow(row, /** @type {any} */ (dbRow({ unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-05-01" })));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("unsold_as_of");
+  });
+
+  it("DB 조회 칸에 unsold_as_of 가 들어 있다 — 빠지면 expect 비교가 늘 undefined 라 전부 불일치", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./backfill-unsold-source.mjs", import.meta.url)), "utf8");
+    expect(src).toContain('s.from("apartments").select("id, unsold, unsold_rate, unsold_source, unsold_as_of")');
+  });
+});

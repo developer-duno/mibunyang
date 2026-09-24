@@ -24,6 +24,11 @@
  *   - 숫자는 `Number()` 로 비교(문자열 "8"과 숫자 8이 같게).
  *   - 불일치 사유: "행 없음" / "<필드>: DB=<x> expect=<y>"(여러 필드면 첫 불일치만 대표로).
  *
+ * ## 세션569 — unsold_as_of(청약홈 값의 공고일) 도 expect·set 할 수 있다
+ * 청약홈 값 만료 기준 C6 로 `apartments.unsold_as_of` 가 생겼다. 계획 행의 `expect` 에
+ * `unsold_as_of`(보통 null — seed 가 이미 채웠으면 덮지 않게)를 넣을 수 있도록 조회 칸에 더했다.
+ * `set` 은 원래 칸 제한이 없다. ⚠️ 이 칸은 마이그 20260924000500 적용 뒤에만 조회된다.
+ *
  * ## 사용법
  *   node scripts/backfill-unsold-source.mjs --plan=<계획.json>                (dry-run, 기본)
  *   node scripts/backfill-unsold-source.mjs --plan=<계획.json> --apply        (실제 반영)
@@ -41,7 +46,7 @@ const PHASE = "backfill-unsold-source";
 
 /**
  * @typedef {{ id: string; name?: string; op: string; expect: Record<string, unknown>; set: Record<string, unknown> }} PlanRow
- * @typedef {{ id: string; unsold: number | null; unsold_rate: number | null; unsold_source: string | null }} DbRow
+ * @typedef {{ id: string; unsold: number | null; unsold_rate: number | null; unsold_source: string | null; unsold_as_of?: string | null }} DbRow
  */
 
 /**
@@ -99,7 +104,7 @@ export async function main() {
 
   const sb = getSupabase();
   const dbRowsRaw = await selectAll(
-    (s) => s.from("apartments").select("id, unsold, unsold_rate, unsold_source"),
+    (s) => s.from("apartments").select("id, unsold, unsold_rate, unsold_source, unsold_as_of"),
     sb,
     "id",
   );
