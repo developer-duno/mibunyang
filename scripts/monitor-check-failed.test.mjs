@@ -84,6 +84,7 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
       fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchFailureRuns: boom,
+      clearHoldAlertKeys: async () => {},
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
@@ -122,6 +123,17 @@ describe("main 배선 (소스)", () => {
 
   it("daily 스윕이 runDailyGuardedChecks 결과를 issues 에 싣는다", () => {
     expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);/);
+  });
+
+  // ⑫(d) 열쇠 삭제가 접두 전체를 지우는지(정확일치로 좁아지면 다른 단지의 hold 열쇠가 남는다) — 세션572 검사관 🟡1
+  it("clearAlertKeysByPrefix 가 LIKE 접두 삭제를 쓴다(정확일치로 좁히면 안 된다)", () => {
+    const start = src.indexOf("async function clearAlertKeysByPrefix(prefix)");
+    expect(start).toBeGreaterThan(-1);
+    const end = src.indexOf("\n}", start);
+    const body = src.slice(start, end);
+    expect(body).toContain('.from("monitor_alert_state")');
+    expect(body).toContain(".delete(");
+    expect(body).toContain('.like("alert_key", `${prefix}%`)');
   });
 });
 
