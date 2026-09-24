@@ -10,6 +10,7 @@
 - **CLAUDE.md 본문 편집 전 메타 규칙** — [.claude/META_RULES.md](.claude/META_RULES.md) (비대화 방지, 상한 150줄)
 - **환경변수 / 로컬 자원 / 자주 쓰는 스킬** — [.claude/ENV_VARS.md](.claude/ENV_VARS.md) · [.claude/LOCAL_RESOURCES.md](.claude/LOCAL_RESOURCES.md) · [.claude/SKILLS.md](.claude/SKILLS.md)
 - **외부 API 키 발급처 + 도구 카탈로그** — [.claude/API_REGISTRY.md](.claude/API_REGISTRY.md) · [.claude/CLAUDE_TOOLBOX.md](.claude/CLAUDE_TOOLBOX.md)
+- **운영 데이터를 바꾸는 실행 · DB 권한 변경** — 반영 전 전이표 승인 [.claude/rules/collectors/data-changing-run-approval.md](.claude/rules/collectors/data-changing-run-approval.md) · 권한은 감시 ⑩ 이 승인된 기준선(지문)과 매주 비교하므로 의도한 변경 뒤엔 `scripts/perm-baseline.mjs` 로 기준선 재승인
 
 ## 명령 (검증 가드)
 

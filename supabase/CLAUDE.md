@@ -39,6 +39,7 @@
 | market_stats_history | 시장 지표 시계열 | collect-market-stats |
 | monitor_alert_state | 모니터 경보 dedup 상태 | monitor-collectors |
 | monitor_daily_snapshot | 모니터 일일 스냅샷 (NULL 추세 비교용) | monitor-collectors |
+| permission_baseline · permission_baseline_item | 권한 지문 기준선(승인 1회 = 1행 + 항목들) — **서비스 전용**: RLS 켬·정책 0·service_role 에 SELECT·INSERT 만 | `accept_permission_baseline()` (세션569) |
 | **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 | - |
 | **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 | - |
 
@@ -269,6 +270,10 @@ naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 - 접속: 이 저장소엔 DB 접속 문자열이 없다. psql 경로(자매 backend `.env`)는 **사장님 명시 지시 때만** — 아니면
   위 되돌림 시험 SQL 을 사장님께 드려 Dashboard SQL Editor 에서 돌린다(ROLLBACK 이 있어 무해).
 - 점검 함수 `public.audit_db_permissions()`(감시 ⑩ 재료, service_role 만 실행) — 주 1회 월요일 감시가 서비스 열쇠로 부른다.
+- 권한 지문(세션569, 마이그 `20260924000400` · 되돌리기 `_rollbacks/20260924000401`): `permission_fingerprint()` = 권한 정의 전체 지문 ·
+  `permission_drift_snapshot()` = 최신 기준선 대비 차이 · `accept_permission_baseline(p_expected_hash, p_note)` = 미리보기 해시와 같을 때만
+  기준선 저장(다르면 `hash mismatch`) · `audit_db_permissions()` 는 같은 마이그로 교체(뷰 `security_invoker` 해석 수정 · 칸 단위 조회 권한).
+  네 함수 모두 service_role 만 실행. 의도한 권한 변경 뒤 기준선 갱신 = `node scripts/perm-baseline.mjs`(미리보기 → 사장님 승인 → accept).
 
 ⚠️ **컴퓨트 한계 — Micro 인스턴스 hang (세션 460, 2026-06-29).** 공유 인스턴스(`t4g.micro`,
 RAM 1GB)가 mibunyang + naver-estate-web 양쪽 collector + Vercel 동시 부하에서 일시 hang →
