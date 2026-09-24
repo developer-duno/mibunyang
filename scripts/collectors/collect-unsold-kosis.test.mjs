@@ -295,7 +295,7 @@ describe("apartments 조회 배선 — select 에 unsold_source 포함", () => {
 
   it("apartmentsTyped 조회 select 문자열에 unsold_source 가 들어 있다", () => {
     expect(src).toMatch(
-      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source"\), sb, "id"\)/,
+      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of"\), sb, "id"\)/, // 세션569 C6: 공고일 칸
     );
   });
 });
@@ -411,8 +411,14 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
     expect(apartmentsCallArgs[2]).toBe("id"); // keyCol
 
     // aptUpdated 카운트 — main() 은 dry-run 이라 DB write 없이 카운트만 증가.
-    // recordCollectorRun 의 ok 값으로 간접 검증(regUpdated=0 + aptUpdated=1 대상, applyhome 1004건은 skip_preserved).
-    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
+    // recordCollectorRun 의 ok 값으로 간접 검증(regUpdated=0 + aptUpdated=1 대상).
+    // 세션569 C6: 이 픽스처의 applyhome 1004건은 공고일(unsold_as_of)이 없다 → 존중은 유지하되
+    // skip_applyhome_no_date 로 세고, collector_runs.error_message 에 APPLYHOME_NO_DATE 마커를 남긴다
+    // (status 는 그대로 — 조용히 넘기지 않는 배선 가드).
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", {
+      ok: 1,
+      errorMessage: expect.stringMatching(/^APPLYHOME_NO_DATE n=1004: apt-0, apt-1, /),
+    });
   });
 
   it("per-gu 분모(unitsByGu)가 전체 1,005행 기준으로 계산된다 — 1,000행 컷이면 값이 왜곡된다", async () => {
@@ -979,9 +985,11 @@ describe("planUnsoldUpdates", () => {
   });
 
   it("applyhome 출처는 규칙3 으로 skip_preserved — 새 추정치도 참고용으로 함께 기록", () => {
+    // 세션569 C6: 존중은 공고일 + 6개월 안에서만 — 공고 2026-08-14, 기준 2026-10-09 KST.
     const plan = planUnsoldUpdates({
-      apartments: [apt({ unsold: 30, units: 500, unsold_source: "applyhome" })],
+      apartments: [apt({ unsold: 30, units: 500, unsold_source: "applyhome", unsold_as_of: "2026-08-14" })],
       unsoldByRegionGu: { "경기": { "수원시": 50 } },
+      now: new Date("2026-10-08T21:00:00Z"),
     });
     expect(plan[0].action).toBe("skip_preserved");
     expect(plan[0].newEstimate).toBe(50); // 비교용으로 계산은 됐지만 안 쓴다
@@ -1088,8 +1096,9 @@ describe("planUnsoldUpdates — 매물 유래 판정 폐지 확인(값의 모양
 
   it("applyhome 출처 + 매물 수와 값이 같음 + KOSIS=0 → 그래도 skip_preserved(값 유지, 규칙3 이 규칙5 보다 먼저 적용)", () => {
     const plan = planUnsoldUpdates({
-      apartments: [apt({ unsold: 12, naver_sell_count: 12, unsold_source: "applyhome" })],
+      apartments: [apt({ unsold: 12, naver_sell_count: 12, unsold_source: "applyhome", unsold_as_of: "2026-08-14" })],
       unsoldByRegionGu: { "경기": { "수원시": 0 } },
+      now: new Date("2026-10-08T21:00:00Z"), // 세션569 C6: 공고 6개월 안
     });
     expect(plan[0].action).toBe("skip_preserved");
     expect(plan[0].currentUnsold).toBe(12); // 값 유지 확인 — write_zero 로 안 간다
@@ -1234,16 +1243,17 @@ describe("planUnsoldUpdates — 자기 출력 위 2·3회차 (동결 방지 회�
     expect(round2[0].newEstimate).toBe(40); // 자기잠금 없이 갱신됨
   });
 
-  it("같은 시나리오에서 applyhome 출처 단지는 여러 회차에도 항상 보존된다(대조군)", () => {
-    const apt = { id: "ah-1", name: "청약홈단지", region: "경기", gu: "수원시", units: 500, unsold: 30, unsold_rate: 6, naver_sell_count: null, presale_type: null, unsold_source: "applyhome" };
+  it("같은 시나리오에서 applyhome 출처 단지는 공고 6개월 안이면 여러 회차에도 보존된다(대조군, 세션569 C6)", () => {
+    const apt = { id: "ah-1", name: "청약홈단지", region: "경기", gu: "수원시", units: 500, unsold: 30, unsold_rate: 6, naver_sell_count: null, presale_type: null, unsold_source: "applyhome", unsold_as_of: "2026-08-14" };
+    const now = new Date("2026-10-08T21:00:00Z"); // 2026-10-09 06:00 KST — 공고 후 2개월
 
-    const round1 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 50 } } });
+    const round1 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 50 } }, now });
     expect(round1[0].action).toBe("skip_preserved");
 
-    const round2 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 80 } } });
+    const round2 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 80 } }, now });
     expect(round2[0].action).toBe("skip_preserved");
 
-    const round3 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 0 } } });
+    const round3 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 0 } }, now });
     expect(round3[0].action).toBe("skip_preserved"); // KOSIS=0 이어도 applyhome 은 흔들리지 않는다
   });
 

@@ -47,12 +47,21 @@ describe("mapRow", () => {
     expect(apt.lat).toBe(null);
     expect(apt._recruitDate).toBe("2026-07-01");
     expect(apt.unsold_source).toBe("applyhome"); // 세션568 — unsold 값이 있으면 출처를 표시
+    expect(apt.unsold_as_of).toBe("2026-07-01"); // 세션569 C6 — 값을 만든 공고의 공고일
   });
 
   it("unsold 가 null(TOT_SUPLY_HSHLDCO 0/누락)이면 unsold_source 도 null (세션568)", () => {
     const apt = /** @type {any} */ (mapRow(makeRaw({ TOT_SUPLY_HSHLDCO: null })));
     expect(apt.unsold).toBe(null);
     expect(apt.unsold_source).toBe(null);
+    expect(apt.unsold_as_of).toBe(null); // 값이 없으면 공고일도 남기지 않는다(세션569)
+  });
+
+  it("공고일 형식이 어긋나면 unsold_as_of 는 null — 값·출처는 그대로 (세션569 C6)", () => {
+    const apt = /** @type {any} */ (mapRow(makeRaw({ RCRIT_PBLANC_DE: "20260701" })));
+    expect(apt.unsold).toBe(26);
+    expect(apt.unsold_source).toBe("applyhome");
+    expect(apt.unsold_as_of).toBe(null);
   });
 
   it("주소 파싱 실패 시 SUBSCRPT_AREA_CODE_NM 폴백", () => {

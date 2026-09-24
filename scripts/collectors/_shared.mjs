@@ -615,6 +615,71 @@ export function joinRunMessage(errorMessage, marker) {
   return errorMessage || marker || undefined;
 }
 
+// ── 청약홈(applyhome) 출처 미분양 값의 만료 기준 C6 (세션569, 사장님 결정 2026-09-24 🟡8) ──
+// 수집기(collect-unsold-kosis)와 감시(monitor-collectors ⑫)가 **이 함수 하나**를 같이 쓴다 —
+// 한쪽만 기간을 바꾸면 수집기는 덮는데 감시는 "아직 유효"라고 보거나 그 반대가 된다.
+
+/** applyhome 값을 존중하는 기간(개월) — 공고일 + 이 기간이 지나면 KOSIS 추정으로 덮는다. */
+export const APPLYHOME_EXPIRY_MONTHS = 6;
+
+/**
+ * 공고일 + months 가 지났나(KST 날짜 기준, 경계 당일은 "안 지남").
+ *
+ * ⚠️ `new Date("YYYY-MM-DD")` 를 쓰지 않는다 — 형식이 조금만 어긋나도 엉뚱한 해가 조용히 통과한다
+ *    (probe-must-be-self-verified.md §4-2). 정규식으로 형식을 강제하고 정수로 비교한다.
+ *    월 끝 날짜(08-31 + 6개월 = 02-31)는 다음 달 1일에 만료된다(그 달에 31일이 없으므로).
+ * `now` 는 호출부가 넣는다 — 시험이 실제 시각에 기대지 않게(flaky-time-check).
+ *
+ * @param {unknown} asOf `"YYYY-MM-DD"`(apartments.unsold_as_of)
+ * @param {Date} now
+ * @param {number} [months]
+ * @returns {boolean | null} null = 공고일이 비었거나 형식 불량(판정 불가 — 호출부가 경고로 센다)
+ */
+export function isApplyhomeExpired(asOf, now, months = APPLYHOME_EXPIRY_MONTHS) {
+  if (typeof asOf !== "string") return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asOf);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const nowKey = (kst.getUTCFullYear() * 12 + kst.getUTCMonth()) * 32 + kst.getUTCDate();
+  const expiryKey = (y * 12 + (mo - 1) + months) * 32 + d;
+  return nowKey > expiryKey;
+}
+
+/**
+ * 공고일 빈 applyhome 행 마커의 머리말 — `collector_runs.error_message` 에 남긴다(REGION_UNRESOLVED 와
+ * 같은 방식: status 는 그대로, 마커만). 공고일이 없으면 만료를 판정할 수 없어 **존중을 유지**하는데,
+ * 조용히 넘기면 그 값이 영구 동결되므로 기록으로 올린다(data-changing-run-approval.md §4).
+ */
+export const APPLYHOME_NO_DATE_MARKER = "APPLYHOME_NO_DATE";
+
+/** 마커에 펼칠 id 수 — 나머지는 개수(n)로만. */
+export const APPLYHOME_NO_DATE_ID_LIMIT = 20;
+
+/**
+ * 형식 = `APPLYHOME_NO_DATE n=<행 수>: <id1>, <id2>…`(id 는 앞 20개). 없으면 null.
+ * @param {string[]} ids
+ * @returns {string | null}
+ */
+export function formatApplyhomeNoDate(ids) {
+  if (!ids || ids.length === 0) return null;
+  const shown = ids.slice(0, APPLYHOME_NO_DATE_ID_LIMIT);
+  return `${APPLYHOME_NO_DATE_MARKER} n=${ids.length}: ${shown.join(", ")}${ids.length > shown.length ? ", …" : ""}`;
+}
+
+/**
+ * error_message 에서 공고일 빈 applyhome 마커를 읽는다(앞에 실패 사유가 ` | ` 로 붙어 있어도 찾는다).
+ * @param {string | null | undefined} message
+ * @returns {{ n: number, ids: string[] } | null}
+ */
+export function parseApplyhomeNoDate(message) {
+  if (typeof message !== "string") return null;
+  const m = new RegExp(`${APPLYHOME_NO_DATE_MARKER} n=([0-9]+): ([^|]*)`).exec(message);
+  if (!m) return null;
+  return { n: Number(m[1]), ids: m[2].split(", ").map((x) => x.trim()).filter((x) => x && x !== "…") };
+}
+
 // 세션95 단계 B: apartments.gu 정규화 (화성시 재오염 방지 방어선).
 // "화성시 동탄구" 같은 복합 문자열이 미래 경로로 들어와도 "화성시"로 축약.
 // 세션94 에서 확정된 화성시 비법정 구 화이트리스트만 처리.
