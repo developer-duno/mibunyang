@@ -47,7 +47,7 @@
 | 그룹 | 컬럼 수 | 수집기 |
 |------|---------|--------|
 | 건축 특성 | 4 (corridor_type, heat_fuel, avg_maintenance_cost, primary_direction) | molit-building-info, naver-collect |
-| 청약 경쟁률 | 3 (competition_rate, supply, applicants) | collect-applyhome |
+| 청약 경쟁률 | 3 (competition_rate, competition_supply, competition_applicants — 세션568 실측 정정, 옛 표기 supply/applicants 는 없는 칸) | collect-applyhome |
 | 지번 | 3 (bjd_code, lot_main, lot_sub) | reverse-geocode |
 | 에너지 | 3 (elec_usage_kwh, gas_usage_mj, energy_collected_at) | collect-building-hub (공공/상업만) |
 | 분양정보 | 19 (presale_min_price ~ presale_fetched_at) | naver-presale |
