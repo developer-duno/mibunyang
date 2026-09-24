@@ -27,6 +27,7 @@ const COLLECTOR_LABELS: Record<string, string> = {
   "transport-tago": "대중교통",
   "naver-listings": "네이버 매물",
   "naver-presale": "네이버 분양정보",
+  "naver-pipeline": "네이버 로컬 파이프라인",
   "dart-builders": "시공사 재무",
   "infra-kakao": "주변 인프라",
   "crime-safety": "치안 안전",

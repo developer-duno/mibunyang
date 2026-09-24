@@ -398,8 +398,9 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⚠️ 부작용: 이 배열에 들면 ② 빈 성공 점검(idempotentCollectorSet)에서 빠진다 — naver-pipeline 의
   //   ok 는 6-경고수라 success 로 끝나면 최소 3(치명 단계 1·2·5 는 경고가 될 수 없다)이어서 ② 가 볼 것이 없다.
   //   since = 등재일(세션571). 행이 아직 0개여도 "등재 뒤 stale_days 가 지나도록 기록 0" 이면 울린다 —
-  //   첫 정기 실행 9/28(월) 08:00 → 행 기대 12:00. daily 감시 실제 발화 09:48~09:55 KST 라 9/28 아침(3.41일)엔
-  //   조용하고 9/29 09:48(4.41일)부터 울린다. 9/24 로 두면 9/28 아침 오탐.
+  //   첫 정기 실행 9/28(월) 08:00 → 행 기대 12:00. 경계 = since + stale_days 를 KST 자정 기준으로
+  //   넘기는 9/29 00:00 KST 부터(3.41일/4.41일은 09:48 발화 때의 예시 — 판정은 발화 시각과 무관, 시험 B5).
+  //   9/24 로 두면 9/28 아침 오탐.
   { collector: "naver-pipeline",   stale_days: 4,  since: "2026-09-25", owner: "네이버 로컬 파이프라인 완주 기록 (월·목 08:00, bat 끝 1행 — 목요일 회차가 끊기면 토요일 09:00 울린다)" },
   // naver-devplan = 네이버 개발계획(도로·철도·역·지구) — 세션 517 에 로컬 러너 매월 20일로 크론 편입.
   //   네이버 IP 가 필요해 GH 러너에서 못 돌리고, 편입 전까지는 **어느 스케줄에도 없어** 사람이
@@ -795,6 +796,19 @@ function staleActionLines(collector) {
 }
 
 /**
+ * ⑤-b "등재 뒤 행 0" 안내 첫 줄(세션572 — 검사관 지적: 문구가 네이버 로컬 파이프라인 전용
+ * 표현(run-naver-local.bat)으로 고정돼 있어 다른 since 등재 수집기에 안 맞았다).
+ * naver-pipeline 은 그 실행 경로를 그대로 가리키고, 그 밖은 일반 문구.
+ * @param {string} collector
+ * @returns {string}
+ */
+function sinceGuideLine(collector) {
+  return collector === "naver-pipeline"
+    ? "등재일 이후 한 번도 기록이 없습니다 — run-naver-local.bat 끝의 record-pipeline-run.mjs 호출·.env 로드·collector_runs 쓰기 여부를 확인"
+    : "등재일 이후 한 번도 기록이 없습니다 — 그 수집기의 실행 경로(예약 작업·워크플로 끝의 collector_runs 기록)와 .env 로드·쓰기 여부를 확인";
+}
+
+/**
  * ⑤ 외부 API 의존 collector 의 "정상 실행 + 데이터 갱신 0건 연속 N회" 탐지.
  * collector_runs 컬럼 진실의 원천 = `collector` (NOT phase). status=success 인데
  * ok_count=0 행이 OUTAGE_MIN_CONSECUTIVE 회 누적되면 외부 API 장기 중단 의심.
@@ -834,10 +848,7 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
         kind: "stale",
         collector,
         detail: `${owner} 등재(${since}) 뒤 ${Math.floor(days)}일 동안 collector_runs 행 0 — 기록 자체가 안 남고 있음`,
-        lines: [
-          "등재일 이후 한 번도 기록이 없습니다 — run-naver-local.bat 끝의 record-pipeline-run.mjs 호출·.env 로드·collector_runs 쓰기 여부를 확인",
-          ...staleActionLines(collector),
-        ],
+        lines: [sinceGuideLine(collector), ...staleActionLines(collector)],
         at: new Date(sinceMs).toISOString(),
       });
       continue;

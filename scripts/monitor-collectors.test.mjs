@@ -2207,6 +2207,20 @@ describe("checkExternalApiStale — ⑤ 등재일(since) 뒤 행 0 경보 (세�
       }),
     ).toHaveLength(0);
   });
+
+  // B5 — since 안내 첫 줄은 수집기별로 갈린다(세션572 G6 — 검사관 지적: 문구가 네이버 전용으로 고정돼 있었음)
+  it("naver-pipeline 은 안내 첫 줄에 run-naver-local.bat 이 포함된다", () => {
+    const issues = checkExternalApiStale(target, {}, new Date("2026-09-29T00:48:00Z"));
+    expect(issues[0].lines?.[0]).toContain("run-naver-local.bat");
+  });
+
+  it("naver-pipeline 이 아닌 다른 since 등재 수집기는 run-naver-local.bat 이 없고 '실행 경로'가 대신 들어간다", () => {
+    const other = [{ collector: "x-pipeline", stale_days: 4, since: "2026-09-25", owner: "테스트용 다른 수집기" }];
+    const issues = checkExternalApiStale(other, {}, new Date("2026-09-29T00:48:00Z"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines?.[0]).not.toContain("run-naver-local.bat");
+    expect(issues[0].lines?.[0]).toContain("실행 경로");
+  });
 });
 
 describe("fetchExternalApiRuns/호출부 — ⑤ collector_runs 조회 실패를 check-failed 로 알린다 (세션571, 정적 가드)", () => {

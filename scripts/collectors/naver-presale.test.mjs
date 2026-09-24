@@ -27,6 +27,7 @@ import {
   isCompletionYm,
   buildCortarQueries,
   describeComplexFailure,
+  formatFailedComplexList,
 } from "./naver-presale.mjs";
 import { readFileSync } from "node:fs";
 
@@ -1058,5 +1059,25 @@ describe("describeComplexFailure — 실패 단지 로그 (세션571)", () => {
     expect(window).toContain("describeComplexFailure(");
     expect(window).toContain("[실패] ");
     expect(src).toContain("[실패 명단]");
+  });
+});
+
+describe("formatFailedComplexList — [실패 명단] 로그 상한 20 (세션572 G3)", () => {
+  it("0건 → 빈 문자열(호출자가 그 경우 로그를 안 찍는 기존 동작 유지)", () => {
+    expect(formatFailedComplexList([])).toBe("");
+  });
+
+  it("20건 → 전부 표시 + '…' 없음", () => {
+    const entries = Array.from({ length: 20 }, (_, i) => `단지${i}`);
+    const got = formatFailedComplexList(entries);
+    expect(got).toBe(`[실패 명단] 20건: ${entries.join(" / ")}`);
+    expect(got).not.toContain("…");
+  });
+
+  it("21건 → 앞 20건만 + ', …' 로 끝남", () => {
+    const entries = Array.from({ length: 21 }, (_, i) => `단지${i}`);
+    const got = formatFailedComplexList(entries);
+    const shown = entries.slice(0, 20);
+    expect(got).toBe(`[실패 명단] 21건: ${shown.join(" / ")}, …`);
   });
 });

@@ -404,6 +404,20 @@ export function describeComplexFailure(no, seq, item) {
 /** [실패 명단] 로그에 펼칠 최대 건수 — 넘으면 앞 20 + ", …" */
 const FAILED_COMPLEX_LOG_LIMIT = 20;
 
+/**
+ * [실패 명단] 로그 한 줄을 만든다(세션572 — naver-presale.mjs 루프 뒤 로그와 글자 하나 다르지 않게 동일).
+ * entries 가 0건이면 빈 문자열(호출자가 그 경우 로그를 안 찍는 기존 동작 유지).
+ * @param {string[]} entries
+ * @param {number} [limit]
+ * @returns {string}
+ */
+export function formatFailedComplexList(entries, limit = FAILED_COMPLEX_LOG_LIMIT) {
+  if (entries.length === 0) return "";
+  const shown = entries.slice(0, limit);
+  const more = entries.length > shown.length ? ", …" : "";
+  return `[실패 명단] ${entries.length}건: ${shown.join(" / ")}${more}`;
+}
+
 /** complex + detail 응답 → DB 행 변환
  * @param {ComplexData | null | undefined} complex
  * @param {DetailData | null | undefined} detail
@@ -1047,9 +1061,7 @@ async function main() {
   }
 
   if (failedComplexes.length > 0) {
-    const shown = failedComplexes.slice(0, FAILED_COMPLEX_LOG_LIMIT);
-    const more = failedComplexes.length > shown.length ? ", …" : "";
-    log(PHASE, `[실패 명단] ${failedComplexes.length}건: ${shown.join(" / ")}${more}`);
+    log(PHASE, formatFailedComplexList(failedComplexes, FAILED_COMPLEX_LOG_LIMIT));
   }
 
   // 매칭 tier 집계

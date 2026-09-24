@@ -138,6 +138,13 @@ describe("경고 단계 완주 한 줄 (세션571 — WARN_STEPS 마커)", () =>
     expect(got).toEqual([{ collector: "naver-pipeline", steps: ["molit-units", "naver-presale"] }]);
   });
 
+  it("extractWarnRuns — 실패 행이 WARN_STEPS: 로 시작해도 status≠success 면 결과에 안 들어간다 (세션571 검사관 지적)", () => {
+    const got = extractWarnRuns([
+      { collector: "naver-pipeline", status: "failure", error_message: "WARN_STEPS: molit-units" },
+    ]);
+    expect(got).toEqual([]);
+  });
+
   it("warnRuns 1건 → 본문에 '⚠️ 경고 단계 완주: naver-pipeline(molit-units)' 포함", () => {
     const msg = buildBriefing({
       runs24h: runs,
