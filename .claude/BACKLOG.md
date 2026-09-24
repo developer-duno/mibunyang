@@ -105,7 +105,7 @@
 
 ### A-7. 세션569 이 새로 남긴 것 (2026-09-24)
 
-- 🔴 **오늘 비운 11곳(값·출처 NULL)이 10/09 KOSIS 러너에서 반올림 0 으로 되돌아간다** — 비운 행은 "값 없음 = KOSIS 가 정한다"로 판정되고, 0-쓰기 차단기는 값>0 행만 세어 못 막는다(시뮬 12곳 = 11곳 + 1, 차단기 미발동). 사람 결정이 15일 만에 "완판"으로 뒤집힌다. **10/08 전 사장님 결정**: 제외 id 상수 / 새 출처 값 hold 신설 / 수용.
+- 🔴 **오늘 비운 11곳(값·출처 NULL)이 10/09 KOSIS 러너에서 반올림 0 으로 되돌아간다** — 비운 행은 "값 없음 = KOSIS 가 정한다"로 판정되고, 0-쓰기 차단기는 값>0 행만 세어 못 막는다(시뮬 12곳 = 11곳 + 1, 차단기 미발동). 사람 결정이 15일 만에 "완판"으로 뒤집힌다. **사장님 결정(9/24 15:44) = 새 출처 값 `hold`(사람 보류) 신설 → 다음 세션 🔴1(목표 10/02, 한계 10/08)**: CHECK 마이그(kosis/applyhome/hold) + `shouldSkipKosisFill` 맨 앞 `skip_hold`(값·비율 NULL 강제, 분모에는 남김) + write/write_zero UPDATE 에 `.or("unsold_source.is.null,unsold_source.neq.hold")` + `.select("id")` 로 실제 바뀐 행 세기 + 전이표·로그에 hold id 명단 + 감시 ⑫ 확장(hold 명단이 기준 11 id 와 다르면 알림·6개월 재검토, 자동 해제 없음) + 11곳 backfill(공고일 칸을 보류 결정일로) + 해제 절차. ⚠️ 순서 = 마이그 → PR 합침 → 본 폴더 pull → hold backfill → 재시뮬(빈칸→0 이 1곳(ap-6028696, 9/24 신규·안산 합계 0)이어야). 12번째 ap-6028696 은 대상 아님. 미결 3건(4곳의 옛 `unsold_history` 19행 삭제 여부 · hold 면 값 NULL 강제 · 6개월 재검토 알림)은 착수 때 AskUserQuestion.
 - 🟡 **청약홈(applyhome) 출처 값의 뜻이 둘이다** — 오늘 정정한 5곳 = 평형별 미달 합 / 나머지(3곳·앞으로의 seed) = 공고 공급수(부분 미달이면 6개월 유지). 한쪽으로 통일할지 결정.
 - 🟡 **목요일 네이버 러너가 3주 연속 4~6단계 미완**(9/10·9/17·9/24 — 뒤 둘은 점심 무렵 PC 재시작) — molit-units 신선도는 월요일 실행이 채워 감시가 못 본다 → 러너 완주 감시(예: 러너 끝에 collector_runs 1행) 필요.
 - 🟡 **`artifacts/notification-logs-적용안내.md` 에 권한 회수·기준선 재승인 단계 추가** — 감시 ⑩ 이전에 쓴 안내라, 그대로 실행하면 새 표 기본 권한이 남고 월요일 지문 경보가 난다.
@@ -113,7 +113,8 @@
 - ✅ **C6 청약홈 값 만료 — #606 합침(25b1d09f)** — 사장님 결정 C6: 그 값을 만든 회차의 평형별 미달 합 0 → unsold 0(출처 applyhome 유지) · 공고일로부터 6개월 뒤 KOSIS 추정으로. 마이그 `20260924000500`(칸 `unsold_as_of`·`competition_shortfall`)은 2026-09-24 15:07 KST 운영 적용 완료. backfill as_of 8/8 · 합침 · 본 폴더 25b1d09f pull 까지 완료 — 남은 것 = 10/09 러너. 새 감시 ⑫ `checkApplyhomeUnsold` 도 이 PR.
 - 🟡 **학교 기준점·등급 경계 재도출 PR** — 10/23~26 몰림 재수집(#603 새 방식) **뒤**. 수집만 고친 상태라 만점 비율이 15%→28% 로 늘 것으로 예상(표본 40곳 근사) → "상위 10% = 만점" 기준(원본 `src/constants/scoringTiers.ts:1012` `SCHOOL_RESCALE_ANCHORS` · 거울 `schools-neis.mjs` `RESCALE_ANCHORS_MIRROR`)이 깨진다. 새 분포로 재도출 → `--rescale-only`. 그 사이 약 3주·약 400곳은 옛·새 방식이 섞인다(schools.updated_at 분포 실측 — 10/03~10/22 에 먼저 새 방식으로 바뀌는 행).
 - 🟡 **10/09 미분양 러너(C6 첫 실전)** — 만료 2곳(봉담·운정)이 KOSIS 판정으로 넘어가고, 0 이 되는 곳 2곳(운정·ah-2022910097)이 0-쓰기 차단기 개수에 들어간다 → **수동으로 돌릴 때만** `--expect-zero` 에 반영(러너는 인자 없이 비율로 판정). `collect-unsold-kosis.mjs` 에는 `--now` 인자가 없다(실행 날짜 기준 판정).
-- 🟢 **naver-presale status failure 의 원인 = 단지 상세 응답 없음 4건**(`naver-presale.mjs:941` `reporter.fail()` — 유일한 실패 경로) — prices 배치 오류("ON CONFLICT DO UPDATE command cannot affect row a second time")는 개별 재시도로 전부 성공하고 실패 수에 안 들어간다(배치 오류가 있어도 실패 0·success 인 회차 7번). 배치 안 중복 키 제거는 로그 잡음 정리일 뿐.
+- 🟡 **#608 후속 — 개발호재 핵심어 구 이름 두 단어**(`수원시 권선구`·`부천시 소사구`: 첫 단어만 떼어 "권선"·"소사"가 핵심어로 남음, 운영 8지구 — 좌표 의심 해당 0곳): 구 이름 모든 단어 떼기 + 일반어 "도심" 추가(2차 검사관 🟡1).
+- 🟢 **naver-presale status failure 의 원인 = 단지 상세 응답 없음 4건**(`naver-presale.mjs:941` `reporter.fail()` — 유일한 실패 경로) — prices 배치 오류("ON CONFLICT DO UPDATE command cannot affect row a second time")는 개별 재시도로 전부 성공하고 실패 수에 안 들어간다(배치 오류가 있어도 실패 0·success 인 회차 6번(8/17~9/07)). 배치 안 중복 키 제거는 로그 잡음 정리일 뿐. 🟡 9/24 실패 4건은 **모두 '전남광주시' 주소**(개편 관련 상세 응답 누락 가능성 — 다음 세션 원문 1회 확인). 🟡 로컬 수집기 실패는 어느 감시에도 안 보인다(① 은 GitHub 실행만, ② 는 success 행만 `monitor-collectors.mjs:521`) → 10/09 차단기 발동 실패도 무음 — 목요일 러너 완주 감시와 함께.
 - 🟢 **`calc-school-walk.mjs:175` 도 SC4 없이 1쪽 15건**(초등, 반경 5km·최근접 1곳만 씀 — 잘림 여부는 미측정) — #603 과 같은 처방 후보.
 - 🟢 **관리자 화면 `CollectorMonitoring.tsx` 가 success 행의 `error_message` 마커도 빨갛게 보인다**(#602 마커 · C6 `APPLYHOME_NO_DATE`) — 마커는 경고 색으로 구분.
 - 🟢 **임대형 applyhome 은 만료돼도 KOSIS 가 건드리지 않아 ⑫(a) 에 남는다**(C6 합친 뒤, 지금 applyhome 8곳엔 없음) — 1회 경보 뒤 처리 방법 결정.
