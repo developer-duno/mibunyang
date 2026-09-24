@@ -5,7 +5,7 @@ SET statement_timeout='30s';
 -- 세션569 가 "자료 없음"으로 비운 11곳(unsold·unsold_rate·unsold_source 전부 NULL)을
 -- collect-unsold-kosis.mjs 는 "출처 모름 = 내가 채울 자리"로 보고 10/09 회차에 반올림 0(완판)으로
 -- 되돌린다. hold = "사람이 자료 없음을 확정했다, 수집기는 건드리지 마라". 값은 반드시 NULL 이다
--- (apartments_unsold_hold_null_check). 해제는 backfill-unsold-source.mjs 계획 파일
+-- (apartments_unsold_hold_null_check) 이고 보류 결정일(unsold_as_of)은 반드시 있다(없으면 감시 ⑫ 의 6개월 재검토 알림이 영영 침묵한다 — 세션570 검사관). 해제는 backfill-unsold-source.mjs 계획 파일
 -- (op release_hold_to_null / release_hold_to_applyhome)로만 한다.
 --
 -- ⚠️ 배포 순서(이 순서를 어기면 10/09 에 되돌림이 그대로 일어난다):
@@ -22,10 +22,10 @@ ALTER TABLE public.apartments ADD CONSTRAINT apartments_unsold_source_check
 
 ALTER TABLE public.apartments DROP CONSTRAINT IF EXISTS apartments_unsold_hold_null_check;
 ALTER TABLE public.apartments ADD CONSTRAINT apartments_unsold_hold_null_check
-  CHECK (unsold_source IS DISTINCT FROM 'hold' OR (unsold IS NULL AND unsold_rate IS NULL));
+  CHECK (unsold_source IS DISTINCT FROM 'hold' OR (unsold IS NULL AND unsold_rate IS NULL AND unsold_as_of IS NOT NULL));
 
 COMMENT ON COLUMN public.apartments.unsold_source IS
-  '이 값(unsold/unsold_rate)을 누가 썼나 — kosis=KOSIS 시군구 비례배분 추정(다음 회차가 새 값으로 덮음) / applyhome=청약홈 단지별 실측(공식 통계로 안 덮음) / hold=사람 보류(자료 없음 확정 — KOSIS·청약홈이 덮지 않음, 해제는 backfill-unsold-source 계획으로) / NULL=출처 모름(세션568 이전 값)';
+  '이 값(unsold/unsold_rate)을 누가 썼나 — kosis=KOSIS 시군구 비례배분 추정(다음 회차가 새 값으로 덮음) / applyhome=청약홈 단지별 실측(공고일+6개월 전까지 존중, C6) / hold=사람 보류(자료 없음 확정 — KOSIS·청약홈이 덮지 않음, 해제는 backfill-unsold-source 계획으로) / NULL=출처 모름(세션568 이전 값)';
 COMMENT ON COLUMN public.apartments.unsold_as_of IS
   '출처별 기준일 — applyhome=그 값을 만든 청약홈 공고의 공고일(공고일 + 6개월이 지나면 collect-unsold-kosis 가 KOSIS 추정으로 덮는다, C6) · hold=보류 결정일(6개월 지나면 감시 ⑫ 가 재검토 알림, 자동 해제 없음). kosis·NULL 출처 행에서는 의미 없음';
 

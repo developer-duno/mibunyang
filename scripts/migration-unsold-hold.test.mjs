@@ -35,7 +35,7 @@ describe("마이그 20260924000600 — unsold_source 'hold'", () => {
 
   it("hold 행은 값이 반드시 NULL — apartments_unsold_hold_null_check", () => {
     expect(sql).toContain(
-      "ADD CONSTRAINT apartments_unsold_hold_null_check CHECK (unsold_source IS DISTINCT FROM 'hold' OR (unsold IS NULL AND unsold_rate IS NULL));",
+      "ADD CONSTRAINT apartments_unsold_hold_null_check CHECK (unsold_source IS DISTINCT FROM 'hold' OR (unsold IS NULL AND unsold_rate IS NULL AND unsold_as_of IS NOT NULL));",
     );
   });
 
