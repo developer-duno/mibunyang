@@ -74,11 +74,11 @@ function cleanSnapshot() {
       },
     ],
     policies: [
-      { table: "apartments", name: "Public read", cmd: "SELECT", roles: ["public"], permissive: true, qual: "true", with_check: null },
+      { table: "apartments", name: "Public read", cmd: "SELECT", roles: ["public"], permissive: "PERMISSIVE", qual: "true", with_check: null },
       // Supabase 의 실제 패턴 — 표 권한(INSERT/UPDATE/DELETE/TRUNCATE)은 전부 true 지만
       // 이 정책이 service_role 만 통과시키므로 anon/authenticated 는 실제로 못 쓴다.
-      { table: "apartments", name: "Service write", cmd: "ALL", roles: ["public"], permissive: true, qual: "(auth.role() = 'service_role'::text)", with_check: null },
-      { table: "collector_runs", name: "Service write", cmd: "ALL", roles: ["service_role"], permissive: true, qual: "auth.role()='service_role'", with_check: null },
+      { table: "apartments", name: "Service write", cmd: "ALL", roles: ["public"], permissive: "PERMISSIVE", qual: "(auth.role() = 'service_role'::text)", with_check: null },
+      { table: "collector_runs", name: "Service write", cmd: "ALL", roles: ["service_role"], permissive: "PERMISSIVE", qual: "auth.role()='service_role'", with_check: null },
     ],
     definer_functions: [],
     public_extensions: [],
@@ -122,7 +122,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "anon insert hole", cmd: "INSERT",
-      roles: ["anon"], permissive: true, qual: null, with_check: "true",
+      roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true",
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     expect(issues).toHaveLength(1);
@@ -135,7 +135,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "own row insert", cmd: "INSERT",
-      roles: ["anon"], permissive: true, qual: null, with_check: "(auth.uid() = user_id)",
+      roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "(auth.uid() = user_id)",
     });
     expect(evalIgnoringR4(snap)).toEqual([]);
   });
@@ -144,7 +144,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "own-row-update", cmd: "UPDATE",
-      roles: ["authenticated"], permissive: true, qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
+      roles: ["authenticated"], permissive: "PERMISSIVE", qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     expect(issues).toHaveLength(1);
@@ -159,7 +159,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     snap.relations[0].column_write_grants = [{ column: "memo", grantee: "authenticated", privilege: "UPDATE" }];
     snap.policies.push({
       table: "apartments", name: "own-row-update", cmd: "UPDATE",
-      roles: ["authenticated"], permissive: true, qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
+      roles: ["authenticated"], permissive: "PERMISSIVE", qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     const body = issues[0].lines.join("\n");
@@ -172,7 +172,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     // TRUNCATE 를 실제로 통과시키는 정책을 추가해도 R1 은 INSERT/UPDATE/DELETE 만 본다.
     snap.policies.push({
       table: "apartments", name: "anon truncate hole", cmd: "ALL",
-      roles: ["anon"], permissive: true, qual: "true", with_check: null,
+      roles: ["anon"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     // ALL 정책이므로 INSERT/UPDATE/DELETE 도 함께 열려 R1 에 걸리지만, "TRUNCATE" 문구 자체는 없다.
@@ -190,7 +190,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     hole.relations[1].anon_insert = true;
     hole.policies.push({
       table: "collector_runs", name: "ops insert hole", cmd: "INSERT",
-      roles: ["anon"], permissive: true, qual: null, with_check: "true",
+      roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true",
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(hole));
     expect(issues).toHaveLength(1);
@@ -217,7 +217,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "own-row-update", cmd: "UPDATE",
-      roles: ["authenticated"], permissive: true, qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
+      roles: ["authenticated"], permissive: "PERMISSIVE", qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
     });
     const allowlist = { ...CLIENT_WRITE_ALLOWLIST, "apartments::own-row-update": "칸 권한 확인됨" };
     expect(evaluateDbPermissions(snap, { clientWriteAllowlist: allowlist, publicReadTables: ["apartments"] })).toEqual([]);
@@ -236,7 +236,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "anon write hole", cmd: "UPDATE",
-      roles: ["anon"], permissive: true, qual: "true", with_check: null,
+      roles: ["anon"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     const body = issues[0].lines.join("\n");
@@ -248,7 +248,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "any logged in", cmd: "UPDATE",
-      roles: ["authenticated"], permissive: true, qual: "auth.role() = 'authenticated'", with_check: null,
+      roles: ["authenticated"], permissive: "PERMISSIVE", qual: "auth.role() = 'authenticated'", with_check: null,
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     expect(issues.some((i) => i.lines.join("\n").includes("any logged in"))).toBe(true);
@@ -258,7 +258,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "anon cant be authenticated", cmd: "UPDATE",
-      roles: ["anon"], permissive: true, qual: "auth.role() = 'authenticated'", with_check: null,
+      roles: ["anon"], permissive: "PERMISSIVE", qual: "auth.role() = 'authenticated'", with_check: null,
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
     expect(issues.some((i) => i.lines.join("\n").includes("anon cant be authenticated"))).toBe(false);
@@ -286,7 +286,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "위장된 서비스 전용", cmd: "UPDATE",
-      roles: ["anon"], permissive: true,
+      roles: ["anon"], permissive: "PERMISSIVE",
       qual: "(auth.role() = 'service_role'::text) OR true", with_check: null,
     });
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
@@ -300,7 +300,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     // 공백 유무만 다른 표기(파서가 공백을 다르게 남길 수 있는 경우) — 정규화 후 정확 일치.
     snap.policies.push({
       table: "apartments", name: "표기차이 서비스 전용", cmd: "DELETE",
-      roles: ["anon"], permissive: true,
+      roles: ["anon"], permissive: "PERMISSIVE",
       qual: "(auth.role()  =  'service_role'::text)", with_check: null,
     });
     expect(evalIgnoringR4(snap)).toEqual([]);
@@ -310,7 +310,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "own row", cmd: "UPDATE",
-      roles: ["authenticated"], permissive: true, qual: "true", with_check: null,
+      roles: ["authenticated"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     });
     const allowlist = { ...CLIENT_WRITE_ALLOWLIST, "apartments::own row": "칸 권한 확인됨" };
     expect(evaluateDbPermissions(snap, { clientWriteAllowlist: allowlist, publicReadTables: ["apartments"] })).toEqual([]);
@@ -327,7 +327,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     });
     snap.policies.push({
       table: "secret_new_table", name: "Public read", cmd: "SELECT",
-      roles: ["public"], permissive: true, qual: "true", with_check: null,
+      roles: ["public"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     });
     const issues = /** @type {any[]} */ (
       evaluateDbPermissions(snap, { publicReadTables: ["apartments"] })
@@ -361,7 +361,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     });
     snap.policies.push({
       table: "other_table", name: "Public read", cmd: "SELECT",
-      roles: ["public"], permissive: true, qual: "true", with_check: null,
+      roles: ["public"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     });
     const issues = /** @type {any[]} */ (
       evaluateDbPermissions(snap, { publicReadTables: ["apartments"] })
@@ -422,7 +422,7 @@ describe("evaluateDbPermissions — R1~R7 판정", () => {
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "anon insert hole", cmd: "INSERT",
-      roles: ["anon"], permissive: true, qual: null, with_check: "true",
+      roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true",
     }); // R1
     snap.relations[0].rls_enabled = false; // R2
     const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
@@ -472,13 +472,13 @@ describe("감시 ⑩ 이슈가 공개 콘솔에 새지 않는다 — formatIssue
     const snap = cleanSnapshot();
     snap.policies.push({
       table: "apartments", name: "anon insert hole", cmd: "INSERT",
-      roles: ["anon"], permissive: true, qual: null, with_check: "true",
+      roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true",
     }); // R1
     snap.relations[0].column_write_grants = [{ column: "role", grantee: "authenticated", privilege: "UPDATE" }]; // R1 칸
     snap.relations[0].rls_enabled = false; // R2
     snap.policies.push({
       table: "apartments", name: "anon write hole 정책명", cmd: "UPDATE",
-      roles: ["anon"], permissive: true, qual: "true", with_check: null,
+      roles: ["anon"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     }); // R3
     snap.definer_functions.push({ schema: "public", name: "leaky_fn_이름", anon_execute: true, authenticated_execute: false }); // R5
     snap.public_extensions = ["pg_trgm_확장이름"]; // R6
@@ -507,7 +507,7 @@ describe("감시 ⑩ 이슈가 공개 콘솔에 새지 않는다 — formatIssue
     });
     snap.policies.push({
       table: "secret_new_table_콘솔누출테스트", name: "Public read", cmd: "SELECT",
-      roles: ["public"], permissive: true, qual: "true", with_check: null,
+      roles: ["public"], permissive: "PERMISSIVE", qual: "true", with_check: null,
     });
     const issues = /** @type {any[]} */ (
       evaluateDbPermissions(snap, { publicReadTables: ["apartments"] })
@@ -580,7 +580,7 @@ describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () =
         authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
         column_write_grants: [],
       });
-      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true" });
     }
     const snap = { checked_at: "2026-09-24T00:00:00Z", relations, policies, definer_functions: [], public_extensions: [], definer_views: [] };
     const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables: [] }));
@@ -609,7 +609,7 @@ describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () =
         authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
         column_write_grants: [],
       });
-      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true" });
     }
     // R2 대상 표 1개 추가(RLS 꺼짐, 쓰기 권한은 없어 R1 에는 안 걸림)
     relations.push({
@@ -638,7 +638,7 @@ describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () =
         authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
         column_write_grants: [],
       });
-      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true" });
     }
     const snap = { checked_at: "2026-09-24T00:00:00Z", relations, policies, definer_functions: [], public_extensions: [], definer_views: [] };
     const issues = evaluateDbPermissions(snap, { publicReadTables: [] });
@@ -684,7 +684,7 @@ describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () =
         authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
         column_write_grants: [],
       });
-      policies.push({ table: name, name: "r3hole", cmd: "UPDATE", roles: ["anon"], permissive: true, qual: "true", with_check: null });
+      policies.push({ table: name, name: "r3hole", cmd: "UPDATE", roles: ["anon"], permissive: "PERMISSIVE", qual: "true", with_check: null });
     }
 
     // R1 — anon INSERT 표 권한 + 실제 도달 정책을 가진 표 N개(부수로 R3 에도 걸린다 — 무관).
@@ -696,7 +696,7 @@ describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () =
         authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
         column_write_grants: [],
       });
-      policies.push({ table: name, name: "r1hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+      policies.push({ table: name, name: "r1hole", cmd: "INSERT", roles: ["anon"], permissive: "PERMISSIVE", qual: null, with_check: "true" });
     }
 
     // R2 — RLS 꺼진 표(쓰기 권한 전부 false 라 R1 에는 안 걸림) N개.
@@ -719,7 +719,7 @@ describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () =
         authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
         column_write_grants: [],
       });
-      policies.push({ table: name, name: "r4read", cmd: "SELECT", roles: ["anon"], permissive: true, qual: "true", with_check: null });
+      policies.push({ table: name, name: "r4read", cmd: "SELECT", roles: ["anon"], permissive: "PERMISSIVE", qual: "true", with_check: null });
     }
     const publicReadTables = Array.from({ length: N }, (_, i) => `r4gone_${String(i).padStart(3, "0")}`);
 
@@ -827,5 +827,99 @@ describe("main() 배선 — 소스 대조 (세션568)", () => {
     const exitLine = lines.find((l) => /process\.exitCode\s*=\s*1/.test(l));
     expect(exitLine).toBeDefined();
     expect(exitLine?.trim().startsWith("//")).toBe(false);
+  });
+});
+
+// 세션569 — 감시 ⑩ 범위 보강(R 규칙 쪽 작은 수정 ③④⑤⑥). 정책 식 글자는 Postgres 가 되살리는 모양을
+// 따른다(⚠️ S2 운영 되돌림 시험 M6·M7 에서 실제로 되살린 글자가 나오면 그것으로 바꿀 것).
+describe("감시 ⑩ 보강 — 로그인 필수 모양·RESTRICTIVE·칸 SELECT·R8 (세션569)", () => {
+  /** anon SELECT 표 권한을 가진 표 + 그 표에 걸린 정책 하나. */
+  function snapWithPolicy(/** @type {Record<string, any>} */ policy, relOverride = {}) {
+    const snap = cleanSnapshot();
+    snap.relations.push({
+      schema: "public", name: "t_probe", kind: "r", rls_enabled: true, rls_forced: false,
+      anon_select: true, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+      authenticated_select: true, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+      anon_select_any: true, authenticated_select_any: true,
+      column_write_grants: [], ...relOverride,
+    });
+    snap.policies.push({ table: "t_probe", name: "p_probe", cmd: "SELECT", roles: ["public"], permissive: "PERMISSIVE", with_check: null, ...policy });
+    return snap;
+  }
+
+  it("26. auth.uid() 를 언급만 하고 비로그인도 통과하는 식(TO public)은 전부 R4 경보", () => {
+    for (const qual of [
+      "((auth.uid() = owner) OR (owner IS NULL))",
+      "(auth.uid() IS NULL)",
+      "(COALESCE(auth.uid(), owner) = owner)",
+      "(auth.uid() IS DISTINCT FROM owner)",
+    ]) {
+      const issues = /** @type {any[]} */ (evaluateDbPermissions(snapWithPolicy({ qual }), { publicReadTables: ["apartments"] }));
+      expect(issues, qual).toHaveLength(1);
+      expect(issues[0].lines.join("\n"), qual).toMatch(/신규\(명단 밖\): t_probe/);
+    }
+  });
+
+  it("27. 정확한 로그인 필수 모양은 여전히 anon 도달 불가(회귀 없음)", () => {
+    for (const qual of [
+      "((auth.uid())::text = (user_id)::text)", // 운영 실측 모양(2026-09-24)
+      "(auth.uid() = user_id)",
+      "(user_id = auth.uid())",
+      "((user_id)::text = (auth.uid())::text)",
+      "(auth.role() = 'authenticated'::text)",
+    ]) {
+      expect(evaluateDbPermissions(snapWithPolicy({ qual }), { publicReadTables: ["apartments"] }), qual).toEqual([]);
+    }
+  });
+
+  it("28. permissive=\"RESTRICTIVE\" + qual true 만 있으면 도달 불가(허용 정책이 아니다)", () => {
+    const snap = snapWithPolicy({ qual: "true", permissive: "RESTRICTIVE" });
+    expect(evaluateDbPermissions(snap, { publicReadTables: ["apartments"] })).toEqual([]);
+    // 대조군 — 같은 정책이 PERMISSIVE 면 R4 신규
+    const open = snapWithPolicy({ qual: "true", permissive: "PERMISSIVE" });
+    expect(/** @type {any[]} */ (evaluateDbPermissions(open, { publicReadTables: ["apartments"] }))[0].lines.join("\n")).toMatch(/t_probe/);
+  });
+
+  it("29. 표 SELECT 권한은 없고 칸 SELECT 권한만 있어도(anon_select_any) 공개 정책이 있으면 R4 신규", () => {
+    const snap = snapWithPolicy({ qual: "true", roles: ["anon"] }, { anon_select: false, anon_select_any: true });
+    const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables: ["apartments"] }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines.join("\n")).toMatch(/신규\(명단 밖\): t_probe/);
+    // 칸 권한도 없으면 조용
+    const closed = snapWithPolicy({ qual: "true", roles: ["anon"] }, { anon_select: false, anon_select_any: false });
+    expect(evaluateDbPermissions(closed, { publicReadTables: ["apartments"] })).toEqual([]);
+  });
+
+  it("30. R8 — 정의자 뷰 1개면 경보, 0개면 조용, 허용 목록에 있으면 조용", () => {
+    const snap = cleanSnapshot();
+    snap.definer_views = ["v_probe"];
+    const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines.join("\n")).toMatch(/\[R8\] 정의자 뷰\(security_invoker 아님\) 1개/);
+    expect(issues[0].lines.join("\n")).toMatch(/v_probe/);
+    expect(evalIgnoringR4(cleanSnapshot())).toEqual([]);
+    expect(evalIgnoringR4(snap, { definerViewAllowlist: { v_probe: "검토 완료" } })).toEqual([]);
+  });
+
+  it("31. 기준선 두 표 모양(RLS 켬·anon/authenticated 권한 0·정책 0)은 R1~R8 조용", () => {
+    const snap = cleanSnapshot();
+    for (const name of ["permission_baseline", "permission_baseline_item"]) {
+      snap.relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: false, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        anon_select_any: false, authenticated_select_any: false,
+        column_write_grants: [],
+      });
+    }
+    expect(evalIgnoringR4(snap)).toEqual([]);
+  });
+
+  it("⑥ 칸 쓰기 권한의 받는이 PUBLIC 도 R1 이 잡는다", () => {
+    const snap = cleanSnapshot();
+    snap.relations[0].column_write_grants = [{ column: "note", grantee: "PUBLIC", privilege: "UPDATE" }];
+    const issues = /** @type {any[]} */ (evalIgnoringR4(snap));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines.join("\n")).toMatch(/apartments\.note — PUBLIC UPDATE/);
   });
 });
