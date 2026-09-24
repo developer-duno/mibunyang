@@ -74,4 +74,11 @@ jobs:
           KAKAO_KEY: ${{ secrets.KAKAO_KEY }}
           NEIS_KEY: ${{ secrets.NEIS_KEY }}
           SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
-        run: node scripts/collectors/schools-neis.mjs
+        # 세션568: --limit 1200 — 2026-09-23 KST 하루에 schools 3,068행 중 2,654행이 같은
+        # 시간대(주로 05~07시)에 몰려 updated_at 30일이 지나 동시 만료한다(10/23~24 재발
+        # 예정, trg_schools_updated 를 UPDATE OF nearby_schools 로 좁히기 전까지는 rescaleOnly·
+        # 어린이집 수집기도 시계를 앞당겼기 때문). --limit 은 이제 오래된 순으로 자르므로
+        # (selectProcessList) 상한을 걸어도 뒤쪽 단지가 굶지 않는다. 평소 신규/재수집 대상은
+        # 하루 약 100곳 수준이라 1,200 은 영향이 없고, 몰린 날에도 1,200곳 ≈ 1.5~2시간으로
+        # 240분 timeout 안에 들어온다(나머지는 다음날로 자연 이월).
+        run: node scripts/collectors/schools-neis.mjs --limit 1200

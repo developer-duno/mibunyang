@@ -7,7 +7,7 @@
  * 사용법:
  *   node scripts/collectors/schools-neis.mjs              (Supabase UPDATE)
  *   node scripts/collectors/schools-neis.mjs --dry-run    (미리보기만)
- *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 건수 제한)
+ *   node scripts/collectors/schools-neis.mjs --limit 100  (처리 대상 중 updated_at 오래된 순 100건만 이번 실행에서 처리 — 세션568)
  *   node scripts/collectors/schools-neis.mjs --rescale-only [--dry-run]
  *       저장된 nearby_schools 만 읽어 school_score/school_grade 재계산 (외부 API 호출 0)
  */
@@ -462,6 +462,47 @@ export function selectTargetsByIds(apts, ids) {
   return { targets, forceIds: new Set(ids), missing, noCoord };
 }
 
+// ── 세션568: --limit 의미 수정 — "오래된 순으로 상한만큼" ──────────
+// 배경 — 옛 로직(main() 안에서 targets.slice(0, limit))은 좌표 있는 단지를 id 순으로
+// 앞에서부터 자른 뒤에야 skip(enrichedIds) 판정을 했다. 그 결과 --limit 을 걸면 id 순
+// 앞쪽 단지만 매번 재확인하고 뒤쪽의 진짜 오래된 단지는 영영 처리되지 않았다(굶주림).
+// 정답 = "신선한(skip 대상) 행을 먼저 걷어낸 뒤, 처리해야 할 나머지를 updated_at 오래된
+// 순(행 없음·null 은 한 번도 수집된 적 없다는 뜻이라 맨 앞)으로 정렬하고 나서 상한을 자른다."
+// --ids(forceIds) 로 지정한 단지는 30일 skip 과 상한 모두 무시하고 항상 전부 포함한다.
+
+/**
+ * 이번 실행에서 실제로 처리할 목록을 "오래된 순 + 상한"으로 정한다.
+ * @template {{ id: string }} T
+ * @param {T[]} targets 좌표 있는 전체 후보(--ids 필터 적용된 경우 그 목록)
+ * @param {Set<string>} enrichedIds NEIS 보강 완료 + 30일 이내(skip 대상) apartment_id Set
+ * @param {Map<string, string|null|undefined>} updatedAtById apartment_id → schools.updated_at(ISO 문자열 또는 없음)
+ * @param {number} limit 이번 실행에서 처리할 최대 건수(Infinity 가능)
+ * @param {Set<string>} [forceIds] --ids 로 지정한 단지 — 30일 skip·상한 모두 무시하고 항상 포함
+ * @returns {{ toProcess: T[], skippedFresh: number, deferred: number }}
+ */
+export function selectProcessList(targets, enrichedIds, updatedAtById, limit, forceIds = new Set()) {
+  /** @type {T[]} */
+  const forced = [];
+  /** @type {T[]} */
+  const rest = [];
+  let skippedFresh = 0;
+  for (const t of targets) {
+    if (forceIds.has(t.id)) { forced.push(t); continue; }
+    if (enrichedIds.has(t.id)) { skippedFresh++; continue; }
+    rest.push(t);
+  }
+  // updated_at 오래된 순 — 행 자체가 없거나(null/undefined) 값이 없으면 "한 번도 수집 안 됨"
+  // 이므로 가장 오래된 것으로 취급해 맨 앞에 둔다.
+  const toMs = /** @param {string|null|undefined} v */ (v) => (v ? new Date(v).getTime() : -Infinity);
+  rest.sort((a, b) => toMs(updatedAtById.get(a.id)) - toMs(updatedAtById.get(b.id)));
+
+  const remaining = Number.isFinite(limit) ? Math.max(0, limit - forced.length) : Infinity;
+  const restSelected = Number.isFinite(remaining) ? rest.slice(0, /** @type {number} */ (remaining)) : rest;
+  const deferred = rest.length - restSelected.length;
+
+  return { toProcess: [...forced, ...restSelected], skippedFresh, deferred };
+}
+
 // ── 재척도 백필 (세션524) ────────────────────────────────────
 /**
  * 이미 저장된 `nearby_schools` 만 읽어 `school_score`·`school_grade` 를 다시 계산한다.
@@ -472,8 +513,12 @@ export function selectTargetsByIds(apts, ids) {
  * 그 게이트를 지나쳐야 한다. 게이트를 느슨하게 고치면 다음 정기 실행이 전수 재수집을 하며
  * 쿼터를 태우므로(세션338 사고 자리), 건드리지 않고 옆길을 낸다.
  *
- * ⚠️ `updated_at` 을 **일부러 안 건드린다**. 새로 수집한 것이 아니므로 신선도 시계를 앞당기면
- * 다음 정기 실행이 30일 동안 그 단지를 건너뛴다(= 진짜 갱신이 밀린다).
+ * ⚠️ `updated_at` 을 **일부러 안 건드린다**(아래 update 는 school_score/school_grade 만
+ * SET). 새로 수집한 것이 아니므로 신선도 시계를 앞당기면 다음 정기 실행이 30일 동안 그
+ * 단지를 건너뛴다(= 진짜 갱신이 밀린다). 세션568 이전에는 schools 트리거가 모든 UPDATE 에서
+ * 발화해 이 주석의 의도와 달리 실제로는 `updated_at` 이 매번 갱신됐다 — `UPDATE OF
+ * nearby_schools` 로 트리거를 좁힌 뒤(20260924000300 마이그레이션)에야 이 함수가 의도대로
+ * 신선도 시계를 건드리지 않게 됐다.
  * ⚠️ `collector_runs` 에도 기록하지 않는다 — monitor ⑤ 가 "수집기가 돌았다"로 오해한다.
  *
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
@@ -576,23 +621,21 @@ async function main() {
   const apts = await selectAll((s) => s.from("apartments").select("id, name, lat, lng, region, gu, bjd_code"), sb, "id");
 
   // 세션567: --ids=a,b,c — 지정 단지만 다시 본다(30일 skip 무시). 없는 id 는 이름을 찍고
-  // 건너뛰고, 좌표 없는 id 도 목록을 보고한 뒤 제외한다. --limit 과 함께 쓰면 그 뒤 slice 로
-  // 기존 의미(대상을 다시 자름)를 유지한다.
+  // 건너뛰고, 좌표 없는 id 도 목록을 보고한 뒤 제외한다.
   const idsArg = parseIdsArg(process.argv);
   /** @type {Set<string>} */
   let forceIds = new Set();
-  let targets = apts.filter(a => a.lat && a.lng);
+  let candidates = apts.filter(a => a.lat && a.lng);
   if (idsArg != null) {
     const sel = selectTargetsByIds(apts, idsArg);
     forceIds = sel.forceIds;
-    targets = sel.targets;
+    candidates = sel.targets;
     if (sel.missing.length > 0) log(PHASE, `⚠️ --ids 중 존재하지 않는 단지 ${sel.missing.length}건: ${sel.missing.join(", ")}`);
     if (sel.noCoord.length > 0) {
       log(PHASE, `⚠️ --ids 중 좌표 없는 단지 ${sel.noCoord.length}건(제외): ${sel.noCoord.map(a => `${a.id}(${a.name ?? "이름없음"})`).join(", ")}`);
     }
-    log(PHASE, `--ids 지정 — 대상 ${targets.length}건, 30일 skip 무시`);
+    log(PHASE, `--ids 지정 — 대상 ${candidates.length}건, 30일 skip 무시`);
   }
-  targets = targets.slice(0, limit);
 
   // 세션 338: 데이터 완결성 기반 resume self skip
   //   - nearby_schools 안 학교 객체에 schoolType 키 박힘 = NEIS 보강 완료
@@ -622,7 +665,12 @@ async function main() {
     oldById = new Map((/** @type {Array<Record<string, any>>} */ (oldRows) ?? []).map(r => [r.apartment_id, r]));
   }
 
-  log(PHASE, `대상: ${targets.length}건 (좌표 있음), NEIS 보강 + 30일 이내 = ${enrichedIds.size}건 skip 예정${limit < Infinity ? `, limit ${limit}` : ""}`);
+  // 세션568: 상한(--limit)의 의미를 "id 순 앞쪽부터"에서 "처리 대상 중 오래된 순부터"로
+  // 바꾼다 — 옛 로직은 상한을 걸면 id 순 뒤쪽의 진짜 오래된 단지가 영영 처리되지 않았다.
+  const updatedAtById = new Map(allSchoolRows.map(r => [r.apartment_id, r.updated_at]));
+  const { toProcess: targets, skippedFresh, deferred } = selectProcessList(candidates, enrichedIds, updatedAtById, limit, forceIds);
+
+  log(PHASE, `처리 대상(오래된 순): ${targets.length}건 · 이번 상한 ${limit < Infinity ? limit : "무제한"} · 다음 실행으로 넘김 ${deferred}건 · 30일 이내 skip ${skippedFresh}건`);
 
   let updated = 0, skipped = 0;
   const rpt = createReporter(PHASE);  // 세션 327: graceful shutdown 등록 (SIGTERM 핸들러)
