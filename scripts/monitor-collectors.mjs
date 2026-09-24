@@ -808,11 +808,19 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
           kind: "stale",
           collector,
           detail: `${owner} 마지막 실행 ${Math.floor(idleDays)}일 전 — ${stale_days}일 주기 초과 (미발화 의심)`,
-          lines: [
-            `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
-            `[조치 1] 집서버 작업 확인 — schtasks /query /tn MibunyangKosisLocal (로컬 러너 수집기인 경우)`,
-            `[조치 2] 수동 보충 실행 — node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`,
-          ],
+          // naver- 접두 수집기는 KOSIS 로컬 러너가 아니라 네이버 로컬 파이프라인(예약 작업
+          // MibunyangNaverCollect, 월·목 08:00)이 돌린다 — 조치 문구도 그쪽을 가리켜야 한다(세션570).
+          lines: collector.startsWith("naver-")
+            ? [
+                `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
+                `[조치 1] 예약 작업 MibunyangNaverCollect(월·목 08:00) 결과 확인 — schtasks /query /tn MibunyangNaverCollect`,
+                `[조치 2] naver-collect.log 확인 → 남은 단계 수동 재개 뒤 node scripts/record-pipeline-run.mjs done --collector=naver-pipeline --ok=6 --skip=0`,
+              ]
+            : [
+                `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
+                `[조치 1] 집서버 작업 확인 — schtasks /query /tn MibunyangKosisLocal (로컬 러너 수집기인 경우)`,
+                `[조치 2] 수동 보충 실행 — node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`,
+              ],
           at: latest.finished_at,
         });
         continue; // 미발화면 아래 outage 판정은 같은 원인 이중 알림 — skip
@@ -1084,10 +1092,11 @@ async function fetchApplyhomeUnsoldRows() {
 }
 
 /**
- * ⑬ 창(시간) — daily 가 24시간마다 돌고 큐 지연을 흡수하려 2시간 여유를 둔다. 창이 겹쳐 같은 행을
- * 두 번 보면 `ALWAYS_DEDUP_KINDS`(kind+collector+at=finished_at)가 두 번째를 막는다.
+ * ⑬ 창(시간) — daily 가 24시간마다 돌지만 GH daily 가 하루 빠지면(실행 실패·수동 스킵) 26시간 창은
+ * 그 실패 행을 놓친다. 24시간(하루 공백) + 24시간(정상 주기) + 2시간 여유 = 50시간(세션570).
+ * 창이 겹쳐 같은 행을 두 번 보면 `ALWAYS_DEDUP_KINDS`(kind+collector+at=finished_at)가 두 번째를 막는다.
  */
-export const LOCAL_FAILURE_WINDOW_HOURS = 26;
+export const LOCAL_FAILURE_WINDOW_HOURS = 50;
 
 /**
  * ⑬ 실패 비율 하한 — 이 비율 이상이 실패여야 울린다. naver-presale 은 1,301건 중 4건(0.3%) 실패로도
@@ -1128,9 +1137,13 @@ export function checkLocalFailures(rows, opts = {}) {
     const fail = r.fail_count ?? 0;
     // ok 0 이면 비율은 늘 1 이다 — fail>0 이면 fail/fail, 합이 0(차단기처럼 한 건도 안 건드리고 멈춤)이면 1 로 본다.
     const ratio = ok + fail > 0 ? fail / (ok + fail) : 1;
-    if (ratio < ratioLimit) continue;
-    const name = r.collector ?? "(이름 없음)";
     const msg = (r.error_message ?? "").trim();
+    // fail_count 가 null/0 인 예외 종료 — 수집기가 try/catch 로 죽으면 fail_count 를 안 채우고
+    // error_message 만 남긴다(_shared.mjs recordCollectorRun). 비율만 보면 이런 행이 침묵한다
+    // (market-stats ok17·fail null·error 있음 / compute-scores ok1500·fail0·error 있음, 세션570).
+    const isSilentException = (r.fail_count == null || r.fail_count === 0) && msg !== "";
+    if (ratio < ratioLimit && !isSilentException) continue;
+    const name = r.collector ?? "(이름 없음)";
     const when = toKst(r.finished_at) ?? r.finished_at;
     issues.push({
       kind: "local-failure",

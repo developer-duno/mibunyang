@@ -55,17 +55,50 @@ describe("checkLocalFailures — 판정", () => {
     ], { now: NOW })).toEqual([]);
   });
 
+  it("양성(F1): market-stats 예외 종료 — fail_count null · error_message 있음 → 비율 무관 알림 (세션570)", () => {
+    const issues = checkLocalFailures(
+      [{ collector: "market-stats", status: "failure", ok_count: 17, fail_count: null, error_message: "TypeError: Cannot read properties of undefined", finished_at: at(2) }],
+      { now: NOW },
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ kind: "local-failure", collector: "market-stats" });
+    expect(issues[0].detail).toContain("성공 17 · 실패 0");
+  });
+
+  it("양성(F1): compute-scores 예외 종료 — fail_count 0 · error_message 있음 → 비율 무관 알림 (세션570)", () => {
+    const issues = checkLocalFailures(
+      [{ collector: "compute-scores", status: "failure", ok_count: 1500, fail_count: 0, error_message: "RangeError: Maximum call stack size exceeded", finished_at: at(1) }],
+      { now: NOW },
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toBe("compute-scores");
+  });
+
+  it("경계(F1): fail_count 0 이어도 error_message 가 빈 문자열이면 비율 판정으로만 — 낮은 비율은 침묵", () => {
+    expect(checkLocalFailures(
+      [{ collector: "y", status: "failure", ok_count: 100, fail_count: 0, error_message: "", finished_at: at(1) }],
+      { now: NOW },
+    )).toEqual([]);
+  });
+
+  it("경계(F1): fail_count 0 이어도 error_message 가 공백뿐이면 침묵(trim 후 빈 문자열)", () => {
+    expect(checkLocalFailures(
+      [{ collector: "y", status: "failure", ok_count: 100, fail_count: 0, error_message: "   ", finished_at: at(1) }],
+      { now: NOW },
+    )).toEqual([]);
+  });
+
   it("경계: 실패 비율이 정확히 10% 면 울리고, 그 바로 아래는 침묵", () => {
     expect(LOCAL_FAILURE_RATIO_LIMIT).toBe(0.1);
     expect(checkLocalFailures([{ collector: "x", status: "failure", ok_count: 90, fail_count: 10, finished_at: at(1) }], { now: NOW })).toHaveLength(1);
     expect(checkLocalFailures([{ collector: "x", status: "failure", ok_count: 91, fail_count: 10, finished_at: at(1) }], { now: NOW })).toHaveLength(0);
   });
 
-  it("창: 26시간 안은 울리고 밖은 침묵 · finished_at 없는 행은 건너뛴다", () => {
-    expect(LOCAL_FAILURE_WINDOW_HOURS).toBe(26);
+  it("창: 50시간 안은 울리고 밖은 침묵 · finished_at 없는 행은 건너뛴다 (GH daily 하루 공백 대응, 세션570)", () => {
+    expect(LOCAL_FAILURE_WINDOW_HOURS).toBe(50);
     const row = (/** @type {number} */ h) => ({ collector: "x", status: "failure", ok_count: 0, fail_count: 1, finished_at: at(h) });
-    expect(checkLocalFailures([row(25.9)], { now: NOW })).toHaveLength(1);
-    expect(checkLocalFailures([row(26.1)], { now: NOW })).toHaveLength(0);
+    expect(checkLocalFailures([row(49.9)], { now: NOW })).toHaveLength(1);
+    expect(checkLocalFailures([row(50.1)], { now: NOW })).toHaveLength(0);
     expect(checkLocalFailures([{ collector: "x", status: "failure", ok_count: 0, fail_count: 1, finished_at: null }], { now: NOW })).toHaveLength(0);
   });
 

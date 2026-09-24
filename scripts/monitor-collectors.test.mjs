@@ -1053,6 +1053,33 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues[0].kind).toBe("stale");
   });
 
+  it("미발화(F3) — naver- 접두 collector 는 조치 문구가 MibunyangNaverCollect 로 분기", () => {
+    const naverTargets = [{ collector: "naver-pipeline", stale_days: 4, owner: "네이버 로컬 파이프라인" }];
+    const issues = checkExternalApiStale(
+      naverTargets,
+      { "naver-pipeline": [{ status: "success", ok_count: 6, finished_at: "2026-05-20T00:00:00Z" }] }, // 8일 전 > 4
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines?.join("\n")).toContain("MibunyangNaverCollect");
+    expect(issues[0].lines?.join("\n")).toContain("record-pipeline-run.mjs done --collector=naver-pipeline");
+  });
+
+  it("미발화(F3) — housing-permits(naver- 아님) 는 기존 KOSIS 로컬 러너 문구 그대로", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 42, finished_at: "2026-05-01T00:00:00Z" }, // 27일 전 > 14
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines?.join("\n")).toContain("MibunyangKosisLocal");
+    expect(issues[0].lines?.join("\n")).not.toContain("MibunyangNaverCollect");
+  });
+
   it("연간 데이터 무변경 — ok=0 이라도 skip>0 이면 outage 아님 (fertility 등 diff-only 수집기 평상시, 세션 289)", () => {
     const issues = checkExternalApiStale(
       targets,
