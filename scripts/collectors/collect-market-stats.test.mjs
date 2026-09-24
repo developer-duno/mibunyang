@@ -185,7 +185,7 @@ describe("extractLatestByRegion + tracker (통합 시도 무음 continue 제거)
     expect(result["서울"]).toBeDefined();
     expect(result["광주"]).toBeUndefined();
     expect(result["전남"]).toBeUndefined();
-    expect(tracker.summary()).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [] });
+    expect(tracker.summary()).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [], unknownCounts: {} });
   });
 
   it("기존 이름('서울' 등)은 tracker 를 넘겨도 그대로 매핑된다", () => {
@@ -290,6 +290,48 @@ describe("main() recordCollectorRun 하드닝", () => {
       expect.objectContaining({ ok: 0, fail: 0, status: "success" }),
     );
     expect(exitSpy).not.toHaveBeenCalled();
+    exitSpy.mockRestore();
+  });
+});
+
+// ── 세션569: 못 맞춘 시도 이름을 collector_runs 마커로 남긴다(로그 → 기록+감시) ──
+describe("main() REGION_UNRESOLVED 마커 기록", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  it("'전남광주' 합계 행 → 지표 5개 × 1행 = n=5 (한 행을 두 번 세지 않는다), status 는 success 그대로", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => /** @type {never} */ (undefined));
+    fetchWithRetryMock.mockResolvedValue({
+      json: async () => [
+        makeRow("서울", null, "202601", "100.0"),
+        makeRow("전남광주", null, "202601", "95.0"),
+      ],
+    });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "market-stats",
+      expect.objectContaining({ status: "success", errorMessage: "REGION_UNRESOLVED n=5: 전남광주(통합 시도 합계)" }),
+    );
+    exitSpy.mockRestore();
+  });
+
+  it("집계 라벨(전국·수도권·기타지방·5대광역시 및 세종특별자치시)만 못 맞추면 마커 없음", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => /** @type {never} */ (undefined));
+    fetchWithRetryMock.mockResolvedValue({
+      json: async () => [
+        makeRow("서울", null, "202601", "100.0"),
+        makeRow("전국", null, "202601", "100.0"),
+        makeRow("수도권", null, "202601", "100.0"),
+        makeRow("기타지방", null, "202601", "100.0"),
+        makeRow("5대광역시 및 세종특별자치시", null, "202601", "100.0"),
+      ],
+    });
+    await main();
+    const arg = recordCollectorRun.mock.calls[0][1];
+    expect(arg.errorMessage).toBeUndefined();
     exitSpy.mockRestore();
   });
 });

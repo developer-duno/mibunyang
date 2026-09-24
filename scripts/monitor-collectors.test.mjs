@@ -1926,3 +1926,79 @@ describe("checkTradeMonthGaps — ⑧ 지역×월 거래 0건 (세션556)", () =
     expect(TRADE_GAP_MIN_BASELINE).toBe(10);
   });
 });
+
+// ── ⑪ KOSIS 시도 이름 못 맞춤 (세션569) ──────────────────────
+const { checkRegionUnresolved, REGION_UNRESOLVED_COLLECTORS } = await import("./monitor-collectors.mjs");
+const { formatRegionUnresolved } = await import("./collectors/_shared.mjs");
+
+describe("checkRegionUnresolved — ⑪ 시도 이름 못 맞춤 마커", () => {
+  /** @param {string[]} names */
+  const markerOf = (names) => formatRegionUnresolved({
+    unmergeable: 0, unknown: names.length, unknownNames: names,
+    unknownCounts: Object.fromEntries(names.map((n) => [n, 1])),
+  });
+
+  it("대상 이름 = 세 수집기의 recordCollectorRun 기록명(PHASE 상수) 그대로", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const phases = ["collect-market-stats.mjs", "collect-avg-income.mjs", "collect-housing-supply-ratio.mjs"].map((f) => {
+      const m = readFileSync(join(here, "collectors", f), "utf8").match(/const PHASE = "([^"]+)"/);
+      return m?.[1];
+    });
+    expect([...REGION_UNRESOLVED_COLLECTORS].sort()).toEqual(phases.sort());
+  });
+
+  it("최신 실행에 마커 있음 → 이슈 1건 (kind·collector·n·이름·at)", () => {
+    const issues = checkRegionUnresolved({
+      "market-stats": [{ error_message: markerOf(["광주전남"]), finished_at: "2026-10-05T20:30:00Z" }],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("region-unresolved");
+    expect(issues[0].collector).toBe("market-stats");
+    expect(issues[0].detail).toContain("1건");
+    expect(issues[0].detail).toContain("광주전남");
+    expect(issues[0].at).toBe("2026-10-05T20:30:00Z");
+  });
+
+  it("마커 없음(null·일반 실패 사유) → 0건", () => {
+    expect(checkRegionUnresolved({
+      "market-stats": [{ error_message: null, finished_at: "2026-10-05T20:30:00Z" }],
+      "avg-income": [{ error_message: "KOSIS HTTP 500", finished_at: "2026-10-12T20:30:00Z" }],
+      "kosis-housing-supply-ratio": [],
+    })).toEqual([]);
+  });
+
+  it("옛 실행에만 마커가 있고 최신 실행은 깨끗 → 0건(고친 뒤에는 경보가 그친다)", () => {
+    expect(checkRegionUnresolved({
+      "market-stats": [
+        { error_message: null, finished_at: "2026-11-05T20:30:00Z" },
+        { error_message: markerOf(["광주전남"]), finished_at: "2026-10-05T20:30:00Z" },
+      ],
+    })).toEqual([]);
+  });
+
+  it("실패 사유 뒤에 붙은 마커도 읽는다", () => {
+    const issues = checkRegionUnresolved({
+      "avg-income": [{ error_message: `KOSIS HTTP 500 | ${markerOf(["광주전남"])}`, finished_at: "2026-10-12T20:30:00Z" }],
+    });
+    expect(issues).toHaveLength(1);
+  });
+
+  it("이름 6개 → 앞 5개 + '외 1건'", () => {
+    const issues = checkRegionUnresolved({
+      "kosis-housing-supply-ratio": [{ error_message: markerOf(["가", "나", "다", "라", "마", "바"]), finished_at: "2026-10-01T20:30:00Z" }],
+    });
+    expect(issues[0].detail).toContain("6건");
+    expect(issues[0].detail).toContain("가, 나, 다, 라, 마 외 1건");
+    expect(issues[0].detail).not.toContain("바");
+  });
+
+  it("텔레그램 문구에 제목·조치가 붙는다(새 kind 가 notify-telegram 에 등록됨)", async () => {
+    const { formatIssue } = await import("./notify-telegram.mjs");
+    const [issue] = checkRegionUnresolved({
+      "market-stats": [{ error_message: markerOf(["광주전남"]), finished_at: "2026-10-05T20:30:00Z" }],
+    });
+    const text = formatIssue(/** @type {any} */ (issue));
+    expect(text).toContain("시도 이름 못 맞춤");
+    expect(text).not.toContain("undefined");
+  });
+});

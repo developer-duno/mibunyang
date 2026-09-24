@@ -21,7 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
-import { loadEnv, getSupabase, selectAll, viewJoinGu } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -240,7 +240,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -832,6 +832,54 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
         `[조치 3] 의심 확정 시 BACKLOG.md "외부 API 사고" 1줄 박힘`,
       ],
       at: oldest.finished_at,
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑪ 대상 — KOSIS **시도 단위 합계** 표를 `createRegionResolutionTracker` 로 읽는 수집기(세션569).
+ * 값 = `recordCollectorRun` 첫 인자(PHASE 상수) 그대로. 파일명과 다르다(주택보급률 = kosis- 접두).
+ */
+export const REGION_UNRESOLVED_COLLECTORS = ["market-stats", "avg-income", "kosis-housing-supply-ratio"];
+
+/** ⑪ 알림 detail 에 펼칠 이름 수 — 나머지는 "외 N건". */
+export const REGION_UNRESOLVED_NAME_LIMIT = 5;
+
+/**
+ * ⑪ KOSIS 시도 이름 못 맞춤 — 수집기가 남긴 `REGION_UNRESOLVED` 마커(error_message)를 읽는다.
+ *
+ * 세션568(#595)이 무음 continue 를 **로그**로 바꿨지만 로컬 러너 로그는 사람이 열어야 보인다
+ * (data-changing-run-approval.md §4). 그래서 수집기가 collector_runs 에 마커로 남기고 여기서 알린다.
+ * **가장 최근 실행만** 본다 — 표기를 반영해 다음 실행이 깨끗하면 경보도 그친다(옛 실행의 마커는 무시).
+ *
+ * @param {Record<string, Array<{ error_message?: string|null, finished_at?: string|null }>>} runsByCollector
+ *   collector 별 최근 행(finished_at DESC). [0] 이 최신.
+ * @param {readonly string[]} [targets]
+ * @returns {Issue[]}
+ */
+export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLVED_COLLECTORS) {
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const collector of targets) {
+    const latest = (runsByCollector[collector] ?? [])[0];
+    if (!latest) continue;
+    const parsed = parseRegionUnresolved(latest.error_message);
+    if (!parsed) continue;
+    const shown = parsed.names.slice(0, REGION_UNRESOLVED_NAME_LIMIT);
+    const rest = parsed.names.length - shown.length;
+    const nameText = `${shown.join(", ")}${rest > 0 ? ` 외 ${rest}건` : ""}`;
+    issues.push({
+      kind: "region-unresolved",
+      collector,
+      detail: `${collector} · KOSIS 시도 이름 못 맞춘 행 ${parsed.n}건 — ${nameText}`,
+      lines: [
+        "이 행들은 어느 시도에도 넣지 못하고 건너뛰었습니다 — 그 시도 값은 새로 갱신되지 않고 이전 값이 남습니다.",
+        ...(parsed.names.some((nm) => nm.startsWith("전남광주"))
+          ? ["통합 시도 합계(전남광주)는 시군구로 가를 수 없는 표라, 원천이 광주·전남을 따로 주기 전까지 새 값이 안 들어옵니다."]
+          : []),
+      ],
+      at: latest.finished_at ?? undefined,
     });
   }
   return issues;
@@ -2130,6 +2178,31 @@ async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) 
 }
 
 /**
+ * ⑪ 대상 수집기별 **최신 1행**(error_message 포함). collector 별 개별 쿼리 — 전역 최신순 limit 은
+ * 매일 도는 수집기가 자리를 차지해 월간 수집기 행이 잘린다(fetchExternalApiRuns 와 같은 이유).
+ * @param {readonly string[]} names
+ * @returns {Promise<Record<string, Array<{ error_message: string|null, finished_at: string|null }>>>}
+ */
+async function fetchRegionUnresolvedRuns(names) {
+  const sb = getSupabase();
+  /** @type {Record<string, Array<{ error_message: string|null, finished_at: string|null }>>} */
+  const grouped = {};
+  await Promise.all(
+    names.map(async (name) => {
+      const { data, error } = await sb
+        .from("collector_runs")
+        .select("collector,error_message,finished_at")
+        .eq("collector", name)
+        .order("finished_at", { ascending: false })
+        .limit(1);
+      if (error) throw new Error(`collector_runs(${name}) 조회 실패: ${error.message}`);
+      if (data && data.length > 0) grouped[name] = data;
+    }),
+  );
+  return grouped;
+}
+
+/**
  * 이미 발송한 알림 키 집합을 monitor_alert_state 에서 읽는다.
  * 조회 실패(테이블 없음 등)는 throw 하지 않고 빈 Set 반환 — dedup 실패가 알림 자체를 막으면 안 됨
  * (notify-telegram 철학: 알림 인프라 오류가 감시를 멈추면 안 됨).
@@ -2351,7 +2424,7 @@ async function main() {
     const { latest, prevOk } = await fetchLatestCollectorRuns();
     issues = issues.concat(checkEmptyRuns(latest, prevOk, { maxAgeHours: 36 }));
   } else {
-    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦)
+    // daily 스윕 — 전체 점검 (①②③④⑤⑥⑦⑧⑨⑩⑪)
     // ⚠️ ①③ 은 GitHub Actions REST(actions/runs·workflows)에 의존한다. 로컬 PC 처럼
     //    GITHUB_REPOSITORY/GITHUB_TOKEN 이 없으면 fetchRecentRuns 가 [] 를 반환해
     //    "모든 워크플로가 한 번도 안 돔" 으로 오판 → 미발화 알림이 전부 오탐 발송된다
@@ -2450,6 +2523,17 @@ async function main() {
       issues = issues.concat(gapIssues);
     } catch (err) {
       console.log(`[monitor] ⑧ 지역×월 거래 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    // ⑪ KOSIS 시도 이름 못 맞춤 — 수집기가 collector_runs.error_message 에 남긴 마커(세션569).
+    //    매일 본다(요일 조건 없음). ⑦ 과 같은 이유로 fail-open.
+    try {
+      const regionRuns = await fetchRegionUnresolvedRuns(REGION_UNRESOLVED_COLLECTORS);
+      const regionIssues = checkRegionUnresolved(regionRuns);
+      console.log(`[monitor] ⑪ 시도 이름 못 맞춤 점검: 수집기 ${Object.keys(regionRuns).length}/${REGION_UNRESOLVED_COLLECTORS.length}개 최신 실행 → 이상 ${regionIssues.length}건`);
+      issues = issues.concat(regionIssues);
+    } catch (err) {
+      console.log(`[monitor] ⑪ 시도 이름 못 맞춤 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).

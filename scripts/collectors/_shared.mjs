@@ -511,7 +511,7 @@ export function resolveRegionName(sidoFull, gu = null) {
  *
  * @returns {{
  *   resolve: (c1NmOrNull: string | null | undefined) => string | null,
- *   summary: () => { unmergeable: number, unknown: number, unknownNames: string[] },
+ *   summary: () => RegionResolutionSummary,
  * }}
  */
 export function createRegionResolutionTracker() {
@@ -535,9 +535,84 @@ export function createRegionResolutionTracker() {
         unmergeable,
         unknown: [...unknownNames.values()].reduce((a, b) => a + b, 0),
         unknownNames: [...unknownNames.keys()],
+        unknownCounts: Object.fromEntries(unknownNames), // 이름별 행 수 — 마커가 집계 라벨을 빼고 셀 때 쓴다(세션569)
       };
     },
   };
+}
+
+/**
+ * @typedef {{ unmergeable: number, unknown: number, unknownNames: string[], unknownCounts: Record<string, number> }} RegionResolutionSummary
+ */
+
+/**
+ * `collector_runs.error_message` 에 남기는 "시도 이름 못 맞춤" 마커의 머리말(세션569).
+ * 수집기(`formatRegionUnresolved`)와 감시(`monitor-collectors.mjs checkRegionUnresolved`)가
+ * **이 상수 하나**를 같이 쓴다 — 한쪽만 바꾸면 기록은 되는데 감시가 못 읽는다.
+ */
+export const REGION_UNRESOLVED_MARKER = "REGION_UNRESOLVED";
+
+/**
+ * KOSIS 시도 단위 표가 **매 회차 정상적으로** 주는 집계 행 이름 — 시도가 아니라서
+ * 원래 버리는 행이다(2026-09-24 세션568 원문 실측: market-stats 표 = 전국·수도권·기타지방·
+ * 5대광역시 및 세종특별자치시 / 주택보급률 표 = 전국·수도권·지방). 이것까지 마커에 넣으면
+ * 매 회차 경보가 울려 감시가 무뎌지므로 **마커·감시에서만** 뺀다(tracker 로그에는 그대로 남는다).
+ * ⚠️ 여기에 이름을 더하면 그 이름은 영영 경보가 안 난다 — 통합 시도 표기("전남광주…")는
+ *    절대 넣지 않는다(시험이 막는다).
+ */
+export const KOSIS_AGGREGATE_LABELS = new Set(["전국", "수도권", "지방", "기타지방", "5대광역시 및 세종특별자치시"]);
+
+/** 통합 시도 합계 행(`unmergeable`)을 마커 이름 목록에 적을 때의 표기. */
+const UNMERGEABLE_LABEL = "전남광주(통합 시도 합계)";
+
+/**
+ * tracker 요약(여러 개면 합쳐서)을 `collector_runs.error_message` 마커 한 줄로 만든다.
+ * 형식 = `REGION_UNRESOLVED n=<못 맞춘 행 수>: <이름1>, <이름2>…`. 없으면 null
+ * (그 실행의 error_message 를 비워 둔다). 집계 라벨(`KOSIS_AGGREGATE_LABELS`)은 세지 않는다.
+ * @param {...(RegionResolutionSummary | null | undefined)} summaries
+ * @returns {string | null}
+ */
+export function formatRegionUnresolved(...summaries) {
+  let n = 0;
+  /** @type {string[]} */
+  const names = [];
+  for (const s of summaries) {
+    if (!s) continue;
+    if (s.unmergeable > 0) {
+      n += s.unmergeable;
+      if (!names.includes(UNMERGEABLE_LABEL)) names.push(UNMERGEABLE_LABEL);
+    }
+    for (const [name, count] of Object.entries(s.unknownCounts ?? {})) {
+      if (KOSIS_AGGREGATE_LABELS.has(name)) continue;
+      n += count;
+      if (!names.includes(name)) names.push(name);
+    }
+  }
+  return n > 0 ? `${REGION_UNRESOLVED_MARKER} n=${n}: ${names.join(", ")}` : null;
+}
+
+/**
+ * error_message 에서 마커를 읽는다. 실패 사유 뒤에 ` | ` 로 붙어 있어도 찾는다
+ * (`joinRunMessage`). 마커가 없으면 null.
+ * @param {string | null | undefined} message
+ * @returns {{ n: number, names: string[] } | null}
+ */
+export function parseRegionUnresolved(message) {
+  if (typeof message !== "string") return null;
+  const m = new RegExp(`${REGION_UNRESOLVED_MARKER} n=([0-9]+): (.*)$`).exec(message);
+  if (!m) return null;
+  return { n: Number(m[1]), names: m[2].split(", ").filter(Boolean) };
+}
+
+/**
+ * 실패 사유와 마커를 error_message 한 칸에 함께 담는다(마커는 항상 뒤 — 파서가 끝까지 읽는다).
+ * @param {string | null | undefined} errorMessage
+ * @param {string | null | undefined} marker
+ * @returns {string | undefined}
+ */
+export function joinRunMessage(errorMessage, marker) {
+  if (errorMessage && marker) return `${errorMessage} | ${marker}`;
+  return errorMessage || marker || undefined;
 }
 
 // 세션95 단계 B: apartments.gu 정규화 (화성시 재오염 방지 방어선).
