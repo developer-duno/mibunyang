@@ -146,3 +146,5 @@ __pycache__/
 #    ·coord-backup-8-before.json(8건)은 운영 DB 를 고치기 전 상태 그대로라 **되돌리기의 유일한 근거**다.
 #    .gitignore 에 넣는 이유는 "필요 없어서" 가 아니라 `git add .` 에 41MB 가 딸려 들어가지 않게 하려는 것.
 artifacts/
+# 네이버 로컬 파이프라인 시작 시각 (세션570 — record-pipeline-run.mjs start 가 쓰고 done/failed 가 지운다. 런타임 상태)
+.naver-pipeline-start.json

@@ -1053,6 +1053,33 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues[0].kind).toBe("stale");
   });
 
+  it("미발화(F3) — naver- 접두 collector 는 조치 문구가 MibunyangNaverCollect 로 분기", () => {
+    const naverTargets = [{ collector: "naver-pipeline", stale_days: 4, owner: "네이버 로컬 파이프라인" }];
+    const issues = checkExternalApiStale(
+      naverTargets,
+      { "naver-pipeline": [{ status: "success", ok_count: 6, finished_at: "2026-05-20T00:00:00Z" }] }, // 8일 전 > 4
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines?.join("\n")).toContain("MibunyangNaverCollect");
+    expect(issues[0].lines?.join("\n")).toContain("record-pipeline-run.mjs done --collector=naver-pipeline");
+  });
+
+  it("미발화(F3) — housing-permits(naver- 아님) 는 기존 KOSIS 로컬 러너 문구 그대로", () => {
+    const issues = checkExternalApiStale(
+      targets,
+      {
+        "housing-permits": [
+          { status: "success", ok_count: 42, finished_at: "2026-05-01T00:00:00Z" }, // 27일 전 > 14
+        ],
+      },
+      now,
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines?.join("\n")).toContain("MibunyangKosisLocal");
+    expect(issues[0].lines?.join("\n")).not.toContain("MibunyangNaverCollect");
+  });
+
   it("연간 데이터 무변경 — ok=0 이라도 skip>0 이면 outage 아님 (fertility 등 diff-only 수집기 평상시, 세션 289)", () => {
     const issues = checkExternalApiStale(
       targets,
@@ -1129,6 +1156,25 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(entry?.stale_days).toBe(14);
   });
 
+  it("naver-pipeline(완주 기록)이 stale 4 로 등재돼 있다 — 한 회차 놓침을 다음 회차 전에 (세션 570)", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "naver-pipeline");
+    expect(entry, "naver-pipeline 미등재 — 재시작으로 4~6단계가 끊겨도 아무도 모른다").toBeTruthy();
+    expect(entry?.stale_days).toBe(4);
+  });
+
+  it("naver-pipeline — 목요일 회차가 끊기면 금 09:00 은 침묵, 토 09:00 에 울린다 / 정상 목→월은 침묵", () => {
+    const target = EXTERNAL_API_COLLECTORS.filter((c) => c.collector === "naver-pipeline");
+    // 월 2026-09-28 12:00 KST(=03:00Z) 완주, 목 10/01 은 재시작으로 행 없음
+    const runs = { "naver-pipeline": [{ status: "success", ok_count: 6, skip_count: 0, finished_at: "2026-09-28T03:00:00Z" }] };
+    expect(checkExternalApiStale(target, runs, new Date("2026-10-02T00:00:00Z"))).toHaveLength(0); // 금 09:00 KST
+    const sat = checkExternalApiStale(target, runs, new Date("2026-10-03T00:00:00Z")); // 토 09:00 KST
+    expect(sat).toHaveLength(1);
+    expect(sat[0].kind).toBe("stale");
+    // 정상 — 목 10/01 12:00 KST 완주 → 월 10/05 09:00 KST 감시(3.9일)
+    const normal = { "naver-pipeline": [{ status: "success", ok_count: 6, skip_count: 0, finished_at: "2026-10-01T03:00:00Z" }] };
+    expect(checkExternalApiStale(target, normal, new Date("2026-10-05T00:00:00Z"))).toHaveLength(0);
+  });
+
   it("naver-collect 미발화 14일 초과 → ⑤-b stale 발화 / 정상 주기(4일)엔 침묵", () => {
     const rows = [
       { status: "partial", ok_count: 120, skip_count: 900, finished_at: "2026-07-06T23:00:00Z" },
@@ -1165,7 +1211,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 35 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 36 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550 + naver-pipeline, 세션 570)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "air-quality",
@@ -1190,6 +1236,8 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       "molit-building", "molit-units", "trades",
       // 세션 517: naver-devplan 을 로컬 러너 매월 20일로 크론 편입 → ⑤ 신선도 감시 등재.
       "naver-collect", "naver-devplan", "naver-presale", "notify-subscribers",
+      // 세션 570: run-naver-local.bat 6단계 완주 기록(record-pipeline-run.mjs). 세 주 연속 4~6단계가 끊겼는데 무음이었다.
+      "naver-pipeline",
       // 세션 550: 행안부(MOIS) 인구 API 도 해외 IP 차단 → collect-population.yml 삭제 +
       // 로컬 러너 매월 5일(행 생성자라 후행보다 앞). 한 yml 이 두 수집기를 돌렸고 둘 다
       // 자기 collector_runs 행을 남기므로 **둘 다** 등재한다 — 하나만 넣으면 나머지가 조용히 죽는다.

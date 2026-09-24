@@ -28,3 +28,4 @@
 - `perm-baseline.mjs` — 권한 기준선 미리보기·`--make-expect`·`--accept --expect-file`(사장님 승인 뒤). 로컬 전용 — `GITHUB_ACTIONS` 면 실행 거부.
 - `monitor-collectors.mjs` 감시 ⑪ = `checkRegionUnresolved`(kind `region-unresolved`, KOSIS 시도 이름 못 맞춤 마커) · ⑫ = `checkApplyhomeUnsold`(청약홈 미분양 값 만료 — #606 합침(25b1d09f)).
 - 미분양 출처 `hold`(사람 보류, 세션570) — 수집기가 덮지 않는 "자료 없음 확정" 행. 걸기·풀기 = `backfill-unsold-source.mjs` 계획 파일(`buildHoldPlanRow`: mark_hold·release_hold_to_null·release_hold_to_applyhome), 감시 = ⑫(d) 기준 명단 `HOLD_BASELINE_IDS`·(e) 보류 6개월 재검토, 규칙 정본 = `collect-unsold-kosis.mjs` 규칙 0(skip_hold, 분모 유지).
+- 세션570: ⑬ = `checkLocalFailures`(kind `local-failure`, 최근 50시간 `collector_runs.status=failure` 중 실패 비율 10% 이상(성공 0 포함) 또는 실패 수 없이 오류 메시지만 남은 실행(예외로 죽은 수집기) — 로컬 러너 실패가 ①②⑤ 어디에도 안 보이던 구멍, daily 에서도 dedup) · `record-pipeline-run.mjs` = `run-naver-local.bat` 이 처음(`start`)·끝(`done`)·치명 실패(`failed`)에 불러 `naver-pipeline` 1행을 남기고, ⑤ 가 그 신선도를 stale 4일로 본다(목요일 회차가 끊기면 토요일 09:00 경보).
