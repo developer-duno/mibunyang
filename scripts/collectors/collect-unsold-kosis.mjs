@@ -14,6 +14,9 @@
  * 청약홈(applyhome) 값 만료 C6(세션569): applyhome 값은 공고일(unsold_as_of) + 6개월까지만 존중하고,
  * 지나면 KOSIS 가 덮는다. 공고일이 비면 존중을 유지하되 APPLYHOME_NO_DATE 마커로 기록한다
  * (규칙 정본 = shouldSkipKosisFill·planUnsoldUpdates 머리말, 기간·판정 함수 = _shared.mjs isApplyhomeExpired).
+ *
+ * 사람 보류 hold(세션570): `unsold_source = 'hold'` 행은 계획에서 skip_hold, DB 쓰기 WHERE 로도 막고,
+ * unsold_history 도 만들지 않는다. 분모에는 남긴다. 해제는 backfill-unsold-source.mjs 계획 파일로만.
  */
 import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
 import { isLeasePresale } from "../../src/constants/leaseTypes.mjs";
@@ -148,6 +151,9 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
  * 존중한다.
  *
  * ## 지금 규칙(존중 여부만 — "무엇을 쓸지"는 planUnsoldUpdates 가 정한다)
+ * 0. `unsold_source === "hold"` → 존중(사람 보류 — "자료 없음"을 사람이 확정했다. 세션570). 만료 없음 —
+ *    해제는 backfill-unsold-source.mjs 계획 파일(release_hold_to_null / release_hold_to_applyhome)로만.
+ *    값이 NULL 인 hold 행을 이 규칙 없이 두면 4번에 걸려 KOSIS 가 반올림 0(완판)으로 되돌린다.
  * 1. 지역·구·세대수(≤1) 무효 → 존중(=skip, 채울 재료가 없다)
  * 2. `unsold_source === "applyhome"` → 존중(청약홈 단지별 실측은 구 단위 비례배분보다 정확) — **단 C6(세션569)**:
  *    공고일(`unsold_as_of`) + 6개월이 지났으면 존중하지 않는다(KOSIS 가 정한다). 공고일이 비었으면
@@ -162,6 +168,7 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
  * @returns {boolean} true 면 이 단지는 KOSIS 로 채우지 않는다(기존 값 존중)
  */
 export function shouldSkipKosisFill(apt, now = new Date()) {
+  if (apt.unsold_source === "hold") return true; // 0 — 사람 보류는 영구 존중(세션570)
   const guOk = !!apt.gu || apt.region === "세종"; // 세션567: 세종은 gu=null 이 정상 구조
   if (!apt.region || !guOk || !apt.units || apt.units <= 1) return true;
   // 청약홈 실측은 공고일 + 6개월까지만 존중(C6). 공고일이 없으면(null) 판정 불가 → 존중 유지.
@@ -228,6 +235,9 @@ export function resolveKosisGuKey(region, gu, guMap) {
  * apartments 배분 계획을 순수 함수로 산출한다 (세션567 신설 — 시험 가능하게 분리. 세션568-3 규칙 전면 개정).
  *
  * ## 판정 순서 (사장님 결정 2026-09-24 3차 — 위에서부터)
+ * 0. `unsold_source === "hold"`(사람 보류, 세션570) → `skip_hold` — 무효·임대형 판정보다 **먼저**(보류는
+ *    사람 결정이라 어떤 자동 판정에도 섞지 않는다). **분모(`unitsByKosisKey`)에는 그대로 남는다** —
+ *    빼면 같은 시의 다른 단지 추정치가 바뀐다(보류는 "이 단지 값을 안 쓴다"이지 "이 단지가 없다"가 아니다).
  * 1. 무효(지역·구·세대수≤1) → `skip_invalid`
  * 2. 임대형(presale_type) → `skip_lease`(분모에서도 제외)
  * 3. `unsold_source === "applyhome"` → `skip_preserved`(존중). **C6(세션569)**: 공고일 + 6개월이 지났으면
@@ -261,7 +271,7 @@ export function resolveKosisGuKey(region, gu, guMap) {
  * }} params  now = applyhome 만료 판정 기준 시각(없으면 지금 — main 은 항상 넣는다)
  * @returns {Array<{
  *   id: string; name: string; region: string | null; gu: string | null;
- *   action: "write" | "write_zero" | "hold_ge50" | "skip_preserved" | "skip_applyhome_no_date" | "skip_lease" | "skip_no_match" | "skip_no_estimate" | "skip_invalid";
+ *   action: "write" | "write_zero" | "hold_ge50" | "skip_hold" | "skip_preserved" | "skip_applyhome_no_date" | "skip_lease" | "skip_no_match" | "skip_no_estimate" | "skip_invalid";
  *   kosisKey: string | null;
  *   guUnsold: number | null;
  *   totalUnitsInGu: number | null;
@@ -305,6 +315,13 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       currentSource: apt.unsold_source ?? null,
       applyhomeExpired: applyhomeStatus(apt, now) === "expired",
     };
+
+    // 규칙 0 — 사람 보류(세션570). 무효·임대형보다 먼저. 분모(unitsByKosisKey)는 위 1단계에서
+    // 이미 이 단지를 포함해 모았으므로 여기서 건너뛰어도 이웃 단지 추정치는 변하지 않는다.
+    if (apt.unsold_source === "hold") {
+      plan.push({ ...base, action: "skip_hold", kosisKey: keyByAptId.get(apt.id) ?? null });
+      continue;
+    }
 
     // 규칙 1 — 무효(지역·구·세대수<=1). shouldSkipKosisFill 도 이 조건에서 true 를 주지만,
     // 그건 "존중"(규칙3·4용)과 의미가 다르므로 skip_invalid 로 먼저 갈라낸다(검사관 지적:
@@ -415,6 +432,58 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
  */
 export function kosisWritePayload(unsold, unsoldRate, nowIso = new Date().toISOString()) {
   return { unsold, unsold_rate: unsoldRate, unsold_source: "kosis", unsold_as_of: null, updated_at: nowIso };
+}
+
+/** DB 쪽 hold 보호 조건 — 출처가 NULL 이거나 hold 가 아닌 행만 쓴다(PostgREST `neq` 는 NULL 을 빼므로 `is.null` 을 함께 건다). */
+export const NOT_HOLD_FILTER = "unsold_source.is.null,unsold_source.neq.hold";
+
+/**
+ * apartments 한 행에 KOSIS 값을 쓴다 — 출처가 hold(사람 보류)인 행은 **DB 조건으로** 막는다(세션570 A6).
+ * 계획은 조회 시점의 출처로 skip_hold 를 가르지만, 그 사이 사람이 hold 로 바꾼 행(경합 창)은 이 WHERE 가
+ * 닫는다. 성공은 **돌아온 행**으로 센다(보낸 수 아님 — [[count-results-not-sent]]).
+ * @param {any} sb Supabase 클라이언트(시험에서는 같은 모양의 가짜)
+ * @param {string} id
+ * @param {Record<string, unknown>} payload
+ * @returns {Promise<{ status: "updated" | "protected" } | { status: "error"; message: string }>}
+ */
+export async function updateApartmentUnlessHold(sb, id, payload) {
+  const { data, error } = await sb.from("apartments").update(payload).eq("id", id).or(NOT_HOLD_FILTER).select("id");
+  if (error) return { status: "error", message: error.message };
+  return (data?.length ?? 0) > 0 ? { status: "updated" } : { status: "protected" };
+}
+
+/**
+ * 계획에서 hold 명단과 "빈칸 → 0" 명단을 뽑는다(세션570 A5). DB 접근 없는 순수 함수.
+ * 빈칸 → 0 = write_zero 인데 지금 값이 NULL 인 행 — 사람이 비운 자리가 0(완판)으로 채워지는 경로라
+ * 개수만이 아니라 **명단**을 로그·impact 에 남긴다([[expect-ids-not-counts]]).
+ * @param {ReturnType<typeof planUnsoldUpdates>} plan
+ * @returns {{ holdIds: string[]; nullToZeroIds: string[] }}
+ */
+export function summarizeHoldAndNullToZero(plan) {
+  return {
+    holdIds: plan.filter((p) => p.action === "skip_hold").map((p) => p.id),
+    nullToZeroIds: plan.filter((p) => p.action === "write_zero" && p.currentUnsold == null).map((p) => p.id),
+  };
+}
+
+/**
+ * unsold_history 에 쓸 단지에서 hold 를 뺀다(세션570 A7). 사람이 "자료 없음"을 확정한 단지에 KOSIS 추정
+ * 시계열을 쌓으면 화면 차트가 보류와 모순된다. **분모에는 남긴다**(planUnsoldUpdates 와 같은 이유 — 빼면
+ * 같은 시 이웃 단지의 시계열 값이 바뀐다). 호출부는 행 생성 루프에만 `kept` 를 쓴다.
+ * @template {{ id: string; unsold_source?: string | null }} T
+ * @param {T[]} apartments
+ * @returns {{ kept: T[]; excludedIds: string[] }}
+ */
+export function excludeHoldFromHistory(apartments) {
+  /** @type {T[]} */
+  const kept = [];
+  /** @type {string[]} */
+  const excludedIds = [];
+  for (const a of apartments) {
+    if (a.unsold_source === "hold") excludedIds.push(a.id);
+    else kept.push(a);
+  }
+  return { kept, excludedIds };
 }
 
 /** 0-쓰기 차단기 기본 임계(%) — `--expect-zero` 로 우회하지 않으면 이 비율로 판정한다. @type {number} */
@@ -611,6 +680,11 @@ export async function main() {
     for (const p of plan) actionCounts[p.action] = (actionCounts[p.action] || 0) + 1;
     log(PHASE, `apartments 계획: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")}`);
 
+    // 세션570 A5 — 사람 보류(hold)와 "빈칸 → 0" 은 개수만이 아니라 명단을 남긴다(다음 회차 뒤 대조용).
+    const { holdIds, nullToZeroIds } = summarizeHoldAndNullToZero(plan);
+    log(PHASE, `[hold] ${holdIds.length}건: ${holdIds.join(",")}`);
+    log(PHASE, `[빈칸→0] ${nullToZeroIds.length}건: ${nullToZeroIds.join(",")}`);
+
     // C6(세션569) — 만료된 applyhome 은 이번 회차 KOSIS 판정을 받는다(전이표에서 따로 센다).
     //   로그는 **실제로 쓰는 행**(write·write_zero)만 적는다 — 보류(hold_ge50)·매칭 실패는 값이 그대로다.
     const expiredPlans = plan.filter((p) => p.applyhomeExpired);
@@ -660,6 +734,7 @@ export async function main() {
         writeFileSync(impactOutPath, JSON.stringify({
           generatedAt: new Date().toISOString(), actionCounts, breaker,
           applyhomeExpiredCount: expiredPlans.length, applyhomeNoDateIds: noDateIds,
+          holdIds, nullToZeroIds,
           regionUpdateCount: regionUpdates.length, plan,
         }, null, 2), "utf8");
         log(PHASE, `[IMPACT] 계획 ${plan.length}행 저장(breaker 포함): ${impactOutPath}`);
@@ -702,6 +777,8 @@ export async function main() {
     log(PHASE, `regions 갱신: ${regUpdated}건`);
 
     let aptUpdated = 0;
+    // 세션570 A6 — 계획 뒤 사람이 hold 로 바꾼 행은 DB 조건이 막는다(0행 반환). 따로 센다.
+    let protectedByHold = 0;
     for (const p of plan) {
       if (p.action !== "write") continue;
 
@@ -711,9 +788,9 @@ export async function main() {
         continue;
       }
 
-      const { error } = await sb.from("apartments").update(kosisWritePayload(p.newEstimate, p.newRate)).eq("id", p.id);
-
-      if (error) logError(PHASE, `  ${p.name} UPDATE 실패: ${error.message}`);
+      const r = await updateApartmentUnlessHold(sb, p.id, kosisWritePayload(p.newEstimate, p.newRate));
+      if (r.status === "error") logError(PHASE, `  ${p.name} UPDATE 실패: ${r.message}`);
+      else if (r.status === "protected") { protectedByHold++; log(PHASE, `  ${p.name}(${p.id}) hold 보호로 건너뜀`); }
       else aptUpdated++;
     }
 
@@ -732,14 +809,14 @@ export async function main() {
         continue;
       }
 
-      const { error } = await sb.from("apartments").update(kosisWritePayload(0, 0)).eq("id", p.id);
-
-      if (error) logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${error.message}`);
+      const r = await updateApartmentUnlessHold(sb, p.id, kosisWritePayload(0, 0));
+      if (r.status === "error") logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${r.message}`);
+      else if (r.status === "protected") { protectedByHold++; log(PHASE, `  ${p.name}(${p.id}) 0-쓰기 hold 보호로 건너뜀`); }
       else aptZeroed++;
     }
 
     log(PHASE, `KOSIS 0-쓰기: ${aptZeroed}건 (값>0 대비 0 으로 바뀜 ${breaker.zeroChanges}/${breaker.denominator} = ${breaker.ratio.toFixed(1)}%, 차단기 기준 ${breaker.limit}%)`);
-    log(PHASE, `요약 — action 별: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")} · KOSIS 출처 갱신(write) ${aptUpdated} · 0-쓰기 ${aptZeroed} · 보류(≥${UNRELIABLE_RATE_THRESHOLD}%) ${heldIds.length}`);
+    log(PHASE, `요약 — action 별: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")} · KOSIS 출처 갱신(write) ${aptUpdated} · 0-쓰기 ${aptZeroed} · 보류(≥${UNRELIABLE_RATE_THRESHOLD}%) ${heldIds.length} · hold=${holdIds.length} · hold 보호로 건너뜀 ${protectedByHold}`);
 
     // 3. unsold_history 시계열 upsert (세션134, 방향 A)
     // KOSIS 단일 API 호출 응답(3개월 범위)을 재파싱하여 월별 시계열 저장.
@@ -771,7 +848,10 @@ export async function main() {
     const historyRows = [];
     let heldHistoryCount = 0;
     const todayDate = today(); // KST 고정 (루프 밖 1회 — 자정 경계 중복 0)
-    for (const apt of apartmentsTyped) {
+    // 세션570 A7 — 사람 보류(hold) 단지는 시계열 행을 만들지 않는다(분모 계산은 위에서 이미 포함했다).
+    const { kept: historyApartments, excludedIds: holdHistoryExcluded } = excludeHoldFromHistory(apartmentsTyped);
+    if (holdHistoryExcluded.length > 0) log(PHASE, `unsold_history hold 제외: ${holdHistoryExcluded.length}건`);
+    for (const apt of historyApartments) {
       if (!apt.region || !apt.units || apt.units <= 1) continue;
       if (isLeasePresale(apt.presale_type)) continue;
 

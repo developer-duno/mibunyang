@@ -936,6 +936,19 @@ export const APPLYHOME_EXPIRY_ALERT_GRACE_DAYS = 35;
 export const APPLYHOME_UNSOLD_SAMPLE_LIMIT = 8;
 
 /**
+ * ⑫(d) 사람 보류(hold) 기준 명단(세션570, 사장님 결정 2026-09-24) — 세션569 가 "자료 없음"으로 비운 11곳.
+ * DB 의 hold 명단이 이것과 다르면(추가·해제) 알린다. 의도한 변경이면 이 상수를 같은 PR 에서 고친다
+ * (개수가 아니라 **명단**으로 비교한다 — 하나 풀리고 하나 생기면 개수는 같다, expect-ids-not-counts).
+ */
+export const HOLD_BASELINE_IDS = Object.freeze([
+  "ah-2021910123", "ah-2021910165", "ah-2022910170", "ah-2022910216", "ah-2022910285", "ah-2022910320",
+  "ah-2022910325", "ah-2025910235", "ah-2025910236", "ah-2025910250", "ah-2025910274",
+]);
+
+/** ⑫(e) 보류 재검토 기간(개월) — 보류일(unsold_as_of) + 이 기간이 지나면 재검토 알림. 자동 해제는 없다. */
+export const HOLD_REVIEW_MONTHS = 6;
+
+/**
  * ⑫ 청약홈(applyhome) 출처 미분양 값 점검 — 만료 기준 C6(세션569, 사장님 결정 2026-09-24 🟡8).
  *
  * 세 명단을 **id 로** 본다(개수만 비교하면 명단이 뒤바뀐 것을 놓친다 — expect-ids-not-counts):
@@ -944,16 +957,20 @@ export const APPLYHOME_UNSOLD_SAMPLE_LIMIT = 8;
  *   (b) 공고일(unsold_as_of)이 빈 applyhome — 만료를 판정할 수 없어 영구 존중된다
  *   (c) 평형별 미달 0 인데 unsold > 0 인 applyhome — 경쟁률 수집기가 0 으로 안 바꾼 행
  *       (값이 다른 회차 것이라 건너뛴 경우 — 사람이 회차를 확인해야 한다)
+ * 사람 보류(hold, 세션570) 두 명단 — (a)(b)(c) 는 applyhome 만 보므로 hold 행이 섞여도 영향 없다:
+ *   (d) DB 의 hold 명단 ≠ 기준 명단(`HOLD_BASELINE_IDS`) — 추가·해제된 id 를 펼친다
+ *   (e) 보류일(unsold_as_of) + 6개월이 지난 hold — 재검토 알림(자동 해제 없음)
  * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
  * (`ALWAYS_DEDUP_KINDS`, ⑨ 와 같은 방식).
  *
  * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
- *   applyhome 출처 행(다른 출처가 섞여 있어도 걸러낸다).
- * @param {{ now?: Date }} [opts]
+ *   applyhome·hold 출처 행(다른 출처가 섞여 있어도 걸러낸다).
+ * @param {{ now?: Date, holdBaseline?: readonly string[] }} [opts] holdBaseline 없으면 HOLD_BASELINE_IDS
  * @returns {Issue[]}
  */
 export function checkApplyhomeUnsold(rows, opts = {}) {
   const now = opts.now ?? new Date();
+  const holdBaseline = [...(opts.holdBaseline ?? HOLD_BASELINE_IDS)].sort();
   const graceNow = new Date(now.getTime() - APPLYHOME_EXPIRY_ALERT_GRACE_DAYS * 86400000);
   const ah = rows.filter((r) => r?.unsold_source === "applyhome" && r?.id);
   const expired = ah.filter((r) => isApplyhomeExpired(r.unsold_as_of, graceNow) === true);
@@ -1007,17 +1024,50 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
       at: `soldout:${fingerprintIds(idsOf(soldOutPositive))}`,
     });
   }
+
+  // (d)(e) 사람 보류(hold, 세션570)
+  const hold = rows.filter((r) => r?.unsold_source === "hold" && r?.id);
+  const holdIds = idsOf(hold);
+  const holdSet = new Set(holdIds);
+  const baseSet = new Set(holdBaseline);
+  const added = holdIds.filter((id) => !baseSet.has(id));
+  const released = holdBaseline.filter((id) => !holdSet.has(id));
+  if (added.length > 0 || released.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(d) 사람 보류(hold) 명단이 기준과 다름 — 추가 ${added.length}: ${added.join(",") || "-"} · 해제 ${released.length}: ${released.join(",") || "-"}`,
+      lines: [
+        "hold = 사람이 '자료 없음'을 확정해 수집기가 덮지 않는 단지입니다. 기준 명단은 monitor-collectors.mjs 의 HOLD_BASELINE_IDS.",
+        "의도한 변경(backfill-unsold-source.mjs 의 mark_hold·release_hold_*)이면 기준 명단을 같은 PR 에서 고치세요. 아니면 누가 출처를 바꿨는지 확인하세요.",
+      ],
+      at: `hold:${fingerprintIds(holdIds)}`,
+    });
+  }
+  const holdStale = hold.filter((r) => isApplyhomeExpired(r.unsold_as_of, now, HOLD_REVIEW_MONTHS) === true);
+  if (holdStale.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(e) 보류 ${HOLD_REVIEW_MONTHS}개월 지남 — 재검토(자동 해제 없음) ${holdStale.length}곳 — ${sample(holdStale)}`,
+      lines: [
+        `보류일(unsold_as_of) + ${HOLD_REVIEW_MONTHS}개월이 지났습니다. 그 사이 청약홈·KOSIS 에 자료가 생겼는지 사람이 확인하세요.`,
+        "해제는 backfill-unsold-source.mjs 계획 파일(release_hold_to_null = 다음 회차가 채움 / release_hold_to_applyhome = 공고 값으로)로만 합니다.",
+      ],
+      at: `holdstale:${fingerprintIds(idsOf(holdStale))}`,
+    });
+  }
   return issues;
 }
 
 /**
- * ⑫ 대상 행 — applyhome 출처만(전체 3,068행 중 수십 곳). 칸이 없으면(마이그 전) 조회가 실패하고
+ * ⑫ 대상 행 — applyhome·hold 출처만(전체 3,068행 중 수십 곳). 칸이 없으면(마이그 전) 조회가 실패하고
  * 호출부가 fail-open 으로 넘긴다.
  * @returns {Promise<Array<Record<string, any>>>}
  */
 async function fetchApplyhomeUnsoldRows() {
   return /** @type {Array<Record<string, any>>} */ (await selectAll(
-    (s) => s.from("apartments").select("id, name, unsold, unsold_source, unsold_as_of, competition_shortfall").eq("unsold_source", "applyhome"),
+    (s) => s.from("apartments").select("id, name, unsold, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"]),
     getSupabase(),
     "id",
   ));
@@ -2155,7 +2205,8 @@ export async function runDailyGuardedChecks(deps = {}) {
   issues = issues.concat(await runFailOpenCheck("⑫ 청약홈 미분양 값 점검", async () => {
     const ahRows = await fetchAhRows();
     const ahIssues = checkApplyhomeUnsold(ahRows);
-    console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length}곳 → 이상 ${ahIssues.length}건`);
+    const holdCount = ahRows.filter((r) => r?.unsold_source === "hold").length;
+    console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length - holdCount}곳 · hold ${holdCount}곳 → 이상 ${ahIssues.length}건`);
     return ahIssues;
   }));
 
