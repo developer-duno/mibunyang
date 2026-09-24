@@ -75,13 +75,19 @@ jobs:
           SCHOOLINFO_KEY: ${{ secrets.SCHOOLINFO_KEY }}
           # 입력을 스크립트에 직접 끼우지 않고 환경변수로 받아 형식을 검사한다(명령 주입 방지, 세션567).
           IDS: ${{ inputs.ids }}
+          # limit 도 같은 방식 — 셸에 직접 끼우면 `1; <명령>` 같은 값이 그대로 실행된다(세션569).
+          LIMIT: ${{ inputs.limit }}
         run: |
           ARGS=""
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             ARGS="--dry-run"
           fi
-          if [ -n "${{ inputs.limit }}" ]; then
-            ARGS="$ARGS --limit ${{ inputs.limit }}"
+          if [ -n "$LIMIT" ]; then
+            if ! printf '%s' "$LIMIT" | grep -Eq '^[0-9]{1,5}$'; then
+              echo "::error::limit 형식 오류 — 숫자(1~5자리)만"
+              exit 1
+            fi
+            ARGS="$ARGS --limit $LIMIT"
           fi
           if [ -n "$IDS" ]; then
             if ! printf '%s' "$IDS" | grep -Eq '^[A-Za-z0-9_-]+(,[A-Za-z0-9_-]+)*$'; then
