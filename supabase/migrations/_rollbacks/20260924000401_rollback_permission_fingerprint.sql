@@ -1,5 +1,8 @@
 -- ROLLBACK for 20260924000400_permission_fingerprint.sql
 -- 새 물건(함수 3개·기준선 표 2개)을 지우고, 점검 함수를 20260924000100 판 원문 그대로 되돌린다.
+-- ⚠️ SQL 만 되돌리고 JS(scripts/monitor-collectors.mjs 의 R8·지문 판정)를 그대로 두면 월요일 ⑩ 이 오경보한다 —
+--    옛 점검 함수는 security_invoker=on 뷰 2개를 정의자 뷰로 잘못 모아 R8 이 울리고, 지문 RPC 가 없어 "실행 실패" 이슈가 난다.
+--    되돌릴 땐 JS 커밋도 함께 되돌릴 것.
 -- ⚠️ 기준선 표를 지우면 승인 기록도 함께 사라진다(되살릴 수 없다) — 되돌리기 전에 필요하면 덤프해 둘 것.
 
 DROP FUNCTION IF EXISTS public.accept_permission_baseline(text, text);
@@ -126,3 +129,22 @@ $$;
 -- anon/authenticated/public 은 이 함수를 실행할 수 없다 — service_role 전용(주 1회 점검용).
 REVOKE ALL ON FUNCTION public.audit_db_permissions() FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.audit_db_permissions() TO service_role;
+
+-- 자체검사 — 새 물건이 사라졌고 옛 점검 함수가 복원됐는지(하나라도 어긋나면 전부 취소)
+DO $$
+BEGIN
+  IF pg_catalog.to_regprocedure('public.permission_fingerprint()') IS NOT NULL
+     OR pg_catalog.to_regprocedure('public.permission_drift_snapshot()') IS NOT NULL
+     OR pg_catalog.to_regprocedure('public.accept_permission_baseline(text, text)') IS NOT NULL
+     OR pg_catalog.to_regclass('public.permission_baseline') IS NOT NULL
+     OR pg_catalog.to_regclass('public.permission_baseline_item') IS NOT NULL THEN
+    RAISE EXCEPTION 'rollback_permission_fingerprint: 새 물건이 남아 있다';
+  END IF;
+  IF pg_catalog.pg_get_functiondef('public.audit_db_permissions()'::pg_catalog.regprocedure) LIKE '%anon_select_any%' THEN
+    RAISE EXCEPTION 'rollback_permission_fingerprint: 점검 함수가 옛 판으로 복원되지 않았다';
+  END IF;
+  IF pg_catalog.has_function_privilege('anon', 'public.audit_db_permissions()', 'EXECUTE')
+     OR pg_catalog.has_function_privilege('authenticated', 'public.audit_db_permissions()', 'EXECUTE') THEN
+    RAISE EXCEPTION 'rollback_permission_fingerprint: anon/authenticated 가 점검 함수를 실행할 수 있다';
+  END IF;
+END $$;

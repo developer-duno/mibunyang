@@ -128,6 +128,39 @@ export function requiresLogin(expr) {
 }
 
 /**
+ * 정책이 `cmd` 에 대해 실제로 거는 식 목록(세션569 검사관 🟡2). PostgreSQL 규칙 그대로:
+ * SELECT·DELETE = USING(qual) · INSERT = WITH CHECK(없으면 ALL 정책은 USING 을 쓰고, INSERT 전용은 제약 없음)
+ * · UPDATE = USING + WITH CHECK(없으면 USING). null 은 "제약 없음(참)"이다.
+ * 옛 판정은 명령과 무관하게 qual·with_check 둘 다 봐서, `FOR ALL USING (true) WITH CHECK (auth.uid() = owner)`
+ * 의 **읽기**를 로그인 필수로 오판했다(WITH CHECK 는 읽기에 안 걸린다).
+ * @param {{ cmd?: unknown, qual?: string | null, with_check?: string | null }} p
+ * @param {"SELECT" | "INSERT" | "UPDATE" | "DELETE"} cmd
+ * @returns {Array<string | null>}
+ */
+export function exprsForCmd(p, cmd) {
+  const qual = p.qual ?? null;
+  const check = p.with_check ?? null;
+  if (cmd === "SELECT" || cmd === "DELETE") return [qual];
+  if (cmd === "INSERT") return [check ?? (p.cmd === "ALL" ? qual : null)];
+  return [qual, check ?? qual];
+}
+
+/**
+ * 이 정책이 `role` 의 `cmd` 를 **통과시키지 못하는가** — 그 명령에 걸리는 식 중 하나라도 서비스 전용이거나,
+ * anon 인데 로그인 필수 정확 모양이면 참(그 정책으로는 도달 불가).
+ * @param {{ cmd?: unknown, qual?: string | null, with_check?: string | null }} p
+ * @param {"anon" | "authenticated"} role
+ * @param {"SELECT" | "INSERT" | "UPDATE" | "DELETE"} cmd
+ * @returns {boolean}
+ */
+export function policyBlocksRole(p, role, cmd) {
+  const exprs = exprsForCmd(p, cmd);
+  if (exprs.some((e) => isServiceRoleOnly(e))) return true;
+  if (role === "anon" && exprs.some((e) => requiresLogin(e))) return true;
+  return false;
+}
+
+/**
  * 제한(RESTRICTIVE) 정책인가 — pg_policies.permissive 는 문자열 "PERMISSIVE"/"RESTRICTIVE" 다(구멍 ⑤).
  * 제한 정책은 다른 허용 정책을 좁힐 뿐 스스로 도달 근거가 되지 못한다.
  * @param {{ permissive?: unknown }} p
@@ -559,12 +592,7 @@ function reachableFp(rel, policiesOfRel, role, cmd) {
     return roles.includes(role) || roles.includes("public");
   });
   if (applicable.length === 0) return d.rls !== true;
-  return applicable.some((p) => {
-    const pd = p.d ?? {};
-    if (isServiceRoleOnly(pd.qual) || isServiceRoleOnly(pd.with_check)) return false;
-    if (role === "anon" && (requiresLogin(pd.qual) || requiresLogin(pd.with_check))) return false;
-    return true;
-  });
+  return applicable.some((p) => !policyBlocksRole(p.d ?? {}, role, cmd));
 }
 
 /**

@@ -1,7 +1,7 @@
 // @ts-check
 // 감시 ⑩ 범위 보강 — 권한 정의 지문 비교·판정·기대 파일 대조·주의 항목·승인 스크립트 안전장치(세션569).
-// 고정 데이터는 가짜 이름만(t_demo, p_demo …). 정책 식 글자는 Postgres 가 되살리는 모양을 따른다
-// (⚠️ S2 운영 되돌림 시험에서 실제로 되살린 글자가 나오면 그것으로 바꿀 것).
+// 고정 데이터는 가짜 이름만(t_demo, p_demo …). 정책 식 글자는 S2 운영 되돌림 시험(2026-09-24)에서
+// Postgres 17 이 실제로 되살린 글자와 같다(M7 DEPARSE 대조 완료).
 import { createHash } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { spawnSync } from "node:child_process";
@@ -19,7 +19,7 @@ import {
   DB_PERM_ITEMS_PER_RULE,
   SENSITIVE_TABLES,
 } from "./_perm-fingerprint.mjs";
-import { refuseInCi, parseArgs, decideAccept, isHashMismatch, buildPreview } from "./perm-baseline.mjs";
+import { refuseInCi, parseArgs, decideAccept, isHashMismatch, buildPreview, isUnderOmc } from "./perm-baseline.mjs";
 import { formatIssueForConsole, buildMessages } from "./notify-telegram.mjs";
 
 /**
@@ -317,6 +317,18 @@ describe("perm-baseline.mjs — 안전장치", () => {
     for (const f of files) expect(readFileSync(new URL(f, dir), "utf8")).not.toMatch(/perm-baseline/);
   });
 
+  it("refuseInCi — GITHUB_ACTIONS 가 빈 문자열이어도(설정돼 있으면) 거부", () => {
+    expect(refuseInCi({ GITHUB_ACTIONS: "" })).toMatch(/GitHub Actions/);
+    expect(refuseInCi({ GITHUB_ACTIONS: "false" })).toMatch(/GitHub Actions/);
+  });
+
+  it("isUnderOmc — --out 은 .omc/ 아래만 허용(권한 명단이 공개 자리에 안 쓰이게)", () => {
+    expect(isUnderOmc(".omc/perm-baseline/preview.md")).toBe(true);
+    expect(isUnderOmc("F:/mibunyang/.omc/perm-baseline/preview-first.md")).toBe(true);
+    expect(isUnderOmc("docs/preview.md")).toBe(false);
+    expect(isUnderOmc("preview.omc.md")).toBe(false);
+  });
+
   it("parseArgs — 세 모드와 인자", () => {
     expect(parseArgs([]).mode).toBe("preview");
     expect(parseArgs(["--make-expect", "--after=a.json", "--out=b.json"])).toMatchObject({ mode: "make-expect", after: "a.json", out: "b.json" });
@@ -362,7 +374,10 @@ describe("25. main() 배선 — 소스 대조", () => {
 
   it("⑩ 블록이 permission_drift_snapshot 결과로 evaluatePermissionDrift 를 부른다(호출부 좌변 고정)", () => {
     expect(src).toMatch(/permIssues\s*=\s*permIssues\.concat\(evaluatePermissionDrift\(drift,\s*\{\s*rpcError:\s*driftError\s*\}\)\)/);
-    expect(src).toMatch(/await\s+fetchPermissionDriftSnapshot\(\)/);
+    expect(src).toMatch(/const\s*\{\s*snapshot:\s*drift,\s*error:\s*driftError\s*\}\s*=\s*await\s+fetchDrift\(\)/);
+    expect(src).toMatch(/const\s+fetchDrift\s*=\s*deps\.fetchDrift\s*\?\?\s*fetchPermissionDriftSnapshot/);
+    // main() 의 ⑩ 블록이 실제로 이 판정 묶음을 부른다(좌변 고정)
+    expect(src).toMatch(/const\s*\{\s*permIssues,\s*permCheckCrashed,\s*driftSnapshot\s*\}\s*=\s*await\s+runPermissionChecks\(\)/);
     expect(src).toMatch(/permIssues\s*=\s*permIssues\.concat\(evaluateDbPermissions\(snapshot,\s*\{\s*rpcError:\s*error\s*\}\)\)/);
   });
 

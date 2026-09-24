@@ -31,9 +31,8 @@ import { groupSharedCoords } from "./fix-placeholder-addresses.mjs";
 import {
   DB_PERM_ITEMS_PER_RULE,
   capRuleItems,
-  requiresLogin,
-  isServiceRoleOnly,
   isRestrictive,
+  policyBlocksRole,
   evaluatePermissionDrift,
   describeDriftOk,
 } from "./_perm-fingerprint.mjs";
@@ -1561,8 +1560,8 @@ function reachablePolicy(policies, rel, role, cmd) {
     return { reachable: rel.rls_enabled !== true, policyName: null };
   }
   for (const p of applicable) {
-    if (isServiceRoleOnly(p.qual) || isServiceRoleOnly(p.with_check)) continue;
-    if (role === "anon" && (requiresLogin(p.qual) || requiresLogin(p.with_check))) continue;
+    // 명령에 실제로 걸리는 식만 본다(SELECT=USING, INSERT=WITH CHECK …) — 세션569 검사관 🟡2
+    if (policyBlocksRole(p, role, cmd)) continue;
     return { reachable: true, policyName: p.name };
   }
   return { reachable: false, policyName: null };
@@ -1785,8 +1784,64 @@ export async function fetchDbPermissionsSnapshot(sbArg) {
 export async function fetchPermissionDriftSnapshot(sbArg) {
   const sb = sbArg ?? getSupabase();
   const { data, error } = await sb.rpc("permission_drift_snapshot");
-  if (error) return { snapshot: null, error: error.code ?? error.message ?? "unknown" };
+  // 오류 코드가 빈 문자열로 오는 경우가 있어 ?? 대신 || (빈 코드면 메시지로)
+  if (error) return { snapshot: null, error: error.code || error.message || "unknown" };
   return { snapshot: data, error: null };
+}
+
+/**
+ * 감시 ⑩ 판정 도중 예외(스냅샷 모양이 예상과 다름 등)가 나면 경보도 "이상 없음"도 안 나가 조용해진다 —
+ * R7 과 같은 모양의 실행 실패 이슈 1건으로 바꿔 텔레그램으로 보낸다(세션569 검사관 🟡1).
+ * @param {string} label
+ * @param {unknown} err
+ * @returns {Issue}
+ */
+export function permCheckCrashIssue(label, err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return {
+    kind: "nulls",
+    collector: "db-permissions",
+    detail: `${label} 실행 실패 — ${msg.slice(0, 120)}`,
+    lines: [
+      `${label} 판정 중 예외가 났습니다 — 점검 결과를 믿을 수 없습니다.`,
+      "[조치] Actions 로그의 ⑩ 줄과 RPC 응답 모양(함수 판)을 확인하세요.",
+    ],
+    at: `perm-crash:${label}`,
+  };
+}
+
+/**
+ * 감시 ⑩ 두 판정(R1~R8 · 권한 지문)을 각각 try/catch 로 돌린다 — 한쪽 실패가 다른 쪽을 막지 않고,
+ * 예외는 `permCheckCrashIssue` 로 이슈가 된다. fetch 함수는 시험 주입용.
+ * @param {{ fetchAudit?: typeof fetchDbPermissionsSnapshot, fetchDrift?: typeof fetchPermissionDriftSnapshot }} [deps]
+ * @returns {Promise<{ permIssues: Issue[], permCheckCrashed: boolean, driftSnapshot: any }>}
+ */
+export async function runPermissionChecks(deps = {}) {
+  const fetchAudit = deps.fetchAudit ?? fetchDbPermissionsSnapshot;
+  const fetchDrift = deps.fetchDrift ?? fetchPermissionDriftSnapshot;
+  /** @type {Issue[]} */
+  let permIssues = [];
+  let permCheckCrashed = false;
+  /** @type {any} */
+  let driftSnapshot = null;
+  try {
+    const { snapshot, error } = await fetchAudit();
+    permIssues = permIssues.concat(evaluateDbPermissions(snapshot, { rpcError: error }));
+  } catch (err) {
+    permCheckCrashed = true;
+    permIssues.push(permCheckCrashIssue("DB 권한 점검(R 규칙)", err));
+    console.log(`[monitor] ⑩ 권한 점검(R 규칙) 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+  }
+  try {
+    const { snapshot: drift, error: driftError } = await fetchDrift();
+    driftSnapshot = drift;
+    permIssues = permIssues.concat(evaluatePermissionDrift(drift, { rpcError: driftError }));
+  } catch (err) {
+    permCheckCrashed = true;
+    permIssues.push(permCheckCrashIssue("권한 지문 점검", err));
+    console.log(`[monitor] ⑩ 권한 지문 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+  }
+  return { permIssues, permCheckCrashed, driftSnapshot };
 }
 
 /**
@@ -2465,26 +2520,7 @@ async function main() {
     //    둘은 각각 try/catch(한쪽 실패가 다른 쪽을 막지 않는다). "이상 없음" 은 두 판정 합계 0 이고
     //    둘 다 예외 없이 끝났을 때만 보낸다.
     if (isKstMonday() || forcePermAudit) {
-      /** @type {Issue[]} */
-      let permIssues = [];
-      let permCheckCrashed = false;
-      /** @type {any} */
-      let driftSnapshot = null;
-      try {
-        const { snapshot, error } = await fetchDbPermissionsSnapshot();
-        permIssues = permIssues.concat(evaluateDbPermissions(snapshot, { rpcError: error }));
-      } catch (err) {
-        permCheckCrashed = true;
-        console.log(`[monitor] ⑩ 권한 점검(R 규칙) 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-      }
-      try {
-        const { snapshot: drift, error: driftError } = await fetchPermissionDriftSnapshot();
-        driftSnapshot = drift;
-        permIssues = permIssues.concat(evaluatePermissionDrift(drift, { rpcError: driftError }));
-      } catch (err) {
-        permCheckCrashed = true;
-        console.log(`[monitor] ⑩ 권한 지문 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-      }
+      const { permIssues, permCheckCrashed, driftSnapshot } = await runPermissionChecks();
       if (permIssues.length === 0 && !permCheckCrashed) {
         console.log("[monitor] ⑩ 권한 점검: 통과 (월요일 리마인드)");
         // 경보가 0건이면 issues 에는 안 실리므로(다른 이상이 없으면 "이상 없음"으로 조용히

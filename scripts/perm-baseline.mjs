@@ -40,8 +40,18 @@ import {
  * @returns {string | null}
  */
 export function refuseInCi(env) {
-  if (env.GITHUB_ACTIONS) return "perm-baseline.mjs 는 GitHub Actions 에서 실행할 수 없습니다 — 기준선 승인은 사람 확인 뒤 로컬에서만.";
+  if (env.GITHUB_ACTIONS !== undefined) return "perm-baseline.mjs 는 GitHub Actions 에서 실행할 수 없습니다 — 기준선 승인은 사람 확인 뒤 로컬에서만.";
   return null;
+}
+
+/**
+ * 출력 경로가 비공개 폴더(.omc/, 깃 미추적) 아래인가 — 미리보기·기대 파일에는 권한 명단이 통째로 담기므로
+ * 공개 저장소에 실릴 수 있는 자리에는 쓰지 않는다.
+ * @param {string} p
+ * @returns {boolean}
+ */
+export function isUnderOmc(p) {
+  return path.resolve(p).split(/[\\/]+/).includes(".omc");
 }
 
 /**
@@ -175,6 +185,10 @@ export async function main(argv, env) {
     return 1;
   }
   const args = parseArgs(argv);
+  if (args.out && !isUnderOmc(args.out)) {
+    console.error("[perm-baseline] --out 은 .omc/ 아래(비공개, 깃 미추적)만 허용한다 — 권한 명단이 통째로 담긴다");
+    return 1;
+  }
   const { loadEnv, getSupabase } = await import("./collectors/_shared.mjs");
   loadEnv();
   const sb = getSupabase();

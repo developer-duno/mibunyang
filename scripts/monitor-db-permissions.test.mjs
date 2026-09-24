@@ -10,6 +10,7 @@ import {
   PUBLIC_EXTENSION_ALLOWLIST,
   DB_PERM_ITEMS_PER_RULE,
   permAlertDeliveryFailed,
+  runPermissionChecks,
 } from "./monitor-collectors.mjs";
 import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
 import { formatIssueForConsole, buildMessages } from "./notify-telegram.mjs";
@@ -830,8 +831,8 @@ describe("main() 배선 — 소스 대조 (세션568)", () => {
   });
 });
 
-// 세션569 — 감시 ⑩ 범위 보강(R 규칙 쪽 작은 수정 ③④⑤⑥). 정책 식 글자는 Postgres 가 되살리는 모양을
-// 따른다(⚠️ S2 운영 되돌림 시험 M6·M7 에서 실제로 되살린 글자가 나오면 그것으로 바꿀 것).
+// 세션569 — 감시 ⑩ 범위 보강(R 규칙 쪽 작은 수정 ③④⑤⑥). 시험 26 의 정책 식 글자는 S2 운영 되돌림
+// 시험(2026-09-24, Postgres 17) M6·M7 에서 실제로 되살린 글자와 같다(DEPARSE 대조 완료).
 describe("감시 ⑩ 보강 — 로그인 필수 모양·RESTRICTIVE·칸 SELECT·R8 (세션569)", () => {
   /** anon SELECT 표 권한을 가진 표 + 그 표에 걸린 정책 하나. */
   function snapWithPolicy(/** @type {Record<string, any>} */ policy, relOverride = {}) {
@@ -913,6 +914,44 @@ describe("감시 ⑩ 보강 — 로그인 필수 모양·RESTRICTIVE·칸 SELECT
       });
     }
     expect(evalIgnoringR4(snap)).toEqual([]);
+  });
+
+  it("검사관 🟡2 — FOR ALL TO public USING (true) WITH CHECK (auth.uid() = owner) 는 anon 읽기 도달 가능(WITH CHECK 는 읽기에 안 걸린다) → R4 경보", () => {
+    const snap = snapWithPolicy({ cmd: "ALL", qual: "true", with_check: "(auth.uid() = owner)" });
+    const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables: ["apartments"] }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines.join("\n")).toMatch(/신규\(명단 밖\): t_probe/);
+    // 대조군 — 읽기에 걸리는 USING 이 로그인 필수 모양이면 도달 불가
+    const closed = snapWithPolicy({ cmd: "ALL", qual: "(auth.uid() = owner)", with_check: "(auth.uid() = owner)" });
+    expect(evaluateDbPermissions(closed, { publicReadTables: ["apartments"] })).toEqual([]);
+  });
+
+  it("R1 — authenticated UPDATE 가 도달 가능하면 받는이 PUBLIC 칸 권한도 '갱신 가능한 칸'에 넣는다", () => {
+    const snap = cleanSnapshot();
+    snap.relations[0].column_write_grants = [{ column: "memo", grantee: "PUBLIC", privilege: "UPDATE" }];
+    snap.policies.push({
+      table: "apartments", name: "own-row-update", cmd: "UPDATE",
+      roles: ["authenticated"], permissive: "PERMISSIVE", qual: "(auth.uid() = user_id)", with_check: "(auth.uid() = user_id)",
+    });
+    const body = /** @type {any[]} */ (evalIgnoringR4(snap))[0].lines.join("\n");
+    expect(body).toMatch(/갱신 가능한 칸: memo/);
+  });
+
+  it("검사관 🟡1 — 판정 중 예외(스냅샷 모양 이상)가 나면 실행 실패 이슈 1건으로 알린다(조용히 안 넘김)", async () => {
+    const r = await runPermissionChecks({
+      fetchAudit: async () => ({ snapshot: /** @type {any} */ ({ relations: 5 }), error: null }),
+      fetchDrift: async () => ({ snapshot: null, error: null }),
+    });
+    const crash = r.permIssues.filter((i) => /DB 권한 점검\(R 규칙\) 실행 실패/.test(i.detail));
+    expect(crash).toHaveLength(1);
+    expect(r.permCheckCrashed).toBe(true);
+    expect(crash[0].collector).toBe("db-permissions");
+    // 지문 쪽 예외도 같은 방식
+    const r2 = await runPermissionChecks({
+      fetchAudit: async () => ({ snapshot: cleanSnapshot(), error: null }),
+      fetchDrift: async () => { throw new TypeError("boom"); },
+    });
+    expect(r2.permIssues.some((i) => /권한 지문 점검 실행 실패 — boom/.test(i.detail))).toBe(true);
   });
 
   it("⑥ 칸 쓰기 권한의 받는이 PUBLIC 도 R1 이 잡는다", () => {

@@ -40,8 +40,7 @@ REVOKE ALL ON public.permission_baseline, public.permission_baseline_item FROM P
 GRANT SELECT, INSERT ON public.permission_baseline, public.permission_baseline_item TO service_role;
 
 -- IDENTITY 시퀀스에도 기본 권한이 붙을 수 있으므로 회수한다(이름은 동적으로 찾는다).
--- IDENTITY 열 INSERT 는 시퀀스 권한 없이 되는 것으로 보지만 S2 되돌림 시험 T3 에서 service_role 로 확정한다.
--- 안 되면 이 뒤에 GRANT USAGE ON SEQUENCE … TO service_role 한 줄을 추가한다(추측으로 미리 주지 않는다).
+-- IDENTITY 열 INSERT 는 시퀀스 권한 없이 된다 — S2 되돌림 시험(2026-09-24) T3 에서 service_role 로 승인 저장 성공 확인.
 DO $$
 BEGIN
   EXECUTE pg_catalog.format(
@@ -151,7 +150,7 @@ AS $$
     WHERE p.schemaname IN ('public', 'storage')
   ),
   bkt AS (
-    -- ⚠️ service_role 이 storage.buckets 를 SELECT 할 수 있어야 한다(S0 에서 확인 — 불가면 좁은 정의자 도우미로 분기)
+    -- service_role 은 storage.buckets 를 SELECT 할 수 있다(S0 실측 2026-09-24 — 이 권한이 빠지면 이 함수 전체가 실패한다)
     SELECT 'bucket'::text AS k,
            b.id::text AS n,
            pg_catalog.jsonb_build_object(
