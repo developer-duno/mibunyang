@@ -35,7 +35,7 @@ process.env.KOSIS_KEY = "test-key";
 
 const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, main } =
   await import("./collect-unsold-kosis.mjs");
-const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** KOSIS 행 팩토리 */
@@ -286,75 +286,71 @@ describe("regions 조회 배선 — selectAll keyCol", () => {
   });
 });
 
-describe("shouldSkipKosisFill — 공식 미분양이 매물 수에 밀리지 않는다 (세션559)", () => {
+// ── apartments 조회 배선 — select 에 unsold_source 가 있다 (검사관 M2, 세션568-2) ──
+// select 에서 unsold_source 를 빼면 planUnsoldUpdates 의 isKosisSourced 판정이 항상 false 가
+// 되어 clear_kosis_stale 이 영영 안 나온다 — 좌변(대입문 시작)까지 고정해 선언부/주석과
+// 구분한다(guards-must-be-mutation-tested §소스 grep 함정).
+describe("apartments 조회 배선 — select 에 unsold_source 포함", () => {
+  const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
+
+  it("apartmentsTyped 조회 select 문자열에 unsold_source 가 들어 있다", () => {
+    expect(src).toMatch(
+      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source"\), sb, "id"\)/,
+    );
+  });
+});
+
+// ── shouldSkipKosisFill — 세션568-3: 판정 축이 "값의 모양" 에서 "출처 칸" 으로 전면 개정 ──
+describe("shouldSkipKosisFill — 출처 칸 기준 판정 (세션568-3)", () => {
   /** @type {(a: any) => boolean} */
   let skip;
   beforeEach(async () => {
     ({ shouldSkipKosisFill: skip } = await import("./collect-unsold-kosis.mjs"));
   });
 
-  it("매물이 많아도 KOSIS 로 채운다 (옛 코드는 naver_sell_count>0 이면 건너뛰었다)", () => {
-    // 이 한 줄이 1,157곳(58%)의 unsold 를 '오늘 네이버 매물 수'로 만든 원인이었다.
-    expect(skip({ unsold: null, units: 500, region: "경기", gu: "수원시" })).toBe(false);
-  });
-
-  it("미분양이 총세대수를 넘으면 오염값이므로 덮어쓴다", () => {
-    // 실측 81곳 — 춘천 파밀리에 리버파크: 15세대인데 미분양 54(=매물 54건)
-    expect(skip({ unsold: 54, units: 15, region: "강원", gu: "춘천시" })).toBe(false);
-    expect(skip({ unsold: 24, units: 5, region: "경기", gu: "의정부시" })).toBe(false);
-  });
-
-  it("⚠️ units<=1 인 오염 단지는 이 함수가 못 고친다 (비례배분 분모가 없다)", () => {
-    // 세종더샵예미지 L4블록: 1세대인데 미분양 18. 분모가 1이라 비례배분을 쓸 수 없어
-    // 여기서는 건너뛴다 — 옛 오염값이 DB 에 남는다. 그건 **일회성 정리 스크립트**가 지운다.
-    // 이 테스트는 그 한계를 명시적으로 박아, 다음 사람이 '왜 안 고쳐지지' 로 헤매지 않게 한다.
-    expect(skip({ unsold: 18, units: 1, region: "세종", gu: "세종시" })).toBe(true);
-  });
-
-  it("유효한 기존 값(청약홈 단지별 실측)은 존중해 건너뛴다", () => {
-    // 단지별 실측이 구 단위 비례배분보다 정확하다 — 총세대수 이하면 그대로 둔다
-    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시" })).toBe(true);
-    expect(skip({ unsold: 500, units: 500, region: "경기", gu: "수원시" })).toBe(true); // 경계: 같으면 유효
-  });
-
-  it("매물 수와 정확히 같으면 매물 유래이므로 덮어쓴다 (세션559 말미 — 1,090곳이 영구 보존되던 결함)", () => {
-    // 첫 판은 "총세대수 초과만 오염"으로 봤는데, 매물 유래 값은 대부분 세대수 이내라
-    // 1,090곳 전부가 "유효한 기존 값"으로 분류돼 영원히 안 덮어써졌다(적대검증 실측 100%).
-    // 그중 196곳은 미분양률 15% 초과로 안전 점수를 깎는 중이었다
-    // (두산위브 트리니뷰 구명역: 31세대인데 미분양 30 = 매물 30건 = 96.8%).
-    expect(skip({ unsold: 30, units: 31, region: "부산", gu: "북구", naver_sell_count: 30 })).toBe(false);
-    expect(skip({ unsold: 77, units: 80, region: "부산", gu: "부산진구", naver_sell_count: 77 })).toBe(false);
-  });
-
-  it("매물 수와 다르면 청약홈 실측으로 보고 존중한다", () => {
-    // 출처가 다른 값까지 덮으면 단지별 실측(청약홈)을 구 단위 추정치로 갈아치운다
-    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: 12 })).toBe(true);
-    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: null })).toBe(true);
-  });
-
-  it("세종은 gu 가 null 이어도 더 이상 통째로 건너뛰지 않는다 (세션567 — 사장님 결정 ⑦)", () => {
-    // 세션559 당시엔 gu=null 을 무조건 건너뛰어 실측 7곳(엘리프세종 계열 등)이 매물 유래여도
-    // 안 덮어써졌다. 세션567 부터는 apartments 쪽(resolveKosisGuKey)이 세종을 "세종시" 키로
-    // 판정하므로, 이 함수도 region==="세종" 이면 gu=null 을 정상 구조로 받아들인다.
-    // 매물 수와 정확히 같으면(23===23) 매물 유래이므로 덮어쓴다(false).
-    expect(skip({ unsold: 23, units: 660, region: "세종", gu: null, naver_sell_count: 23 })).toBe(false);
-  });
-
-  it("비례배분 분모가 될 수 없는 단지는 건너뛴다", () => {
+  it("규칙1 — 비례배분 분모가 될 수 없는 단지(무효)는 존중(skip)한다", () => {
     expect(skip({ unsold: null, units: 1, region: "경기", gu: "수원시" })).toBe(true);
     expect(skip({ unsold: null, units: null, region: "경기", gu: "수원시" })).toBe(true);
     expect(skip({ unsold: null, units: 500, region: null, gu: "수원시" })).toBe(true);
     expect(skip({ unsold: null, units: 500, region: "경기", gu: null })).toBe(true);
   });
 
-  it("unsold === 0(완판 실측)은 존중한다 — 구 추정치로 덮지 않는다 (세션559 말미 정정)", () => {
-    // 옛 코드는 `unsold <= 0` 이라 0 을 "값 없음"으로 보고 **완판 91곳을 구 단위 추정치로 덮어썼다.**
-    // "다 팔렸다(0세대)"는 단지별 실측이고, 이 수집기가 내세운 원칙(단지별 실측 > 구 비례배분)과
-    // 정면으로 어긋났다. 적대검증이 잡았다.
-    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시" })).toBe(true);
+  it("규칙1 — 세종은 gu=null 이 정상 구조라 무효 처리되지 않는다", () => {
+    expect(skip({ unsold: null, units: 660, region: "세종", gu: null })).toBe(false);
   });
 
-  it("unsold 가 null 이면 진짜 값 없음이므로 채운다 (대조군)", () => {
+  it("규칙2(applyhome) — 매물 수와 우연히 같아도, 세대수를 넘어도 항상 존중한다", () => {
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: 30, unsold_source: "applyhome" })).toBe(true);
+    expect(skip({ unsold: 999, units: 500, region: "경기", gu: "수원시", unsold_source: "applyhome" })).toBe(true); // 세대수 초과여도 존중
+  });
+
+  it("규칙3(NULL 출처 완판) — unsold===0 이고 출처 NULL 이면 존중한다", () => {
+    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시", unsold_source: null })).toBe(true);
+    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시" })).toBe(true); // unsold_source 미지정(undefined)도 NULL 취급
+  });
+
+  it("검사관 M3(자기잠금 방지) — unsold===0 이라도 출처가 kosis 면 존중하지 않는다(false)", () => {
+    // kosis 가 write_zero 로 쓴 0 은 다음 회차가 다시 갱신해야 한다.
+    expect(skip({ unsold: 0, units: 500, region: "경기", gu: "수원시", unsold_source: "kosis" })).toBe(false);
+  });
+
+  it("규칙4 — 출처 kosis 인 값>0 은 세대수 이하·매물수와 달라도 항상 KOSIS 가 정한다(false)", () => {
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", naver_sell_count: null, unsold_source: "kosis" })).toBe(false);
+  });
+
+  it("규칙4 — 출처 NULL 인 값>0(사장님 결정: 이제 KOSIS 가 덮는다) → false", () => {
+    // 이전 버전(세션559~568-2)은 이 자리를 '유효한 기존 값' 으로 보고 존중(true)했다.
+    // 사장님 3차 결정: 출처 모르는 옛 값도 KOSIS 가 덮는다.
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시", unsold_source: null })).toBe(false);
+    expect(skip({ unsold: 500, units: 500, region: "경기", gu: "수원시", unsold_source: null })).toBe(false); // 세대수와 같아도
+    expect(skip({ unsold: 999, units: 500, region: "경기", gu: "수원시", unsold_source: null })).toBe(false); // 세대수 초과여도
+  });
+
+  it("규칙4 — unsold_source 필드 자체가 없어도(undefined, 마이그레이션 전 fixture) NULL 취급 → false", () => {
+    expect(skip({ unsold: 30, units: 500, region: "경기", gu: "수원시" })).toBe(false);
+  });
+
+  it("규칙4 — unsold 가 null(값 자체 없음) → false(KOSIS 가 정한다)", () => {
     expect(skip({ unsold: null, units: 500, region: "경기", gu: "수원시" })).toBe(false);
   });
 });
@@ -376,14 +372,14 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
     return [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "1000" }];
   }
 
-  /** @param {number} n 채움 대상이 아닌 "이미 값 있음" 단지 수, 그 뒤 1개는 1,000번째를 넘는 채움 대상 */
+  /** @param {number} n 이미 값 있음(NULL 출처 — 세션568-3 규칙4 로 KOSIS 가 덮는 대상) 단지 수, 그 뒤 1개는 1,000번째를 넘는 채움 대상 */
   function makeApartments(n) {
     /** @type {any[]} */
     const rows = [];
     for (let i = 0; i < n; i++) {
       rows.push({
         id: `apt-${i}`, name: `단지${i}`, region: "경기", gu: "수원시",
-        units: 100, unsold: 10, unsold_rate: 10, naver_sell_count: null, // 유효 기존값 → skip
+        units: 100, unsold: 10, unsold_rate: 10, naver_sell_count: null, unsold_source: "applyhome", // 존중 대상
       });
     }
     // 1,000번째를 넘는 위치(인덱스 1004, 총 1,005건)에 채움 대상 1건 추가
@@ -395,7 +391,7 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
   }
 
   it("1,000행 넘는 표(1,005건)에서 1,000번째를 넘는 채움 대상도 처리된다", async () => {
-    const apartments = makeApartments(1004); // 0~1003 + target(인덱스1004) = 1,005건
+    const apartments = makeApartments(1004); // 0~1003(applyhome 존중) + target(인덱스1004) = 1,005건
     selectAllMock
       .mockResolvedValueOnce([]) // 1st call: regions (빈 배열 — regions 갱신은 본 테스트 밖)
       .mockResolvedValueOnce(apartments); // 2nd call: apartments
@@ -415,7 +411,7 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
     expect(apartmentsCallArgs[2]).toBe("id"); // keyCol
 
     // aptUpdated 카운트 — main() 은 dry-run 이라 DB write 없이 카운트만 증가.
-    // recordCollectorRun 의 ok 값으로 간접 검증(regUpdated=0 + aptUpdated=1 대상).
+    // recordCollectorRun 의 ok 값으로 간접 검증(regUpdated=0 + aptUpdated=1 대상, applyhome 1004건은 skip_preserved).
     expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
   });
 
@@ -428,7 +424,7 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
     /** @type {any[]} */
     const rows = [];
     for (let i = 0; i < 1004; i++) {
-      rows.push({ id: `apt-${i}`, name: `단지${i}`, region: "경기", gu: "수원시", units: 100, unsold: 10, unsold_rate: 10, naver_sell_count: null });
+      rows.push({ id: `apt-${i}`, name: `단지${i}`, region: "경기", gu: "수원시", units: 100, unsold: 10, unsold_rate: 10, naver_sell_count: null, unsold_source: "applyhome" });
     }
     rows.push({ id: "apt-target", name: "타겟", region: "경기", gu: "수원시", units: 50200, unsold: null, unsold_rate: null, naver_sell_count: null });
     // totalUnitsInGu(전체) = 1004*100 + 50200 = 150,600
@@ -458,20 +454,38 @@ describe("apartments 조회 — selectAll 전수 확보 (1,000행 컷 정정)", 
   });
 });
 
-// ── main() — clear_listing_derived 를 실제로 비운다 (세션567 추가분) ──
-describe("main() — 매물 유래 값 비움(clear_listing_derived) 이 dry-run 로그·ok 카운트에 반영된다", () => {
+// ── main() — write_zero 를 실제로 0 으로 쓴다 (세션568-3 규칙 개정: 비우기 폐지 → 0 쓰기) ──
+describe("main() — write_zero 가 dry-run 로그·ok 카운트·DB 반영에 나타난다", () => {
   beforeEach(() => {
     selectAllMock.mockReset();
     fetchWithRetryMock.mockReset();
     recordCollectorRun.mockClear();
   });
 
-  it("KOSIS=0 이고 매물 유래인 단지 → [DRY-RUN][비움·매물유래] 로그 + ok 카운트 포함", async () => {
+  /**
+   * 차단기(값>0 대비 0-쓰기 10%)를 안 넘도록, write_zero 대상 1건 외에 "값>0 · 다른 구 ·
+   * write 로 정상 처리될" 대상을 9건 함께 둔다 — 분모(kosisJudgedNonZero)를 10건으로
+   * 만들어 분자(write_zero 1건)가 10%(경계값, 초과 아님)가 되게 한다.
+   */
+  function makeCrowdApartments() {
+    /** @type {any[]} */
+    const crowd = [];
+    for (let i = 0; i < 9; i++) {
+      crowd.push({ id: `crowd-${i}`, name: `혼잡단지${i}`, region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null });
+    }
+    return crowd;
+  }
+
+  it("KOSIS=0 이고 출처 NULL 값>0 인 단지 → [DRY-RUN][0으로 씀] 로그 + ok 카운트 포함", async () => {
     const apartments = [
-      { id: "apt-clear", name: "매물유래단지", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null },
+      { id: "apt-zero", name: "영으로바뀜단지", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null, unsold_source: null },
+      ...makeCrowdApartments(),
     ];
     selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
-    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" }] });
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" },
+      { C1_NM: "경기", C2_NM: "성남시", PRD_DE: "202601", DT: "45" }, // 9곳 균등배분 → 각 5(<50% 문턱)
+    ] });
 
     /** @type {string[]} */
     const logLines = [];
@@ -486,25 +500,29 @@ describe("main() — 매물 유래 값 비움(clear_listing_derived) 이 dry-run
       process.argv = originalArgv;
     }
 
-    const clearLine = logLines.find((l) => l.includes("비움·매물유래"));
-    expect(clearLine).toBeDefined();
-    expect(clearLine).toMatch(/매물유래단지.*unsold 12 → null/);
-    expect(logLines.some((l) => l.includes("매물 유래 비움: 1건"))).toBe(true);
-    // regUpdated=0 + aptUpdated=0(write 대상 없음) + clearedListingDerived=1
-    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
+    const zeroLine = logLines.find((l) => l.includes("[0으로 씀]"));
+    expect(zeroLine).toBeDefined();
+    expect(zeroLine).toMatch(/영으로바뀜단지.*unsold 12 → 0/);
+    expect(logLines.some((l) => l.includes("KOSIS 0-쓰기: 1건"))).toBe(true);
+    // regUpdated=0 + aptUpdated=9(crowd 9건 write) + aptZeroed=1
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 10 });
   });
 
-  it("--impact-out 에 clear_listing_derived action 이 그대로 실린다", async () => {
+  it("--impact-out 에 write_zero action 이 그대로 실린다", async () => {
     const os = await import("node:os");
     const path = await import("node:path");
     const { readFileSync, rmSync } = await import("node:fs");
-    const impactPath = path.join(os.tmpdir(), `s567_impact_${Date.now()}.json`);
+    const impactPath = path.join(os.tmpdir(), `s568_3_impact_${Date.now()}.json`);
 
     const apartments = [
-      { id: "apt-clear2", name: "매물유래단지2", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null },
+      { id: "apt-zero2", name: "영으로바뀜단지2", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null, unsold_source: null },
+      ...makeCrowdApartments(),
     ];
     selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
-    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" }] });
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" },
+      { C1_NM: "경기", C2_NM: "성남시", PRD_DE: "202601", DT: "45" },
+    ] });
 
     const originalArgv = process.argv;
     process.argv = [...originalArgv, "--dry-run", `--impact-out=${impactPath}`];
@@ -512,13 +530,109 @@ describe("main() — 매물 유래 값 비움(clear_listing_derived) 이 dry-run
       await main();
       const written = readFileSync(impactPath, "utf8");
       const parsed = JSON.parse(written);
-      expect(parsed.actionCounts.clear_listing_derived).toBe(1);
-      const row = parsed.plan.find((/** @type {any} */ p) => p.id === "apt-clear2");
-      expect(row.action).toBe("clear_listing_derived");
+      expect(parsed.actionCounts.write_zero).toBe(1);
+      const row = parsed.plan.find((/** @type {any} */ p) => p.id === "apt-zero2");
+      expect(row.action).toBe("write_zero");
+      expect(row.newEstimate).toBe(0);
+      expect(row.newRate).toBe(0);
     } finally {
       process.argv = originalArgv;
       try { rmSync(impactPath); } catch { /* noop */ }
     }
+  });
+
+  it("--apply 시 write_zero 대상은 unsold=0, unsold_rate=0, unsold_source='kosis' 로 UPDATE 된다", async () => {
+    const apartments = [
+      { id: "apt-zero3", name: "실적용단지", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: 12, presale_type: null, unsold_source: null },
+      ...makeCrowdApartments(),
+    ];
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" },
+      { C1_NM: "경기", C2_NM: "성남시", PRD_DE: "202601", DT: "45" },
+    ] });
+
+    /** @type {any[]} */
+    const updateCalls = [];
+    getSupabase.mockReturnValue({
+      from: (/** @type {string} */ table) => ({
+        update: (/** @type {any} */ payload) => ({
+          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
+            updateCalls.push({ table, payload, id });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+      getSupabase.mockReset();
+    }
+
+    const call = updateCalls.find((c) => c.id === "apt-zero3");
+    expect(call).toBeDefined();
+    expect(call.payload.unsold).toBe(0);
+    expect(call.payload.unsold_rate).toBe(0);
+    expect(call.payload.unsold_source).toBe("kosis");
+  });
+});
+
+// ── 차단기 — 값>0 인데 0 으로 바뀌는 행이 10% 초과 시 0 쓰기 전부 중단 (사장님 결정) ──
+describe("main() — 0-쓰기 차단기 발동", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+    getSupabase.mockReset();
+  });
+
+  it("값>0 대비 0 으로 바뀌는 비율이 10% 초과 → 0 쓰기 0건, collector_runs 실패 기록, rethrow", async () => {
+    // 값>0 인 대상 5건 중 1건이 write_zero(20% > 10%) — 차단기 발동 조건.
+    const apartments = [
+      { id: "z1", name: "영전환1", region: "경기", gu: "수원시", units: 500, unsold: 12, unsold_rate: 2.4, naver_sell_count: null, presale_type: null, unsold_source: null },
+      { id: "w1", name: "정상1", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
+      { id: "w2", name: "정상2", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
+      { id: "w3", name: "정상3", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
+      { id: "w4", name: "정상4", region: "경기", gu: "성남시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null },
+    ];
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "0" },
+      { C1_NM: "경기", C2_NM: "성남시", PRD_DE: "202601", DT: "20" },
+    ] });
+
+    /** @type {any[]} */
+    const updateCalls = [];
+    getSupabase.mockReturnValue({
+      from: (/** @type {string} */ table) => ({
+        update: (/** @type {any} */ payload) => ({
+          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
+            updateCalls.push({ table, payload, id });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+    try {
+      await expect(main()).rejects.toThrow(/차단기 발동/);
+    } finally {
+      process.argv = originalArgv;
+    }
+
+    // 0 쓰기 0건 — 어떤 apartments UPDATE 도 unsold:0 페이로드를 보내지 않았다.
+    expect(updateCalls.filter((c) => c.table === "apartments" && c.payload.unsold === 0)).toHaveLength(0);
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-unsold",
+      expect.objectContaining({ status: "failure" }),
+    );
   });
 });
 
@@ -668,21 +782,34 @@ describe("planUnsoldUpdates", () => {
     expect(plan[0].newRate).toBe(49.9);
   });
 
-  it("shouldSkipKosisFill 이 존중(skip)하는 기존 값은 skip_preserved — 새 추정치도 함께 기록", () => {
+  it("세션568-3 규정 변경 — NULL 출처 값>0 은 이제 존중되지 않고 KOSIS 가 덮는다(write)", () => {
+    // 옛 규칙(세션559~568-2)이면 '유효한 기존 값(500 이하)' 으로 존중(skip_preserved)했을 자리.
+    // 사장님 3차 결정으로 출처 모르는 옛 값도 KOSIS 가 덮게 됐다.
     const plan = planUnsoldUpdates({
-      apartments: [apt({ unsold: 30, units: 500 })], // 유효한 기존 값(500 이하) → skip
+      apartments: [apt({ unsold: 30, units: 500, unsold_source: null })],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan[0].action).toBe("write");
+    expect(plan[0].newEstimate).toBe(50);
+  });
+
+  it("applyhome 출처는 규칙3 으로 skip_preserved — 새 추정치도 참고용으로 함께 기록", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ unsold: 30, units: 500, unsold_source: "applyhome" })],
       unsoldByRegionGu: { "경기": { "수원시": 50 } },
     });
     expect(plan[0].action).toBe("skip_preserved");
     expect(plan[0].newEstimate).toBe(50); // 비교용으로 계산은 됐지만 안 쓴다
   });
 
-  it("guUnsold 가 0 이하이면 skip_kosis_zero (매물 유래 아니면, 세션567 이름표 변경)", () => {
+  it("guUnsold 가 0 이하이면 write_zero(0 을 쓴다) — 세션568-3: 비우지 않고 0 을 쓴다", () => {
     const plan = planUnsoldUpdates({
       apartments: [apt()],
       unsoldByRegionGu: { "경기": { "수원시": 0 } },
     });
-    expect(plan[0].action).toBe("skip_kosis_zero");
+    expect(plan[0].action).toBe("write_zero");
+    expect(plan[0].newEstimate).toBe(0);
+    expect(plan[0].newRate).toBe(0);
   });
 
   it("calcProportionalUnsold 가 null(비정상 비율 100% 초과)이면 skip_no_estimate", () => {
@@ -705,75 +832,304 @@ describe("planUnsoldUpdates", () => {
   });
 });
 
-// ── 세션567 추가분 — KOSIS=0/추정 0/100% 초과 × 매물 유래 여부 (사장님 결정 2026-09-24) ──
-describe("planUnsoldUpdates — KOSIS 값이 없거나 0/거의 0/100%초과 일 때 매물 유래는 비운다", () => {
+// ── 세션568-3 — 매물 유래 판정(listingDerived) 폐지. 출처(unsold_source)만으로 갈린다 ──
+describe("planUnsoldUpdates — 매물 유래 판정 폐지 확인(값의 모양이 아니라 출처로만 갈린다)", () => {
   /** @param {Partial<any>} overrides */
   function apt(overrides = {}) {
     return {
       id: "id-1", name: "테스트단지", region: "경기", gu: "수원시",
       units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null,
+      unsold_source: null,
       ...overrides,
     };
   }
 
-  it("KOSIS=0 · 매물 아님(naver_sell_count 다름) → skip_kosis_zero (새 이름표, 단순 매칭없음과 구분)", () => {
+  it("KOSIS=0 · naver_sell_count 값과 무관하게 → write_zero (출처 NULL, 값의 모양은 이제 안 본다)", () => {
     const plan = planUnsoldUpdates({
-      apartments: [apt({ unsold: 30, naver_sell_count: 12 })], // 매물 유래 아님(값이 다름)
+      apartments: [apt({ unsold: 30, naver_sell_count: 12 })], // 매물 수와 다름 — 옛 판정으론 skip_kosis_zero 였을 자리
       unsoldByRegionGu: { "경기": { "수원시": 0 } },
     });
-    expect(plan[0].action).toBe("skip_kosis_zero");
-    expect(plan[0].newEstimate).toBeNull();
+    expect(plan[0].action).toBe("write_zero");
+    expect(plan[0].newEstimate).toBe(0);
   });
 
-  it("KOSIS=0 · 매물 유래(unsold === naver_sell_count) → clear_listing_derived", () => {
+  it("KOSIS=0 · unsold===naver_sell_count(옛 '매물 유래') → write_zero (clear_listing_derived 아님, 0 을 쓴다)", () => {
     const plan = planUnsoldUpdates({
       apartments: [apt({ unsold: 12, naver_sell_count: 12 })],
       unsoldByRegionGu: { "경기": { "수원시": 0 } },
     });
-    expect(plan[0].action).toBe("clear_listing_derived");
+    expect(plan[0].action).toBe("write_zero");
   });
 
-  it("추정 반올림이 0 이하(거의 0) · 매물 유래 → clear_listing_derived", () => {
-    // guUnsold=1, units=1(자기 자신뿐이라 분모=1) → round(1*1/1)=1 이 아니라
-    // 분모를 크게 잡아 반올림 결과가 0이 되도록: guUnsold=1, aptUnits=1, totalUnitsInGu=1000
-    // round(1 * 1/1000) = round(0.001) = 0
+  it("추정 반올림이 0 이하(거의 0) → write_zero (출처 무관, 0 을 쓴다)", () => {
     const plan = planUnsoldUpdates({
       apartments: [
-        apt({ id: "big", units: 999, naver_sell_count: null }), // 분모를 키우는 이웃(비임대)
-        apt({ id: "target", units: 1, unsold: 3, naver_sell_count: 3 }), // 매물 유래, units 작음
+        apt({ id: "big", units: 999 }), // 분모를 키우는 이웃
+        apt({ id: "target", units: 2, unsold: 3, naver_sell_count: 3 }), // units>=2(무효 아님)
       ],
-      unsoldByRegionGu: { "경기": { "수원시": 1 } }, // guUnsold=1, totalUnitsInGu=1000 → round(1*1/1000)=0
+      unsoldByRegionGu: { "경기": { "수원시": 1 } }, // totalUnitsInGu=1001 → round(1*2/1001)=0
     });
     const target = plan.find((p) => p.id === "target");
-    expect(target?.action).toBe("clear_listing_derived");
+    expect(target?.action).toBe("write_zero");
   });
 
-  it("추정이 100% 초과(계산 불가)·매물 유래 → skip_no_estimate 그대로(비우지 않는다, 사장님 결정)", () => {
+  it("추정이 100% 초과(계산 불가) → skip_no_estimate(값 유지, 비우지도 0 쓰지도 않는다)", () => {
     // guUnsold=1000, aptUnits=100, totalUnitsInGu=500 → rate=200% > 100 → calcProportionalUnsold null
-    // rawEstimate = round(1000*100/500) = 200 > 0 이므로 "거의 0" 아님 → 비우지 않는다
     const plan = planUnsoldUpdates({
-      apartments: [apt({ units: 100, unsold: 50, naver_sell_count: 50 })], // 매물 유래
+      apartments: [apt({ units: 100, unsold: 50, naver_sell_count: 50 })],
       unsoldByRegionGu: { "경기": { "수원시": 1000 } },
     });
     expect(plan[0].action).toBe("skip_no_estimate");
     expect(plan[0].newEstimate).toBeNull();
+    expect(plan[0].currentUnsold).toBe(50); // 값 유지 확인
   });
 
-  it("유효한 추정 · 매물 유래 → write (기존 동작 그대로, 회귀 없음)", () => {
+  it("유효한 추정 → write (기존 값 모양과 무관하게 정상 추정치를 쓴다)", () => {
     const plan = planUnsoldUpdates({
-      apartments: [apt({ units: 500, unsold: 30, naver_sell_count: 30 })], // 매물 유래지만 KOSIS 로 정상 채움
+      apartments: [apt({ units: 500, unsold: 30, naver_sell_count: 30 })],
       unsoldByRegionGu: { "경기": { "수원시": 50 } },
     });
     expect(plan[0].action).toBe("write");
     expect(plan[0].newEstimate).toBe(50);
   });
 
-  it("임대형 · 매물 유래 조건이어도 → skip_lease (임대 제외가 매물유래 판정보다 우선)", () => {
+  it("임대형은 KOSIS=0 이어도 skip_lease (임대 제외가 규칙 5 전체보다 우선)", () => {
     const plan = planUnsoldUpdates({
       apartments: [apt({ presale_type: "국민임대", units: 500, unsold: 30, naver_sell_count: 30 })],
       unsoldByRegionGu: { "경기": { "수원시": 0 } },
     });
     expect(plan[0].action).toBe("skip_lease");
+  });
+
+  it("applyhome 출처 + 매물 수와 값이 같음 + KOSIS=0 → 그래도 skip_preserved(값 유지, 규칙3 이 규칙5 보다 먼저 적용)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ unsold: 12, naver_sell_count: 12, unsold_source: "applyhome" })],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(plan[0].action).toBe("skip_preserved");
+    expect(plan[0].currentUnsold).toBe(12); // 값 유지 확인 — write_zero 로 안 간다
+  });
+});
+
+// ── 세션568-3 — unsold_source='kosis' 인데 이번 회차가 못 채우면(매칭실패=값유지, 0=0쓰기) ──
+describe("planUnsoldUpdates — unsold_source='kosis' 동결 방지 (규칙5)", () => {
+  /** @param {Partial<any>} overrides */
+  function apt(overrides = {}) {
+    return {
+      id: "id-1", name: "테스트단지", region: "경기", gu: "수원시",
+      units: 500, unsold: 30, unsold_rate: 6, naver_sell_count: null, presale_type: null,
+      unsold_source: "kosis",
+      ...overrides,
+    };
+  }
+
+  // 검사관 H1(높음, 세션568-2·-3 모두 유지) — 매칭 실패는 "KOSIS 가 0" 이 아니다. 값을 유지한다.
+  it("kosis 출처 · gu 매칭 실패(resolveKosisGuKey null) → skip_no_match (값 유지)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ region: "충남", gu: "모르는시" })],
+      unsoldByRegionGu: { "충남": { "천안시": 100 } },
+    });
+    expect(plan[0].action).toBe("skip_no_match");
+    expect(plan[0].currentUnsold).toBe(30);
+  });
+
+  it("kosis 출처 · guUnsold 자체가 없음(그 지역 응답 자체가 누락) → skip_no_match (값 유지)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt()],
+      unsoldByRegionGu: { "경기": { "성남시": 10 } }, // 수원시 없음
+    });
+    expect(plan[0].action).toBe("skip_no_match");
+    expect(plan[0].currentUnsold).toBe(30);
+  });
+
+  it("kosis 출처 · 시도 전체가 응답에서 빠짐(광주·전남 누락 시나리오) → skip_no_match, 값 유지", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ region: "광주", gu: "북구" })],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } }, // "광주" 키 자체가 없음
+    });
+    expect(plan[0].action).toBe("skip_no_match");
+    expect(plan[0].currentUnsold).toBe(30);
+  });
+
+  it("kosis 출처 · KOSIS=0 → write_zero(0 을 쓴다, 비우지 않는다 — 사장님 3차 결정)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt()],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(plan[0].action).toBe("write_zero");
+    expect(plan[0].newEstimate).toBe(0);
+  });
+
+  it("kosis 출처 · 반올림 추정이 0(거의 0) → write_zero", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "big", units: 999, unsold: null, unsold_rate: null, unsold_source: null }),
+        apt({ id: "target", units: 2 }), // units>=2(무효 아님)
+      ],
+      unsoldByRegionGu: { "경기": { "수원시": 1 } }, // totalUnitsInGu=1001 → round(1*2/1001)=0
+    });
+    const target = plan.find((p) => p.id === "target");
+    expect(target?.action).toBe("write_zero");
+  });
+
+  it("kosis 출처 · 추정이 100% 초과(계산 불가) → skip_no_estimate 그대로(값 유지)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt({ units: 100 })],
+      unsoldByRegionGu: { "경기": { "수원시": 1000 } },
+    });
+    expect(plan[0].action).toBe("skip_no_estimate");
+  });
+
+  it("kosis 출처 · 정상 매칭·유효 추정 → write (shouldSkipKosisFill 이 false 라 skip_preserved 로 안 빠진다)", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt()],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan[0].action).toBe("write");
+    expect(plan[0].newEstimate).toBe(50);
+  });
+
+  it("currentSource 가 계획 행에 실린다", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [apt(), apt({ id: "id-2", unsold_source: "applyhome" }), apt({ id: "id-3", unsold_source: null })],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(plan.find((p) => p.id === "id-1")?.currentSource).toBe("kosis");
+    expect(plan.find((p) => p.id === "id-2")?.currentSource).toBe("applyhome");
+    expect(plan.find((p) => p.id === "id-3")?.currentSource).toBeNull();
+  });
+});
+
+// ── 세션568-3 핵심 시험 — 수집기가 자기 출력 위에서 2·3회차를 돌려도 동결되지 않는다 ──
+describe("planUnsoldUpdates — 자기 출력 위 2·3회차 (동결 방지 회귀 가드)", () => {
+  it("1회차 write → DB 반영(unsold_source='kosis') → 2회차(다른 구 합계) → write + 새 추정치(동결 안 됨)", () => {
+    const round1 = planUnsoldUpdates({
+      apartments: [{ id: "t1", name: "타겟", region: "경기", gu: "수원시", units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null }],
+      unsoldByRegionGu: { "경기": { "수원시": 50 } },
+    });
+    expect(round1[0].action).toBe("write");
+    expect(round1[0].newEstimate).toBe(50);
+
+    const dbAfterRound1 = { id: "t1", name: "타겟", region: "경기", gu: "수원시", units: 500, unsold: round1[0].newEstimate, unsold_rate: round1[0].newRate, naver_sell_count: null, presale_type: null, unsold_source: "kosis" };
+
+    const round2 = planUnsoldUpdates({
+      apartments: [dbAfterRound1],
+      unsoldByRegionGu: { "경기": { "수원시": 80 } },
+    });
+    expect(round2[0].action).toBe("write");
+    expect(round2[0].newEstimate).toBe(80);
+  });
+
+  it("3회차 — 2회차와 같은 KOSIS 값이면 변화 0(같은 추정치를 다시 write)", () => {
+    const dbAfterRound2 = { id: "t1", name: "타겟", region: "경기", gu: "수원시", units: 500, unsold: 80, unsold_rate: 16, naver_sell_count: null, presale_type: null, unsold_source: "kosis" };
+    const round3 = planUnsoldUpdates({
+      apartments: [dbAfterRound2],
+      unsoldByRegionGu: { "경기": { "수원시": 80 } }, // 2회차와 동일
+    });
+    expect(round3[0].action).toBe("write");
+    expect(round3[0].newEstimate).toBe(80); // 값 변화 없음(같은 추정치)
+  });
+
+  it("0 을 쓴 행도 다음 달 양수 KOSIS 값이 오면 갱신된다(자기잠금 방지, 검사관 M3)", () => {
+    // 1회차: KOSIS=0 → write_zero(unsold=0, source='kosis')
+    const round1 = planUnsoldUpdates({
+      apartments: [{ id: "t2", name: "영단지", region: "경기", gu: "수원시", units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null }],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+    });
+    expect(round1[0].action).toBe("write_zero");
+
+    const dbAfterRound1 = { id: "t2", name: "영단지", region: "경기", gu: "수원시", units: 500, unsold: 0, unsold_rate: 0, naver_sell_count: null, presale_type: null, unsold_source: "kosis" };
+
+    // 2회차: KOSIS 가 이제 40 을 준다 — 옛 규칙(unsold===0 존중)이면 여기서도 존중돼 영구 잠길 자리.
+    const round2 = planUnsoldUpdates({
+      apartments: [dbAfterRound1],
+      unsoldByRegionGu: { "경기": { "수원시": 40 } },
+    });
+    expect(round2[0].action).toBe("write");
+    expect(round2[0].newEstimate).toBe(40); // 자기잠금 없이 갱신됨
+  });
+
+  it("같은 시나리오에서 applyhome 출처 단지는 여러 회차에도 항상 보존된다(대조군)", () => {
+    const apt = { id: "ah-1", name: "청약홈단지", region: "경기", gu: "수원시", units: 500, unsold: 30, unsold_rate: 6, naver_sell_count: null, presale_type: null, unsold_source: "applyhome" };
+
+    const round1 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 50 } } });
+    expect(round1[0].action).toBe("skip_preserved");
+
+    const round2 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 80 } } });
+    expect(round2[0].action).toBe("skip_preserved");
+
+    const round3 = planUnsoldUpdates({ apartments: [apt], unsoldByRegionGu: { "경기": { "수원시": 0 } } });
+    expect(round3[0].action).toBe("skip_preserved"); // KOSIS=0 이어도 applyhome 은 흔들리지 않는다
+  });
+
+  it("같은 시나리오에서 kosis 출처 단지가 2회차에 KOSIS=0 이면 write_zero(비움도 오염값 잔류도 아니다)", () => {
+    const dbAfterRound1 = { id: "t1", name: "타겟", region: "경기", gu: "수원시", units: 500, unsold: 50, unsold_rate: 10, naver_sell_count: null, presale_type: null, unsold_source: "kosis" };
+    const round2 = planUnsoldUpdates({ apartments: [dbAfterRound1], unsoldByRegionGu: { "경기": { "수원시": 0 } } });
+    expect(round2[0].action).toBe("write_zero");
+  });
+});
+
+// ── 검사관 H1 시나리오 — 광주+전남 통째 누락 → 그 지역 행은 0곳 변경(값 유지) ──
+describe("planUnsoldUpdates — 시도 통째 누락(광주·전남) 시 0곳 변경", () => {
+  it("광주·전남 kosis 출처 행은 skip_no_match 로 전부 값 유지, 다른 지역은 정상 처리", () => {
+    const apartments = [
+      { id: "gwangju-1", name: "광주단지", region: "광주", gu: "북구", units: 500, unsold: 30, unsold_rate: 6, naver_sell_count: null, presale_type: null, unsold_source: "kosis" },
+      { id: "jeonnam-1", name: "전남단지", region: "전남", gu: "순천시", units: 300, unsold: 20, unsold_rate: 6.7, naver_sell_count: null, presale_type: null, unsold_source: "kosis" },
+      { id: "gyeonggi-1", name: "경기단지", region: "경기", gu: "수원시", units: 500, unsold: 10, unsold_rate: 2, naver_sell_count: null, presale_type: null, unsold_source: "kosis" },
+    ];
+    // 광주·전남 키 자체가 응답에 없음(통째 누락) — 경기만 정상 응답
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: { "경기": { "수원시": 50 } } });
+
+    const gwangju = plan.find((p) => p.id === "gwangju-1");
+    const jeonnam = plan.find((p) => p.id === "jeonnam-1");
+    const gyeonggi = plan.find((p) => p.id === "gyeonggi-1");
+
+    expect(gwangju?.action).toBe("skip_no_match");
+    expect(gwangju?.currentUnsold).toBe(30); // 변경 0
+    expect(jeonnam?.action).toBe("skip_no_match");
+    expect(jeonnam?.currentUnsold).toBe(20); // 변경 0
+    expect(gyeonggi?.action).toBe("write"); // 다른 지역은 정상 처리
+  });
+});
+
+// ── 세션568 — main() 의 실제 write/비움 UPDATE 페이로드에 unsold_source 가 실리는지 ──
+describe("main() — 값 유지 대상(skip_no_match·skip_no_estimate·hold_ge50)은 UPDATE 를 아예 안 부른다", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+    getSupabase.mockReset();
+  });
+
+  it("kosis 출처 매칭 실패(skip_no_match) → apartments UPDATE 0회(값 유지)", async () => {
+    const apartments = [
+      { id: "apt-nomatch", name: "매칭실패단지", region: "충남", gu: "모르는시", units: 500, unsold: 30, unsold_rate: 6, naver_sell_count: null, presale_type: null, unsold_source: "kosis" },
+    ];
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apartments);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "충남", C2_NM: "천안시", PRD_DE: "202601", DT: "100" }] });
+
+    /** @type {any[]} */
+    const updateCalls = [];
+    getSupabase.mockReturnValue({
+      from: (/** @type {string} */ table) => ({
+        update: (/** @type {any} */ payload) => ({
+          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
+            updateCalls.push({ table, payload, id });
+            return Promise.resolve({ error: null });
+          },
+        }),
+      }),
+    });
+
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+    }
+
+    expect(updateCalls.find((c) => c.table === "apartments" && c.id === "apt-nomatch")).toBeUndefined();
   });
 });
 

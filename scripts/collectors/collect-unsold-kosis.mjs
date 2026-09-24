@@ -131,71 +131,38 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
 }
 
 /**
- * KOSIS 공식 미분양 비례배분을 **건너뛸지** 판정 (세션559 신설)
+ * KOSIS 공식 미분양 비례배분을 **건너뛸지** 판정 (세션559 신설, 세션568-3 규칙 전면 개정)
  *
- * ## 왜 함수로 뺐나
- * 옛 코드는 루프 안 인라인 조건 3줄이었고, 그중 두 줄이 **공식 통계를 막고 있었다**:
+ * ## 세션568-3 — 사장님 결정으로 판정 축이 "휴리스틱"에서 "출처 칸"으로 바뀌었다
  *
- * ```js
- * // 옛 코드 — 주석에 '우선순위: 청약홈 > 네이버 > KOSIS' 라고 적혀 있었다
- * if (apt.unsold != null && apt.unsold > 0) continue;                      // 옛 매물값이 있으면 영영 못 덮음
- * if (apt.naver_sell_count != null && apt.naver_sell_count > 0) continue;  // 매물이 공식보다 우선
- * ```
+ * 옛 판정(세션559~568-2)은 `naver_sell_count`·총세대수 초과 등 **값의 모양으로 매물 유래를
+ * 추측**했다. 그런데 그 휴리스틱은 이 수집기 자신이 쓴 KOSIS 값도 우연히 통과시켜(세대수 이하·
+ * 매물 수와 다름) 862곳이 다음 회차부터 동결되는 사고(세션568)를 냈고, 정정한 조건(H1/H2)도
+ * "매칭 실패를 0 취급"하는 새 위험을 낳았다(세션568-2). 사장님이 **원칙 자체를 바꿨다**(2026-09-24
+ * 3차): "출처 모르는 옛 값(NULL, 값>0)도 이제 KOSIS 가 덮는다. KOSIS 가 0 이라 말하면 null 로
+ * 비우지 말고 0 을 쓴다(위험 점수가 '모름'(40)이 되는 게 더 나쁘다)." 청약홈(`applyhome`)만 계속
+ * 존중한다.
  *
- * 매물이 하나라도 있는 단지는 **공식 통계를 영원히 못 받았다**. 실측(세션559):
- * 1,989곳 중 1,157곳(58%)의 `unsold` 가 `naver_sell_count` 와 동일했고,
- * 81곳은 미분양이 총세대수를 넘었다(세종더샵예미지 L4블록 = 1세대인데 18, 미분양률 최대 11,800%(익산 제일풍경채 어바니티 = 1세대에 118)).
+ * ## 지금 규칙(존중 여부만 — "무엇을 쓸지"는 planUnsoldUpdates 가 정한다)
+ * 1. 지역·구·세대수(≤1) 무효 → 존중(=skip, 채울 재료가 없다)
+ * 2. `unsold_source === "applyhome"` → **항상 존중**(청약홈 단지별 실측은 구 단위 비례배분보다 정확)
+ * 3. `unsold === 0 && unsold_source == null` → 존중(옛 완판 실측 — 출처가 없던 시절의 값이라도
+ *    "0"은 계측이지 빈칸이 아니다. **출처가 kosis/applyhome 이면 이 규칙에 해당 안 됨** — applyhome
+ *    은 2번에서 이미 걸러졌고, kosis 는 자기 값이므로 KOSIS 최신 회차가 덮는다(자기잠금 방지))
+ * 4. 그 밖(출처 kosis·출처 NULL 인 값>0·값 자체 없음) → **KOSIS 가 정한다**(존중 안 함, false)
  *
- * ## 지금 규칙 — 공식만 남긴다
- * · `naver_sell_count` 는 **판정에 쓰지 않는다** — 매물은 미분양이 아니다
- * · `unsold` 가 있어도 **총세대수를 넘으면 오염된 값**이므로 덮어쓴다
- * · 나머지 유효한 기존 값(청약홈 단지별 실측)은 존중한다 — 구 단위 비례배분보다 정확하다
- *
- * ⚠️ `units <= 1` 은 비례배분의 분모가 될 수 없어 제외한다(옛 조건 유지).
- *
- * ## ⚠️ 세션559 말미 정정 — 첫 판에 1,090곳이 영구 보존되고 있었다
- *
- * 처음엔 "총세대수를 넘는 것만 오염"으로 봤는데, **매물 유래 값은 대부분 세대수 이내**라
- * `unsold <= units` 조건에 걸려 **"유효한 기존 값"으로 분류돼 영원히 안 덮어써졌다.**
- * 적대검증이 실제로 돌려 확인: 매물 유래 의심 1,090곳 중 **1,090곳(100%)을 건너뛰었다.**
- * 그중 **196곳은 미분양률 15% 초과**로 안전 점수를 깎는 중이었다
- * (두산위브 트리니뷰 구명역: **31세대인데 미분양 30**(=매물 30건) = 96.8%).
- *
- * PR #547 본문에 "1,090곳은 KOSIS 가 다음 회차에 덮어쓴다"고 적은 것은 **사실이 아니었다.**
- *
- * ## 지금 규칙
- * · `naver_sell_count` 는 판정에 쓰지 않는다 — **단, 값이 정확히 같으면 매물 유래로 본다**(아래)
- * · `unsold > units` → 오염값, 덮어쓴다
- * · **`unsold === naver_sell_count` → 매물 유래, 덮어쓴다** (세션559 말미 추가)
- * · 나머지 유효한 기존 값(청약홈 단지별 실측)은 존중한다
- *
- * ⚠️ **우연 일치 위험**: `unsold` 가 1~3 처럼 작으면 진짜 미분양이 매물 수와 우연히 같을 수 있다
- * (실측 166곳). 그래도 덮어쓰는 쪽을 택한 이유 — KOSIS 공식 통계가 매물 수보다 정확하므로
- * 덮어써서 손해 볼 게 없다. 반대로 남겨 두면 매물 수가 미분양으로 계속 행세한다.
- *
- * 세션567: 세종(gu=null)은 이전엔 이 함수가 통째로 건너뛰었지만, 이제 apartments 쪽에서
- * `resolveKosisGuKey` 가 세종을 "세종시" 키로 판정하므로 **세종을 더 이상 무조건 건너뛰지 않는다**
- * (gu=null 이어도 region==="세종" 이면 통과시킨다). 나머지 검사(총세대수 초과·매물 유래 등)는
- * 그대로 적용된다.
- *
- * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null; naver_sell_count?: number | null }} apt
- * @returns {boolean} true 면 이 단지는 KOSIS 로 채우지 않는다
+ * @param {{ unsold: number | null; units: number | null; region: string | null; gu: string | null; naver_sell_count?: number | null; unsold_source?: string | null }} apt
+ * @returns {boolean} true 면 이 단지는 KOSIS 로 채우지 않는다(기존 값 존중)
  */
 export function shouldSkipKosisFill(apt) {
   const guOk = !!apt.gu || apt.region === "세종"; // 세션567: 세종은 gu=null 이 정상 구조
   if (!apt.region || !guOk || !apt.units || apt.units <= 1) return true;
-  // ⚠️ `unsold === 0` 은 **"다 팔렸다"는 단지별 실측**이다 — 값 없음이 아니다(세션559 말미 정정).
-  //    옛 코드는 `<= 0` 이라 완판 91곳을 구 단위 추정치로 덮어썼다. 그건 이 수집기가 내세운
-  //    원칙("단지별 실측이 구 단위 비례배분보다 정확하다")과 정면으로 어긋난다.
-  //    ⚠️ 다만 `hideNoUnsold`(기본 켜짐)가 `unsold > 0` 만 목록에 남기므로 이 113곳은
-  //    손님 목록에 안 뜬다 — 그건 "미분양 단지 목록"이라는 화면 성격상 의도된 동작이다.
-  if (apt.unsold == null) return false; // 진짜 값 없음 → 채운다
-  if (apt.unsold === 0) return true;    // 완판 실측 → 존중
-  // 총세대수를 넘는 미분양은 오염값이다 — 덮어쓴다(= 건너뛰지 않는다)
-  if (apt.unsold > apt.units) return false;
-  // 매물 수와 정확히 같으면 매물이 흘러든 것이다 — 덮어쓴다
-  if (apt.naver_sell_count != null && apt.unsold === apt.naver_sell_count) return false;
-  return true; // 그 밖의 유효한 기존 값(청약홈 실측)은 존중
+  if (apt.unsold_source === "applyhome") return true; // 청약홈 실측은 항상 존중
+  // ⚠️ `unsold === 0` 은 옛 "다 팔렸다"는 단지별 실측이다 — 단, **출처가 없을 때만**(NULL).
+  //    출처가 kosis 면 자기 자신이 쓴 0 이므로 최신 KOSIS 회차가 덮어써야 한다(자기잠금 방지,
+  //    검사관 M3 지적). applyhome 은 위 2번에서 이미 걸러졌다.
+  if (apt.unsold === 0 && apt.unsold_source == null) return true;
+  return false; // 그 밖(kosis 출처·NULL 출처 값>0·값 없음)은 전부 KOSIS 가 정한다
 }
 
 /**
@@ -237,42 +204,40 @@ export function resolveKosisGuKey(region, gu, guMap) {
 }
 
 /**
- * apartments 배분 계획을 순수 함수로 산출한다 (세션567 신설 — 시험 가능하게 분리).
+ * apartments 배분 계획을 순수 함수로 산출한다 (세션567 신설 — 시험 가능하게 분리. 세션568-3 규칙 전면 개정).
  *
- * 각 단지의 처리 결과를 action 으로 분류한다:
- * - "write": KOSIS 로 새로 채운다(estimated/rate 계산됨)
- * - "hold_ge50": 새 추정 미분양률이 50% 이상이라 신뢰할 수 없어 쓰지 않는다(사장님 결정)
- * - "skip_preserved": shouldSkipKosisFill 이 "존중"으로 판정한 기존 값 — **새 추정치는 참고용으로 함께 기록**
- * - "skip_lease": 임대형(presale_type) — 대상에서 제외
- * - "skip_no_match": resolveKosisGuKey 가 매칭 못 함(시도 합계로 폴백하지 않음)
- * - "skip_kosis_zero": KOSIS 값이 0 이하이고 매물 유래가 아님 — 단순 매칭 없음과 구분(세션567 추가분)
- * - "clear_listing_derived": 매물 유래 값인데 KOSIS 가 덮지 못함(0/거의 0/추정 0/100%초과 아님) → 비운다(null, 세션567 추가분)
- * - "skip_no_estimate": guUnsold 는 있으나 calcProportionalUnsold 가 null(비정상 비율 등) — 매물 유래가 아니거나, 100% 초과처럼 비우면 안 되는 경우
- * - "skip_invalid": shouldSkipKosisFill 이 true 이고 값 자체가 없거나 분모가 안 되는 경우
+ * ## 판정 순서 (사장님 결정 2026-09-24 3차 — 위에서부터)
+ * 1. 무효(지역·구·세대수≤1) → `skip_invalid`
+ * 2. 임대형(presale_type) → `skip_lease`(분모에서도 제외)
+ * 3. `unsold_source === "applyhome"` → `skip_preserved`(항상 존중)
+ * 4. `unsold === 0 && unsold_source == null`(옛 완판 실측) → `skip_preserved`
+ * 5. 그 밖(출처 kosis·NULL 출처 값>0·값 없음) → **KOSIS 가 정한다**:
+ *    a. `kosisKey` 없음 또는 그 구 데이터 자체가 응답에 없음 → `skip_no_match`(값 유지) + 경고
+ *    b. `guUnsold <= 0` → `write_zero`(0 을 쓴다 + 출처 kosis) — 비우면 위험점수가 '모름'(40)이 되어 더 나쁘다(사장님 결정)
+ *    c. 반올림 추정이 0 이하(합계>0인데 비례배분 결과가 거의 0) → `write_zero`(같은 원칙)
+ *    d. 추정률 > 100%(비정상) → `skip_no_estimate`(값 유지)
+ *    e. 추정률 ≥ 50% → `hold_ge50`(값 유지, 신뢰 불가)
+ *    f. 그 밖 → `write`(추정치를 쓴다 + 출처 kosis)
  *
- * ⚠️ 임대형은 **대상에서도 분모(totalUnitsInGu)에서도** 제외한다(사장님 결정) — 그래서
- * `unitsByGu` 는 이 함수 안에서 임대형을 거른 뒤 계산한다.
+ * `clear_listing_derived`·`clear_kosis_stale`(null 로 비우는 action)은 **폐지**됐다 — 전부 0 쓰기
+ * (`write_zero`)로 대체됐다. 매물 유래 판정(`listingDerived`, 세션567~568-2)도 **삭제**했다:
+ * applyhome 이 3번에서 먼저 존중되므로 그 경로에선 자연히 해결되고, kosis·NULL 출처는 이제
+ * "매물처럼 보이는가"가 아니라 "출처가 무엇인가"만으로 갈린다(더 단순하고 더 안전하다).
  *
- * ## 세션567 추가분 — "매물 유래인데 KOSIS 가 덮지 못하는 곳" 은 비운다(null)
+ * ⚠️ **검사관 H1(매칭 실패를 0 취급하지 않는다)은 유지**된다 — a 는 "그 구 응답 자체가 없다"이고
+ * b/c 는 "그 구 응답이 왔고 값이 0"이다. 전혀 다른 사건이라 절대 섞지 않는다.
  *
- * 세션559 규칙(`unsold === naver_sell_count` 면 매물 유래로 보고 덮어씀)은 KOSIS 값이
- * 있어야만 작동한다. KOSIS 가 0 또는 거의 0(반올림 추정이 0 이하) 이거나, 추정이 100% 를
- * 넘어 못 쓰는 경우는 매물 유래 값이 **그대로 남는다.** 사장님 결정(2026-09-24):
- * 매물 유래 값은 미분양이 아니므로 **0 으로 넣지 않고 null 로 비운다** — 0 은
- * `shouldSkipKosisFill` 이 "완판 실측"으로 영구 보존하기 때문이다. null 로 비우면
- * `hideNoUnsold` 목록에서 빠지고, 다음 달 KOSIS 값이 생기면 자동 재채움된다.
- *
- * 단, 추정이 **100% 를 넘어** 못 쓰는 경우(KOSIS 가 오히려 많다고 말하는 경우)는 비우지
- * 않는다 — 그건 "KOSIS 값이 없다"가 아니라 "KOSIS 값이 이상하다"이므로 `skip_no_estimate`
- * 그대로 둔다(실측 1곳 `ah-2022910258`).
+ * ⚠️ **검사관 M3(자기잠금 방지)**: `unsold === 0` 존중(규칙 4)은 `unsold_source == null` 일 때만
+ * 적용된다. kosis 출처의 0(write_zero 로 쓴 값)은 이 규칙에 안 걸려 다음 회차가 다시 갱신한다
+ * (`shouldSkipKosisFill` 이 kosis 출처를 항상 false 로 돌려주므로).
  *
  * @param {{
- *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null }>;
+ *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null }>;
  *   unsoldByRegionGu: UnsoldByRegionGu;
  * }} params
  * @returns {Array<{
  *   id: string; name: string; region: string | null; gu: string | null;
- *   action: "write" | "hold_ge50" | "skip_preserved" | "skip_lease" | "skip_no_match" | "skip_kosis_zero" | "clear_listing_derived" | "skip_no_estimate" | "skip_invalid";
+ *   action: "write" | "write_zero" | "hold_ge50" | "skip_preserved" | "skip_lease" | "skip_no_match" | "skip_no_estimate" | "skip_invalid";
  *   kosisKey: string | null;
  *   guUnsold: number | null;
  *   totalUnitsInGu: number | null;
@@ -280,6 +245,7 @@ export function resolveKosisGuKey(region, gu, guMap) {
  *   newRate: number | null;
  *   currentUnsold: number | null;
  *   currentRate: number | null;
+ *   currentSource: string | null;
  * }>}
  */
 export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
@@ -311,32 +277,65 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
       kosisKey: null, guUnsold: null, totalUnitsInGu: null,
       newEstimate: null, newRate: null,
       currentUnsold: apt.unsold, currentRate: apt.unsold_rate,
+      currentSource: apt.unsold_source ?? null,
     };
 
+    // 규칙 1 — 무효(지역·구·세대수<=1). shouldSkipKosisFill 도 이 조건에서 true 를 주지만,
+    // 그건 "존중"(규칙3·4용)과 의미가 다르므로 skip_invalid 로 먼저 갈라낸다(검사관 지적:
+    // units<=1 무효 단지가 규칙3·4 의 skip_preserved 로 잘못 섞이던 결함 수정).
+    const guOkForInvalid = !!apt.gu || apt.region === "세종";
+    if (!apt.region || !guOkForInvalid || !apt.units || apt.units <= 1) {
+      plan.push({ ...base, action: "skip_invalid" });
+      continue;
+    }
+
+    // 규칙 2 — 임대형.
     if (isLeasePresale(apt.presale_type)) {
       plan.push({ ...base, action: "skip_lease" });
       continue;
     }
 
+    // 규칙 3·4 — shouldSkipKosisFill 이 존중으로 판정한 값(applyhome·NULL출처 완판)은 KOSIS
+    // 매칭을 시도하지도 않고 그대로 존중한다. 새 추정치는 참고용으로 계산해 함께 기록한다.
+    // (여기 도달했다는 것은 이미 규칙1 무효 검사를 통과했다는 뜻이다.)
+    if (shouldSkipKosisFill(apt)) {
+      const guMapForRef = apt.region ? unsoldByRegionGu[apt.region] : undefined;
+      const kosisKeyForRef = keyByAptId.get(apt.id) ?? null;
+      /** @type {number | null} */
+      let refEstimate = null;
+      /** @type {number | null} */
+      let refRate = null;
+      if (kosisKeyForRef && guMapForRef) {
+        const guUnsoldForRef = /** @type {Record<string, number>} */ (guMapForRef)[kosisKeyForRef];
+        if (guUnsoldForRef != null) {
+          const denomKeyForRef = `${apt.region}::${kosisKeyForRef}`;
+          const totalForRef = unitsByKosisKey[denomKeyForRef] || apt.units || 0;
+          const refResult = calcProportionalUnsold(guUnsoldForRef, apt.units, totalForRef);
+          if (refResult) { refEstimate = refResult.estimated; refRate = refResult.unsoldRate; }
+        }
+      }
+      plan.push({ ...base, action: "skip_preserved", kosisKey: kosisKeyForRef, newEstimate: refEstimate, newRate: refRate });
+      continue;
+    }
+
+    // 규칙 5 — 여기부터는 출처 kosis·NULL 출처 값>0·값 없음. KOSIS 가 정한다.
     const guMap = apt.region ? unsoldByRegionGu[apt.region] : undefined;
     const kosisKey = keyByAptId.get(apt.id) ?? null;
+
+    // 5a — 매칭 실패(검사관 H1: 시도/구 응답 자체가 없다 ≠ 값이 0). 값을 유지한다.
     if (!kosisKey) {
       plan.push({ ...base, action: "skip_no_match" });
       continue;
     }
-
-    // 세션567 추가분 — 매물이 흘러든 값인지(사장님 결정: 이 경우만 KOSIS 부재를 null 로 비운다).
-    // shouldSkipKosisFill 의 "매물 수와 정확히 같으면 매물 유래" 판정과 같은 조건을 그대로 쓴다.
-    const listingDerived = !!(apt.unsold != null && apt.unsold > 0 && apt.naver_sell_count != null && apt.unsold === apt.naver_sell_count);
-
     const guUnsold = /** @type {Record<string, number>} */ (guMap)[kosisKey];
     if (guUnsold == null) {
       plan.push({ ...base, action: "skip_no_match", kosisKey });
       continue;
     }
+
+    // 5b — 그 구 응답은 왔고 값이 0 이하. 0 을 쓴다(비우지 않는다 — 사장님 결정).
     if (guUnsold <= 0) {
-      // KOSIS 값이 0(또는 이하) — 매물 유래면 비운다, 아니면 "매칭은 됐으나 값이 0"으로 구분.
-      plan.push({ ...base, action: listingDerived ? "clear_listing_derived" : "skip_kosis_zero", kosisKey, guUnsold });
+      plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, newEstimate: 0, newRate: 0 });
       continue;
     }
 
@@ -346,11 +345,11 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
 
     const result = calcProportionalUnsold(guUnsold, apt.units, totalUnitsInGu);
     if (!result) {
-      // 세션567 추가분 — 반올림한 원추정이 0 이하(거의 0)이고 매물 유래면 비운다.
-      // 단 100% 초과처럼 "KOSIS 값이 이상해서" null 인 경우는 비우지 않는다(사장님 결정).
+      // 5c — 합계는 0 초과인데 비례배분 결과(반올림)가 0 이하(단지가 그 구에서 아주 작은 비중).
+      // 5d — 100% 초과(비정상)는 값을 유지한다(비우지도, 0 을 쓰지도 않는다).
       const rawEstimate = totalUnitsInGu > 0 && apt.units ? Math.round(guUnsold * (apt.units / totalUnitsInGu)) : null;
-      if (listingDerived && rawEstimate != null && rawEstimate <= 0) {
-        plan.push({ ...base, action: "clear_listing_derived", kosisKey, guUnsold, totalUnitsInGu });
+      if (rawEstimate != null && rawEstimate <= 0) {
+        plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, totalUnitsInGu, newEstimate: 0, newRate: 0 });
         continue;
       }
       plan.push({ ...base, action: "skip_no_estimate", kosisKey, guUnsold, totalUnitsInGu });
@@ -358,17 +357,8 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
     }
 
     const { estimated, unsoldRate } = result;
-    const skip = shouldSkipKosisFill(apt);
 
-    if (skip) {
-      // 보존되는 기존 값이라도 새 추정치는 비교용으로 함께 기록한다(사장님 결정).
-      plan.push({
-        ...base, action: "skip_preserved", kosisKey, guUnsold, totalUnitsInGu,
-        newEstimate: estimated, newRate: unsoldRate,
-      });
-      continue;
-    }
-
+    // 5e — 추정률 50% 이상은 신뢰 못 할 만큼 커서 보류(값 유지).
     if (unsoldRate >= UNRELIABLE_RATE_THRESHOLD) {
       plan.push({
         ...base, action: "hold_ge50", kosisKey, guUnsold, totalUnitsInGu,
@@ -377,6 +367,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu }) {
       continue;
     }
 
+    // 5f — 정상 추정치를 쓴다.
     plan.push({
       ...base, action: "write", kosisKey, guUnsold, totalUnitsInGu,
       newEstimate: estimated, newRate: unsoldRate,
@@ -510,12 +501,12 @@ export async function main() {
     // 2. apartments unsold 추정 (KOSIS 비례배분)
     // 세션549: 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
     // 세션566: apartments 는 selectAll(..., "id") 로 전수 확보한다(1,000행 컷 수리).
-    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null }} AptRow */
+    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null }} AptRow */
     /** @type {AptRow[]} */
     let apartmentsTyped;
     try {
       apartmentsTyped = /** @type {any} */ (
-        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type"), sb, "id")
+        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source"), sb, "id")
       );
     } catch (e) {
       logError(PHASE, `apartments 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
@@ -534,6 +525,36 @@ export async function main() {
       log(PHASE, `[보류·미신뢰(≥${UNRELIABLE_RATE_THRESHOLD}%)] ${heldIds.length}건 — 쓰지 않음: ${heldIds.join(", ")}`);
     }
 
+    // 검사관 H1 — kosis 출처인데 이번 회차 매칭이 실패한 행(skip_no_match)은 값을 유지하지만,
+    // "그 지역 KOSIS 응답이 이번 회차에 통째로 빠졌을 가능성"을 사람이 알아채도록 경고 로그를
+    // 남긴다. apartmentsTyped 는 select 에 unsold_source 를 포함하므로 그대로 대조한다.
+    /** @type {Map<string, string | null>} apt.id → unsold_source */
+    const sourceByAptId = new Map(apartmentsTyped.map((a) => [a.id, a.unsold_source ?? null]));
+    const kosisNoMatch = plan.filter((p) => p.action === "skip_no_match" && sourceByAptId.get(p.id) === "kosis");
+    if (kosisNoMatch.length > 0) {
+      // 한 시도가 응답에서 통째로 빠졌으면 사람이 바로 보게 시도 이름을 모아 보여준다.
+      const regionsMissing = [...new Set(kosisNoMatch.map((p) => p.region).filter(Boolean))];
+      const sample = kosisNoMatch.slice(0, 10).map((p) => `${p.name}(${p.id})`);
+      logError(PHASE, `[경고][매칭실패] kosis 출처 ${kosisNoMatch.length}건이 이번 회차 매칭 실패(skip_no_match) — 값 유지, 지역 응답 누락 의심(시도: ${regionsMissing.join(", ") || "?"}): ${sample.join(", ")}${kosisNoMatch.length > 10 ? ` 외 ${kosisNoMatch.length - 10}건` : ""}`);
+    }
+
+    // 검사관 H1 차단기(세션568-3 갱신) — "지금 값 > 0 인데 0 으로 바뀌는" 행(write_zero 이면서
+    // currentUnsold > 0)이 "지금 값 > 0 인 대상 행"(이번 회차 KOSIS 판정을 받은 행 중 값이
+    // 있던 것) 전체의 10% 를 넘으면 0 쓰기를 전부 멈춘다(그 행들은 값 유지) — KOSIS 응답이
+    // 광범위하게 이상해졌을 때(예: 여러 시도가 한꺼번에 0 을 준다) 대량 오염을 막는 안전망이다.
+    // 분모 = "이번 회차에 KOSIS 판정을 받는 대상(규칙 5)" 중 지금 값이 0 초과인 행 전체.
+    const kosisJudgedNonZero = plan.filter((p) =>
+      (p.currentUnsold ?? 0) > 0 &&
+      ["write", "write_zero", "hold_ge50", "skip_no_match", "skip_no_estimate"].includes(p.action),
+    );
+    const willBecomeZero = kosisJudgedNonZero.filter((p) => p.action === "write_zero");
+    if (kosisJudgedNonZero.length > 0 && willBecomeZero.length / kosisJudgedNonZero.length > 0.1) {
+      throw new Error(
+        `KOSIS 0-쓰기 차단기 발동 — 값>0 인데 0 으로 바뀌는 행 ${willBecomeZero.length}/${kosisJudgedNonZero.length} ` +
+        `(${((willBecomeZero.length / kosisJudgedNonZero.length) * 100).toFixed(1)}%) 가 10% 를 초과해 0 쓰기를 전부 중단합니다(해당 행은 값 유지)`,
+      );
+    }
+
     let aptUpdated = 0;
     for (const p of plan) {
       if (p.action !== "write") continue;
@@ -547,6 +568,7 @@ export async function main() {
       const { error } = await sb.from("apartments").update({
         unsold: p.newEstimate,
         unsold_rate: p.newRate,
+        unsold_source: "kosis",
         updated_at: new Date().toISOString(),
       }).eq("id", p.id);
 
@@ -556,29 +578,35 @@ export async function main() {
 
     log(PHASE, `apartments 미분양 추정 갱신: ${aptUpdated}건`);
 
-    // 세션567 추가분 — 매물 유래 값인데 KOSIS 가 덮지 못하는 곳은 null 로 비운다(사장님 결정).
-    // 0 으로 넣지 않는 이유: shouldSkipKosisFill 이 0 을 "완판 실측"으로 영구 보존하기 때문.
-    let clearedListingDerived = 0;
+    // 세션568-3 — KOSIS 가 "그 시군구 미분양 0"이라 말하면 null 로 비우지 않고 0 을 쓴다
+    // (사장님 결정: 비우면 위험 점수가 '모름'(40)이 되어 오히려 나빠진다). clear_listing_derived·
+    // clear_kosis_stale(비우기)은 폐지 — 전부 write_zero 로 대체됐다.
+    let aptZeroed = 0;
     for (const p of plan) {
-      if (p.action !== "clear_listing_derived") continue;
+      if (p.action !== "write_zero") continue;
 
       if (dryRun) {
-        log(PHASE, `  [DRY-RUN][비움·매물유래] ${p.name} (${p.region} ${p.gu}): unsold ${p.currentUnsold} → null`);
-        clearedListingDerived++;
+        log(PHASE, `  [DRY-RUN][0으로 씀] ${p.name} (${p.region} ${p.gu}): unsold ${p.currentUnsold} → 0`);
+        aptZeroed++;
         continue;
       }
 
       const { error } = await sb.from("apartments").update({
-        unsold: null,
-        unsold_rate: null,
+        unsold: 0,
+        unsold_rate: 0,
+        unsold_source: "kosis",
         updated_at: new Date().toISOString(),
       }).eq("id", p.id);
 
-      if (error) logError(PHASE, `  ${p.name} 비움 UPDATE 실패: ${error.message}`);
-      else clearedListingDerived++;
+      if (error) logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${error.message}`);
+      else aptZeroed++;
     }
 
-    log(PHASE, `매물 유래 비움: ${clearedListingDerived}건`);
+    const zeroRatioPct = kosisJudgedNonZero.length > 0
+      ? ((willBecomeZero.length / kosisJudgedNonZero.length) * 100).toFixed(1)
+      : "0.0";
+    log(PHASE, `KOSIS 0-쓰기: ${aptZeroed}건 (값>0 대비 0 으로 바뀜 ${willBecomeZero.length}/${kosisJudgedNonZero.length} = ${zeroRatioPct}%, 차단기 기준 10%)`);
+    log(PHASE, `요약 — action 별: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")} · KOSIS 출처 갱신(write) ${aptUpdated} · 0-쓰기 ${aptZeroed} · 보류(≥${UNRELIABLE_RATE_THRESHOLD}%) ${heldIds.length}`);
 
     if (impactOutPath) {
       try {
@@ -592,9 +620,9 @@ export async function main() {
     // 3. unsold_history 시계열 upsert (세션134, 방향 A)
     // KOSIS 단일 API 호출 응답(3개월 범위)을 재파싱하여 월별 시계열 저장.
     // API 재호출 아님 → 쿼터 증가 0.
-    // ⚠️ 이 시계열은 **순수 KOSIS 비례배분 계열**이다 — apartments 쪽 판정(skip_preserved 청약홈 실측 존중 ·
-    //    clear_listing_derived 매물 유래 비움)을 적용하지 않는다(설계). 그래서 보존 값을 가진 단지는 헤드라인
-    //    unsold 와 차트 계열이 다를 수 있다(세션567 검사관 확인 — 보존 138곳 조사 때 함께 본다).
+    // ⚠️ 이 시계열은 **순수 KOSIS 비례배분 계열**이다 — apartments 쪽 판정(skip_preserved 로
+    //    applyhome·완판값을 존중하는 것)을 적용하지 않는다(설계). 그래서 보존 값을 가진 단지는
+    //    헤드라인 unsold 와 차트 계열이 다를 수 있다(세션567 검사관 확인 — 보존 138곳 조사 때 함께 본다).
     // 세션567: 시군구 매칭은 resolveKosisGuKey 로 통일(시 단위·세종 포함) — 임대형 제외,
     // 새 추정 미분양률 50% 이상은 저장하지 않는다(사장님 결정).
     const allMonthsMap = parseKosisRowsAllMonths(rows);
@@ -661,7 +689,7 @@ export async function main() {
 
     // 4. API 쿼터 기록 (KOSIS 단일 호출)
     if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
-    ok = regUpdated + aptUpdated + clearedListingDerived;
+    ok = regUpdated + aptUpdated + aptZeroed;
 
     log(PHASE, "\n=== 완료 ===");
   } catch (err) {

@@ -79,7 +79,7 @@ const NO_DATE_ABORT_RATIO = 0.5;
  *   HOUSE_SECD_NM?: string | null; [k: string]: unknown }} RemndrRow
  * @typedef {{ id: string; name: string; region: string; gu: string | null; dong: string | null;
  *   address: string | null; lat: number | null; lng: number | null; units: number; unsold: number | null;
- *   unsold_rate: number | null; builder: string | null; completion: string | null;
+ *   unsold_rate: number | null; unsold_source: string | null; builder: string | null; completion: string | null;
  *   announcement_url: string | null; unit_source: string; _recruitDate: string }} Candidate
  * @typedef {{ id: string; name: string; region: string | null; lat: number | null; lng: number | null }} ExistingApt
  */
@@ -148,6 +148,9 @@ export function mapRow(item) {
     units,
     unsold,
     unsold_rate: clampUnsoldRate(unsold != null && units > 0 ? Math.round((unsold / units) * 1000) / 10 : null),
+    // 세션568 — 값을 내가(청약홈 seed) 썼음을 표시한다. 회차 공급분(잔여물량)이라 KOSIS 구
+    // 단위 추정보다 정확한 단지별 값이므로 collect-unsold-kosis.mjs 가 존중한다(shouldSkipKosisFill).
+    unsold_source: unsold != null ? "applyhome" : null,
     builder: resolveBuilder(item.BSNS_MBY_NM || null),
     completion: item.MVN_PREARNGE_YM || null,
     announcement_url: item.PBLANC_URL || null,

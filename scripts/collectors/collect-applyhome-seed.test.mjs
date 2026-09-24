@@ -46,6 +46,13 @@ describe("mapRow", () => {
     expect(apt.unit_source).toBe("applyhome");
     expect(apt.lat).toBe(null);
     expect(apt._recruitDate).toBe("2026-07-01");
+    expect(apt.unsold_source).toBe("applyhome"); // 세션568 — unsold 값이 있으면 출처를 표시
+  });
+
+  it("unsold 가 null(TOT_SUPLY_HSHLDCO 0/누락)이면 unsold_source 도 null (세션568)", () => {
+    const apt = /** @type {any} */ (mapRow(makeRaw({ TOT_SUPLY_HSHLDCO: null })));
+    expect(apt.unsold).toBe(null);
+    expect(apt.unsold_source).toBe(null);
   });
 
   it("주소 파싱 실패 시 SUBSCRPT_AREA_CODE_NM 폴백", () => {

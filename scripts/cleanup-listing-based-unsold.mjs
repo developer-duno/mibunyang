@@ -85,7 +85,8 @@ async function main() {
   for (const a of targets) {
     // unsold 와 unsold_rate 를 함께 null 로 — 한쪽만 지우면 두 필드가 서로 다른 시점을
     // 가리킨 채 그럴듯한 옛 비율이 화면·scoreRisk 에 계속 노출된다(세션538 지적과 같은 결).
-    const { error } = await sb.from("apartments").update({ unsold: null, unsold_rate: null }).eq("id", a.id);
+    // unsold_source 도 함께 비운다(세션568) — 지우는 값은 오염값이라 출처 표시가 남으면 안 된다.
+    const { error } = await sb.from("apartments").update({ unsold: null, unsold_rate: null, unsold_source: null }).eq("id", a.id);
     if (error) {
       logError(PHASE, `${a.name}: ${error.message}`);
       fail++;
