@@ -44,6 +44,7 @@ paths:
 1,000행 넘게 덮어쓰기 전에 `(id, 바뀌는 칸들, updated_at)` 을 파일로 뜨고, 역방향 계획(expect = 새 값 → set = 옛 값)을
 `backfill-*.mjs --plan=` 꼴로 돌릴 수 있게 둔다. "impact 파일이 있으니 되돌릴 수 있다"는 착각이다 — impact 는
 **의도**이지 실제 DB 상태가 아니다.
+적용 = `backfill-unsold-source.mjs --plan=<계획.json>`(행마다 expect 대조 뒤 set, `--apply` 없으면 dry-run). 출처를 applyhome 으로 set 할 땐 `unsold_as_of`(공고일)도 같이 넣는다(세션569 C6).
 
 ### 4. "조용히 버리던 것"을 고칠 때는 로그가 아니라 **기록**으로
 
