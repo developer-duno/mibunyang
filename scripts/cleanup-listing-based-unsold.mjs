@@ -25,6 +25,10 @@
  * 지금(평균 23.5점)보다 오히려 나쁘게 표시된다(세션559 실측).
  * 그 1,090곳은 KOSIS 가 다음 회차에 **공식 값으로 덮어쓴다** — 빈칸을 거치지 않는다.
  *
+ * ## 사람 보류(hold) 행은 대상이 아니다 (세션570)
+ * `unsold_source = hold` 는 사람이 "자료 없음"을 확정한 행이라 값이 NULL 이고(판정에도 안 걸린다), 조회에서도
+ * 뺀다(방어). `.neq("unsold_source","hold")` 만 쓰면 PostgREST 가 출처 NULL 행까지 빼므로 `is.null` 을 함께 건다.
+ *
  * ## 사용법
  *   node scripts/cleanup-listing-based-unsold.mjs              (dry-run — 기본)
  *   node scripts/cleanup-listing-based-unsold.mjs --apply      (실제 반영)
@@ -55,7 +59,7 @@ async function main() {
 
   const sb = getSupabase();
   const rows = await selectAll(
-    (s) => s.from("apartments").select("id, name, units, unsold, unsold_rate, naver_sell_count"),
+    (s) => s.from("apartments").select("id, name, units, unsold, unsold_rate, naver_sell_count").or("unsold_source.is.null,unsold_source.neq.hold"),
     sb,
     "id"
   );

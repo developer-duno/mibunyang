@@ -37,6 +37,32 @@ const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProp
   await import("./collect-unsold-kosis.mjs");
 const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
+// ── 가짜 sb (세션570) ─────────────────────────────────────────
+/**
+ * 가짜 sb 의 update(payload).eq("id", id) — regions 쓰기는 그대로 await 되고, apartments 쓰기는 hold 보호
+ * WHERE(`.or(filter).select("id")`)까지 이어 부른다. `protectedIds` 에 든 id 는 DB 가 그 WHERE 로 막은 것처럼
+ * 빈 배열을 돌려준다(돌아온 행으로 세는지 시험하려고).
+ * @param {any[]} updateCalls @param {string} table @param {any} payload @param {Set<string>} [protectedIds]
+ */
+function fakeEq(updateCalls, table, payload, protectedIds = new Set()) {
+  return (/** @type {string} */ _col, /** @type {string} */ id) => {
+    /** @type {{ table: string; payload: any; id: string; filter: string | null; selected: string | null }} */
+    const call = { table, payload, id, filter: null, selected: null };
+    updateCalls.push(call);
+    return Object.assign(Promise.resolve({ error: null }), {
+      or: (/** @type {string} */ filter) => {
+        call.filter = filter;
+        return {
+          select: (/** @type {string} */ cols) => {
+            call.selected = cols;
+            return Promise.resolve({ data: protectedIds.has(id) ? [] : [{ id }], error: null });
+          },
+        };
+      },
+    });
+  };
+}
+
 // ── 팩토리 ───────────────────────────────────────────────────
 /** KOSIS 행 팩토리 */
 function makeRow(/** @type {any} */ c1, /** @type {any} */ c2, /** @type {any} */ period, /** @type {any} */ value) {
@@ -563,10 +589,7 @@ describe("main() — write_zero 가 dry-run 로그·ok 카운트·DB 반영에 �
     getSupabase.mockReturnValue({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
-          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
-            updateCalls.push({ table, payload, id });
-            return Promise.resolve({ error: null });
-          },
+          eq: fakeEq(updateCalls, table, payload),
         }),
       }),
     });
@@ -704,10 +727,7 @@ describe("main() — 0-쓰기 차단기 (세션568-5: DB 쓰기 전 판정 + exp
     getSupabase.mockReturnValue({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
-          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
-            updateCalls.push({ table, payload, id });
-            return Promise.resolve({ error: null });
-          },
+          eq: fakeEq(updateCalls, table, payload),
         }),
       }),
     });
@@ -739,10 +759,7 @@ describe("main() — 0-쓰기 차단기 (세션568-5: DB 쓰기 전 판정 + exp
     getSupabase.mockReturnValue({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
-          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
-            updateCalls.push({ table, payload, id });
-            return Promise.resolve({ error: null });
-          },
+          eq: fakeEq(updateCalls, table, payload),
         }),
       }),
     });
@@ -1308,10 +1325,7 @@ describe("main() — 값 유지 대상(skip_no_match·skip_no_estimate·hold_ge5
     getSupabase.mockReturnValue({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
-          eq: (/** @type {string} */ _col, /** @type {string} */ id) => {
-            updateCalls.push({ table, payload, id });
-            return Promise.resolve({ error: null });
-          },
+          eq: fakeEq(updateCalls, table, payload),
         }),
       }),
     });
@@ -1401,8 +1415,187 @@ describe("C6 후속 (세션569 검사관)", () => {
 
   it("write·write_zero 두 쓰기 경로가 모두 kosisWritePayload 를 쓴다(소스)", () => {
     const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
-    expect(src).toContain('update(kosisWritePayload(p.newEstimate, p.newRate)).eq("id", p.id)');
-    expect(src).toContain('update(kosisWritePayload(0, 0)).eq("id", p.id)');
+    // 세션570: 두 경로 모두 hold 보호 헬퍼(updateApartmentUnlessHold)를 거쳐 쓴다.
+    expect(src).toContain("updateApartmentUnlessHold(sb, p.id, kosisWritePayload(p.newEstimate, p.newRate))");
+    expect(src).toContain("updateApartmentUnlessHold(sb, p.id, kosisWritePayload(0, 0))");
     expect(src).not.toMatch(/unsold_source: "kosis",\s*updated_at/);
+  });
+});
+
+// ── 세션570 — 사람 보류(hold): 수집기가 사람이 비운 자리를 0 으로 되돌리지 않는다 ──
+describe("사람 보류 hold (세션570)", () => {
+  /** @param {Partial<any>} o */
+  const apt = (o = {}) => ({
+    id: "h-1", name: "보류단지", region: "경기", gu: "수원시",
+    units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null,
+    ...o,
+  });
+  const NOW = new Date("2026-10-09T05:30:00+09:00");
+
+  it("shouldSkipKosisFill — hold 는 값·세대수·날짜와 무관하게 존중(true), 같은 행이 출처 NULL 이면 KOSIS 가 정한다(false)", async () => {
+    const { shouldSkipKosisFill } = await import("./collect-unsold-kosis.mjs");
+    expect(shouldSkipKosisFill(apt({ unsold_source: "hold" }), NOW)).toBe(true);
+    expect(shouldSkipKosisFill(apt({ unsold_source: "hold", unsold_as_of: "2020-01-01" }), NOW)).toBe(true); // 만료 없음
+    expect(shouldSkipKosisFill(apt({ unsold_source: null }), NOW)).toBe(false); // 대조군 — 이게 10/09 되돌림 경로
+  });
+
+  it("planUnsoldUpdates — hold 는 skip_hold, 무효(units≤1)·임대형 판정보다 먼저", () => {
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "h-ok", unsold_source: "hold" }),
+        apt({ id: "h-tiny", unsold_source: "hold", units: 1 }),
+        apt({ id: "h-lease", unsold_source: "hold", presale_type: "국민임대" }),
+        apt({ id: "h-nogu", unsold_source: "hold", gu: null }),
+      ],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+      now: NOW,
+    });
+    expect(plan.map((p) => [p.id, p.action])).toEqual([
+      ["h-ok", "skip_hold"], ["h-tiny", "skip_hold"], ["h-lease", "skip_hold"], ["h-nogu", "skip_hold"],
+    ]);
+  });
+
+  it("★ 대조군 — 같은 값·출처 NULL 이면 KOSIS 0 에 write_zero(빈칸 → 0), hold 면 skip_hold", () => {
+    const u = { "경기": { "수원시": 0 } };
+    expect(planUnsoldUpdates({ apartments: [apt()], unsoldByRegionGu: u, now: NOW })[0].action).toBe("write_zero");
+    expect(planUnsoldUpdates({ apartments: [apt({ unsold_source: "hold" })], unsoldByRegionGu: u, now: NOW })[0].action).toBe("skip_hold");
+  });
+
+  it("★ 분모 불변 — hold 단지가 같은 시에 있어도 이웃 단지 추정치는 hold 전과 같다", () => {
+    const u = { "경기": { "수원시": 100 } };
+    const neighbour = apt({ id: "nb", units: 300, unsold: 10, unsold_rate: 3.3, unsold_source: "kosis" });
+    const before = planUnsoldUpdates({ apartments: [apt({ id: "h-1", units: 700 }), neighbour], unsoldByRegionGu: u, now: NOW });
+    const after = planUnsoldUpdates({ apartments: [apt({ id: "h-1", units: 700, unsold_source: "hold" }), neighbour], unsoldByRegionGu: u, now: NOW });
+    const b = before.find((p) => p.id === "nb");
+    const a = after.find((p) => p.id === "nb");
+    expect(a?.totalUnitsInGu).toBe(1000); // 700(hold) + 300 — hold 도 분모에 남는다
+    expect(a?.newEstimate).toBe(b?.newEstimate);
+    expect(a?.newEstimate).toBe(30);
+    expect(after.find((p) => p.id === "h-1")?.action).toBe("skip_hold");
+  });
+
+  it("summarizeHoldAndNullToZero — hold 명단과 빈칸→0 명단(값>0 → 0 은 빈칸→0 아님)", async () => {
+    const { summarizeHoldAndNullToZero } = await import("./collect-unsold-kosis.mjs");
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "h-1", unsold_source: "hold" }),
+        apt({ id: "z-null" }),
+        apt({ id: "z-pos", unsold: 5, unsold_rate: 1, unsold_source: "kosis" }),
+      ],
+      unsoldByRegionGu: { "경기": { "수원시": 0 } },
+      now: NOW,
+    });
+    expect(summarizeHoldAndNullToZero(plan)).toEqual({ holdIds: ["h-1"], nullToZeroIds: ["z-null"] });
+  });
+
+  it("excludeHoldFromHistory — hold 만 빼고 나머지는 순서 그대로", async () => {
+    const { excludeHoldFromHistory } = await import("./collect-unsold-kosis.mjs");
+    const r = excludeHoldFromHistory([{ id: "a", unsold_source: null }, { id: "h", unsold_source: "hold" }, { id: "k", unsold_source: "kosis" }]);
+    expect(r.kept.map((x) => x.id)).toEqual(["a", "k"]);
+    expect(r.excludedIds).toEqual(["h"]);
+  });
+
+  it("updateApartmentUnlessHold — hold 보호 WHERE 를 걸고, 돌아온 행으로 판정(빈 배열 = protected)", async () => {
+    const { updateApartmentUnlessHold, NOT_HOLD_FILTER } = await import("./collect-unsold-kosis.mjs");
+    expect(NOT_HOLD_FILTER).toBe("unsold_source.is.null,unsold_source.neq.hold");
+    /** @type {any[]} */
+    const calls = [];
+    const sb = { from: (/** @type {string} */ t) => ({ update: (/** @type {any} */ p) => ({ eq: fakeEq(calls, t, p, new Set(["h-1"])) }) }) };
+    expect(await updateApartmentUnlessHold(sb, "a-1", { unsold: 3 })).toEqual({ status: "updated" });
+    expect(await updateApartmentUnlessHold(sb, "h-1", { unsold: 0 })).toEqual({ status: "protected" });
+    expect(calls.map((c) => [c.table, c.id, c.filter, c.selected])).toEqual([
+      ["apartments", "a-1", NOT_HOLD_FILTER, "id"],
+      ["apartments", "h-1", NOT_HOLD_FILTER, "id"],
+    ]);
+    const errSb = { from: () => ({ update: () => ({ eq: () => ({ or: () => ({ select: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }) }) }) };
+    expect(await updateApartmentUnlessHold(errSb, "x", {})).toEqual({ status: "error", message: "boom" });
+  });
+
+  it("소스 가드 — apartments UPDATE 는 헬퍼 한 곳뿐(hold 보호 WHERE + select id), write·write_zero 두 경로가 헬퍼를 부른다", () => {
+    const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
+    expect(src.match(/from\("apartments"\)\.update\(/g) ?? []).toHaveLength(1);
+    expect(src).toContain('sb.from("apartments").update(payload).eq("id", id).or(NOT_HOLD_FILTER).select("id")');
+    expect(src.match(/await updateApartmentUnlessHold\(sb, p\.id, /g) ?? []).toHaveLength(2);
+    expect(src).toContain("for (const apt of historyApartments) {");
+  });
+
+  describe("main() 배선", () => {
+    beforeEach(() => {
+      selectAllMock.mockReset();
+      fetchWithRetryMock.mockReset();
+      recordCollectorRun.mockClear();
+    });
+
+    /** 차단기(값>0 대비 0-쓰기)에 안 걸리게 모두 빈칸(값 null) 행으로 — 분모 0 → 미발동 */
+    const fixture = () => [
+      apt({ id: "h-1", name: "보류", unsold_source: "hold", unsold_as_of: "2026-09-24" }),
+      apt({ id: "z-1", name: "빈칸" }),
+    ];
+
+    it("dry-run — [hold]·[빈칸→0] 명단 로그 + impact 에 holdIds·nullToZeroIds + 요약에 hold=1", async () => {
+      const os = await import("node:os");
+      const { rmSync } = await import("node:fs");
+      const impactPath = path.join(os.tmpdir(), `s570_hold_impact_${Date.now()}.json`);
+      selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(fixture());
+      fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202607", DT: "0" }] });
+      /** @type {string[]} */
+      const lines = [];
+      const { log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
+      logMock.mockImplementation((/** @type {string} */ _p, /** @type {string} */ m) => { lines.push(m); });
+      const originalArgv = process.argv;
+      process.argv = [...originalArgv, "--dry-run", `--impact-out=${impactPath}`];
+      try {
+        await main();
+        const parsed = JSON.parse(readFileSync(impactPath, "utf8"));
+        expect(parsed.holdIds).toEqual(["h-1"]);
+        expect(parsed.nullToZeroIds).toEqual(["z-1"]);
+      } finally {
+        process.argv = originalArgv;
+        logMock.mockReset();
+        try { rmSync(impactPath); } catch { /* noop */ }
+      }
+      expect(lines).toContain("[hold] 1건: h-1");
+      expect(lines).toContain("[빈칸→0] 1건: z-1");
+      expect(lines.some((l) => l.startsWith("요약") && l.includes("hold=1"))).toBe(true);
+    });
+
+    it("--apply — DB 가 hold 보호로 0행을 돌려주면 성공으로 세지 않는다(protectedByHold), hold 행은 UPDATE·history 둘 다 안 간다", async () => {
+      selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce([...fixture(), apt({ id: "race-1", name: "경합" })]);
+      fetchWithRetryMock.mockResolvedValue({ json: async () => [
+        { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202606", DT: "40" },
+        { C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202607", DT: "0" },
+      ] });
+      /** @type {any[]} */
+      const updateCalls = [];
+      // race-1 = 계획 뒤 사람이 hold 로 바꾼 행 — DB WHERE 가 막아 빈 배열을 돌려준다
+      getSupabase.mockReturnValue({
+        from: (/** @type {string} */ table) => ({ update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, table, payload, new Set(["race-1"])) }) }),
+      });
+      const { log: logMock, upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
+      upsertBatch.mockReset();
+      upsertBatch.mockResolvedValue(0);
+      /** @type {string[]} */
+      const lines = [];
+      logMock.mockImplementation((/** @type {string} */ _p, /** @type {string} */ m) => { lines.push(m); });
+      const originalArgv = process.argv;
+      process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+      try {
+        await main();
+      } finally {
+        process.argv = originalArgv;
+        getSupabase.mockReset();
+        logMock.mockReset();
+      }
+      const apts = updateCalls.filter((c) => c.table === "apartments");
+      expect(apts.map((c) => c.id).sort()).toEqual(["race-1", "z-1"]); // h-1 은 UPDATE 를 부르지도 않는다
+      expect(lines.some((l) => l.includes("KOSIS 0-쓰기: 1건"))).toBe(true); // race-1 은 세지 않는다
+      expect(lines.some((l) => l.startsWith("요약") && l.includes("hold 보호로 건너뜀 1"))).toBe(true);
+      expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
+      // history — hold 행 제외, 나머지 단지는 202606 값(40)의 비례배분으로 저장 대상
+      expect(lines).toContain("unsold_history hold 제외: 1건");
+      const historyRows = upsertBatch.mock.calls.find((/** @type {any[]} */ c) => c[0] === "unsold_history")?.[1] ?? [];
+      expect(historyRows.some((/** @type {any} */ r) => r.apartment_id === "h-1")).toBe(false);
+      expect(historyRows.some((/** @type {any} */ r) => r.apartment_id === "z-1")).toBe(true);
+    });
   });
 });

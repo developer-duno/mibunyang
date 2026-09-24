@@ -27,3 +27,4 @@
 - `_perm-fingerprint.mjs` — 권한 지문 비교·경보 판정·주의 항목(A1~A9) 추출. 순수 함수(DB 호출 없음), 감시 ⑩ 이 쓴다.
 - `perm-baseline.mjs` — 권한 기준선 미리보기·`--make-expect`·`--accept --expect-file`(사장님 승인 뒤). 로컬 전용 — `GITHUB_ACTIONS` 면 실행 거부.
 - `monitor-collectors.mjs` 감시 ⑪ = `checkRegionUnresolved`(kind `region-unresolved`, KOSIS 시도 이름 못 맞춤 마커) · ⑫ = `checkApplyhomeUnsold`(청약홈 미분양 값 만료 — #606 합침(25b1d09f)).
+- 미분양 출처 `hold`(사람 보류, 세션570) — 수집기가 덮지 않는 "자료 없음 확정" 행. 걸기·풀기 = `backfill-unsold-source.mjs` 계획 파일(`buildHoldPlanRow`: mark_hold·release_hold_to_null·release_hold_to_applyhome), 감시 = ⑫(d) 기준 명단 `HOLD_BASELINE_IDS`·(e) 보류 6개월 재검토, 규칙 정본 = `collect-unsold-kosis.mjs` 규칙 0(skip_hold, 분모 유지).

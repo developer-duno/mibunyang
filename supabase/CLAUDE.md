@@ -54,8 +54,8 @@
 | 분양정보 | 19 (presale_min_price ~ presale_fetched_at) | naver-presale |
 | 대기질 | 1 (air_quality JSONB) | collect-air-quality |
 | 치안 | 1 (crime_safety_grade SMALLINT 1~5) | collect-crime-safety |
-| 미분양 출처 | 1 (unsold_source TEXT — NULL·`kosis`·`applyhome`, CHECK) | collect-unsold-kosis(`kosis`) · collect-applyhome-seed(`applyhome`) — **세션568**(마이그 20260924000200). 판정 규칙 정본 = `scripts/collectors/collect-unsold-kosis.mjs` `shouldSkipKosisFill`·`planUnsoldUpdates` 머리말 |
-| 청약홈 값 만료 | 2 (unsold_as_of DATE — applyhome 값의 공고일 · competition_shortfall INTEGER ≥0 — 최신 경쟁률 회차 평형별 미달 합) | collect-applyhome-seed(`unsold_as_of`) · collect-applyhome(`competition_shortfall`, 0 이면 applyhome 값 0) · collect-unsold-kosis(공고일+6개월 지나면 KOSIS 로) — **세션569 C6**(마이그 20260924000500). VIEW 미노출 |
+| 미분양 출처 | 1 (unsold_source TEXT — NULL·`kosis`·`applyhome`·`hold`, CHECK + hold 면 unsold·unsold_rate NULL 제약) | collect-unsold-kosis(`kosis`) · collect-applyhome-seed(`applyhome`) · 사람(`hold` = 자료 없음 확정, backfill-unsold-source 계획 파일로만 걸고 푼다 — 수집기 둘 다 덮지 않음) — **세션568**(마이그 20260924000200) · hold **세션570**(마이그 20260924000600). 판정 규칙 정본 = `scripts/collectors/collect-unsold-kosis.mjs` `shouldSkipKosisFill`·`planUnsoldUpdates` 머리말 |
+| 청약홈 값 만료 | 2 (unsold_as_of DATE — applyhome=값의 공고일 · hold=보류 결정일(감시 ⑫(e) 6개월 재검토) · competition_shortfall INTEGER ≥0 — 최신 경쟁률 회차 평형별 미달 합) | collect-applyhome-seed(`unsold_as_of`) · collect-applyhome(`competition_shortfall`, 0 이면 applyhome 값 0) · collect-unsold-kosis(공고일+6개월 지나면 KOSIS 로) — **세션569 C6**(마이그 20260924000500). VIEW 미노출 |
 
 ### 칸 추가 뒤 확인 (세션568)
 

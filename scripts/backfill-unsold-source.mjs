@@ -31,6 +31,19 @@
  * **규약: 출처를 applyhome 으로 set 할 땐 unsold_as_of(그 값을 만든 공고의 공고일)도 같이 set 한다**
  * — 안 그러면 KOSIS 수집기가 만료를 판정하지 못해 그 값을 영구 존중한다(감시 ⑫-b 경보).
  *
+ * ## 세션570 — 사람 보류(hold) op 3종 (계약. 행은 buildHoldPlanRow 로 만든다)
+ * `unsold_source = 'hold'` = 사람이 "자료 없음"을 확정해 KOSIS·청약홈이 덮지 않는 행(값은 반드시 NULL —
+ * DB 제약 apartments_unsold_hold_null_check). 걸기·풀기는 이 스크립트의 계획 파일로만 한다.
+ *   - `mark_hold`                 expect `{unsold:null, unsold_rate:null, unsold_source:null}`
+ *                                 → set `{unsold_source:"hold", unsold_as_of:<보류 결정일>}`
+ *   - `release_hold_to_null`      expect `{unsold:null, unsold_source:"hold"}`
+ *                                 → set `{unsold_source:null, unsold_as_of:null}` (다음 9일 KOSIS 회차가 채운다)
+ *   - `release_hold_to_applyhome` expect `{unsold:null, unsold_source:"hold"}`
+ *                                 → set `{unsold, unsold_rate, unsold_source:"applyhome", unsold_as_of:<공고일>}`
+ * ⚠️ 배포 순서: mark_hold 는 새 수집기 코드가 본 폴더에 pull 된 **뒤에만** 반영한다 — 옛 코드는 hold 를
+ * '값 없음'으로 보고 다음 회차에 0 으로 덮고 출처까지 kosis 로 바꾼다(마이그 20260924000600 머리말).
+ * 감시 ⑫(d) 기준 명단(monitor-collectors.mjs HOLD_BASELINE_IDS)도 같은 PR 에서 고친다.
+ *
  * ## 사용법
  *   node scripts/backfill-unsold-source.mjs --plan=<계획.json>                (dry-run, 기본)
  *   node scripts/backfill-unsold-source.mjs --plan=<계획.json> --apply        (실제 반영)
@@ -78,6 +91,36 @@ export function checkPlanRow(row, dbRow) {
     }
   }
   return { ok: true, reason: null };
+}
+
+/**
+ * 사람 보류(hold) 계획 행을 계약(머리말 "세션570" 절) 그대로 만든다. DB 접근 없는 순수 함수.
+ * @param {"mark_hold" | "release_hold_to_null" | "release_hold_to_applyhome"} op
+ * @param {{ id: string; name?: string; date?: string | null; unsold?: number; unsold_rate?: number; note?: string }} p
+ *   date = mark_hold 의 보류 결정일 / release_hold_to_applyhome 의 공고일(YYYY-MM-DD)
+ * @returns {PlanRow & { note?: string }}
+ */
+export function buildHoldPlanRow(op, p) {
+  const head = { id: p.id, ...(p.name != null ? { name: p.name } : {}), op, ...(p.note != null ? { note: p.note } : {}) };
+  const needDate = () => {
+    if (typeof p.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new Error(`${op}: date(YYYY-MM-DD) 필요 — ${p.id}`);
+    return p.date;
+  };
+  if (op === "mark_hold") {
+    return { ...head, expect: { unsold: null, unsold_rate: null, unsold_source: null }, set: { unsold_source: "hold", unsold_as_of: needDate() } };
+  }
+  if (op === "release_hold_to_null") {
+    return { ...head, expect: { unsold: null, unsold_source: "hold" }, set: { unsold_source: null, unsold_as_of: null } };
+  }
+  if (op === "release_hold_to_applyhome") {
+    if (typeof p.unsold !== "number" || typeof p.unsold_rate !== "number") throw new Error(`${op}: unsold·unsold_rate 숫자 필요 — ${p.id}`);
+    return {
+      ...head,
+      expect: { unsold: null, unsold_source: "hold" },
+      set: { unsold: p.unsold, unsold_rate: p.unsold_rate, unsold_source: "applyhome", unsold_as_of: needDate() },
+    };
+  }
+  throw new Error(`알 수 없는 hold op: ${op}`);
 }
 
 export async function main() {

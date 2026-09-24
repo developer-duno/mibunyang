@@ -381,3 +381,106 @@ describe("unsold_as_of 계획 행 (세션569 C6)", () => {
     expect(src).toContain('s.from("apartments").select("id, unsold, unsold_rate, unsold_source, unsold_as_of")');
   });
 });
+
+// ── 세션570 — 사람 보류(hold) op 3종 ──
+describe("hold op 3종 (세션570) — buildHoldPlanRow 계약", () => {
+  it("mark_hold — expect 값·률·출처 전부 NULL → set 출처 hold + 보류 결정일", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("mark_hold", { id: "ah-1", name: "보류", date: "2026-09-24", note: "결정" });
+    expect(row).toEqual({
+      id: "ah-1", name: "보류", op: "mark_hold", note: "결정",
+      expect: { unsold: null, unsold_rate: null, unsold_source: null },
+      set: { unsold_source: "hold", unsold_as_of: "2026-09-24" },
+    });
+    // 세션569 가 비운 행(값·출처 NULL)이면 통과, KOSIS 가 그 사이 0 을 썼으면 불일치(덮지 않는다)
+    expect(checkPlanRow(row, dbRow({ id: "ah-1", unsold: null, unsold_rate: null, unsold_source: null })).ok).toBe(true);
+    const r = checkPlanRow(row, dbRow({ id: "ah-1", unsold: 0, unsold_rate: 0, unsold_source: "kosis" }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toContain("unsold");
+  });
+
+  it("release_hold_to_null — expect 값 NULL·출처 hold → set 출처·기준일 NULL(다음 회차가 채운다)", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("release_hold_to_null", { id: "ah-1" });
+    expect(row.expect).toEqual({ unsold: null, unsold_source: "hold" });
+    expect(row.set).toEqual({ unsold_source: null, unsold_as_of: null });
+    expect(checkPlanRow(row, dbRow({ id: "ah-1", unsold: null, unsold_rate: null, unsold_source: "hold" })).ok).toBe(true);
+    expect(checkPlanRow(row, dbRow({ id: "ah-1", unsold: null, unsold_rate: null, unsold_source: null })).ok).toBe(false);
+  });
+
+  it("release_hold_to_applyhome — set 값·률·출처 applyhome·공고일 넷을 함께(공고일 빠지면 거부)", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("release_hold_to_applyhome", { id: "ah-1", unsold: 12, unsold_rate: 4.1, date: "2026-10-02" });
+    expect(row.expect).toEqual({ unsold: null, unsold_source: "hold" });
+    expect(row.set).toEqual({ unsold: 12, unsold_rate: 4.1, unsold_source: "applyhome", unsold_as_of: "2026-10-02" });
+    expect(() => buildHoldPlanRow("release_hold_to_applyhome", { id: "x", unsold: 1, unsold_rate: 1 })).toThrow(/date/);
+    expect(() => buildHoldPlanRow("release_hold_to_applyhome", { id: "x", date: "2026-10-02" })).toThrow(/unsold/);
+    expect(() => buildHoldPlanRow("mark_hold", { id: "x", date: "20260924" })).toThrow(/date/);
+    expect(() => buildHoldPlanRow(/** @type {any} */ ("mark_holds"), { id: "x", date: "2026-09-24" })).toThrow(/알 수 없는/);
+  });
+
+  it("--apply — mark_hold 는 WHERE 에 expect 세 칸(is null)을 걸어 반영, 그 사이 값이 생긴 행은 경합으로 건너뛴다(가짜 저장소)", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { writeFileSync: wf, rmSync } = await import("node:fs");
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const planPath = path.join(os.tmpdir(), `s570_hold_plan_${Date.now()}.json`);
+    wf(planPath, JSON.stringify({ plan: [
+      buildHoldPlanRow("mark_hold", { id: "a", date: "2026-09-24" }),
+      buildHoldPlanRow("mark_hold", { id: "b", date: "2026-09-24" }),
+    ] }), "utf8");
+    selectAllMock.mockResolvedValueOnce([
+      { id: "a", unsold: null, unsold_rate: null, unsold_source: null },
+      { id: "b", unsold: null, unsold_rate: null, unsold_source: null },
+    ]);
+    /** b 는 조회 뒤 KOSIS 가 0 을 써 버린 상태(경합) */
+    const liveDb = { a: { unsold: null, unsold_rate: null, unsold_source: null }, b: { unsold: 0, unsold_rate: 0, unsold_source: "kosis" } };
+    /** @type {Array<Record<string, any>>} */
+    const wheres = [];
+    getSupabase.mockReturnValue({
+      from: () => ({
+        update: (/** @type {any} */ payload) => {
+          /** @type {string | null} */
+          let currentId = null;
+          /** @type {Record<string, any>} */
+          const where = {};
+          const builder = {
+            eq: (/** @type {string} */ col, /** @type {any} */ val) => { if (col === "id") currentId = val; else where[col] = val; return builder; },
+            is: (/** @type {string} */ col, /** @type {any} */ val) => { where[col] = val; return builder; },
+            select: () => {
+              wheres.push({ id: currentId, ...where });
+              const row = /** @type {any} */ (liveDb)[/** @type {string} */ (currentId)];
+              const matches = row && Object.entries(where).every(([k, v]) => row[k] === v);
+              if (matches) Object.assign(row, payload);
+              return Promise.resolve({ data: matches ? [{ id: currentId }] : [], error: null });
+            },
+          };
+          return builder;
+        },
+      }),
+    });
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, `--plan=${planPath}`, "--apply"];
+    /** @type {any} */
+    let result;
+    try {
+      result = await main();
+    } finally {
+      process.argv = originalArgv;
+      try { rmSync(planPath); } catch { /* noop */ }
+    }
+    expect(result.applied).toBe(1);
+    expect(result.raceLost).toBe(1);
+    expect(liveDb.a).toEqual({ unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-09-24" });
+    expect(liveDb.b.unsold_source).toBe("kosis"); // 경합에서 진 행은 안 바뀐다
+    expect(wheres.find((w) => w.id === "a")).toEqual({ id: "a", unsold: null, unsold_rate: null, unsold_source: null });
+  });
+
+  it("머리말 계약 — op 3종 이름·배포 순서 경고가 문서에 있다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./backfill-unsold-source.mjs", import.meta.url)), "utf8");
+    for (const op of ["`mark_hold`", "`release_hold_to_null`", "`release_hold_to_applyhome`"]) expect(src).toContain(op);
+    expect(src).toContain("mark_hold 는 새 수집기 코드가 본 폴더에 pull 된 **뒤에만** 반영한다");
+  });
+});
