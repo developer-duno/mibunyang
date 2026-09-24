@@ -484,3 +484,31 @@ describe("hold op 3종 (세션570) — buildHoldPlanRow 계약", () => {
     expect(src).toContain("mark_hold 는 새 수집기 코드가 본 폴더에 pull 된 **뒤에만** 반영한다");
   });
 });
+
+// ── 세션571 — 화면 대표 행의 0 을 보류로(mark_hold_from_zero) + 되돌림(release_hold_to_zero) ──
+describe("hold op 2종 추가 (세션571) — mark_hold_from_zero / release_hold_to_zero", () => {
+  it("mark_hold_from_zero — expect 0·률 NULL·출처 NULL → set 값 NULL·출처 hold·보류일", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("mark_hold_from_zero", { id: "ah-2022910363", name: "대표", date: "2026-09-24" });
+    expect(row).toEqual({
+      id: "ah-2022910363", name: "대표", op: "mark_hold_from_zero",
+      expect: { unsold: 0, unsold_rate: null, unsold_source: null },
+      set: { unsold: null, unsold_source: "hold", unsold_as_of: "2026-09-24" },
+    });
+    // DB 가 지금 0 이면 통과, 이미 비었으면(null) "unsold: DB=null expect=0" 으로 거절
+    expect(checkPlanRow(row, dbRow({ id: "ah-2022910363", unsold: 0, unsold_rate: null, unsold_source: null })).ok).toBe(true);
+    const r = checkPlanRow(row, dbRow({ id: "ah-2022910363", unsold: null, unsold_rate: null, unsold_source: null }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("unsold: DB=null expect=0");
+    expect(() => buildHoldPlanRow("mark_hold_from_zero", { id: "x" })).toThrow(/date/);
+  });
+
+  it("release_hold_to_zero — expect 값 NULL·출처 hold → set 0·률 NULL·출처 NULL·기준일 NULL (되돌림 사본)", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("release_hold_to_zero", { id: "ah-2022910303" });
+    expect(row.expect).toEqual({ unsold: null, unsold_source: "hold" });
+    expect(row.set).toEqual({ unsold: 0, unsold_rate: null, unsold_source: null, unsold_as_of: null });
+    expect(checkPlanRow(row, dbRow({ id: "ah-2022910303", unsold: null, unsold_rate: null, unsold_source: "hold" })).ok).toBe(true);
+    expect(checkPlanRow(row, dbRow({ id: "ah-2022910303", unsold: 0, unsold_rate: null, unsold_source: null })).ok).toBe(false);
+  });
+});

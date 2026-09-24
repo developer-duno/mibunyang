@@ -2152,3 +2152,41 @@ describe("dedupScope — daily 에서 기록·거르는 대상은 ⑨·⑪ 뿐",
     expect(filterUnsent(dedupScope([coord], "daily"), sent)).toHaveLength(0);
   });
 });
+
+describe("checkExternalApiStale — ⑤ 등재일(since) 뒤 행 0 경보 (세션571)", () => {
+  const target = [{ collector: "naver-pipeline", stale_days: 4, since: "2026-09-25", owner: "네이버 로컬 파이프라인" }];
+
+  it("since 뒤 stale_days 초과 + 행 0 → stale 1건 (9/29 09:48 KST = 4.03일)", () => {
+    const issues = checkExternalApiStale(target, {}, new Date("2026-09-29T00:48:00Z"));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].collector).toBe("naver-pipeline");
+    expect(issues[0].detail).toContain("행 0");
+    expect(issues[0].detail).toContain("등재(2026-09-25)");
+    expect(issues[0].at).toBe(new Date("2026-09-25T00:00:00+09:00").toISOString());
+    const lines = issues[0].lines?.join("\n") ?? "";
+    expect(lines).toContain("record-pipeline-run.mjs 호출");
+    expect(lines).toContain("MibunyangNaverCollect"); // 기존 naver- 조치 줄 그대로
+  });
+
+  it("since 뒤 stale_days 이하(9/28 09:48 KST = 3.03일) → 0건 — 첫 정기 실행 당일 아침 오탐 없음", () => {
+    expect(checkExternalApiStale(target, { "naver-pipeline": [] }, new Date("2026-09-28T00:48:00Z"))).toHaveLength(0);
+  });
+
+  it("since 없는 항목 + 행 0 → 종전대로 0건 (회귀)", () => {
+    const noSince = [{ collector: "housing-permits", stale_days: 14, owner: "MOLIT" }];
+    expect(checkExternalApiStale(noSince, {}, new Date("2027-01-01T00:00:00Z"))).toHaveLength(0);
+  });
+
+  it("행이 1개라도 있으면 since 무관하게 기존 ⑤-b 판정 (최신 행 기준)", () => {
+    const runs = { "naver-pipeline": [{ status: "success", ok_count: 6, skip_count: 0, finished_at: "2026-09-28T03:00:00Z" }] };
+    expect(checkExternalApiStale(target, runs, new Date("2026-10-02T00:00:00Z"))).toHaveLength(0);
+    const sat = checkExternalApiStale(target, runs, new Date("2026-10-03T00:00:00Z"));
+    expect(sat).toHaveLength(1);
+    expect(sat[0].detail).toContain("마지막 실행");
+  });
+
+  it("운영 목록의 naver-pipeline 은 since 2026-09-25 로 등재돼 있다", () => {
+    expect(EXTERNAL_API_COLLECTORS.find((c) => c.collector === "naver-pipeline")?.since).toBe("2026-09-25");
+  });
+});

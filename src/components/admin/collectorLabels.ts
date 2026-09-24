@@ -55,3 +55,35 @@ const TABLE_LABELS: Record<string, string> = {
 export function tableLabel(name: string): string {
   return TABLE_LABELS[name] ?? name;
 }
+
+/**
+ * collector_runs.error_message 의 마커를 사람 말로 푼다(세션571 — 수집기 상태 화면 색).
+ * - `WARN_STEPS: a,b` (로컬 파이프라인 완주 + 경고 단계, status=success) → warn
+ * - `STEP_FAILED: N/6 이름` (치명 단계 실패, status=failure) → error
+ * - `REGION_UNRESOLVED n=K: …` (KOSIS 시도 이름 못 맞춤) → warn
+ * - `APPLYHOME_NO_DATE n=K: …` (공고일 빈 청약홈 행) → warn
+ * - 그 밖의 문자열 → error(원문) / null·빈 문자열 → null
+ * 마커 형식의 정본 = scripts/record-pipeline-run.mjs · scripts/collectors/_shared.mjs.
+ */
+export function describeRunMarker(
+  errorMessage: string | null | undefined
+): { tone: "warn" | "error"; text: string } | null {
+  const msg = errorMessage?.trim() ?? "";
+  if (!msg) return null;
+  if (msg.startsWith("WARN_STEPS:")) {
+    const steps = msg
+      .slice("WARN_STEPS:".length)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    return { tone: "warn", text: `경고 단계: ${steps.join(", ")}` };
+  }
+  if (msg.startsWith("STEP_FAILED:")) {
+    return { tone: "error", text: `치명 단계 실패 ${msg.slice("STEP_FAILED:".length).trim()}` };
+  }
+  const region = /^REGION_UNRESOLVED n=(\d+):\s*(.*)$/s.exec(msg);
+  if (region) return { tone: "warn", text: `시도 이름 못 맞춤 ${region[1]}건: ${region[2]}` };
+  const noDate = /^APPLYHOME_NO_DATE n=(\d+):\s*(.*)$/s.exec(msg);
+  if (noDate) return { tone: "warn", text: `공고일 없는 청약홈 행 ${noDate[1]}건: ${noDate[2]}` };
+  return { tone: "error", text: msg };
+}

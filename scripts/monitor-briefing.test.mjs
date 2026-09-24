@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { splitRuns, buildBriefing } from "./monitor-briefing.mjs";
+import { splitRuns, buildBriefing, extractWarnRuns } from "./monitor-briefing.mjs";
 
 const IDEM = new Set(["childcare-detail", "purge-consults"]);
 
@@ -122,5 +122,52 @@ describe("buildBriefing — 매일 아침 현황 브리핑 (정상이어도 발�
   it("fillRate null — 채움률 줄 생략", () => {
     const msg = buildBriefing({ runs24h: baseRuns, idempotentCollectors: IDEM, fillRate: null, issueCount: 0 });
     expect(msg).not.toMatch(/전체 채움률/);
+  });
+});
+
+describe("경고 단계 완주 한 줄 (세션571 — WARN_STEPS 마커)", () => {
+  const runs = [{ collector: "sync-naver", status: "success", ok_count: 10 }];
+
+  it("extractWarnRuns — success + WARN_STEPS: 만 뽑고, failure·다른 마커·null 은 뺀다", () => {
+    const got = extractWarnRuns([
+      { collector: "naver-pipeline", status: "success", error_message: "WARN_STEPS: molit-units,naver-presale" },
+      { collector: "naver-pipeline", status: "failure", error_message: "STEP_FAILED: 3/6 naver-presale" },
+      { collector: "market-stats", status: "success", error_message: "REGION_UNRESOLVED n=2: 전남광주" },
+      { collector: "x", status: "success", error_message: null },
+    ]);
+    expect(got).toEqual([{ collector: "naver-pipeline", steps: ["molit-units", "naver-presale"] }]);
+  });
+
+  it("warnRuns 1건 → 본문에 '⚠️ 경고 단계 완주: naver-pipeline(molit-units)' 포함", () => {
+    const msg = buildBriefing({
+      runs24h: runs,
+      idempotentCollectors: IDEM,
+      warnRuns: [{ collector: "naver-pipeline", steps: ["molit-units"] }],
+    });
+    expect(msg).toContain("⚠️ 경고 단계 완주: naver-pipeline(molit-units)");
+  });
+
+  it("여러 수집기면 ' · ' 로 이어 붙인다", () => {
+    const msg = buildBriefing({
+      runs24h: runs,
+      idempotentCollectors: IDEM,
+      warnRuns: [
+        { collector: "a", steps: ["s1", "s2"] },
+        { collector: "b", steps: ["s3"] },
+      ],
+    });
+    expect(msg).toContain("⚠️ 경고 단계 완주: a(s1, s2) · b(s3)");
+  });
+
+  it("warnRuns 없음/빈 배열 → '경고 단계' 문구 없음 (기존 호출 불변)", () => {
+    expect(buildBriefing({ runs24h: runs, idempotentCollectors: IDEM })).not.toContain("경고 단계");
+    expect(buildBriefing({ runs24h: runs, idempotentCollectors: IDEM, warnRuns: [] })).not.toContain("경고 단계");
+  });
+
+  it("sendDailyBriefing 이 error_message 를 조회하고 extractWarnRuns 결과를 넘긴다 (소스 가드)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./monitor-collectors.mjs", import.meta.url), "utf8");
+    expect(src).toContain('.select("collector,status,ok_count,error_message")');
+    expect(src).toContain("warnRuns: extractWarnRuns(runs24h ?? [])");
   });
 });

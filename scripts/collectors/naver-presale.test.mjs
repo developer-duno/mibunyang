@@ -26,6 +26,7 @@ import {
   parsePresaleCompletion,
   isCompletionYm,
   buildCortarQueries,
+  describeComplexFailure,
 } from "./naver-presale.mjs";
 import { readFileSync } from "node:fs";
 
@@ -1032,5 +1033,30 @@ describe("기존 아파트 로드 — selectAll(id 커서) 전량 (세션545)", 
     expect(src).toMatch(
       /apts = [\s\S]{0,200}?selectAll\(\s*\(s\) => s\.from\("apartments"\)[\s\S]{0,400}?,\s*sb,\s*"id",?\s*\)/,
     );
+  });
+});
+
+describe("describeComplexFailure — 실패 단지 로그 (세션571)", () => {
+  it("이름 있음 → no·seq·단지 이름", () => {
+    expect(describeComplexFailure(12345, 2, { preSaleComplexName: "남악 오룡 시티" })).toBe(
+      "단지 상세 응답 없음 — no=12345 seq=2 남악 오룡 시티",
+    );
+  });
+
+  it("이름 없음 → '(이름 없음)'", () => {
+    expect(describeComplexFailure("9", "1", {})).toBe("단지 상세 응답 없음 — no=9 seq=1 (이름 없음)");
+    expect(describeComplexFailure("9", "1", null)).toBe("단지 상세 응답 없음 — no=9 seq=1 (이름 없음)");
+  });
+
+  it("소스 가드 — 실패 분기에서 [실패] 로그가 reporter.fail() 앞 200자 안에 있고 [실패 명단] 줄이 있다", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    const anchor = src.indexOf("if (!complexData?.build_nm) {");
+    expect(anchor, "실패 분기를 못 찾음").toBeGreaterThan(-1);
+    const failAt = src.indexOf("reporter.fail()", anchor);
+    expect(failAt).toBeGreaterThan(anchor);
+    const window = src.slice(Math.max(anchor, failAt - 200), failAt);
+    expect(window).toContain("describeComplexFailure(");
+    expect(window).toContain("[실패] ");
+    expect(src).toContain("[실패 명단]");
   });
 });
