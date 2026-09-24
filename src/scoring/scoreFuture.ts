@@ -53,39 +53,81 @@ export const DEV_ZONE_SUFFIXES = [
 ].sort((a, b) => b.length - a.length);
 
 /** 핵심어가 이보다 짧으면 판정하지 않는다(한 글자 포함은 우연 일치가 너무 흔하다). */
-// ⚠️ 2글자 핵심어는 브랜드명과 겹칠 수 있다(예: "제일"·"효성"·"장기" — 2026-09-24 실측 0칸). 사장님 결정으로 2글자 유지.
+// ⚠️ 2글자 핵심어는 브랜드명과 겹칠 수 있다(예: "제일"·"효성"·"장기"·"대방"(대방건설 — 이름 18곳, "서울대방" 지구)
+//    — 2026-09-24 실측 0칸). 사장님 결정으로 2글자 유지.
 const DEV_ZONE_KEYWORD_MIN = 2;
 
-/** "부천시 오정구" → "부천", "시흥시" → "시흥", "인천" → "인천"(광역시 약칭). 시·군·구를 떼고 2글자 미만이면 null. */
+/**
+ * 접두·접미어를 다 떼고 남은 핵심어가 이 중 하나면 지구 이름이 아니라 **일반어**라 판정하지 않는다
+ * (세션569 검사관 🟡1 — "인천검단지구 택지개발지구" 에서 "인천"·"검단"을 떼면 "지구"만 남아 2글자 게이트를 통과했다).
+ * 접미어 표 전부 + 그 조각들.
+ */
+const DEV_ZONE_GENERIC_WORDS = new Set([
+  ...DEV_ZONE_SUFFIXES,
+  "단지",
+  "블록",
+  "택지",
+  "구역",
+  "신도시",
+  "산업",
+  "개발",
+  "도시",
+  "공공",
+  "주택",
+  "일반",
+  "국가",
+  "첨단",
+  "택지개발",
+  "도시개발",
+  "공공주택",
+]);
+
+/** 접미어·접두 떼기를 되풀이하는 최대 횟수("인천검단지구 택지개발지구" → "검단지구" → "검단" → ""). */
+const DEV_ZONE_STRIP_ROUNDS = 3;
+
+/**
+ * "부천시 오정구" → "부천", "시흥시" → "시흥", "인천" → "인천"(광역시 약칭).
+ * 시·군·구를 떼고 2글자 미만이면 **원래 토큰을 그대로** 쓴다 — "대구"→"대구"(끝 '구'를 떼면 "대"),
+ * "남구"→"남구", "동구"→"동구"(세션569 검사관 🟡1: 전엔 null 이라 시도 "대구"·한 글자 구 이름을 못 뗐다).
+ * 빈 토큰이면 null.
+ */
 function adminNameCore(token: string | undefined): string | null {
-  const core = (token ?? "").trim().replace(/[시군구]$/, "");
-  return core.length >= 2 ? core : null;
+  const raw = (token ?? "").trim();
+  if (!raw) return null;
+  const core = raw.replace(/[시군구]$/, "");
+  return core.length >= 2 ? core : raw;
 }
 
 /**
  * 지구명 원문에서 핵심어를 뽑는다(순수 함수).
- * ① 끝의 숫자 제거("부천대장2"→"부천대장") ② 접미어 제거(긴 것부터, 한 번)
+ * ① 끝의 숫자 제거("부천대장2"→"부천대장") ② 접미어 제거(긴 것부터)
  * ③ 그 단지의 시·군 이름·시도 약칭 접두 제거(gu·region 첫 토큰에서 시/군/구를 뗀 것, 둘 다·순서 무관
  *    — "시흥거모"→"거모"). 지구명이 **시 이름 그 자체**면("순천"·"안성1"·"인천") 빈 문자열이 된다 —
  *    이름에 도시명이 든 단지가 가짜 좌표 곁 그 도시 지구 점수를 되살리지 않게(세션569 검사관).
- * → 2글자 미만이면 null.
+ * ②③ 은 더 떼어낼 게 없을 때까지 최대 `DEV_ZONE_STRIP_ROUNDS` 번 되풀이한다("인천검단지구" → "검단지구" → "검단").
+ * → 2글자 미만이거나 남은 것이 일반어(`DEV_ZONE_GENERIC_WORDS` — "지구" 등)면 null.
  */
 export function devZoneKeyword(zoneName: string, gu?: string | null, region?: string | null): string | null {
   let k = zoneName.replace(/\s+/g, "").replace(/\d+$/, "");
-  const suffix = DEV_ZONE_SUFFIXES.find((sfx) => k.endsWith(sfx) && k.length > sfx.length);
-  if (suffix) k = k.slice(0, -suffix.length);
   const prefixes = [adminNameCore(gu?.split(/\s+/)[0]), adminNameCore(region?.split(/\s+/)[0])].filter(
     (p): p is string => p != null
   );
-  for (let stripped = true; stripped;) {
-    stripped = false;
-    for (const prefix of prefixes) {
-      if (k.startsWith(prefix)) {
-        k = k.slice(prefix.length);
-        stripped = true;
+  for (let round = 0; round < DEV_ZONE_STRIP_ROUNDS; round++) {
+    const before = k;
+    const suffix = DEV_ZONE_SUFFIXES.find((sfx) => k.endsWith(sfx) && k.length > sfx.length);
+    if (suffix) k = k.slice(0, -suffix.length);
+    for (let stripped = true; stripped;) {
+      stripped = false;
+      for (const prefix of prefixes) {
+        if (k.startsWith(prefix)) {
+          k = k.slice(prefix.length);
+          stripped = true;
+        }
       }
     }
+    if (k === before) break;
   }
+  if (DEV_ZONE_GENERIC_WORDS.has(k)) return null;
   return k.length >= DEV_ZONE_KEYWORD_MIN ? k : null;
 }
 

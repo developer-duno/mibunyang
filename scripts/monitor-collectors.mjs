@@ -248,7 +248,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -2049,6 +2049,120 @@ export async function runPermissionChecks(deps = {}) {
 }
 
 /**
+ * 감시 ⑦⑧⑨⑪⑫ 가 조회·판정 도중 예외로 결과를 못 냈을 때의 **실행 실패 이슈** 1건(세션569 최종 검사관 🔴1).
+ * 전엔 catch 가 로그만 남겨, 그날 요약이 "이상 없음" 이 됐다 — 칸 이름이 바뀌거나 칸이 빠지는 날
+ * 그 감시가 아무 소리 없이 꺼진다. ⑩ 의 `permCheckCrashIssue` 와 같은 결이되, 종류는 `check-failed`
+ * (텔레그램 제목 "감시 점검 실행 실패"). daily 하루 1회 리마인드 대상이다(`ALWAYS_DEDUP_*` 아님 —
+ * 고치기 전까지 매일 알린다).
+ * @param {string} label 어느 점검인지(예: "⑫ 청약홈 미분양 값 점검")
+ * @param {unknown} err
+ * @returns {Issue}
+ */
+export function checkFailedIssue(label, err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  return {
+    kind: "check-failed",
+    collector: "monitor",
+    detail: `${label} 실행 실패 — ${msg.slice(0, 120)}`,
+    lines: ["이 점검은 오늘 결과를 못 냈습니다 — \"이상 없음\" 이 아닙니다."],
+  };
+}
+
+/**
+ * fail-open 점검 1개를 돌린다 — 예외가 나도 다른 점검은 계속 돌고(감시는 계속), 대신
+ * `checkFailedIssue` 1건을 돌려줘 텔레그램으로 나가게 한다.
+ * @param {string} label
+ * @param {() => Promise<Issue[]>} run
+ * @returns {Promise<Issue[]>}
+ */
+export async function runFailOpenCheck(label, run) {
+  try {
+    return await run();
+  } catch (err) {
+    console.log(`[monitor] ${label} 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+    return [checkFailedIssue(label, err)];
+  }
+}
+
+/**
+ * daily 스윕의 fail-open 점검 다섯(⑦ → ⑨ → ⑧ → ⑪ → ⑫, 옛 main 순서 그대로)을 돌려 이슈를 합친다.
+ * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
+ * @param {{
+ *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
+ *   fetchCoordRows?: () => ReturnType<typeof fetchCoordSharedRows>,
+ *   fetchTradeRows?: () => ReturnType<typeof fetchTradeMonthRows>,
+ *   fetchRegionRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
+ *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
+ * }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runDailyGuardedChecks(deps = {}) {
+  const fetchGuPairs = deps.fetchGuPairs ?? (() => fetchGuPairStats());
+  const fetchCoordRows = deps.fetchCoordRows ?? (() => fetchCoordSharedRows());
+  const fetchTradeRows = deps.fetchTradeRows ?? (() => fetchTradeMonthRows());
+  const fetchRegionRuns = deps.fetchRegionRuns ?? fetchRegionUnresolvedRuns;
+  const fetchAhRows = deps.fetchAhRows ?? fetchApplyhomeUnsoldRows;
+  /** @type {Issue[]} */
+  let issues = [];
+
+  // ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 4칸이 빈칸 (세션549).
+  //    조회 실패가 ①~⑥ 을 통째로 죽이면 안 되므로 fail-open (fetchAhCompetitionCounts 와 같은 결).
+  issues = issues.concat(await runFailOpenCheck("⑦ 시군구 짝 점검", async () => {
+    const { aptPairs, regionRows } = await fetchGuPairs();
+    const orphanIssues = checkOrphanGuPairs(aptPairs, regionRows);
+    console.log(`[monitor] ⑦ 시군구 짝 점검: 단지 짝 ${aptPairs.length}개 · regions 행 ${regionRows.length}개 → 이상 ${orphanIssues.length}건`);
+    return orphanIssues;
+  }));
+
+  // ⑨ 좌표 부정확 단지 — 늘었거나, 준공이 지나 이제 고칠 수 있게 된 것 (세션563, 세션568 명단화).
+  //    손님 화면에 경고를 다는 대신 **사장님께 알린다**(사장님 지적 2026-09-23).
+  issues = issues.concat(await runFailOpenCheck("⑨ 좌표 부정확 점검", async () => {
+    const coordRows = await fetchCoordRows();
+    const coordIssues = checkCoordSharedDrift(coordRows);
+    const candidateIssues = checkCoordCandidateDrift(coordRows);
+    const sharedCount = coordRows.filter((r) => r?.coord_shared === true).length;
+    const { candidates } = groupSharedCoords(coordRows);
+    const newCandidateCount = candidates.filter((a) => {
+      if (a?.coord_shared === true) return false;
+      return !new Set(COORD_CANDIDATE_BASELINE_IDS).has(String(a?.id ?? ""));
+    }).length;
+    console.log(
+      `[monitor] ⑨ 좌표 부정확 ${sharedCount}곳(명단 ${COORD_SHARED_BASELINE_IDS.length}) · ` +
+      `같은 좌표 후보 ${candidates.length}곳(기준 ${COORD_CANDIDATE_BASELINE_IDS.length}) · ` +
+      `새 후보 ${newCandidateCount}`,
+    );
+    return coordIssues.concat(candidateIssues);
+  }));
+
+  // ⑧ 지역×월 거래 0건 — 외부 API 가 옛 지역코드에 **에러 대신 0건**을 주는 사고(세션545 전남 3개월).
+  //    ⑤ 신선도는 수집기가 매 회차 잘 돌면 침묵하므로 이 격자를 따로 본다.
+  issues = issues.concat(await runFailOpenCheck("⑧ 지역×월 거래 점검", async () => {
+    const tradeRows = await fetchTradeRows();
+    const gapIssues = checkTradeMonthGaps(tradeRows);
+    console.log(`[monitor] ⑧ 지역×월 거래 점검: trades ${tradeRows.length}행 → 이상 ${gapIssues.length}건`);
+    return gapIssues;
+  }));
+
+  // ⑪ KOSIS 시도 이름 못 맞춤 — 수집기가 collector_runs.error_message 에 남긴 마커(세션569). 매일 본다.
+  issues = issues.concat(await runFailOpenCheck("⑪ 시도 이름 못 맞춤 점검", async () => {
+    const regionRuns = await fetchRegionRuns(REGION_UNRESOLVED_COLLECTORS);
+    const regionIssues = checkRegionUnresolved(regionRuns);
+    console.log(`[monitor] ⑪ 시도 이름 못 맞춤 점검: 수집기 ${Object.keys(regionRuns).length}/${REGION_UNRESOLVED_COLLECTORS.length}개 최신 실행 → 이상 ${regionIssues.length}건`);
+    return regionIssues;
+  }));
+
+  // ⑫ 청약홈 출처 미분양 값 — 만료 기준 C6 의 세 명단(세션569). 매일 본다.
+  issues = issues.concat(await runFailOpenCheck("⑫ 청약홈 미분양 값 점검", async () => {
+    const ahRows = await fetchAhRows();
+    const ahIssues = checkApplyhomeUnsold(ahRows);
+    console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length}곳 → 이상 ${ahIssues.length}건`);
+    return ahIssues;
+  }));
+
+  return issues;
+}
+
+/**
  * id 목록을 **상태 지문**(짧은 해시)으로 접는다 — `at` 은 시각이 아니라 상태를 나타내야
  * dedup(`kind|collector|at`)이 매일 달라지지 않는다(세션563 결). 시각 대신 이 지문을 쓰면
  * id 집합이 같은 동안은 같은 값, 하나라도 달라지면 다른 값이 된다.
@@ -2696,71 +2810,10 @@ async function main() {
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
 
-    // ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 4칸이 빈칸 (세션549).
-    //    조회 실패가 ①~⑥ 을 통째로 죽이면 안 되므로 fail-open (fetchAhCompetitionCounts 와 같은 결).
-    try {
-      const { aptPairs, regionRows } = await fetchGuPairStats();
-      const orphanIssues = checkOrphanGuPairs(aptPairs, regionRows);
-      console.log(`[monitor] ⑦ 시군구 짝 점검: 단지 짝 ${aptPairs.length}개 · regions 행 ${regionRows.length}개 → 이상 ${orphanIssues.length}건`);
-      issues = issues.concat(orphanIssues);
-    } catch (err) {
-      console.log(`[monitor] ⑦ 시군구 짝 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    // ⑨ 좌표 부정확 단지 — 늘었거나, 준공이 지나 이제 고칠 수 있게 된 것 (세션563, 세션568 명단화).
-    //    손님 화면에 경고를 다는 대신 **사장님께 알린다**(사장님 지적 2026-09-23).
-    //    ⑦ 과 같은 이유로 fail-open — 이 조회가 실패해도 ①~⑦ 은 그대로 보고된다.
-    try {
-      const coordRows = await fetchCoordSharedRows();
-      const coordIssues = checkCoordSharedDrift(coordRows);
-      const candidateIssues = checkCoordCandidateDrift(coordRows);
-      const sharedCount = coordRows.filter((r) => r?.coord_shared === true).length;
-      const { candidates } = groupSharedCoords(coordRows);
-      const newCandidateCount = candidates.filter((a) => {
-        if (a?.coord_shared === true) return false;
-        return !new Set(COORD_CANDIDATE_BASELINE_IDS).has(String(a?.id ?? ""));
-      }).length;
-      console.log(
-        `[monitor] ⑨ 좌표 부정확 ${sharedCount}곳(명단 ${COORD_SHARED_BASELINE_IDS.length}) · ` +
-        `같은 좌표 후보 ${candidates.length}곳(기준 ${COORD_CANDIDATE_BASELINE_IDS.length}) · ` +
-        `새 후보 ${newCandidateCount}`,
-      );
-      issues = issues.concat(coordIssues, candidateIssues);
-    } catch (err) {
-      console.log(`[monitor] ⑨ 좌표 부정확 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    // ⑧ 지역×월 거래 0건 — 외부 API 가 옛 지역코드에 **에러 대신 0건**을 주는 사고(세션545 전남 3개월).
-    //    ⑤ 신선도는 수집기가 매 회차 잘 돌면 침묵하므로 이 격자를 따로 본다. ⑦ 과 같이 fail-open.
-    try {
-      const tradeRows = await fetchTradeMonthRows();
-      const gapIssues = checkTradeMonthGaps(tradeRows);
-      console.log(`[monitor] ⑧ 지역×월 거래 점검: trades ${tradeRows.length}행 → 이상 ${gapIssues.length}건`);
-      issues = issues.concat(gapIssues);
-    } catch (err) {
-      console.log(`[monitor] ⑧ 지역×월 거래 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    // ⑪ KOSIS 시도 이름 못 맞춤 — 수집기가 collector_runs.error_message 에 남긴 마커(세션569).
-    //    매일 본다(요일 조건 없음). ⑦ 과 같은 이유로 fail-open.
-    try {
-      const regionRuns = await fetchRegionUnresolvedRuns(REGION_UNRESOLVED_COLLECTORS);
-      const regionIssues = checkRegionUnresolved(regionRuns);
-      console.log(`[monitor] ⑪ 시도 이름 못 맞춤 점검: 수집기 ${Object.keys(regionRuns).length}/${REGION_UNRESOLVED_COLLECTORS.length}개 최신 실행 → 이상 ${regionIssues.length}건`);
-      issues = issues.concat(regionIssues);
-    } catch (err) {
-      console.log(`[monitor] ⑪ 시도 이름 못 맞춤 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-    }
-
-    // ⑫ 청약홈 출처 미분양 값 — 만료 기준 C6 의 세 명단(세션569). 매일 본다. ⑦ 과 같은 이유로 fail-open.
-    try {
-      const ahRows = await fetchApplyhomeUnsoldRows();
-      const ahIssues = checkApplyhomeUnsold(ahRows);
-      console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length}곳 → 이상 ${ahIssues.length}건`);
-      issues = issues.concat(ahIssues);
-    } catch (err) {
-      console.log(`[monitor] ⑫ 청약홈 미분양 값 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
-    }
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 — 전부 fail-open.
+    //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
+    //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
+    issues = issues.concat(await runDailyGuardedChecks());
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
     //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를

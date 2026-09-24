@@ -95,7 +95,10 @@ describe("⑫ main 배선 (소스)", () => {
 
   it("daily 스윕이 ⑫ 를 조회해 issues 에 싣는다", () => {
     expect(src).toMatch(/const ahIssues = checkApplyhomeUnsold\(ahRows\);/);
-    expect(src).toMatch(/issues = issues\.concat\(ahIssues\);/);
+    // 세션569 🔴1: 점검 본문이 runDailyGuardedChecks 의 fail-open 블록으로 옮겨 가 결과를 돌려준다
+    expect(src).toMatch(/const ahRows = await fetchAhRows\(\);/);
+    expect(src).toMatch(/return ahIssues;/);
+    expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);/);
   });
 
   it("조회는 applyhome 출처만, 판정에 쓰는 칸을 모두 가져온다", () => {

@@ -3159,6 +3159,38 @@ describe("좌표 의심 단지의 이름-지구 일치 예외 — 그 칸의 개
     expect(devZoneKeyword("인천", "중구", "인천")).toBeNull();
     expect(nameMatchesDevZone("인천 영종 하늘도시", "인천", "중구", "인천")).toBe(false);
   });
+  it("검사관 🟡1 재현 — 시도 '대구'·한 글자 구 이름·'지구'만 남는 지구명은 불일치(세션569)", () => {
+    // 운영 원문: 산업 "대구3" 4곳 · 도시 "인천검단지구 택지개발지구" 19곳 · 광주 "남구" 1곳 · "대전동구" 4곳
+    expect(devZoneKeyword("대구3", "북구", "대구")).toBeNull(); // 전엔 "대구" — '구'를 떼면 "대"라 접두가 없었다
+    expect(nameMatchesDevZone("대구 테스트 푸르지오", "대구3", "북구", "대구")).toBe(false);
+    expect(devZoneKeyword("인천검단지구 택지개발지구", "검단구", "인천")).toBeNull(); // 전엔 "지구"
+    expect(nameMatchesDevZone("검단지구 테스트", "인천검단지구 택지개발지구", "검단구", "인천")).toBe(false);
+    expect(devZoneKeyword("남구", "남구", "광주")).toBeNull(); // 전엔 "남구" — "남"(1글자)이라 접두가 없었다
+    expect(nameMatchesDevZone("광주 남구 테스트", "남구", "남구", "광주")).toBe(false);
+    expect(devZoneKeyword("대전동구", "동구", "대전")).toBeNull();
+  });
+  it("접두 제거 뒤 접미어를 다시 뗀다 — 이름에 지구 핵심어가 있으면 여전히 일치(원 토큰 접두·재접미어)", () => {
+    // gu 가 다른 곳이면 "검단" 이 핵심어로 남는다(접두 "인천" → "검단지구" → 재접미어 "검단")
+    expect(devZoneKeyword("인천검단지구 택지개발지구", "서구", "인천")).toBe("검단");
+    expect(devZoneKeyword("대구연경공공주택지구", "북구", "대구")).toBe("연경");
+    expect(devZoneKeyword("남구대연지구", "남구", "부산")).toBe("대연");
+  });
+  it("calcCats 경유 — 검사관 재현 3케이스: 좌표 의심이면 그 칸 0 + '위치 확인 중' 유지", () => {
+    /** @type {Array<[Record<string, any>, string]>} */
+    const cases = [
+      [{ name: "대구 테스트 푸르지오", region: "대구", gu: "북구", industryDev: "대구3 0.8km" }, "산업개발"],
+      [
+        { name: "인천검단지구 테스트", region: "인천", gu: "검단구", cityDev: "인천검단지구 택지개발지구 0.4km" },
+        "도시개발",
+      ],
+      [{ name: "광주 남구 테스트", region: "광주", gu: "남구", cityDev: "남구 0.5km" }, "도시개발"],
+    ];
+    for (const [fixture, name] of cases) {
+      const shared = calcCats(makeApt(/** @type {any} */ ({ devDist: 0.5, ...fixture, coordShared: true })), {});
+      expect(sub(shared, name)?.score).toBe(0);
+      expect(sub(shared, name)?.info).toBe("위치 확인 중");
+    }
+  });
   it("포함 판정 — 참(시흥거모 도시개발 · 부천대장 산업개발 2곳)", () => {
     expect(nameMatchesDevZone(SIHEUNG_1.name, "시흥거모공공주택지구", "시흥시", "경기")).toBe(true);
     expect(nameMatchesDevZone(BUCHEON_A5.name, "부천대장2", "부천시 오정구", "경기")).toBe(true);
