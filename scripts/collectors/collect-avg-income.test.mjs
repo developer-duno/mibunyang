@@ -27,7 +27,7 @@ process.env.KOSIS_MIGRATION_KEY = "test-key";
 
 const { thousandWonYearToManWonMonth, aggregateIncomeRows, fetchKosisIncome, main } =
   await import("./collect-avg-income.mjs");
-const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { recordCollectorRun, log, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── thousandWonYearToManWonMonth ─────────────────────────────
 describe("thousandWonYearToManWonMonth", () => {
@@ -57,7 +57,10 @@ describe("aggregateIncomeRows", () => {
   const mkRow = (/** @type {any} */ C1, /** @type {any} */ C1_NM, /** @type {any} */ PRD_DE, /** @type {any} */ ITM_NM, /** @type {any} */ DT) => ({ C1, C1_NM, PRD_DE, ITM_NM, DT });
 
   it("빈 배열 → period null, entries []", () => {
-    expect(aggregateIncomeRows([])).toEqual({ period: null, entries: [] });
+    expect(aggregateIncomeRows([])).toEqual({
+      period: null, entries: [],
+      regionIssues: { unmergeable: 0, unknown: 0, unknownNames: [] },
+    });
   });
 
   it("최신 연도만 채택 (2022 > 2021)", () => {
@@ -144,6 +147,31 @@ describe("aggregateIncomeRows", () => {
     ];
     const { entries } = aggregateIncomeRows(rows);
     expect(entries[0].region).toBe("강원");
+  });
+
+  // 세션568: REGION_MAP 무음 continue 제거 — 통합 시도("전남광주")는 이 표에서
+  // 시도 단위 합계만 오므로(C2_NM 없음) 가를 수 없어 건너뛰되 regionIssues 로 집계.
+  it("'전남광주' 시도 단위 합계 행 → entries 에 안 들어가고 regionIssues.unmergeable 집계", () => {
+    const rows = [
+      mkRow("12", "전남광주", "2024", "1인당 가계총처분가능소득", "27000"),
+      mkRow("11", "서울특별시", "2024", "1인당 가계총처분가능소득", "32224"),
+    ];
+    const { entries, regionIssues } = aggregateIncomeRows(rows);
+    expect(entries).toHaveLength(1);
+    expect(entries[0].region).toBe("서울");
+    expect(entries.some(e => e.region === "광주" || e.region === "전남")).toBe(false);
+    expect(regionIssues).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [] });
+  });
+
+  it("모르는 C1_NM('전국' 은 제외 규칙과 별개로) → regionIssues.unknownNames 에 잡힌다", () => {
+    const rows = [
+      mkRow("99", "화성외계", "2024", "1인당 가계총처분가능소득", "20000"),
+      mkRow("11", "서울특별시", "2024", "1인당 가계총처분가능소득", "32224"),
+    ];
+    const { entries, regionIssues } = aggregateIncomeRows(rows);
+    expect(entries).toHaveLength(1);
+    expect(regionIssues.unknown).toBe(1);
+    expect(regionIssues.unknownNames).toEqual(["화성외계"]);
   });
 
   // 세션110 회귀 방지: INH_1C96_04 2024년 응답 구조 검증
@@ -234,6 +262,23 @@ describe("main() recordCollectorRun 하드닝", () => {
       "avg-income",
       expect.objectContaining({ status: "failure", errorMessage: "KOSIS HTTP 500" }),
     );
+  });
+
+  it("'전남광주' 통합 시도 행이 섞여 있으면 main() 이 건너뜀을 로그로 남긴다", async () => {
+    log.mockClear();
+    const rows = [
+      { C1: "12", C1_NM: "전남광주", PRD_DE: "2024", ITM_NM: "1인당 가계총처분가능소득", DT: "27000" },
+      { C1: "11", C1_NM: "서울특별시", PRD_DE: "2024", ITM_NM: "1인당 가계총처분가능소득", DT: "32224" },
+    ];
+    fetchWithRetryMock.mockResolvedValue({ text: async () => JSON.stringify(rows) });
+    getSupabase.mockReturnValue({
+      from: () => ({
+        update: () => ({ eq: () => ({ is: () => ({ eq: () => ({ select: async () => ({ data: [{ id: "1" }], error: null }) }) }) }) }),
+      }),
+    });
+    await main();
+    const messages = log.mock.calls.map((/** @type {any[]} */ c) => String(c[1]));
+    expect(messages.some((/** @type {string} */ m) => m.includes("전남광주") && m.includes("1행"))).toBe(true);
   });
 
   it("유효 데이터 없음 → 기존 {ok, fail} 형태 그대로 (status 키 없음)", async () => {

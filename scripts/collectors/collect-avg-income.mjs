@@ -26,7 +26,7 @@
  */
 import {
   loadEnv, getSupabase, log, logError,
-  REGION_MAP, recordApiQuota, recordCollectorRun, fetchWithRetry,
+  createRegionResolutionTracker, recordApiQuota, recordCollectorRun, fetchWithRetry,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -57,6 +57,13 @@ const TARGET_ITM_NM = "1인당 가계총처분가능소득";
  * @property {string} recorded_at
  */
 
+/**
+ * @typedef {Object} AggregateResult
+ * @property {string|null} period
+ * @property {IncomeEntry[]} entries
+ * @property {{unmergeable: number, unknown: number, unknownNames: string[]}} regionIssues
+ */
+
 // ── 단위 변환: 천원/년 → 만원/월 ───────────────────────────
 // KOSIS DT는 문자열("23,388"), 콤마 제거 후 정수화. 반올림은 가장 가까운 정수.
 /**
@@ -73,12 +80,17 @@ export function thousandWonYearToManWonMonth(dt) {
 
 // ── KOSIS 응답 행 → 시도별 avg_income 엔트리 ────────────────
 // 전국(C1="00") 제외. ITM_NM="1인당 개인소득"만, 최신 PRD_DE만.
+// ⚠️ 이 표는 시도 단위 합계만 준다(C2_NM 없음 — 세션568 raw 실측). 통합 시도
+// ("전남광주")가 오면 시군구로 가를 수 없으므로 조용히 버리지 않고 regionIssues 로
+// 집계해 호출자가 로그로 남긴다(admin-district-code-reform.md).
 /**
  * @param {unknown} rows
- * @returns {{period: string|null, entries: IncomeEntry[]}}
+ * @returns {AggregateResult}
  */
 export function aggregateIncomeRows(rows) {
-  if (!Array.isArray(rows) || rows.length === 0) return { period: null, entries: [] };
+  if (!Array.isArray(rows) || rows.length === 0) {
+    return { period: null, entries: [], regionIssues: { unmergeable: 0, unknown: 0, unknownNames: [] } };
+  }
   const typedRows = /** @type {KosisRow[]} */ (rows);
 
   let latestPrd = "";
@@ -86,6 +98,7 @@ export function aggregateIncomeRows(rows) {
     if (r.PRD_DE && r.PRD_DE > latestPrd) latestPrd = r.PRD_DE;
   }
 
+  const tracker = createRegionResolutionTracker(); // 호출마다 새로 — 누적 집계는 runCollect 쪽 책임 아님
   /** @type {IncomeEntry[]} */
   const entries = [];
   const recordedAt = `${latestPrd}-01-01`;
@@ -94,15 +107,15 @@ export function aggregateIncomeRows(rows) {
     if (r.ITM_NM !== TARGET_ITM_NM) continue;
     if (r.C1 === "00") continue; // 전국 제외
 
-    const region = r.C1_NM ? REGION_MAP[r.C1_NM] : undefined;
-    if (!region) continue; // 미매핑 지역 무시
+    const region = tracker.resolve(r.C1_NM);
+    if (!region) continue; // 미매핑 지역 무시(집계는 tracker 가)
 
     const avgIncome = thousandWonYearToManWonMonth(r.DT);
     if (avgIncome == null) continue;
 
     entries.push({ region, gu: null, avg_income: avgIncome, recorded_at: recordedAt });
   }
-  return { period: latestPrd, entries };
+  return { period: latestPrd, entries, regionIssues: tracker.summary() };
 }
 
 // ── KOSIS 호출 ──────────────────────────────────────────────
@@ -178,7 +191,13 @@ async function runCollect(dryRun) {
   const apiCalls = 1;
   log(PHASE, `KOSIS 응답: ${rows.length}건`);
 
-  const { period, entries } = aggregateIncomeRows(rows);
+  const { period, entries, regionIssues } = aggregateIncomeRows(rows);
+  if (regionIssues.unmergeable > 0) {
+    log(PHASE, `통합 시도라 나눌 수 없어 건너뜀: 전남광주 ${regionIssues.unmergeable}행`);
+  }
+  if (regionIssues.unknown > 0) {
+    log(PHASE, `못 맞춘 C1_NM 이름 ${regionIssues.unknownNames.length}종: ${regionIssues.unknownNames.join(", ")} (${regionIssues.unknown}행)`);
+  }
   if (!period || entries.length === 0) {
     log(PHASE, "유효 데이터 없음 — 종료");
     return { apiCalls, failed: 0, updated: 0 };

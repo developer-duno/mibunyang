@@ -13,7 +13,7 @@ import {
   EXCL_RATIO_SOURCE_TYPES, canUseComplexForExclRatio,
   EXCL_RATIO_APT_LIKE_TYPES, isPlausibleExclRatioFor,
   JEONNAM_GWANGJU_SGG_OLD_TO_NEW, GWANGJU_GU_NAMES, resolveRegionName,
-  RETIRED_GU, HWASEONG_BARE_GU,
+  RETIRED_GU, HWASEONG_BARE_GU, createRegionResolutionTracker,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -1122,6 +1122,53 @@ describe("resolveRegionName (통합 시도 분할)", () => {
   it("REGION_MAP 에 통합 이름이 **없다** — 단일값 표라 넣으면 27 시군구가 한쪽으로 오라벨된다", () => {
     expect(REGION_MAP["전남광주통합특별시"]).toBeUndefined();
     expect(VALID_REGIONS).not.toContain("전남광주통합특별시");
+  });
+});
+
+// ── createRegionResolutionTracker (세션568) ──────────────────
+// 시도 단위 합계만 주는 KOSIS 표(market-stats·avg-income·housing-supply-ratio)에서
+// REGION_MAP 무음 continue 를 없애는 집계기. "가를 수 없음"과 "알 수 없는 이름"을 구분해 센다.
+describe("createRegionResolutionTracker", () => {
+  it("기존 이름('서울' 등)은 그대로 매핑된다", () => {
+    const t = createRegionResolutionTracker();
+    expect(t.resolve("서울")).toBe("서울");
+    expect(t.resolve("서울특별시")).toBe("서울");
+    expect(t.resolve("전라남도")).toBe("전남");
+    expect(t.summary()).toEqual({ unmergeable: 0, unknown: 0, unknownNames: [] });
+  });
+
+  it("'전남광주' 시도 단위 합계(c1만, gu 없음) → 어느 쪽에도 안 들어가고 unmergeable 집계", () => {
+    const t = createRegionResolutionTracker();
+    expect(t.resolve("전남광주")).toBeNull();
+    expect(t.resolve("전남광주통합특별시")).toBeNull();
+    expect(t.summary()).toEqual({ unmergeable: 2, unknown: 0, unknownNames: [] });
+  });
+
+  it("모르는 이름('전국'·'수도권' 등)은 unknown 으로 집계되고 이름이 기록된다", () => {
+    const t = createRegionResolutionTracker();
+    expect(t.resolve("전국")).toBeNull();
+    expect(t.resolve("수도권")).toBeNull();
+    expect(t.resolve("전국")).toBeNull(); // 같은 이름 재등장 — 개수만 누적
+    const s = t.summary();
+    expect(s.unmergeable).toBe(0);
+    expect(s.unknown).toBe(3);
+    expect(s.unknownNames.sort()).toEqual(["수도권", "전국"]);
+  });
+
+  it("null/undefined/빈 문자열 C1_NM 은 unknown 으로 안 잡힌다(카운트 오염 방지)", () => {
+    const t = createRegionResolutionTracker();
+    expect(t.resolve(null)).toBeNull();
+    expect(t.resolve(undefined)).toBeNull();
+    expect(t.resolve("")).toBeNull();
+    expect(t.summary()).toEqual({ unmergeable: 0, unknown: 0, unknownNames: [] });
+  });
+
+  it("tracker 는 호출마다 독립 — 서로 다른 인스턴스가 집계를 공유하지 않는다", () => {
+    const t1 = createRegionResolutionTracker();
+    const t2 = createRegionResolutionTracker();
+    t1.resolve("전남광주");
+    expect(t1.summary().unmergeable).toBe(1);
+    expect(t2.summary().unmergeable).toBe(0);
   });
 });
 

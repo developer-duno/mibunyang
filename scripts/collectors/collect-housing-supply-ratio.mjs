@@ -15,10 +15,11 @@
  *   node scripts/collectors/collect-housing-supply-ratio.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-housing-supply-ratio.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createRegionResolutionTracker, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; ITM_NM: string; PRD_DE: string; DT: string; UNIT_NM?: string }} KosisRow */
 /** @typedef {Record<string, number>} SupplyLevelByRegion */
+/** @typedef {{unmergeable: number, unknown: number, unknownNames: string[]}} RegionIssues */
 
 loadEnv();
 
@@ -28,10 +29,15 @@ const ITM_NM_FILTER = "보급률(다가구 구분거처 반영)";
 
 /**
  * KOSIS 응답 행 → 시도별 보급률 (최신 연도)
+ *
+ * ⚠️ 이 표는 시도 단위 합계만 준다(C2_NM 없음 — 세션568 raw 실측). 통합 시도
+ * ("전남광주")가 오면 시군구로 가를 수 없으므로 조용히 버리지 않고 `tracker` 로
+ * 집계해 호출자가 로그로 남긴다(admin-district-code-reform.md).
  * @param {KosisRow[]} rows
+ * @param {ReturnType<typeof createRegionResolutionTracker>} [tracker]
  * @returns {SupplyLevelByRegion}
  */
-export function parseKosisRows(rows) {
+export function parseKosisRows(rows, tracker = createRegionResolutionTracker()) {
   /** @type {SupplyLevelByRegion} */
   const supplyByRegion = {};
   /** @type {Record<string, string>} */
@@ -39,7 +45,7 @@ export function parseKosisRows(rows) {
 
   for (const row of rows) {
     if (row.ITM_NM !== ITM_NM_FILTER) continue;
-    const region = /** @type {Record<string, string>} */ (REGION_MAP)[row.C1_NM];
+    const region = tracker.resolve(row.C1_NM);
     if (!region) continue;
 
     const year = row.PRD_DE;
@@ -112,9 +118,20 @@ export async function main() {
       return;
     }
 
-    const supplyByRegion = parseKosisRows(rows);
+    const regionTracker = createRegionResolutionTracker();
+    const supplyByRegion = parseKosisRows(rows, regionTracker);
     const summary = Object.entries(supplyByRegion).map(([r, v]) => `${r}=${v.toFixed(1)}%`).join(", ");
     log(PHASE, `시도별 주택보급률: ${summary}`);
+
+    // 세션568: REGION_MAP 무음 continue 제거 — 통합 시도("전남광주")가 시도 단위
+    // 합계로만 오면 가를 수 없어 건너뜀을 로그로 남긴다.
+    const regionIssues = regionTracker.summary();
+    if (regionIssues.unmergeable > 0) {
+      log(PHASE, `통합 시도라 나눌 수 없어 건너뜀: 전남광주 ${regionIssues.unmergeable}행`);
+    }
+    if (regionIssues.unknown > 0) {
+      log(PHASE, `못 맞춘 C1_NM 이름 ${regionIssues.unknownNames.length}종: ${regionIssues.unknownNames.join(", ")} (${regionIssues.unknown}행)`);
+    }
 
     if (Object.keys(supplyByRegion).length === 0) {
       log(PHASE, `ITM_NM='${ITM_NM_FILTER}' 매칭 0건 — 종료 (KOSIS 응답 형식 변경 의심)`);
