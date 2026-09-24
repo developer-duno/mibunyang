@@ -17,6 +17,8 @@
 > **분류 기준**: 아래 "매일/매주/매월"은 **수집·가공 계열**만 센다.
 > CI/CD·모니터링·유틸리티는 주기와 무관하게 별도 절로 묶여 있다
 > (예: `purge-consults` 는 매일 돌지만 유틸리티, `monitor-collectors` 는 매일 돌지만 모니터링).
+> 세션571: monitor ⑤ `EXTERNAL_API_COLLECTORS` 항목에 `since`(등재일)를 달면 `collector_runs` 행이 0개여도 등재 뒤 stale_days 초과 시
+> 경보한다(`naver-pipeline` since 2026-09-25 → 9/29 아침 첫 판정). 조회 실패는 "⑤ 외부 API 점검(… 조회)" check-failed 로 따로 알린다.
 
 ### 매일 (3개)
 
