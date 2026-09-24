@@ -59,7 +59,7 @@ describe("aggregateIncomeRows", () => {
   it("빈 배열 → period null, entries []", () => {
     expect(aggregateIncomeRows([])).toEqual({
       period: null, entries: [],
-      regionIssues: { unmergeable: 0, unknown: 0, unknownNames: [] },
+      regionIssues: { unmergeable: 0, unknown: 0, unknownNames: [], unknownCounts: {} },
     });
   });
 
@@ -160,7 +160,7 @@ describe("aggregateIncomeRows", () => {
     expect(entries).toHaveLength(1);
     expect(entries[0].region).toBe("서울");
     expect(entries.some(e => e.region === "광주" || e.region === "전남")).toBe(false);
-    expect(regionIssues).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [] });
+    expect(regionIssues).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [], unknownCounts: {} });
   });
 
   it("모르는 C1_NM('전국' 은 제외 규칙과 별개로) → regionIssues.unknownNames 에 잡힌다", () => {
@@ -289,5 +289,41 @@ describe("main() recordCollectorRun 하드닝", () => {
       "avg-income",
       { ok: 0, fail: 0 },
     );
+  });
+});
+
+// ── 세션569: 못 맞춘 시도 이름을 collector_runs 마커로 남긴다(로그 → 기록+감시) ──
+describe("main() REGION_UNRESOLVED 마커 기록", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+    getSupabase.mockReturnValue({
+      from: () => ({
+        update: () => ({ eq: () => ({ is: () => ({ eq: () => ({ select: async () => ({ data: [{ id: "1" }], error: null }) }) }) }) }),
+      }),
+    });
+  });
+
+  it("'전남광주' 합계 행 + 모르는 이름 → 마커가 실리고 status 키는 붙지 않는다(success 유지)", async () => {
+    const rows = [
+      { C1: "12", C1_NM: "전남광주", PRD_DE: "2024", ITM_NM: "1인당 가계총처분가능소득", DT: "27000" },
+      { C1: "99", C1_NM: "광주전남", PRD_DE: "2024", ITM_NM: "1인당 가계총처분가능소득", DT: "27000" },
+      { C1: "11", C1_NM: "서울특별시", PRD_DE: "2024", ITM_NM: "1인당 가계총처분가능소득", DT: "32224" },
+    ];
+    fetchWithRetryMock.mockResolvedValue({ text: async () => JSON.stringify(rows) });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "avg-income",
+      { ok: 1, fail: 0, errorMessage: "REGION_UNRESOLVED n=2: 전남광주(통합 시도 합계), 광주전남" },
+    );
+  });
+
+  it("전부 맞추면 마커 없음 — 기존 {ok, fail} 형태 그대로", async () => {
+    const rows = [
+      { C1: "11", C1_NM: "서울특별시", PRD_DE: "2024", ITM_NM: "1인당 가계총처분가능소득", DT: "32224" },
+    ];
+    fetchWithRetryMock.mockResolvedValue({ text: async () => JSON.stringify(rows) });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledWith("avg-income", { ok: 1, fail: 0 });
   });
 });

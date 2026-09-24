@@ -15,7 +15,7 @@
  *   node scripts/collectors/collect-housing-supply-ratio.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-housing-supply-ratio.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createRegionResolutionTracker, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createRegionResolutionTracker, formatRegionUnresolved, joinRunMessage, fetchWithRetry, recordApiQuota, recordCollectorRun } from "./_shared.mjs";
 
 /** @typedef {{ C1_NM: string; ITM_NM: string; PRD_DE: string; DT: string; UNIT_NM?: string }} KosisRow */
 /** @typedef {Record<string, number>} SupplyLevelByRegion */
@@ -70,6 +70,8 @@ export async function main() {
   let ok = 0;
   let skip = 0;
   let errorMessage = /** @type {string | undefined} */ (undefined);
+  /** @type {import("./_shared.mjs").RegionResolutionSummary | null} */
+  let regionIssues = null;
   try {
     if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
@@ -125,7 +127,7 @@ export async function main() {
 
     // 세션568: REGION_MAP 무음 continue 제거 — 통합 시도("전남광주")가 시도 단위
     // 합계로만 오면 가를 수 없어 건너뜀을 로그로 남긴다.
-    const regionIssues = regionTracker.summary();
+    regionIssues = regionTracker.summary();
     if (regionIssues.unmergeable > 0) {
       log(PHASE, `통합 시도라 나눌 수 없어 건너뜀: 전남광주 ${regionIssues.unmergeable}행`);
     }
@@ -187,9 +189,12 @@ export async function main() {
     errorMessage = err instanceof Error ? err.message : String(err);
     throw err;
   } finally {
+    // 세션569: 못 맞춘 시도 이름을 error_message 마커로 남긴다(monitor ⑪ 이 읽는다).
+    // skip 은 "무변경" 뜻으로 이미 쓰이고, 감시 ②⑤ 가 skip>0 을 "원천 정상 응답"으로 보므로 건드리지 않는다.
+    const marker = formatRegionUnresolved(regionIssues);
     await recordCollectorRun(PHASE, errorMessage
-      ? { ok, skip, status: "failure", errorMessage }
-      : { ok, skip });
+      ? { ok, skip, status: "failure", errorMessage: joinRunMessage(errorMessage, marker) }
+      : { ok, skip, ...(marker ? { errorMessage: marker } : {}) });
   }
 }
 

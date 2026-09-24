@@ -1134,14 +1134,14 @@ describe("createRegionResolutionTracker", () => {
     expect(t.resolve("서울")).toBe("서울");
     expect(t.resolve("서울특별시")).toBe("서울");
     expect(t.resolve("전라남도")).toBe("전남");
-    expect(t.summary()).toEqual({ unmergeable: 0, unknown: 0, unknownNames: [] });
+    expect(t.summary()).toEqual({ unmergeable: 0, unknown: 0, unknownNames: [], unknownCounts: {} });
   });
 
   it("'전남광주' 시도 단위 합계(c1만, gu 없음) → 어느 쪽에도 안 들어가고 unmergeable 집계", () => {
     const t = createRegionResolutionTracker();
     expect(t.resolve("전남광주")).toBeNull();
     expect(t.resolve("전남광주통합특별시")).toBeNull();
-    expect(t.summary()).toEqual({ unmergeable: 2, unknown: 0, unknownNames: [] });
+    expect(t.summary()).toEqual({ unmergeable: 2, unknown: 0, unknownNames: [], unknownCounts: {} });
   });
 
   it("모르는 이름('전국'·'수도권' 등)은 unknown 으로 집계되고 이름이 기록된다", () => {
@@ -1160,7 +1160,7 @@ describe("createRegionResolutionTracker", () => {
     expect(t.resolve(null)).toBeNull();
     expect(t.resolve(undefined)).toBeNull();
     expect(t.resolve("")).toBeNull();
-    expect(t.summary()).toEqual({ unmergeable: 0, unknown: 0, unknownNames: [] });
+    expect(t.summary()).toEqual({ unmergeable: 0, unknown: 0, unknownNames: [], unknownCounts: {} });
   });
 
   it("tracker 는 호출마다 독립 — 서로 다른 인스턴스가 집계를 공유하지 않는다", () => {

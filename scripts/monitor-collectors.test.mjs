@@ -1926,3 +1926,181 @@ describe("checkTradeMonthGaps — ⑧ 지역×월 거래 0건 (세션556)", () =
     expect(TRADE_GAP_MIN_BASELINE).toBe(10);
   });
 });
+
+// ── ⑪ KOSIS 시도 이름 못 맞춤 (세션569) ──────────────────────
+const { checkRegionUnresolved, REGION_UNRESOLVED_COLLECTORS } = await import("./monitor-collectors.mjs");
+const { formatRegionUnresolved } = await import("./collectors/_shared.mjs");
+
+describe("checkRegionUnresolved — ⑪ 시도 이름 못 맞춤 마커", () => {
+  /** @param {string[]} names */
+  const markerOf = (names) => formatRegionUnresolved({
+    unmergeable: 0, unknown: names.length, unknownNames: names,
+    unknownCounts: Object.fromEntries(names.map((n) => [n, 1])),
+  });
+
+  it("대상 이름 = 세 수집기의 recordCollectorRun 기록명(PHASE 상수) 그대로", () => {
+    const here = dirname(fileURLToPath(import.meta.url));
+    const phases = ["collect-market-stats.mjs", "collect-avg-income.mjs", "collect-housing-supply-ratio.mjs"].map((f) => {
+      const m = readFileSync(join(here, "collectors", f), "utf8").match(/const PHASE = "([^"]+)"/);
+      return m?.[1];
+    });
+    expect([...REGION_UNRESOLVED_COLLECTORS].sort()).toEqual(phases.sort());
+  });
+
+  it("최신 실행에 마커 있음 → 이슈 1건 (kind·collector·n·이름·at)", () => {
+    const issues = checkRegionUnresolved({
+      "market-stats": [{ error_message: markerOf(["광주전남"]), finished_at: "2026-10-05T20:30:00Z" }],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("region-unresolved");
+    expect(issues[0].collector).toBe("market-stats");
+    expect(issues[0].detail).toContain("1건");
+    expect(issues[0].detail).toContain("광주전남");
+    // at = dedup 지문(마커 해시 @ 구간 첫 실행 시각) — 실행 시각은 본문 줄로 옮겼다
+    expect(issues[0].at).toMatch(/^[0-9a-f]{8}@2026-10-05T20:30:00Z$/);
+    expect(issues[0].lines?.some((l) => l.startsWith("최근 실행:"))).toBe(true);
+  });
+
+  it("마커 없음(null·일반 실패 사유) → 0건", () => {
+    expect(checkRegionUnresolved({
+      "market-stats": [{ error_message: null, finished_at: "2026-10-05T20:30:00Z" }],
+      "avg-income": [{ error_message: "KOSIS HTTP 500", finished_at: "2026-10-12T20:30:00Z" }],
+      "kosis-housing-supply-ratio": [],
+    })).toEqual([]);
+  });
+
+  it("옛 실행에만 마커가 있고 최신 실행은 깨끗 → 0건(고친 뒤에는 경보가 그친다)", () => {
+    expect(checkRegionUnresolved({
+      "market-stats": [
+        { error_message: null, finished_at: "2026-11-05T20:30:00Z" },
+        { error_message: markerOf(["광주전남"]), finished_at: "2026-10-05T20:30:00Z" },
+      ],
+    })).toEqual([]);
+  });
+
+  it("실패 사유 뒤에 붙은 마커도 읽는다", () => {
+    const issues = checkRegionUnresolved({
+      "avg-income": [{ error_message: `KOSIS HTTP 500 | ${markerOf(["광주전남"])}`, finished_at: "2026-10-12T20:30:00Z" }],
+    });
+    expect(issues).toHaveLength(1);
+  });
+
+  it("이름 6개 → 앞 5개 + '외 1건'", () => {
+    const issues = checkRegionUnresolved({
+      "kosis-housing-supply-ratio": [{ error_message: markerOf(["가", "나", "다", "라", "마", "바"]), finished_at: "2026-10-01T20:30:00Z" }],
+    });
+    expect(issues[0].detail).toContain("6건");
+    expect(issues[0].detail).toContain("가, 나, 다, 라, 마 외 1건");
+    expect(issues[0].detail).not.toContain("바");
+  });
+
+  it("텔레그램 문구에 제목·조치가 붙는다(새 kind 가 notify-telegram 에 등록됨)", async () => {
+    const { formatIssue } = await import("./notify-telegram.mjs");
+    const [issue] = checkRegionUnresolved({
+      "market-stats": [{ error_message: markerOf(["광주전남"]), finished_at: "2026-10-05T20:30:00Z" }],
+    });
+    const text = formatIssue(/** @type {any} */ (issue));
+    expect(text).toContain("시도 이름 못 맞춤");
+    expect(text).not.toContain("undefined");
+  });
+});
+
+// ── ⑪ dedup — ⑨ 와 같은 monitor_alert_state·dedupKey 재사용 (세션569) ──
+const { dedupScope, isCleanRegionRun } = await import("./monitor-collectors.mjs");
+
+describe("⑪ dedup — 지문 = 마커 해시 + 연속 구간 첫 실행 시각", () => {
+  /** @param {string[]} names */
+  const mk = (names) => formatRegionUnresolved({
+    unmergeable: 0, unknown: names.length, unknownNames: names,
+    unknownCounts: Object.fromEntries(names.map((n) => [n, 1])),
+  });
+  const A = mk(["광주전남"]);
+  const B = mk(["광주전남", "알수없음"]);
+  /** @param {string|null} msg @param {string} at @param {string} [status] */
+  const run = (msg, at, status = "success") => ({ status, error_message: msg, finished_at: at });
+  /** 하루치 감시: 알릴 것만 돌려주고, 알린 키를 sent 에 쌓는다(main 의 거르기·기록과 같은 dedupScope) */
+  /** @param {Record<string, any[]>} runs @param {Set<string>} sent */
+  const day = (runs, sent) => {
+    const fresh = filterUnsent(dedupScope(checkRegionUnresolved(runs), "daily"), sent);
+    for (const i of fresh) sent.add(dedupKey(i));
+    return fresh;
+  };
+
+  it("같은 지문 → 다음 날 0건, 다음 달 n 만 늘어난 같은 이름 마커가 이어져도 0건", () => {
+    // 실제 상황: market-stats 의 n = 지표 × 조회 창 기간 수라 라벨이 바뀐 뒤 매달 늘어난다(5 → 10)
+    const oct = "REGION_UNRESOLVED n=5: 광주전남";
+    const nov = "REGION_UNRESOLVED n=10: 광주전남";
+    const sent = new Set();
+    expect(day({ "market-stats": [run(oct, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(1);
+    expect(day({ "market-stats": [run(oct, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+    expect(day({ "market-stats": [run(nov, "2026-11-05T20:30:00Z"), run(oct, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+  });
+
+  it("같은 이름 집합이면 n·이름 순서가 달라도 같은 지문 → 0건", () => {
+    const sent = new Set();
+    day({ "market-stats": [run("REGION_UNRESOLVED n=2: 광주전남, 알수없음", "2026-10-05T20:30:00Z")] }, sent);
+    expect(day({ "market-stats": [
+      run("REGION_UNRESOLVED n=7: 알수없음, 광주전남", "2026-11-05T20:30:00Z"),
+      run("REGION_UNRESOLVED n=2: 광주전남, 알수없음", "2026-10-05T20:30:00Z"),
+    ] }, sent)).toHaveLength(0);
+  });
+
+  it("지문 변화(이름이 늘어남) → 1건", () => {
+    const sent = new Set();
+    day({ "market-stats": [run(A, "2026-10-05T20:30:00Z")] }, sent);
+    expect(day({ "market-stats": [run(B, "2026-11-05T20:30:00Z"), run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(1);
+  });
+
+  it("마커 사라짐 → 0건, 같은 마커가 다시 생김 → 1건(구간이 새로 시작)", () => {
+    const sent = new Set();
+    day({ "market-stats": [run(A, "2026-10-05T20:30:00Z")] }, sent);
+    const clean = run(null, "2026-11-05T20:30:00Z");
+    expect(day({ "market-stats": [clean, run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+    expect(day({ "market-stats": [run(A, "2026-12-05T20:30:00Z"), clean, run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(1);
+  });
+
+  it("마커 없는 **실패** 실행은 구간을 끊지 않는다 → 같은 마커가 이어지면 0건", () => {
+    const sent = new Set();
+    day({ "market-stats": [run(A, "2026-10-05T20:30:00Z")] }, sent);
+    const failed = run("KOSIS HTTP 500", "2026-11-05T20:30:00Z", "failure");
+    expect(day({ "market-stats": [run(A, "2026-12-05T20:30:00Z"), failed, run(A, "2026-10-05T20:30:00Z")] }, sent)).toHaveLength(0);
+  });
+
+  it("깨끗한 실행 = 마커 없는 success 1회", () => {
+    expect(isCleanRegionRun(run(null, "t"))).toBe(true);
+    expect(isCleanRegionRun(run(A, "t"))).toBe(false);
+    expect(isCleanRegionRun(run("KOSIS HTTP 500", "t", "failure"))).toBe(false);
+    expect(isCleanRegionRun(run(`KOSIS HTTP 500 | ${A}`, "t", "failure"))).toBe(false);
+  });
+});
+
+describe("dedupScope — daily 에서 기록·거르는 대상은 ⑨·⑪ 뿐", () => {
+  /** @param {string} kind @param {string} collector */
+  const iss = (kind, collector) => /** @type {any} */ ({ kind, collector, detail: "d", at: "x" });
+  const others = [
+    iss("fail", "School District Collection"), iss("empty", "molit-units"), iss("stale", "market-stats"),
+    iss("outage", "housing-permits"), iss("nulls", "교통 (transport-tago)"), iss("nulls", "db-permissions"),
+  ];
+  const coord = iss("nulls", "coord-shared");
+  const region = iss("region-unresolved", "market-stats");
+
+  it("daily: ①~⑧·⑩ 이슈는 dedup 대상이 아니다(기록 안 됨·매일 리마인드 유지), ⑨·⑪ 만", () => {
+    expect(dedupScope([...others, coord, region], "daily")).toEqual([coord, region]);
+    expect(dedupScope(others, "daily")).toEqual([]);
+  });
+
+  it("run: 전부(기존 동작 그대로)", () => {
+    expect(dedupScope([...others, coord, region], "run")).toHaveLength(8);
+  });
+
+  it("main 은 발송 뒤 dedupScope 로 기록한다 — run 모드 한정 기록으로 되돌아가면 ⑨·⑪ dedup 이 죽는다(정적 가드)", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8");
+    expect(src).toContain("if (anySent) await recordSentAlerts(dedupScope(issues, mode));");
+    expect(src).not.toMatch(/mode === "run" && anySent/);
+  });
+
+  it("⑨ coord-shared: daily 에서도 같은 지문은 다음 날 침묵(세션569 전엔 키가 기록 안 돼 매일 울렸다)", () => {
+    const sent = new Set(dedupScope([coord], "daily").map(dedupKey));
+    expect(filterUnsent(dedupScope([coord], "daily"), sent)).toHaveLength(0);
+  });
+});

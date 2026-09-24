@@ -139,7 +139,7 @@ describe("parseKosisRows (DT_MLTM_2100 주택보급률)", () => {
     expect(result["서울"]).toBeCloseTo(93.6, 1);
     expect(result["광주"]).toBeUndefined();
     expect(result["전남"]).toBeUndefined();
-    expect(tracker.summary()).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [] });
+    expect(tracker.summary()).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [], unknownCounts: {} });
   });
 
   it("모르는 이름('지방') → tracker.unknownNames 에 잡힌다", () => {
@@ -219,5 +219,48 @@ describe("main() recordCollectorRun 하드닝", () => {
     await main();
     const messages = log.mock.calls.map((/** @type {any[]} */ c) => String(c[1]));
     expect(messages.some((/** @type {string} */ m) => m.includes("전남광주") && m.includes("1행"))).toBe(true);
+  });
+});
+
+// ── 세션569: 못 맞춘 시도 이름을 collector_runs 마커로 남긴다(로그 → 기록+감시) ──
+describe("main() REGION_UNRESOLVED 마커 기록", () => {
+  beforeEach(() => {
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+    getSupabase.mockReset();
+    getSupabase.mockReturnValue({
+      from: () => ({
+        select: () => ({ is: async () => ({
+          data: [{ id: "1", region: "서울", gu: null, housing_supply_level: null }],
+          error: null,
+        }) }),
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    });
+  });
+
+  it("'전남광주' 합계 행 → 마커가 실리고, skip 은 '무변경' 뜻 그대로(마커 수를 섞지 않는다)", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      makeRow("전남광주", "보급률(다가구 구분거처 반영)", "2023", 100.0),
+      makeRow("전국", "보급률(다가구 구분거처 반영)", "2023", 102.0),
+      makeRow("지방", "보급률(다가구 구분거처 반영)", "2023", 108.0),
+      makeRow("서울", "보급률(다가구 구분거처 반영)", "2023", 93.6),
+    ] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledWith(
+      "kosis-housing-supply-ratio",
+      { ok: 1, skip: 0, errorMessage: "REGION_UNRESOLVED n=1: 전남광주(통합 시도 합계)" },
+    );
+  });
+
+  it("집계 라벨(전국·수도권·지방)만 못 맞추면 마커 없음", async () => {
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      makeRow("전국", "보급률(다가구 구분거처 반영)", "2023", 102.0),
+      makeRow("수도권", "보급률(다가구 구분거처 반영)", "2023", 97.0),
+      makeRow("지방", "보급률(다가구 구분거처 반영)", "2023", 108.0),
+      makeRow("서울", "보급률(다가구 구분거처 반영)", "2023", 93.6),
+    ] });
+    await main();
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-housing-supply-ratio", { ok: 1, skip: 0 });
   });
 });

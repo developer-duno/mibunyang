@@ -26,7 +26,8 @@
  */
 import {
   loadEnv, getSupabase, log, logError,
-  createRegionResolutionTracker, recordApiQuota, recordCollectorRun, fetchWithRetry,
+  createRegionResolutionTracker, formatRegionUnresolved, joinRunMessage,
+  recordApiQuota, recordCollectorRun, fetchWithRetry,
 } from "./_shared.mjs";
 
 loadEnv();
@@ -61,7 +62,7 @@ const TARGET_ITM_NM = "1인당 가계총처분가능소득";
  * @typedef {Object} AggregateResult
  * @property {string|null} period
  * @property {IncomeEntry[]} entries
- * @property {{unmergeable: number, unknown: number, unknownNames: string[]}} regionIssues
+ * @property {import("./_shared.mjs").RegionResolutionSummary} regionIssues
  */
 
 // ── 단위 변환: 천원/년 → 만원/월 ───────────────────────────
@@ -89,7 +90,7 @@ export function thousandWonYearToManWonMonth(dt) {
  */
 export function aggregateIncomeRows(rows) {
   if (!Array.isArray(rows) || rows.length === 0) {
-    return { period: null, entries: [], regionIssues: { unmergeable: 0, unknown: 0, unknownNames: [] } };
+    return { period: null, entries: [], regionIssues: { unmergeable: 0, unknown: 0, unknownNames: [], unknownCounts: {} } };
   }
   const typedRows = /** @type {KosisRow[]} */ (rows);
 
@@ -163,11 +164,14 @@ export async function main() {
   let failed = 0;
   let updated = 0;
   let errorMessage = /** @type {string | undefined} */ (undefined);
+  /** @type {import("./_shared.mjs").RegionResolutionSummary | null} */
+  let regionIssues = null;
   try {
     const result = await runCollect(dryRun);
     failed = result.failed;
     apiCalls = result.apiCalls;
     updated = result.updated;
+    regionIssues = result.regionIssues;
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     throw err;
@@ -175,16 +179,18 @@ export async function main() {
     if (!dryRun && apiCalls > 0) {
       await recordApiQuota(PHASE, "KOSIS_MIGRATION_KEY", apiCalls);
     }
+    // 세션569: 못 맞춘 시도 이름을 error_message 마커로 남긴다(monitor ⑪ 이 읽는다). status 는 그대로.
+    const marker = formatRegionUnresolved(regionIssues);
     await recordCollectorRun(PHASE, errorMessage
-      ? { ok: updated, fail: failed, status: "failure", errorMessage }
-      : { ok: updated, fail: failed });
+      ? { ok: updated, fail: failed, status: "failure", errorMessage: joinRunMessage(errorMessage, marker) }
+      : { ok: updated, fail: failed, ...(marker ? { errorMessage: marker } : {}) });
   }
   if (failed > 0) process.exit(1);
 }
 
 /**
  * @param {boolean} dryRun
- * @returns {Promise<{apiCalls: number, failed: number, updated: number}>}
+ * @returns {Promise<{apiCalls: number, failed: number, updated: number, regionIssues: import("./_shared.mjs").RegionResolutionSummary}>}
  */
 async function runCollect(dryRun) {
   const rows = await fetchKosisIncome();
@@ -200,7 +206,7 @@ async function runCollect(dryRun) {
   }
   if (!period || entries.length === 0) {
     log(PHASE, "유효 데이터 없음 — 종료");
-    return { apiCalls, failed: 0, updated: 0 };
+    return { apiCalls, failed: 0, updated: 0, regionIssues };
   }
   log(PHASE, `기준연도: ${period}, 유효 시도: ${entries.length}건`);
 
@@ -209,7 +215,7 @@ async function runCollect(dryRun) {
     for (const e of [...entries].sort((a, b) => b.avg_income - a.avg_income)) {
       console.log(`  ${e.region}: ${e.avg_income.toLocaleString()}만원/월`);
     }
-    return { apiCalls, failed: 0, updated: 0 };
+    return { apiCalls, failed: 0, updated: 0, regionIssues };
   }
 
   // Supabase UPDATE-or-INSERT (population.mjs L237-261 답습 — 소유 컬럼 보존 + recorded_at 매칭)
@@ -247,7 +253,7 @@ async function runCollect(dryRun) {
   }
 
   log(PHASE, `regions.avg_income UPSERT: ${updated}건 성공 / ${failed}건 실패 (recorded_at=${entries[0]?.recorded_at})`);
-  return { apiCalls, failed, updated };
+  return { apiCalls, failed, updated, regionIssues };
 }
 
 const argv1 = process.argv[1];

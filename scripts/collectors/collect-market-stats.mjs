@@ -13,7 +13,7 @@
  *   node scripts/collectors/collect-market-stats.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-market-stats.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createReporter, sleep, createRegionResolutionTracker, upsertBatch, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, sleep, createRegionResolutionTracker, formatRegionUnresolved, joinRunMessage, upsertBatch, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
 
 loadEnv();
 
@@ -169,6 +169,8 @@ export async function main() {
   const rpt = createReporter(PHASE);
   let errorMessage = /** @type {string | undefined} */ (undefined);
   let result = /** @type {any} */ (undefined);
+  /** @type {import("./_shared.mjs").RegionResolutionSummary[]} 지표별 "시도 이름 못 맞춤" — 실행 끝에 collector_runs 로 남긴다(세션569) */
+  const regionSummaries = [];
   try {
     if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
@@ -235,7 +237,9 @@ export async function main() {
       log(PHASE, `  ${ind.label}: ${rows.length}건 응답, ${regionCount}개 시도 매핑`);
 
       // ── market_stats_history 시계열 누적 (병존, regions UPDATE 와 동일 응답 재파싱) ──
-      for (const row of parseAllPeriodsByRegion(rows, ind, regionTracker)) {
+      // tracker 는 넘기지 않는다 — 같은 행을 extractLatestByRegion 이 이미 셌다(그 필터가 이 필터의
+      // 상위집합). 넘기면 못 맞춘 행이 두 번 세어져 기록(REGION_UNRESOLVED n=)이 부풀었다(세션569).
+      for (const row of parseAllPeriodsByRegion(rows, ind)) {
         const key = `${row.region}::${row.base_month}`;
         if (!historyMap[key]) historyMap[key] = { region: row.region, gu: "", base_month: row.base_month };
         /** @type {Record<string, unknown>} */ (historyMap[key])[ind.col] = row.value;
@@ -246,6 +250,7 @@ export async function main() {
       // 최신 non-null 로 이전 값 유지, admin-district-code-reform.md), 그 사실과
       // 그 밖의 미매핑 이름을 로그로 남긴다.
       const trackerSummary = regionTracker.summary();
+      regionSummaries.push(trackerSummary);
       if (trackerSummary.unmergeable > 0) {
         log(PHASE, `  ${ind.label}: 통합 시도라 나눌 수 없어 건너뜀: 전남광주 ${trackerSummary.unmergeable}행`);
       }
@@ -304,9 +309,12 @@ export async function main() {
     throw err;
   } finally {
     result = rpt.summary();
+    // 세션569: 로그만으로는 아무도 못 본다 — 못 맞춘 시도 이름을 error_message 마커로 남겨
+    // monitor ⑪(checkRegionUnresolved)이 읽게 한다. status 는 그대로(success 유지).
+    const marker = formatRegionUnresolved(...regionSummaries);
     await recordCollectorRun(PHASE, errorMessage
-      ? { ...result, status: "failure", errorMessage }
-      : result);
+      ? { ...result, status: "failure", errorMessage: joinRunMessage(errorMessage, marker) }
+      : (marker ? { ...result, errorMessage: marker } : result));
   }
   // 세션 330: 5지표 중 일부만 transient API 사고 시 partial 자연 종료 (텔레그램 알림 노이즈 감소).
   // ok > 0 + fail > 0 = 부분 success (다음 cron 자연 회복 대기). 전부 fail 시만 진짜 사고로 exit 1.

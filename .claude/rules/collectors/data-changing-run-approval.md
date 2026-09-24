@@ -49,6 +49,7 @@ paths:
 
 무음 `continue` 를 로그 한 줄로 바꾸면 로컬 러너 기록에만 남아 아무도 못 본다(#595). 최소 `collector_runs` 의
 skip/warn 수치나 감시 항목으로 올린다 — 로그는 사람이 읽으러 가야만 보이는 자리다.
+적용 = `REGION_UNRESOLVED` 마커(`collector_runs.error_message`, status 는 그대로) + monitor ⑪ `checkRegionUnresolved`(세션569). skip 칸은 감시 ②⑤가 "원천 정상 응답"으로 읽어 경보를 끄므로 쓰지 않았다.
 
 ## 안티 패턴
 
