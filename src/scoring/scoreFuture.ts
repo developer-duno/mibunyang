@@ -72,8 +72,11 @@ export function scoreFuture(apt: Apt): Res {
   // 형식이 안 맞으면 0 — 억지로 부분 점수를 주면 "무슨 호재인지 모르는데 점수는 있다"가 된다.
   const trMatch = transitDev && transitDev !== "없음" ? transitDev.trim().match(TRANSIT_DEV_PATTERN) : null;
   const trStatus = trMatch?.[2] ?? "";
+  // 좌표 자리표시 의심(세션568) — devDist(거리)는 이 단지 좌표로 잰 값이라 믿을 수 없다.
+  //   가산점 항목이므로 채점 자체는 하지 않는다(0점 유지, 다른 단지보다 불이익을 주지 않는다) —
+  //   src/scoring/CLAUDE.md "scoreFuture 고정 가중치" 의 단조성(채우면 오르기만 한다)을 지킨다.
   const trSc =
-    !trMatch || TRANSIT_OPEN.includes(trStatus) // 개통은 입지 축이 이미 셈 — 이중 계상 차단
+    apt._coordUnknown || !trMatch || TRANSIT_OPEN.includes(trStatus) // 개통은 입지 축이 이미 셈 — 이중 계상 차단
       ? 0
       : (TRANSIT_CERTAINTY[trStatus] ?? TRANSIT_CERTAINTY_DEFAULT) +
         tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE) +
@@ -83,7 +86,9 @@ export function scoreFuture(apt: Apt): Res {
   // 옛 산식은 이름 키워드만 봐서 값 보유 111곳이 **전부 80점**이었다(거리를 아예 안 봄).
   // 출처는 LH 사업지구(V-WORLD)에 네이버 지구단위가 더해진 것이라 "LH" 로 못 박아 말하지 않는다.
   const cityMatch = cityDev ? cityDev.trim().match(CITY_DEV_PATTERN) : null;
-  const citySc = cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
+  // 좌표 자리표시 의심(세션568) — 위 교통개발과 같은 이유로 0점 유지.
+  const citySc =
+    !apt._coordUnknown && cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
   // 인구 (기본 30%) — 한국 현실 기반 7단계
   let popSc =
@@ -111,7 +116,9 @@ export function scoreFuture(apt: Apt): Res {
   const indDev = apt.industryDev as string | string[] | undefined;
   const indStr = Array.isArray(indDev) ? (indDev[0] ?? "") : String(indDev ?? "");
   const indMatch = indStr ? indStr.trim().match(INDUSTRY_DEV_PATTERN) : null;
-  const indSc = indMatch ? tierMax(parseFloat(indMatch[2]), INDUSTRY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
+  // 좌표 자리표시 의심(세션568) — 위 교통·도시개발과 같은 이유로 0점 유지.
+  const indSc =
+    !apt._coordUnknown && indMatch ? tierMax(parseFloat(indMatch[2]), INDUSTRY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
   // 고정 가중치 + 0~100 정규화 (세션511 — 동적 재분배 폐기)
   //
@@ -131,32 +138,38 @@ export function scoreFuture(apt: Apt): Res {
       {
         name: "교통개발",
         score: Math.round(trSc),
-        info: transitDev || "없음",
+        // 좌표 자리표시 의심(세션568) — 매칭된 역·거리(devDist)가 이 단지 좌표로 고른 것이라
+        // 믿을 수 없다. 가산점 항목이라 점수는 0(기본선)을 유지하고 문구만 사실대로 바꾼다.
+        info: apt._coordUnknown ? "위치 확인 중" : transitDev || "없음",
         // 문구는 점수표에서 뽑는다 — 숫자를 박으면 표만 바뀌었을 때 "0점인데 만점 설명"이 남는다
         // (세션499 등급 문구 사고와 같은 자리).
         // ⚠️ 미매칭이어도 **원문이 있으면** "없음"이라 하지 않는다 — info 는 원문을 그대로 보여주는데
         //    detail 만 "없음"이라 하면 한 줄 안에서 서로 다른 말을 한다(값 있는데 낮은 점수 ≠ 부재,
         //    .claude/rules/meta/score-meaning-and-wording-are-a-pair.md). info 와 같은 조건(원문 유무)으로 가른다.
-        detail: !trMatch
-          ? transitDev && transitDev !== "없음"
-            ? `${transitDev} — 형식을 해석하지 못함 (0점)`
-            : "교통개발 없음 (0점)"
-          : TRANSIT_OPEN.includes(trStatus)
-            ? `${transitDev} — 이미 개통해 입지 점수(지하철 거리)에 반영됩니다 (미래가치 0점)`
-            : `${transitDev} · ${devDist}km — 확실성 ${TRANSIT_CERTAINTY[trStatus] ?? TRANSIT_CERTAINTY_DEFAULT}점` +
-              ` + 거리 ${tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE)}점` +
-              ` + ${TRANSIT_LINE_TYPE[trMatch[1]] ?? "기타"} ${TRANSIT_GRADE[TRANSIT_LINE_TYPE[trMatch[1]] ?? ""] ?? TRANSIT_GRADE_DEFAULT}점`,
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 개발계획 거리를 다시 계산합니다 (0점)"
+          : !trMatch
+            ? transitDev && transitDev !== "없음"
+              ? `${transitDev} — 형식을 해석하지 못함 (0점)`
+              : "교통개발 없음 (0점)"
+            : TRANSIT_OPEN.includes(trStatus)
+              ? `${transitDev} — 이미 개통해 입지 점수(지하철 거리)에 반영됩니다 (미래가치 0점)`
+              : `${transitDev} · ${devDist}km — 확실성 ${TRANSIT_CERTAINTY[trStatus] ?? TRANSIT_CERTAINTY_DEFAULT}점` +
+                ` + 거리 ${tierMax(devDist, TRANSIT_DIST_TIERS, TRANSIT_DIST_FAR_SCORE)}점` +
+                ` + ${TRANSIT_LINE_TYPE[trMatch[1]] ?? "기타"} ${TRANSIT_GRADE[TRANSIT_LINE_TYPE[trMatch[1]] ?? ""] ?? TRANSIT_GRADE_DEFAULT}점`,
       },
       {
         name: "도시개발",
         score: Math.round(citySc),
-        info: cityDev || "없음",
+        info: apt._coordUnknown ? "위치 확인 중" : cityDev || "없음",
         // 미매칭이어도 원문이 있으면 "없음"이라 하지 않는다(위 교통개발과 같은 규약).
-        detail: cityMatch
-          ? `${cityDev} — 개발지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
-          : cityDev && cityDev !== "없음"
-            ? `${cityDev} — 형식을 해석하지 못함 (0점)`
-            : "반경 5km 안에 개발지구 없음 (0점)",
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 개발지구 거리를 다시 계산합니다 (0점)"
+          : cityMatch
+            ? `${cityDev} — 개발지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
+            : cityDev && cityDev !== "없음"
+              ? `${cityDev} — 형식을 해석하지 못함 (0점)`
+              : "반경 5km 안에 개발지구 없음 (0점)",
       },
       {
         name: "인구",
@@ -172,14 +185,16 @@ export function scoreFuture(apt: Apt): Res {
         score: Math.round(indSc),
         // 값이 있으면 그대로 보여준다 — 점수가 0이라고 "없음"이라 쓰면 거짓이 된다
         // (세션510: "427곳이 값을 갖고도 '없음' 표시" 와 같은 자리)
-        info: indStr || "없음",
+        info: apt._coordUnknown ? "위치 확인 중" : indStr || "없음",
         // 산업단지는 LH 지구보다 드물어(최근접 중앙 3.28km) 등급 간격이 넓다
         // 미매칭이어도 원문이 있으면 "없음"이라 하지 않는다(위 교통개발과 같은 규약).
-        detail: indMatch
-          ? `${indStr} — 산업단지까지 ${indMatch[2]}km (1km내 100점 · 2km 75 · 3km 50 · 5km 25 · 그 밖 0)`
-          : indStr && indStr !== "없음"
-            ? `${indStr} — 형식을 해석하지 못함 (0점)`
-            : "반경 5km 안에 산업단지 없음 (0점)",
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 산업단지 거리를 다시 계산합니다 (0점)"
+          : indMatch
+            ? `${indStr} — 산업단지까지 ${indMatch[2]}km (1km내 100점 · 2km 75 · 3km 50 · 5km 25 · 그 밖 0)`
+            : indStr && indStr !== "없음"
+              ? `${indStr} — 형식을 해석하지 못함 (0점)`
+              : "반경 5km 안에 산업단지 없음 (0점)",
       },
     ],
   };

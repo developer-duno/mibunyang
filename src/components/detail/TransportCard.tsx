@@ -52,6 +52,14 @@ export const TransportCard = memo(function TransportCard({ apt }: { apt: Apt }) 
   const hasAny = FIELDS.some((f) => apt[f] != null);
   if (!hasAny) return null;
 
+  // 좌표 자리표시 의심(사장님 결정, 세션568-3) — 역·학교 이름·거리·도보 분은 전부 이 단지
+  // 좌표로 잰 값이라, 좌표가 다른 단지와 공유되면 이 단지 것이 아니다. **경고문이 아니라
+  // 틀린 값을 안 보여주는 것**이다(.claude/rules/our-defect-is-not-customer-warning.md —
+  // "이 숫자는 못 미더우니 참고만" 류 신뢰도 변명과 다르다: 값 자체를 감추고 사실 한 줄만 남긴다).
+  // ⚠️ 세션563 가드(TransportCard.test.tsx:118-128, 경고 문구 없음)는 계속 통과해야 하므로
+  //    `data-field="coordShared"` 같은 표식은 쓰지 않는다 — 표식은 `data-state="coord-unknown"`.
+  const coordUnknown = apt.coordShared === true;
+
   return (
     <div style={TC_S.container}>
       <div
@@ -73,43 +81,48 @@ export const TransportCard = memo(function TransportCard({ apt }: { apt: Apt }) 
         </span>
       </div>
       {/*
-        ⚠️ 좌표 자리표시 경고를 **일부러 두지 않는다**(사장님 결정 2026-09-23, 세션563).
+        ⚠️ 좌표 자리표시 경고 **문구**를 일부러 두지 않는다(사장님 결정 2026-09-23, 세션563).
 
         세션561이 여기에 "위치가 정확하지 않을 수 있으니 거리는 참고로만 봐 주세요" 를 달았다가
         뺐다. 좌표가 부정확한 건 **우리 데이터 문제**이지 손님이 감당할 일이 아니다 — 손님에게
         "이 숫자는 믿지 마세요" 라고 말하는 것은 문제를 떠넘기는 것이다.
 
-        같은 이유로 `SchoolInfo`·`NearbyChildcareSection` 에도 달지 않는다(세션563에 달았다가
-        같은 지적으로 되돌렸다). 좌표 문제는 **사장님께 알리고 고치는** 쪽으로 다룬다.
-        지도의 점선 핀(`KakaoMapView`)만 남긴다 — 그건 글이 아니라 핀의 생김새라서,
-        "이 핀이 엉뚱한 곳에 있다" 는 사실 자체를 보여 줄 뿐 손님에게 판단을 떠넘기지 않는다.
+        세션568-3 에서 한 단계 더 나아갔다 — 경고문 대신 **틀린 값 자체를 안 보여준다**
+        (아래 coordUnknown 분기). "위치 확인 중"은 신뢰도 변명이 아니라 사실 서술이다.
+        같은 이유로 `SchoolInfo` 도 같은 처리(별도 파일). 지도의 점선 핀(`KakaoMapView`)도
+        남겨 둔다 — 그건 글이 아니라 핀의 생김새라서 손님에게 판단을 떠넘기지 않는다.
       */}
-      {open && (
-        <div style={TC_S.body}>
-          <Field
-            field="subwayName"
-            label={FIELD_META.subwayName.label}
-            value={FIELD_META.subwayName.fmt(apt.subwayName, apt)}
-          />
-          <Field
-            field="subwayLines"
-            label={FIELD_META.subwayLines.label}
-            value={FIELD_META.subwayLines.fmt(apt.subwayLines, apt)}
-          />
-          <Field
-            field="busRoutes"
-            label={FIELD_META.busRoutes.label}
-            value={FIELD_META.busRoutes.fmt(apt.busRoutes, apt)}
-          />
-          <Field
-            field="busStopNames"
-            label={FIELD_META.busStopNames.label}
-            value={FIELD_META.busStopNames.fmt(apt.busStopNames, apt)}
-          />
-          <Field field="icDist" label={FIELD_META.icDist.label} value={FIELD_META.icDist.fmt(apt.icDist, apt)} />
-          <Field field="ktxDist" label={FIELD_META.ktxDist.label} value={FIELD_META.ktxDist.fmt(apt.ktxDist, apt)} />
-        </div>
-      )}
+      {open &&
+        (coordUnknown ? (
+          <div style={TC_S.body} data-state="coord-unknown">
+            <span style={{ ...TC_S.label, gridColumn: "1 / -1" }}>위치 확인 중</span>
+          </div>
+        ) : (
+          <div style={TC_S.body}>
+            <Field
+              field="subwayName"
+              label={FIELD_META.subwayName.label}
+              value={FIELD_META.subwayName.fmt(apt.subwayName, apt)}
+            />
+            <Field
+              field="subwayLines"
+              label={FIELD_META.subwayLines.label}
+              value={FIELD_META.subwayLines.fmt(apt.subwayLines, apt)}
+            />
+            <Field
+              field="busRoutes"
+              label={FIELD_META.busRoutes.label}
+              value={FIELD_META.busRoutes.fmt(apt.busRoutes, apt)}
+            />
+            <Field
+              field="busStopNames"
+              label={FIELD_META.busStopNames.label}
+              value={FIELD_META.busStopNames.fmt(apt.busStopNames, apt)}
+            />
+            <Field field="icDist" label={FIELD_META.icDist.label} value={FIELD_META.icDist.fmt(apt.icDist, apt)} />
+            <Field field="ktxDist" label={FIELD_META.ktxDist.label} value={FIELD_META.ktxDist.fmt(apt.ktxDist, apt)} />
+          </div>
+        ))}
     </div>
   );
 });

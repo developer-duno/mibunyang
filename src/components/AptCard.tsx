@@ -441,6 +441,10 @@ export const AptCard = memo(
     if (pa.parkingRatio !== na.parkingRatio) return false;
     if (pa.noxiousDist !== na.noxiousDist) return false;
     if (pa.corridorType !== na.corridorType) return false;
+    // 좌표 자리표시 의심 신호 (세션568) — coordShared 만 바뀌고 subwayDist/transitDev/
+    //   noxiousDist 등 원본 값이 그대로면(예: 좌표가 방금 공유 상태로 바뀜) 위 비교들이
+    //   전부 통과해 카드가 옛 칩(역세권·교통호재·혐오안심)을 그대로 보여줄 수 있다.
+    if (pa.coordShared !== na.coordShared) return false;
     // infoRow 칩 신호 (세션 437) — 초등도보·전용률·난방연료
     if (pa.naverSchoolWalkMin !== na.naverSchoolWalkMin) return false;
     if (pa.exclusiveRatio !== na.exclusiveRatio) return false;

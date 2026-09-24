@@ -75,6 +75,7 @@ function scoreSign(score: number, catKey: string): { mark: string; label: string
 //    맡고, `interpret` 에 `s.info` 를 넘겨 처리한다 — 이 함수의 책임은 "미수집 숨기기" 하나뿐이다.
 function isNoDataInfo(info?: string): boolean {
   if (!info) return true;
+  if (info.includes("위치 확인 중")) return true; // 좌표 자리표시 의심(세션568) — 판정 배지를 숨긴다
   return (
     info === "-" ||
     info.startsWith("정보 없음") ||

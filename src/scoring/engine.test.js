@@ -30,6 +30,9 @@ import {
   FLOOR_LOW_SCORE,
   PARKING_UNKNOWN_SCORE,
   PARKING_LOW_SCORE,
+  COORD_UNKNOWN_TRANSPORT_SCORE,
+  COORD_UNKNOWN_INFRA_SCORE,
+  POLICE_DIST_NULL_SCORE,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -2948,4 +2951,154 @@ describe("scorePrice — 미준공 신축 프리미엄 (결함B 처방, 세션52
     const devScoreOf = (/** @type {any} */ res) => res.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
     expect(devScoreOf(r).score).toBe(0);
   });
+});
+
+describe("좌표 자리표시 의심(coordShared) — 중립 채점 + 위치 확인 중 (세션568)", () => {
+  // calcCats 경유 필수 — sanitize 를 지나야 _coordUnknown 플래그가 세워진다
+  // (guards-must-be-mutation-tested "테스트가 실제 경로를 지나는가" — 직접 score 함수 호출은 sanitize 를 건너뛴다).
+  it("coordShared=true 면 교통 sub 가 중립값(COORD_UNKNOWN_TRANSPORT_SCORE) + '위치 확인 중'", () => {
+    const cats = calcCats(makeApt(/** @type {any} */ ({ coordShared: true, subwayDist: 200, busRoutes: 15 })), {});
+    const sub = cats.location.subs.find((s) => s.name === "교통");
+    expect(sub?.score).toBe(COORD_UNKNOWN_TRANSPORT_SCORE);
+    expect(sub?.info).toBe("위치 확인 중");
+    expect(sub?.detail).toContain("위치 확인 중");
+  });
+  it("coordShared=true 면 생활인프라 sub 가 중립값(COORD_UNKNOWN_INFRA_SCORE) + '위치 확인 중'", () => {
+    const cats = calcCats(makeApt(/** @type {any} */ ({ coordShared: true, hospital: 100, mart: 3 })), {});
+    const sub = cats.location.subs.find((s) => s.name === "생활인프라");
+    expect(sub?.score).toBe(COORD_UNKNOWN_INFRA_SCORE);
+    expect(sub?.info).toBe("위치 확인 중");
+  });
+  // 보완(사장님 승인 설계 — 학군 누락 지적, 세션568-2): schoolScore/schoolGrade/naverSchoolWalkMin 은
+  // 1km 반경 학교 목록(schools-neis)과 도보 분으로 전부 좌표 기반이다. "새 상수"가 아니라
+  // **기존 빈값 폴백(`?? 50`, 도보보정 없음)** 을 재사용한다(사장님 지시).
+  it("coordShared=true 면 학군 sub 가 기존 빈값 폴백(schoolScore ?? 50) + '위치 확인 중' — 새 상수 미사용", () => {
+    const cats = calcCats(
+      makeApt(/** @type {any} */ ({ coordShared: true, schoolScore: 100, schoolGrade: "A", naverSchoolWalkMin: 3 })),
+      {}
+    );
+    const sub = cats.location.subs.find((s) => s.name === "학군");
+    // 기존 "schoolScore 없음" 폴백(50)과 정확히 같은 값이어야 한다 — calcCats 경유로 두 경로를 대조.
+    const noSchoolData = calcCats(
+      makeApt(/** @type {any} */ ({ schoolScore: null, schoolGrade: null, naverSchoolWalkMin: null })),
+      {}
+    ).location.subs.find((s) => s.name === "학군");
+    expect(sub?.score).toBe(noSchoolData?.score);
+    expect(sub?.score).toBe(50); // ?? 50 폴백 그대로(도보보정 없음)
+    expect(sub?.info).toBe("위치 확인 중");
+    expect(sub?.detail).toContain("위치 확인 중");
+  });
+  it("coordShared=true 인 D등급 단지도 학군 점수가 폴백(50)으로 올라간다 — 실데이터 재현(시흥거모)", () => {
+    const cats = calcCats(
+      makeApt(/** @type {any} */ ({ coordShared: true, schoolScore: 5, schoolGrade: "D", naverSchoolWalkMin: 25 })),
+      {}
+    );
+    const sub = cats.location.subs.find((s) => s.name === "학군");
+    expect(sub?.score).toBe(50);
+    expect(sub?.info).toBe("위치 확인 중");
+  });
+  it("coordShared=true 면 자연환경의 대기질만 중립(AIR_QUALITY_DEFAULT) — 조망·일조·소음은 불변", () => {
+    const withCoord = calcCats(
+      makeApt(/** @type {any} */ ({ coordShared: true, airQuality: { annual: { pm25: 10, pm10: 20, o3: 30 } } })),
+      {}
+    );
+    const without = calcCats(makeApt({ airQuality: /** @type {any} */ ({ annual: {} }) }), {});
+    const s1 = withCoord.location.subs.find((s) => s.name === "자연환경");
+    const s2 = without.location.subs.find((s) => s.name === "자연환경");
+    // 둘 다 view/sunlight/noise 는 makeApt() 기본값(동일) → env 점수가 같아야 한다(대기질도 둘 다 중립)
+    expect(s1?.score).toBe(s2?.score);
+    expect(s1?.detail).toContain("위치 확인 중");
+    expect(s1?.detail).toContain(`중립 ${AIR_QUALITY_DEFAULT}점`);
+  });
+  it("coordShared=true 면 혐오시설 감점을 물리지 않는다(=만점 100) + '위치 확인 중'", () => {
+    const cats = calcCats(
+      makeApt(/** @type {any} */ ({ coordShared: true, noxious: ["소각장", "화장장"], noxiousDist: 100 })),
+      {}
+    );
+    const sub = cats.location.subs.find((s) => s.name === "혐오시설");
+    expect(sub?.score).toBe(100);
+    expect(sub?.info).toBe("위치 확인 중");
+  });
+  it("coordShared=true 면 치안 sub 의 경찰거리만 중립(POLICE_DIST_NULL_SCORE) — 범죄등급은 불변", () => {
+    const withCoord = calcCats(
+      makeApt(/** @type {any} */ ({ coordShared: true, crimeSafetyGrade: 1, policeDist: 100 })),
+      {}
+    );
+    const noPolice = calcCats(makeApt({ crimeSafetyGrade: 1, policeDist: /** @type {any} */ (null) }), {});
+    const s1 = withCoord.risk.subs.find((s) => s.name === "치안 안전");
+    const s2 = noPolice.risk.subs.find((s) => s.name === "치안 안전");
+    // policeDist 만 null(중립)으로 재고, crimeSafetyGrade 는 둘 다 1등급 → 같은 crimeSc
+    expect(s1?.score).toBe(s2?.score);
+    // 상수에서 직접 파생한 기대값 — gradeRisk(1등급=10)*0.7 + POLICE_DIST_NULL_SCORE*0.3
+    const expectedSafety = Math.round(100 - (10 * 0.7 + POLICE_DIST_NULL_SCORE * 0.3));
+    expect(s1?.score).toBe(expectedSafety);
+    expect(s1?.info).toContain("1등급");
+    expect(s1?.info).toContain("위치 확인 중");
+  });
+  it("coordShared=true 면 개발호재 3종(교통·도시·산업개발)은 0점 유지 + 문구만 '위치 확인 중'", () => {
+    const cats = calcCats(
+      makeApt(
+        /** @type {any} */ ({
+          coordShared: true,
+          transitDev: "GTX-A 동탄역 착공",
+          devDist: 0.3,
+          cityDev: "동탄2지구 0.5km",
+          industryDev: "동탄산업단지 1.0km",
+        })
+      ),
+      {}
+    );
+    for (const name of ["교통개발", "도시개발", "산업개발"]) {
+      const sub = cats.future.subs.find((s) => s.name === name);
+      expect(sub?.score).toBe(0);
+      expect(sub?.info).toBe("위치 확인 중");
+      expect(sub?.detail).toContain("위치 확인 중");
+    }
+    // 개발호재가 전부 0이어도 인구 서브는 그대로 살아있는지(비파생 sub 불변) 확인
+    const popSub = cats.future.subs.find((s) => s.name === "인구");
+    expect(popSub?.info).not.toBe("위치 확인 중");
+  });
+  it("scoreFuture 단조성 — coordShared=true 인 단지가 false 인 동일 단지보다 미래가치 총점이 낮지 않다(개발호재가 0으로 묶여도 최소한 불리하지 않음)", () => {
+    const base = {
+      transitDev: "GTX-A 동탄역 착공",
+      devDist: 0.3,
+      cityDev: "동탄2지구 0.5km",
+      industryDev: "동탄산업단지 1.0km",
+    };
+    const shared = calcCats(makeApt(/** @type {any} */ ({ ...base, coordShared: true })), {}).future.total;
+    const unshared = calcCats(makeApt(/** @type {any} */ ({ ...base, coordShared: false })), {}).future.total;
+    // coordShared=true 는 호재 3축이 0으로 묶이므로 total <= unshared 여야 한다(더 높아지면 안 된다 — 정직성).
+    expect(shared).toBeLessThanOrEqual(unshared);
+  });
+
+  // 회귀 — coordShared 가 없거나 false 인 단지는 기존과 완전히 같은 점수·문구를 낸다.
+  it("coordShared=false/undefined 는 기존과 완전히 같다 (회귀)", () => {
+    const base = {
+      subwayDist: 200,
+      busRoutes: 15,
+      hospital: 100,
+      mart: 3,
+      noxious: ["소각장"],
+      noxiousDist: 100,
+      policeDist: 300,
+      crimeSafetyGrade: 2,
+      schoolScore: 85,
+      schoolGrade: "B",
+      naverSchoolWalkMin: 4,
+    };
+    const withFalse = /** @type {any} */ (calcCats(makeApt(/** @type {any} */ ({ ...base, coordShared: false })), {}));
+    const withUndef = /** @type {any} */ (calcCats(makeApt(/** @type {any} */ (base)), {}));
+    for (const cat of ["location", "risk", "future"]) {
+      expect(withFalse[cat].total).toBe(withUndef[cat].total);
+      withFalse[cat].subs.forEach((/** @type {any} */ s, /** @type {number} */ i) => {
+        expect(s.score).toBe(withUndef[cat].subs[i].score);
+        expect(s.info).toBe(withUndef[cat].subs[i].info);
+      });
+    }
+  });
+
+  // 뮤테이션 검증 지점(수동): engine.ts 의 `_coordUnknown: apt.coordShared === true` 를
+  //   `_coordUnknown: false` 로 되돌리면 위 "중립값" 테스트들이 전부 red 여야 한다.
+  //   scoreLocation.ts 의 `apt._coordUnknown ? COORD_UNKNOWN_TRANSPORT_SCORE : rawTransport` 를
+  //   `rawTransport`(무조건) 로 바꿔도 동일하게 red.
 });

@@ -279,9 +279,13 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   }
 
   /* ── 입지 ── */
+  // 좌표 자리표시 의심(세션568) — 지하철·교통호재 거리는 좌표로 잰 값이라, 좌표가 다른
+  // 단지와 공유되면 이 단지 것이 아니다. 틀린 거리로 "역세권"·"교통호재" 같은 강점을
+  // 주장하지 않는다(칩 자체를 만들지 않는다 — 지도 점선 핀이 이미 그 사실을 보여준다).
+  const coordUnknown = a.coordShared === true;
   const subwayDist = a.subwayDist as number | null | undefined;
   const subwayName = a.subwayName as string | null | undefined;
-  if (!showDeviation && subwayDist != null && subwayDist < 9000) {
+  if (!coordUnknown && !showDeviation && subwayDist != null && subwayDist < 9000) {
     const near = subwayDist <= 500;
     out.push({
       id: near ? "subwayNear" : "subwayDist",
@@ -293,7 +297,7 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   }
   const transitDev = a.transitDev as string | null | undefined;
   const devDist = a.devDist as number | null | undefined;
-  if (transitDev && transitDev !== "없음" && devDist != null && devDist <= 2) {
+  if (!coordUnknown && transitDev && transitDev !== "없음" && devDist != null && devDist <= 2) {
     out.push({
       id: "transitDev",
       text: `🚆 ${transitDev.split(" ").slice(0, 2).join(" ")}`,
@@ -302,8 +306,10 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
       bold: true,
     });
   }
+  // 좌표 자리표시 의심(세션568 보완) — 초등도보·학군등급 칩도 좌표 반경으로 찾은 값이라
+  // 믿을 수 없다. 위 지하철·교통호재·혐오시설 칩과 같은 이유로 칩 자체를 만들지 않는다.
   const schoolWalk = a.naverSchoolWalkMin as number | null | undefined;
-  if (schoolWalk != null) {
+  if (!coordUnknown && schoolWalk != null) {
     const near = schoolWalk <= 5;
     out.push({
       id: near ? "schoolWalkNear" : "schoolWalk",
@@ -318,7 +324,7 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   //    두면 열 곳 중 네 곳에 약점 칩이 붙어 경고가 소음이 되고, 정작 더 나쁜 D 에는 아무 표시가
   //    없다(옛 분포에서 D 가 0곳이라 드러나지 않던 구멍). 칩 빈도 9.6% 는 다른 약점 칩
   //    (미분양 14.3%·시공사신용 15.3%·전세가율낮음 17.3%)과 같은 대역이다.
-  if (a.schoolGrade === "D") {
+  if (!coordUnknown && a.schoolGrade === "D") {
     out.push({ id: "schoolLow", text: "학군 D", tone: "amber", layer: "bad" });
   }
 
@@ -391,10 +397,12 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   //    나중에 그 표가 확장돼도(미착수 PR, CLAUDE.md) 이 게이트가 자동으로 따라온다.
   const penalized = noxList.filter((c) => NOXIOUS_PENALTY[c] != null);
   const noxSafe = noxiousDist != null && noxiousDist > 1000 && penalized.length === 0;
-  if (noxCount > 0 && noxSafe) {
+  // 좌표 자리표시 의심(세션568) — 혐오시설 목록·거리도 좌표 반경으로 찾은 값이라 믿을 수 없다.
+  //   위 지하철·교통호재 칩과 같은 이유로 칩 자체를 만들지 않는다.
+  if (!coordUnknown && noxCount > 0 && noxSafe) {
     out.push({ id: "noxiousSafe", text: "혐오시설 안심(1km+)", tone: "green", layer: "good" });
   }
-  if (noxCount > 0 && !noxSafe) {
+  if (!coordUnknown && noxCount > 0 && !noxSafe) {
     // ⚠️ 세션510 ①-2: 옛 카드는 **무엇이든 하나만 잡히면 빨간 "혐오시설 N건"** 을 달았다.
     //    그런데 점수를 깎는 시설은 `NOXIOUS_PENALTY` 에 등재된 것뿐이라,
     //    2026-08-11 실측 기준 혐오시설 보유 1,119곳 중 **감점을 받는 건 56곳(5.0%)** 이었다.

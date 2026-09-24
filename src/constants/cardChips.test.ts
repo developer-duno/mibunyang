@@ -373,6 +373,51 @@ describe("buildCardChips — 교통호재는 가까울 때만", () => {
   });
 });
 
+// 좌표 자리표시 의심(세션568) — 좌표로 잰 값(지하철·교통호재·혐오시설)으로 틀린 강점/약점을
+// 주장하지 않는다. ⚠️ 뮤테이션 대상: cardChips.ts 의 `!coordUnknown &&` 를 지우면 아래가 전부 red.
+describe("buildCardChips — coordShared=true 면 좌표 파생 칩을 만들지 않는다 (세션568)", () => {
+  it("역세권 칩을 만들지 않는다 (편차 스트립 꺼진 상태에서도)", () => {
+    const opts = { ...OPTS, showDeviation: false };
+    const chips = build({ coordShared: true, subwayDist: 400, subwayName: "아라역" }, mkRes(), opts);
+    expect(idsOf(chips)).not.toContain("subwayNear");
+    expect(idsOf(chips)).not.toContain("subwayDist");
+    // 대조군 — coordShared 만 빼면 정상적으로 칩이 뜬다(칩 자체가 사라진 게 아니라 조건 때문임을 확인)
+    const control = build({ coordShared: false, subwayDist: 400, subwayName: "아라역" }, mkRes(), opts);
+    expect(idsOf(control)).toContain("subwayNear");
+  });
+
+  it("교통호재 칩을 만들지 않는다", () => {
+    const chips = build({ coordShared: true, transitDev: "GTX-B 인천대입구역", devDist: 1.2 });
+    expect(idsOf(chips)).not.toContain("transitDev");
+    const control = build({ coordShared: false, transitDev: "GTX-B 인천대입구역", devDist: 1.2 });
+    expect(idsOf(control)).toContain("transitDev");
+  });
+
+  it("혐오시설 안심·경고 칩을 만들지 않는다", () => {
+    // "공장"은 NOXIOUS_PENALTY 미등재(감점 0) — noxiousSafe 판정 조건(penalized.length===0)을
+    // 충족시켜 "안심" 대조군을 만들 수 있다.
+    const safe = build({ coordShared: true, noxious: ["공장"], noxiousDist: 2000 });
+    expect(idsOf(safe)).not.toContain("noxiousSafe");
+    const near = build({ coordShared: true, noxious: ["소각장"], noxiousDist: 100 });
+    expect(idsOf(near)).not.toContain("noxiousNear");
+    expect(idsOf(near)).not.toContain("noxiousFact");
+    // 대조군 — coordShared 만 빼면 정상적으로 칩이 뜬다
+    expect(idsOf(build({ coordShared: false, noxious: ["공장"], noxiousDist: 2000 }))).toContain("noxiousSafe");
+  });
+
+  // 보완(사장님 지적, 세션568-2) — 학군도 1km 반경 학교 목록(좌표 기반)이라 같은 원칙.
+  it("학교 관련 칩(초등도보·학군D)을 만들지 않는다", () => {
+    const walk = build({ coordShared: true, naverSchoolWalkMin: 3 });
+    expect(idsOf(walk)).not.toContain("schoolWalkNear");
+    expect(idsOf(walk)).not.toContain("schoolWalk");
+    const low = build({ coordShared: true, schoolGrade: "D" });
+    expect(idsOf(low)).not.toContain("schoolLow");
+    // 대조군 — coordShared 만 빼면 정상적으로 칩이 뜬다
+    expect(idsOf(build({ coordShared: false, naverSchoolWalkMin: 3 }))).toContain("schoolWalkNear");
+    expect(idsOf(build({ coordShared: false, schoolGrade: "D" }))).toContain("schoolLow");
+  });
+});
+
 describe("buildCardChips — 청약 경쟁률", () => {
   it("청약 진행/예정 단계 + 경쟁률 양수일 때만 뜬다 (미분양 단계 제외)", () => {
     expect(idsOf(build({ presaleStage: "분양중", competitionRate: 8.6 }))).toContain("competition");

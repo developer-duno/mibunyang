@@ -31,6 +31,11 @@ const GRADE_COLOR: Record<string, { c: string; bg: string }> = {
 export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
   const schools = ((apt.nearbySchools as SchoolRow[] | undefined) ?? []).filter((s) => isSchool(s.name));
   const [expanded, setExpanded] = useState(false);
+  // 좌표 자리표시 의심(사장님 결정, 세션568-3) — 학교 이름·거리·등급·도보 분은 전부 이 단지
+  // 좌표로 잰 값이라, 좌표가 다른 단지와 공유되면 이 단지 것이 아니다. TransportCard 와 같은
+  // 원칙 — 경고문이 아니라 틀린 값 자체를 감추고 "위치 확인 중" 사실 한 줄만 남긴다
+  // (.claude/rules/our-defect-is-not-customer-warning.md).
+  const coordUnknown = apt.coordShared === true;
   const nearest = useMemo(
     () =>
       SCHOOL_TYPES.map(
@@ -63,7 +68,8 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
     >
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
         <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>학군 정보</span>
-        {apt.schoolGrade &&
+        {!coordUnknown &&
+          apt.schoolGrade &&
           (() => {
             const gc = GRADE_COLOR[apt.schoolGrade as string] ?? { c: C.muted, bg: C.slate100 };
             return (
@@ -81,66 +87,81 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
               </span>
             );
           })()}
-        {counts.length > 0 && <span style={{ fontSize: F.xs, color: C.muted }}>{counts.join(" · ")} (1km)</span>}
+        {!coordUnknown && counts.length > 0 && (
+          <span style={{ fontSize: F.xs, color: C.muted }}>{counts.join(" · ")} (1km)</span>
+        )}
       </div>
 
-      {/* 초등 도보거리 한 줄 (세션508 PR-3b B2) — naverSchoolWalkMin 을 시세 탭 서랍에서 승격.
-          AptCard 칩 관례 그대로: ≤5분 초록 강조(걸어서 가까움), 6분~ 회색 중립, null 이면 줄 자체를
-          숨긴다("미수집" placeholder 금지, AptCard.tsx:404-408 답습). */}
-      {apt.naverSchoolWalkMin != null && (
-        <div
-          style={{
-            fontSize: F.sm,
-            fontWeight: 600,
-            color: apt.naverSchoolWalkMin <= 5 ? C.green : C.muted,
-            marginBottom: 8,
-          }}
-        >
-          초등 도보 {apt.naverSchoolWalkMin}분
+      {/* 좌표 자리표시 의심(세션568-3) — 학교 이름·거리·등급·도보 분을 전부 감추고
+          사실 한 줄만 남긴다(경고문이 아니다). data-field="coordShared" 는 쓰지 않는다
+          (TransportCard 와 같은 표식 규약 — 표식이 필요하면 data-state 로). */}
+      {coordUnknown ? (
+        <div style={{ fontSize: F.sm, color: C.muted }} data-state="coord-unknown">
+          위치 확인 중
         </div>
+      ) : (
+        <>
+          {/* 초등 도보거리 한 줄 (세션508 PR-3b B2) — naverSchoolWalkMin 을 시세 탭 서랍에서 승격.
+              AptCard 칩 관례 그대로: ≤5분 초록 강조(걸어서 가까움), 6분~ 회색 중립, null 이면 줄 자체를
+              숨긴다("미수집" placeholder 금지, AptCard.tsx:404-408 답습). */}
+          {apt.naverSchoolWalkMin != null && (
+            <div
+              style={{
+                fontSize: F.sm,
+                fontWeight: 600,
+                color: apt.naverSchoolWalkMin <= 5 ? C.green : C.muted,
+                marginBottom: 8,
+              }}
+            >
+              초등 도보 {apt.naverSchoolWalkMin}분
+            </div>
+          )}
+
+          {nearest.map((s, i) => (
+            <div
+              key={i}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "6px 0",
+                borderBottom: i < nearest.length - 1 ? `1px solid ${C.border}` : "none",
+              }}
+            >
+              <div>
+                <span style={{ fontSize: F.sm, fontWeight: 600, color: C.text }}>{s.name}</span>
+                <span style={{ fontSize: F.xs, color: C.muted, marginLeft: 6 }}>
+                  {s.highSchoolType ? `${s.type}(${s.highSchoolType})` : s.type}
+                </span>
+              </div>
+              <span style={{ fontSize: F.sm, fontWeight: 600, color: distColor(s.distance) }}>
+                {fmtDist(s.distance)}
+              </span>
+            </div>
+          ))}
+
+          {schools.length > nearest.length && (
+            <button
+              onClick={() => setExpanded(!expanded)}
+              aria-expanded={expanded}
+              style={{
+                width: "100%",
+                background: "none",
+                border: "none",
+                padding: "8px 0 2px",
+                fontSize: F.xs,
+                color: C.blue,
+                cursor: "pointer",
+                fontWeight: 600,
+              }}
+            >
+              {expanded ? "접기" : `전체 ${schools.length}개 학교 보기`}
+            </button>
+          )}
+        </>
       )}
 
-      {nearest.map((s, i) => (
-        <div
-          key={i}
-          style={{
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            padding: "6px 0",
-            borderBottom: i < nearest.length - 1 ? `1px solid ${C.border}` : "none",
-          }}
-        >
-          <div>
-            <span style={{ fontSize: F.sm, fontWeight: 600, color: C.text }}>{s.name}</span>
-            <span style={{ fontSize: F.xs, color: C.muted, marginLeft: 6 }}>
-              {s.highSchoolType ? `${s.type}(${s.highSchoolType})` : s.type}
-            </span>
-          </div>
-          <span style={{ fontSize: F.sm, fontWeight: 600, color: distColor(s.distance) }}>{fmtDist(s.distance)}</span>
-        </div>
-      ))}
-
-      {schools.length > nearest.length && (
-        <button
-          onClick={() => setExpanded(!expanded)}
-          aria-expanded={expanded}
-          style={{
-            width: "100%",
-            background: "none",
-            border: "none",
-            padding: "8px 0 2px",
-            fontSize: F.xs,
-            color: C.blue,
-            cursor: "pointer",
-            fontWeight: 600,
-          }}
-        >
-          {expanded ? "접기" : `전체 ${schools.length}개 학교 보기`}
-        </button>
-      )}
-
-      {expanded && (
+      {!coordUnknown && expanded && (
         <table style={{ width: "100%", borderCollapse: "collapse", marginTop: 8 }}>
           <thead>
             <tr>

@@ -688,6 +688,25 @@ describe("AptCard", () => {
       rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
       expect(screen.getByText("🚆 GTX-A 동탄역")).toBeInTheDocument();
     });
+
+    // 좌표 자리표시 의심(세션568) — coordShared 만 바뀌고 transitDev/devDist 는 그대로면
+    // (예: 좌표가 방금 다른 단지와 공유 상태로 바뀜) 위 두 필드 비교만으로는 안 걸린다.
+    // ⚠️ 뮤테이션 대상: AptCard.tsx comparator 의 `if (pa.coordShared !== na.coordShared) return false;`
+    //    이 줄을 지우면 이 테스트가 red 여야 한다.
+    it("coordShared 만 변경(false→true) 시에도 카드 리렌더 (comparator 회귀 가드)", () => {
+      const aptInitial = /** @type {any} */ (
+        makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 1.5, coordShared: false })
+      );
+      const aptUpdated = /** @type {any} */ (
+        makeApt({ transitDev: "GTX-A 동탄역 공사중", devDist: 1.5, coordShared: true })
+      );
+      const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      expect(screen.getByText("🚆 GTX-A 동탄역")).toBeInTheDocument();
+      rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      // coordShared=true 면 buildCardChips 가 transitDev 칩을 만들지 않는다(cardChips.test.ts 가드) —
+      // 그 변화가 화면에 반영됐다는 것이 곧 comparator 가 리렌더를 허용했다는 증거다.
+      expect(screen.queryByText(/🚆/)).toBeNull();
+    });
   });
 
   // 세션 510 PR-4: 강점 상한(2개)에 밀려 기본 접힘 — 펼쳐서 확인

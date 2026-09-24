@@ -27,6 +27,8 @@ import {
   AIR_ANNUAL_LEGEND,
   ENV_MAX,
   infraSaturation,
+  COORD_UNKNOWN_TRANSPORT_SCORE,
+  COORD_UNKNOWN_INFRA_SCORE,
   AIR_PM10_TIERS,
   AIR_PM10_DEFAULT,
   AIR_PM10_LEGEND,
@@ -90,12 +92,20 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
   const icSc = rawIc * ct.icW;
   const ktxSc = rawKtx * ct.ktxW;
   const maxTransport = 25 * ct.subwayW + 30 * ct.busW + 20 * ct.icW + 20 * ct.ktxW + 5;
-  const transport = Math.max(0, Math.min(((subSc + busSc + icSc + ktxSc + 5) / maxTransport) * 100, 100));
+  const rawTransport = Math.max(0, Math.min(((subSc + busSc + icSc + ktxSc + 5) / maxTransport) * 100, 100));
+  // 좌표 자리표시 의심(세션568) — subwayDist/busRoutes/icDist/ktxDist 는 전부 좌표 기반 거리라,
+  // 좌표가 다른 단지와 공유되면 이 단지의 값이 아니다. 계산은 그대로 두되 최종 표시 점수만
+  // 중립값으로 덮는다 — "안 재본 것"이 아니라 "잰 게 틀릴 수 있는 것"이라 재는 흉내를 안 낸다.
+  const transport = apt._coordUnknown ? COORD_UNKNOWN_TRANSPORT_SCORE : rawTransport;
 
   // 학교 도보시간 보정: naverSchoolWalkMin 기반 ±10
-  const walkMin = apt.naverSchoolWalkMin;
+  // 좌표 자리표시 의심(세션568 보완) — schoolScore/schoolGrade(1km 반경 학교 목록,
+  // schools-neis.mjs)와 naverSchoolWalkMin(도보 분)은 전부 이 단지 좌표로 잰 값이라,
+  // 좌표가 다른 단지와 공유되면 이 단지 것이 아니다. 위 교통·아래 인프라와 같은 원칙 —
+  // 기존 "값 없음" 폴백(`?? 50`, 도보보정 없음)을 그대로 재사용한다(새 상수를 만들지 않는다).
+  const walkMin = apt._coordUnknown ? null : apt.naverSchoolWalkMin;
   const walkAdj: number = walkMin == null ? 0 : tierMax(walkMin, SCHOOL_WALK_BONUS, SCHOOL_WALK_FAR_ADJ);
-  const schoolScore = (apt.schoolScore ?? 50) as number;
+  const schoolScore = (apt._coordUnknown ? 50 : (apt.schoolScore ?? 50)) as number;
   const school = Math.max(0, Math.min(100, schoolScore + walkAdj));
 
   const infraItems = (INFRA_CONFIG as Array<{ key: string; max: number; weight: number }>).map((cfg) => ({
@@ -105,7 +115,9 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
   }));
   // 체감 곡선 — 병원 0→5개의 차이는 크고 100→163개의 차이는 사실상 없다. 선형(v/max)은
   // 그 둘을 같은 폭으로 세어 흔한 동네를 과소평가한다(INFRA_CONFIG·infraSaturation 주석 참조).
-  const infra = infraItems.reduce((s, i) => s + infraSaturation(i.v, i.m) * i.w * 100, 0);
+  const rawInfra = infraItems.reduce((s, i) => s + infraSaturation(i.v, i.m) * i.w * 100, 0);
+  // 좌표 자리표시 의심(세션568) — 병원·마트 등 개수는 좌표 반경으로 센 값이라 위와 같은 이유로 중립.
+  const infra = apt._coordUnknown ? COORD_UNKNOWN_INFRA_SCORE : rawInfra;
 
   const view = apt.view as string | undefined;
   const sunlight = apt.sunlight as string | undefined;
@@ -140,16 +152,22 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
       }
     | undefined;
   const annual = airQuality?.annual;
-  const pm25Sc: number = annual?.pm25 != null ? tierMax(annual.pm25, AIR_QUALITY_TIERS, 0) : AIR_QUALITY_DEFAULT;
+  // 좌표 자리표시 의심(세션568) — 대기질 측정소는 좌표로 가장 가까운 곳을 정하므로, 좌표가
+  // 다른 단지와 공유되면 그 측정소가 이 단지 것이 아닐 수 있다. 기존 미수집 중립값을 그대로 쓴다.
+  const pm25Sc: number =
+    apt._coordUnknown || annual?.pm25 == null ? AIR_QUALITY_DEFAULT : tierMax(annual.pm25, AIR_QUALITY_TIERS, 0);
   // PM10·O3 도 3년 평균만 본다. 없으면 null → 아래에서 각 축의 중립 기본값으로 떨어진다.
   // ⚠️ null 이어도 **점수에는 중립값으로 들어간다**(0.35·0.25 몫을 그대로 차지). 그러니 문구도
   //    PM2.5 와 대칭으로 "미수집(중립 N점)" 이라 밝혀야 한다 — 안 밝히면 "쓰지 않았다"로 읽힌다.
   //    실측(2026-09-23): `annual.o3` 만 없는 단지 2곳(전주 반월동3차 세움펠리피아·서신더샵비발디).
   //    세션561 적대검증 🔴 적발 — #558 커밋이 "없으면 아예 안 쓴다"고 적었는데 사실과 달랐다.
-  const pm10Sc: number | null = annual?.pm10 != null ? tierMax(annual.pm10, AIR_PM10_TIERS, 0) : null;
-  const o3Sc: number | null = annual?.o3 != null ? tierMax(annual.o3, AIR_O3_TIERS, AIR_O3_BAD_SCORE) : null;
+  const pm10Sc: number | null =
+    apt._coordUnknown || annual?.pm10 == null ? null : tierMax(annual.pm10, AIR_PM10_TIERS, 0);
+  const o3Sc: number | null =
+    apt._coordUnknown || annual?.o3 == null ? null : tierMax(annual.o3, AIR_O3_TIERS, AIR_O3_BAD_SCORE);
   // 화면 등급은 **채점에 쓴 값**에서 뽑는다 — 점수와 글자가 어긋나지 않게(세션560).
-  const airBand: string | null = annual?.pm25 != null ? airAnnualBand(annual.pm25) : null;
+  //   좌표 의심이면 그 측정소가 이 단지 것인지 알 수 없으므로 등급 글자도 내지 않는다.
+  const airBand: string | null = !apt._coordUnknown && annual?.pm25 != null ? airAnnualBand(annual.pm25) : null;
   const airSc =
     pm10Sc == null && o3Sc == null
       ? pm25Sc
@@ -164,7 +182,9 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
   const noxiousDist = apt.noxiousDist as number | undefined;
   if (noxiousDist != null && noxiousDist >= NOXIOUS_DIST_THRESHOLD) noxPen = noxPen * NOXIOUS_REDUCTION;
   noxPen = Math.max(noxPen, NOXIOUS_PEN_CAP);
-  const noxSafe = Math.max(0, 100 + (noxPen / 15) * 100);
+  // 좌표 자리표시 의심(세션568) — 혐오시설 목록·거리는 좌표 반경으로 찾은 것이라 믿을 수 없다.
+  // 감점 항목이지 가산점이 아니므로 "모름"은 감점을 물리지 않는 것(=만점 100)이 중립이다.
+  const noxSafe = apt._coordUnknown ? 100 : Math.max(0, 100 + (noxPen / 15) * 100);
   const total =
     transport * locW.transport + school * locW.school + infra * locW.infra + env * locW.env + noxSafe * locW.noxSafe;
   const subwayLines = apt.subwayLines as string | undefined;
@@ -175,64 +195,88 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
       {
         name: "교통",
         score: Math.round(transport),
-        info: [
-          subwayDist > 9000 ? "지하철 없음" : `지하철 ${subwayDist}m${subwayLines ? `(${subwayLines})` : ""}`,
-          apt._noBus ? null : `버스 ${busRoutes}개`,
-          icDist < 90 ? `IC ${icDist}km` : null,
-          ktxDist < 90 ? `KTX ${ktxDist}km` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
-        detail: [
-          subwayDist > 9000
-            ? "지하철 없음"
-            : `지하철 ${subwayDist}m${subwayLines ? `(${subwayLines})` : ""} ${subwayDist <= 300 ? "역세권" : subwayDist <= 500 ? "도보권" : subwayDist <= 700 ? "양호" : subwayDist <= 1000 ? "보통" : "원거리"}`,
-          apt._noBus ? "버스 미수집" : `버스 ${busRoutes}개/${FULL_BUS_ROUTES}`,
-          // 등급 문구는 점수표(IC_DIST_TIERS/KTX_DIST_TIERS)에서 뽑는다 — 여기에 경계를 따로
-          // 박으면 점수표만 바뀌었을 때 문구가 안 따라와 "0점인데 보통"이 남는다(세션499).
-          icDist < 90
-            ? `IC ${icDist}km ${tierMaxLabel(icDist, IC_DIST_TIERS, IC_DIST_FALLBACK_LABEL)}`
-            : `IC ${IC_DIST_FALLBACK_LABEL}`,
-          ktxDist < 90 ? `KTX ${ktxDist}km ${tierMaxLabel(ktxDist, KTX_DIST_TIERS, KTX_DIST_FALLBACK_LABEL)}` : null,
-        ]
-          .filter(Boolean)
-          .join(" · "),
+        // 좌표 자리표시 의심(세션568) — 지하철·버스·IC·KTX 거리는 전부 이 단지의 좌표로 잰
+        // 값인데, 그 좌표가 다른 단지와 공유돼 있으면 "재긴 했는데 이 단지 게 아닌" 값이다.
+        // "없음"·"미수집"이 아니라 **위치를 확인하고 있다는 사실**을 그대로 적는다
+        // (.claude/rules/our-defect-is-not-customer-warning.md — 우리 데이터 문제를 손님
+        // 판단으로 떠넘기는 경고문이 아니라 사실 서술).
+        info: apt._coordUnknown
+          ? "위치 확인 중"
+          : [
+              subwayDist > 9000 ? "지하철 없음" : `지하철 ${subwayDist}m${subwayLines ? `(${subwayLines})` : ""}`,
+              apt._noBus ? null : `버스 ${busRoutes}개`,
+              icDist < 90 ? `IC ${icDist}km` : null,
+              ktxDist < 90 ? `KTX ${ktxDist}km` : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 거리를 다시 계산합니다"
+          : [
+              subwayDist > 9000
+                ? "지하철 없음"
+                : `지하철 ${subwayDist}m${subwayLines ? `(${subwayLines})` : ""} ${subwayDist <= 300 ? "역세권" : subwayDist <= 500 ? "도보권" : subwayDist <= 700 ? "양호" : subwayDist <= 1000 ? "보통" : "원거리"}`,
+              apt._noBus ? "버스 미수집" : `버스 ${busRoutes}개/${FULL_BUS_ROUTES}`,
+              // 등급 문구는 점수표(IC_DIST_TIERS/KTX_DIST_TIERS)에서 뽑는다 — 여기에 경계를 따로
+              // 박으면 점수표만 바뀌었을 때 문구가 안 따라와 "0점인데 보통"이 남는다(세션499).
+              icDist < 90
+                ? `IC ${icDist}km ${tierMaxLabel(icDist, IC_DIST_TIERS, IC_DIST_FALLBACK_LABEL)}`
+                : `IC ${IC_DIST_FALLBACK_LABEL}`,
+              ktxDist < 90
+                ? `KTX ${ktxDist}km ${tierMaxLabel(ktxDist, KTX_DIST_TIERS, KTX_DIST_FALLBACK_LABEL)}`
+                : null,
+            ]
+              .filter(Boolean)
+              .join(" · "),
       },
       {
         name: "학군",
         score: Math.round(school),
-        info: schoolGrade ? `${schoolGrade}${walkMin != null ? ` 도보${walkMin}분` : ""}` : schoolGrade,
+        // 좌표 자리표시 의심(세션568 보완) — schoolGrade 도 1km 반경 학교 목록(좌표 기반)에서
+        // 나온 등급이라 믿을 수 없다. 위 교통·생활인프라와 같은 "위치 확인 중" 문구로 통일.
+        info: apt._coordUnknown
+          ? "위치 확인 중"
+          : schoolGrade
+            ? `${schoolGrade}${walkMin != null ? ` 도보${walkMin}분` : ""}`
+            : schoolGrade,
         // ⚠️ 등급은 점수에서 **파생**된다(`schools-neis.mjs gradeFromScore`).
         //    옛 문구 "A=100, B=80, C=60, D=40점" 이 주장하는 1:1 대응은 성립할 수 없다 —
         //    B등급 186곳은 실측 60~79(중앙 71)라 80 에 닿지 않는다(520곳에서 detail 이 거짓이었다).
         //    `schoolScore` 는 `?? 50` 폴백이 걸려 있어, 등급이 없으면 점수도 함께 감춘다.
         //    ⚠️ 경계 숫자를 여기 박지 않는다 — 세션524에 경계가 80/60/40 → 90/60/20 으로 바뀌었는데
         //    박아 뒀으면 문구만 옛 경계에 남는다(세션499·512가 겪은 자리). `SCHOOL_GRADE_TIERS` 파생.
-        detail:
-          `${schoolGrade ? `${schoolGrade} ${schoolScore}점` : "미수집"} (${schoolGradeLegend()})` +
-          `${walkMin != null ? ` · 도보 ${walkMin}분 (5분↓+10, 10분↓+5, 20분↑-10)` : ""}`,
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 주변 학교를 다시 확인합니다"
+          : `${schoolGrade ? `${schoolGrade} ${schoolScore}점` : "미수집"} (${schoolGradeLegend()})` +
+            `${walkMin != null ? ` · 도보 ${walkMin}분 (5분↓+10, 10분↓+5, 20분↑-10)` : ""}`,
       },
       {
         name: "생활인프라",
         score: Math.round(infra),
-        info: `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy} 보육${apt.childcare ?? 0}`,
+        // 좌표 자리표시 의심(세션568) — 병원·마트 등 개수는 이 단지 좌표 반경으로 센 값이라
+        // 좌표가 공유되면 이 단지 주변 개수가 아니다. 위 "교통" sub 와 같은 원칙.
+        info: apt._coordUnknown
+          ? "위치 확인 중"
+          : `병원${apt.hospital} 마트${apt.mart} 편의점${apt.conv} 공원${apt.park} 약국${apt.pharmacy} 보육${apt.childcare ?? 0}`,
         // 분모는 INFRA_CONFIG 에서 뽑는다 — 여기에 숫자를 박으면 기준만 바뀌었을 때 문구가
         // 안 따라와 "5개인데 5/150" 같은 거짓이 남는다(세션499 의 등급 문구 사고와 같은 자리).
-        detail: [
-          ["병원", "hospital", "1km"],
-          ["마트", "mart", "1km"],
-          ["편의점", "conv", "500m"],
-          ["공원", "park", "1km"],
-          ["약국", "pharmacy", "500m"],
-          ["어린이집", "childcare", "1km"],
-          ["응급의료", "emergency", "10km"],
-        ]
-          .map(([label, key, rad]) => {
-            const cfg = INFRA_CONFIG.find((c) => c.key === key);
-            const v = ((apt as Record<string, unknown>)[key] as number | undefined) ?? 0;
-            return `${label}${v}/${cfg?.max ?? "?"}(${rad})`;
-          })
-          .join(" "),
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 주변 시설 개수를 다시 계산합니다"
+          : [
+              ["병원", "hospital", "1km"],
+              ["마트", "mart", "1km"],
+              ["편의점", "conv", "500m"],
+              ["공원", "park", "1km"],
+              ["약국", "pharmacy", "500m"],
+              ["어린이집", "childcare", "1km"],
+              ["응급의료", "emergency", "10km"],
+            ]
+              .map(([label, key, rad]) => {
+                const cfg = INFRA_CONFIG.find((c) => c.key === key);
+                const v = ((apt as Record<string, unknown>)[key] as number | undefined) ?? 0;
+                return `${label}${v}/${cfg?.max ?? "?"}(${rad})`;
+              })
+              .join(" "),
       },
       {
         name: "자연환경",
@@ -244,13 +288,24 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
         // ⚠️ 3년 평균이 없는 단지(실측 76곳)는 그냥 "미수집"이 아니라 **중립 점수를 받고 있다**.
         //    그걸 숨기면 "미수집인데 왜 점수가 있지?"가 된다 — `FieldTable` 의 "추정값·기본값임을
         //    숨기지 않는다" 원칙과 같은 자리다(세션560 맹점 검사관 적발).
-        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`}(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? ` /PM10 ${AIR_PM10_LEGEND}` : ` /PM10 미수집(중립 ${AIR_PM10_DEFAULT}점)`}${o3Sc != null ? ` /O3 ${AIR_O3_LEGEND}` : ` /O3 미수집(중립 ${AIR_O3_DEFAULT}점)`})${airQuality?.grade ? ` 오늘:${airQuality.grade}(참고)` : ""}`,
+        // 좌표 자리표시 의심(세션568) — 대기질만 측정소가 좌표로 정해지므로 "위치 확인 중"을 덧붙인다.
+        //    조망·일조·소음은 좌표와 무관(원본 값 그대로)이라 문구를 바꾸지 않는다.
+        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${
+          apt._coordUnknown
+            ? `위치 확인 중(중립 ${AIR_QUALITY_DEFAULT}점)`
+            : airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`
+        }(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? ` /PM10 ${AIR_PM10_LEGEND}` : ` /PM10 미수집(중립 ${AIR_PM10_DEFAULT}점)`}${o3Sc != null ? ` /O3 ${AIR_O3_LEGEND}` : ` /O3 미수집(중립 ${AIR_O3_DEFAULT}점)`})${!apt._coordUnknown && airQuality?.grade ? ` 오늘:${airQuality.grade}(참고)` : ""}`,
       },
       {
         name: "혐오시설",
         score: Math.round(noxSafe),
-        info: noxious.length ? noxious.join(",") : "없음",
-        detail: noxious.length ? `${noxious.join(",")} (500m↑ 감점 반감, 하한 -15점)` : "없음 (감점 0)",
+        // 좌표 자리표시 의심(세션568) — 혐오시설 목록·거리도 좌표 반경으로 찾은 값이라 믿을 수 없다.
+        info: apt._coordUnknown ? "위치 확인 중" : noxious.length ? noxious.join(",") : "없음",
+        detail: apt._coordUnknown
+          ? "위치 확인 중 — 정확한 좌표가 확인되면 주변 시설을 다시 확인합니다 (감점 없음)"
+          : noxious.length
+            ? `${noxious.join(",")} (500m↑ 감점 반감, 하한 -15점)`
+            : "없음 (감점 0)",
       },
     ],
   };
