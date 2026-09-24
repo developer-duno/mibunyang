@@ -1205,6 +1205,25 @@ export function isKstMonday(now = new Date()) {
   return weekday === "Mon";
 }
 
+/** 규칙(R1~R6) 하나가 텔레그램 메시지에 싣는 항목 줄 상한. 넘치면 "… 외 N건" 으로 접는다
+ * (세션568) — 한 규칙이 수백 줄이면 텔레그램 400 으로 통째로 전송 스킵되어 다른 규칙까지
+ * 사람에게 안 보이므로, 규칙마다 상한을 둬 나머지 규칙의 머리줄이 살아남게 한다. */
+export const DB_PERM_ITEMS_PER_RULE = 10;
+
+/**
+ * 항목 목록을 `DB_PERM_ITEMS_PER_RULE` 개까지만 남기고 넘치면 "… 외 N건" 한 줄을 덧붙인다.
+ * 머리줄(`[Rn] … N건`)의 개수는 이 함수가 건드리지 않는다 — 호출부에서 자르기 전 전체
+ * 개수를 이미 박아 넣는다.
+ * @param {string[]} lines 이미 "  · " 접두가 붙은 항목 줄들
+ * @returns {string[]}
+ */
+function capRuleItems(lines) {
+  if (lines.length <= DB_PERM_ITEMS_PER_RULE) return lines;
+  const shown = lines.slice(0, DB_PERM_ITEMS_PER_RULE);
+  const omitted = lines.length - DB_PERM_ITEMS_PER_RULE;
+  return [...shown, `  · … 외 ${omitted}건`];
+}
+
 /**
  * `audit_db_permissions()` RPC 결과(스냅샷)를 판정 규칙과 대조해 Issue 목록을 만든다.
  * 순수 함수 — DB 호출은 호출부(main)에서 이미 끝낸 뒤 결과만 넘긴다.
@@ -1308,13 +1327,13 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
     }
   }
   if (r1.length > 0) {
-    lines.push(`[R1] anon/authenticated 쓰기 권한 ${r1.length}건`, ...r1.map((l) => `  · ${l}`));
+    lines.push(`[R1] anon/authenticated 쓰기 권한 ${r1.length}건`, ...capRuleItems(r1.map((l) => `  · ${l}`)));
   }
 
   // R2 — public 기본 표 중 RLS 꺼진 것.
   const r2 = relations.filter((r) => r.kind === "r" && r.rls_enabled !== true).map((r) => r.name);
   if (r2.length > 0) {
-    lines.push(`[R2] RLS 꺼진 표 ${r2.length}개`, ...r2.map((n) => `  · ${n}`));
+    lines.push(`[R2] RLS 꺼진 표 ${r2.length}개`, ...capRuleItems(r2.map((n) => `  · ${n}`)));
   }
 
   // R3 — anon/authenticated/public 대상 쓰기 정책 중 항상 참(또는 로그인만 하면 참).
@@ -1337,7 +1356,7 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
     if (flagged) r3.push(`${p.table}::${p.name} (FOR ${p.cmd} TO ${roles.join(",")})`);
   }
   if (r3.length > 0) {
-    lines.push(`[R3] 항상 참(또는 로그인만 하면 참) 쓰기 정책 ${r3.length}건`, ...r3.map((l) => `  · ${l}`));
+    lines.push(`[R3] 항상 참(또는 로그인만 하면 참) 쓰기 정책 ${r3.length}건`, ...capRuleItems(r3.map((l) => `  · ${l}`)));
   }
 
   // R4 — anon 이 실제로 공개 읽기 가능한 표 **명단**을 PUBLIC_READ_TABLES_BASELINE 과 대조.
@@ -1355,8 +1374,8 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
   if (added.length > 0 || removed.length > 0) {
     lines.push(
       `[R4] 공개 읽기 표 명단이 기준과 다릅니다 — 신규 ${added.length}개 / 사라짐 ${removed.length}개`,
-      ...added.map((n) => `  · 신규(명단 밖): ${n}`),
-      ...removed.map((n) => `  · 사라짐(기준 안): ${n}`),
+      ...capRuleItems(added.map((n) => `  · 신규(명단 밖): ${n}`)),
+      ...capRuleItems(removed.map((n) => `  · 사라짐(기준 안): ${n}`)),
     );
   }
 
@@ -1366,13 +1385,13 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
     .map((f) => `${f.schema}.${f.name}`)
     .filter((name) => !(name in definerAllowlist));
   if (r5.length > 0) {
-    lines.push(`[R5] anon/authenticated 실행 가능 SECURITY DEFINER 함수 ${r5.length}개`, ...r5.map((n) => `  · ${n}`));
+    lines.push(`[R5] anon/authenticated 실행 가능 SECURITY DEFINER 함수 ${r5.length}개`, ...capRuleItems(r5.map((n) => `  · ${n}`)));
   }
 
   // R6 — public 스키마에 설치된 확장.
   const r6 = publicExtensions.filter((e) => !extensionAllowlist.includes(e));
   if (r6.length > 0) {
-    lines.push(`[R6] public 스키마에 설치된 확장 ${r6.length}개`, ...r6.map((n) => `  · ${n}`));
+    lines.push(`[R6] public 스키마에 설치된 확장 ${r6.length}개`, ...capRuleItems(r6.map((n) => `  · ${n}`)));
   }
 
   if (lines.length === 0) return [];
@@ -1387,6 +1406,21 @@ export function evaluateDbPermissions(snapshot, rules = {}) {
       at: new Date().toISOString(),
     },
   ];
+}
+
+/**
+ * 감시 ⑩(db-permissions) 이슈가 있는데 그 전송 결과 중 하나라도 실패했으면 true.
+ * 권한 점검 경보는 다른 이슈보다 무겁다 — 텔레그램 전송이 막히면(글자 수 초과·API 오류 등)
+ * 사람에게 아무것도 안 가므로, main() 은 이 판정으로 GitHub Actions 자체를 실패시켜
+ * Actions 실패 메일을 두 번째 통로로 쓴다(세션568).
+ * @param {Array<{ collector: string }>} issues
+ * @param {Array<{ sent: boolean }>} sendResults
+ * @returns {boolean}
+ */
+export function permAlertDeliveryFailed(issues, sendResults) {
+  const hasPermIssue = issues.some((i) => i.collector === "db-permissions");
+  if (!hasPermIssue) return false;
+  return sendResults.some((r) => r.sent !== true);
 }
 
 /** 감시 ⑩ R1/R4 판정에서 "이미 anon 읽기가 막혔어야 정상"으로 보는 운영 표 4개(세션567). */
@@ -2283,7 +2317,11 @@ async function main() {
           // 경보가 0건이면 issues 에는 안 실리므로(다른 이상이 없으면 "이상 없음"으로 조용히
           // 끝난다), 월요일에 사람이 "점검이 실제로 돌긴 했다"를 알 수 있게 한 줄만 별도 발송.
           if (process.env.GITHUB_ACTIONS) {
-            await sendTelegram("🔎 <b>주간 DB 권한 점검</b> — 이상 없음");
+            const remindResult = await sendTelegram("🔎 <b>주간 DB 권한 점검</b> — 이상 없음");
+            if (!remindResult.sent) {
+              console.log(`[monitor] ⑩ 권한 점검 리마인드 전송 실패 — Actions 를 실패로 끝내 실패 메일을 두 번째 통로로 쓴다: ${remindResult.reason}`);
+              process.exitCode = 1;
+            }
           }
         } else {
           console.log(`[monitor] ⑩ 권한 점검: 경보 ${permIssues.length}건(세부는 텔레그램)`);
@@ -2330,13 +2368,22 @@ async function main() {
   const messages = buildMessages(issues);
   for (const issue of issues) console.log(formatIssueForConsole(issue));
   let anySent = false;
+  /** @type {Array<{ sent: boolean, reason?: string }>} */
+  const sendResults = [];
   for (const text of messages) {
     const result = await sendTelegram(text);
+    sendResults.push(result);
     if (result.sent) anySent = true;
     else console.log(`  [전송 스킵] ${result.reason}`);
   }
   // 발송 성공 시에만 dedup 키 기록 (전송 실패 시 다음 발화에서 재시도되도록).
   if (mode === "run" && anySent) await recordSentAlerts(issues);
+  // 감시 ⑩(db-permissions) 경보는 다른 이슈보다 무겁다 — 전송이 실패하면 Actions 자체를
+  // 실패시켜 실패 메일을 두 번째 통로로 쓴다(세션568).
+  if (process.env.GITHUB_ACTIONS && permAlertDeliveryFailed(issues, sendResults)) {
+    console.log("[monitor] ⑩ 권한 점검 경보 전송 실패 — Actions 를 실패로 끝내 실패 메일을 두 번째 통로로 쓴다");
+    process.exitCode = 1;
+  }
 }
 
 const argv1 = process.argv[1];
