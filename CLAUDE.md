@@ -61,8 +61,8 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | Vercel Team | `developer-dunos-projects` | 프로젝트별 환경변수/배포 독립 |
 
 - **테이블 소유권**: 공용 테이블 기존 컬럼 변경/삭제 금지 → `supabase/CLAUDE.md`
-- **API 쿼터**: 일일 10,000회 분배 + 10일-토요일 충돌 방지 → `scripts/CLAUDE.md`
-- **네이버 시간 분리**: mibunyang 08:00(월/목), naver-estate-web interval → `scripts/CLAUDE.md`
+- **API 쿼터**: 일일 10,000회 분배 + 10일-토요일 충돌 방지 → `.claude/rules/scripts/api-quota-and-ratelimit.md`
+- **네이버 시간 분리**: mibunyang 08:00(월/목), naver-estate-web interval → `.claude/rules/scripts/local-runners.md`
 - **마이그레이션**: 공용 테이블 ALTER 전 상대 프로젝트 쿼리 검색 필수 → `supabase/CLAUDE.md`
 
 ## 서브디렉토리 규칙 (해당 디렉토리 작업 시 자동 로드)
@@ -77,10 +77,11 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `.github/workflows/` | 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/` | 테이블(20+) + 2 VIEW + presale 19컬럼, RLS 정책 |
 
-## `.claude/rules/` — 상시 14개 + on-demand 8개 색인 (세션551)
+## `.claude/rules/` — 상시 14개 + on-demand 16개 색인 (세션551·568)
 
-22개 중 8개에 `paths` 를 붙여 **그 파일을 읽을 때만** 로드되게 했다(상시 로드분 −70KB).
-⚠️ **파일을 안 읽고 `node -e` 로 DB 만 만지는 세션에서는 아래 8개가 안 불려온다** —
+30개 중 16개에 `paths` 를 붙여 **그 파일을 읽을 때만** 로드되게 했다(상시 로드분 −70KB,
+세션568 에 `scripts/CLAUDE.md` 8개 절 분리로 +8).
+⚠️ **파일을 안 읽고 `node -e` 로 DB 만 만지는 세션에서는 아래 16개가 안 불려온다** —
 해당하는 일을 한다면 그 규칙 파일을 직접 Read 할 것.
 
 | on-demand 규칙 | 언제 필요한가 | paths |
@@ -93,6 +94,14 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `collectors/parsegu-normalization` | 행안부 시군구·SIDO 코드 다룰 때 | `population*.mjs`, `_shared.mjs`, `migration.mjs` |
 | `collectors/kosis-dimension-mismatch-guard` | KOSIS 통계표 차원 가정 전 raw sample | `*kosis*.mjs`, `medical-access`, `market-stats` |
 | `collectors/external-file-duplicate-rows` | 외부 파일의 중복 등재·상한(cap) 설계 | `transport-*.mjs`, `infra-*.mjs` |
+| `scripts/units-correction` | molit-units·naver-presale·seeding 수정 | `scripts/collectors/molit-units.mjs` 등 |
+| `scripts/molit-collectors` | `_molit-api`·molit-*·maintenance·building-hub 수정 | `scripts/collectors/_molit-api.mjs` 등 |
+| `scripts/local-runners` | 로컬 러너·스케줄러 등록·시간 분리 확인 | `scripts/kosis-local-runner.mjs` 등 |
+| `scripts/api-quota-and-ratelimit` | 새 API 호출 추가·쿼터 계산 | `scripts/collectors/_molit-api.mjs` 등 |
+| `scripts/transport-collector` | transport-tago.mjs 수정 | `scripts/collectors/transport-tago.mjs` |
+| `scripts/geocoding-fallback` | geocode-missing·reverse-geocode·fix-placeholder-addresses 수정 | `scripts/collectors/geocode-missing.mjs` 등 |
+| `scripts/declared-deps` | scripts/ 에 새 mjs 파일·새 import 추가 | `scripts/**/*.mjs` |
+| `scripts/test-status` | collectors 테스트 파일 작업 시 참고 | `scripts/collectors/*.test.mjs` |
 
 **상시 로드(paths 없음, 14개)** — 어기면 에러 없이 조용히 새거나, 파일을 안 읽는 작업에서도
 필요한 부류라 그대로 둔다: `tool-output-illusion-guard` · `probe-must-be-self-verified` ·
@@ -102,4 +111,5 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 `workflows/*`(4개: secret-naming-audit · workflow-name-hallucination · timeout-rootcause-policy · external-api-outage-policy)
 
 > 되돌리기: 해당 파일 맨 앞 `---` `paths:` `---` 블록을 지우면 상시 로드로 복귀.
+> `scripts/*` 8개의 상세 = `scripts/CLAUDE.md`(색인) 참조.
 

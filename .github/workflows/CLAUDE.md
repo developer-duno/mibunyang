@@ -23,7 +23,7 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 Core (sync + 전용률 계산, UTC 19:00) |
-| `collect-naver-listings-incremental.yml` | 네이버 후처리 Incremental (UTC 20:30 = KST 05:30) — `transport-tago` → `infra-kakao` → `schools-neis` 를 **무인자로** 순차 실행. **세션 491 문서 추가** (그동안 표에 없었다). 이 세 스텝이 같은 이름의 월간 워크플로를 대체하므로 그쪽 schedule 을 지웠다 |
+| `collect-naver-listings-incremental.yml` | 네이버 후처리 Incremental (UTC 20:30 = KST 05:30) — `transport-tago` → `infra-kakao` → `schools-neis` 를 **무인자로** 순차 실행. **세션 491 문서 추가** (그동안 표에 없었다). 이 세 스텝이 같은 이름의 월간 워크플로를 대체하므로 그쪽 schedule 을 지웠다. **세션568**: 학교 단계만 `--limit 1200` — 신선한 행을 걷어낸 **뒤** 오래된 순(옛 `--limit` 은 걷어내기 전에 잘라 id 뒤쪽이 영영 처리되지 않았다). 9/23 하루에 2,654행이 몰려 10/23~24 동시 만료 대비, 평소 하루 약 100곳이라 영향 없음 |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00). **세션 491**: `compute-scores` + `refresh-data` 두 잡을 `scoring-and-refresh` 하나로 합침 — `needs` 로 어차피 순차였는데 checkout·setup-node·npm ci 를 두 번 태우고 분 올림도 두 번 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로 |
 
 > 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
@@ -123,7 +123,7 @@
 |-----------|------|------|
 | `collect-infra.yml` | **수동만** | Kakao Places 인프라 — 세션 491 schedule 삭제. 매일 경로(`collect-naver-listings-incremental.yml`)가 같은 `infra-kakao.mjs` 를 무인자로 실행하므로 중복이었다 |
 | `collect-transport.yml` | **수동만** | Kakao Places 교통 — 세션 491 schedule 삭제(동일 사유, `transport-tago.mjs`). dispatch 는 `--force` 전체 재수집 창구 |
-| `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 + **`ids` 입력(세션567)** = 지정 단지만 다시 계산(30일 건너뛰기 무시, env 경유·정규식 검사). 학교 점수를 손으로 반영할 땐 **이 창구로만** — 로컬엔 `SCHOOLINFO_KEY` 가 없어 점수가 달라지고, 로컬 실제 쓰기는 시작 전에 멈춘다. 먼저 `-f dry_run=true -f ids=<id,id>` 로 미리보기 |
+| `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 + **`ids` 입력(세션567)** = 지정 단지만 다시 계산(30일 건너뛰기 무시, env 경유·정규식 검사). 학교 점수를 손으로 반영할 땐 **이 창구로만** — 로컬엔 `SCHOOLINFO_KEY` 가 없어 점수가 달라지고, 로컬 실제 쓰기는 시작 전에 멈춘다. 먼저 `-f dry_run=true -f ids=<id,id>` 로 미리보기. **세션568**: `limit` 입력의 뜻 = "30일 안 신선한 행을 걷어낸 뒤 오래된 것부터 처리할 단지 수"(`selectProcessList`). ⚠️ `limit` 은 아직 셸에 직접 끼워진다(`ids` 처럼 env 경유로 — BACKLOG A-6 🟢) |
 | `calc-exclusive-ratio.yml` | **수동만** | 전용률 계산 — 세션 491 주간 schedule 삭제. `collect-naver-listings.yml`(Core) 마지막 스텝이 같은 스크립트를 **매일** 실행해 중복이었다(주간보다 오히려 잦다) |
 | `collect-noise.yml` | 1일 | 소음 추정 |
 | `collect-environment.yml` | 1일 | 환경/혐오시설 |
@@ -139,7 +139,7 @@
 | 워크플로우 | 설명 |
 |-----------|------|
 | `monitor-db-size.yml` | Supabase 테이블별 행 수 점검 (매월 1일 KST 06:00) |
-| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단. **세션 491: job 에 `if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion != 'success'` 추가** — 트리거가 성공이면 감시 잡을 안 띄운다(실측 39회 중 35회가 "이상 없음"만 찍고 1분씩 과금). 실패·취소 알림은 그대로 즉시, "빈 성공"(ok=0)만 daily 스윕으로 최대 24h 지연. **세션567: 월요일(KST) 스윕에 DB 권한 점검(감시 ⑩) 추가** — 서비스 열쇠로 `audit_db_permissions()` 를 불러 공개 쓰기·공개 읽기 표 명단을 대조, 달라지면 텔레그램(공개 Actions 로그엔 개수만). 수동 강제 = 입력 `force_db_permission_audit` |
+| `monitor-collectors.yml` | 수집기 실패/취소/0건/미발화/NULL급증 텔레그램 알림 (workflow_run 즉시 + 매일 KST 09:00 스윕). 새 collect-*.yml 추가 시 workflow_run.workflows 목록에 name 추가 의무 — `scripts/audit-monitor-coverage.mjs` 가 CI 에서 누락 차단. **세션 491: job 에 `if: github.event_name != 'workflow_run' \|\| github.event.workflow_run.conclusion != 'success'` 추가** — 트리거가 성공이면 감시 잡을 안 띄운다(실측 39회 중 35회가 "이상 없음"만 찍고 1분씩 과금). 실패·취소 알림은 그대로 즉시, "빈 성공"(ok=0)만 daily 스윕으로 최대 24h 지연. **세션567: 월요일(KST) 스윕에 DB 권한 점검(감시 ⑩) 추가** — 서비스 열쇠로 `audit_db_permissions()` 를 불러 공개 쓰기·공개 읽기 표 명단을 대조, 달라지면 텔레그램(공개 Actions 로그엔 개수만). 수동 강제 = 입력 `force_db_permission_audit`. **세션568**: ⑩ 경보는 규칙(R1~R6)마다 10줄 + "외 N건", 한 통 4,000자를 넘으면 줄 단위로 잘라 생략 줄(`notify-telegram.mjs` `fitBlock` — 전 감시 공통) · ⑩ 경보가 든 전송이나 월요일 "이상 없음" 전송이 실패하면 **job 실패(exit 1)** — Actions 실패 메일이 두 번째 통로(로컬 실행은 그대로) · ⑨ 는 개수 대신 **id 명단**(`COORD_SHARED_BASELINE_IDS` 8곳 — 명단 밖 신규·풀림 각각 알림) + 같은 좌표 후보 기준 명단(`COORD_CANDIDATE_BASELINE_IDS` 209곳 — 기준 밖 **새** 후보만 알림) |
 
 ### 유틸리티 (5개)
 
@@ -297,6 +297,7 @@ remote: - Required status check "ci" is expected.
 
 전부 cron/트리거만 바꿨으므로 해당 줄을 원복하면 끝난다. **되돌려야 하는 신호**:
 `collect-building-hub` 가 분기 실행에서 `성공 N`>0 을 찍으면(=API 회복) 월간으로.
+⚠️ **세션568 정정**: building-hub 의 "성공 0 | 스킵 2000" 은 API 중단이 아니었다 — 수집기가 조회 월을 "2개월 전"으로 고정했는데 국토부 건물 에너지 자료는 **약 5개월 늦게** 공개된다(2026-09-24 실측: 202601·202604 자료 있음, 202607 0건). #596 으로 "표본 3곳이 자료를 주는 가장 최근 달" 자동 탐지 → 이제 로컬 러너(분기 15일)가 실제로 채운다. 자료가 화면·점수에 안 쓰여 분기 유지.
 (`collect-housing-permits` 는 세션501에 KOSIS 로 갈아타며 워크플로 자체가 삭제됐다 — 로컬 러너 매월 11일.)
 감시는 monitor ⑤ `EXTERNAL_API_COLLECTORS` 가 담당하는데
 **월간→분기로 내렸으므로 해당 `stale_days` 기준(월간 38 / 분기 100)도 함께 맞춰야 한다.**
