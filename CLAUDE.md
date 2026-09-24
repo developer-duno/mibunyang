@@ -78,9 +78,9 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `.github/workflows/` | 워크플로우 목록, GitHub Secrets, 스케줄 |
 | `supabase/` | 테이블(20+) + 2 VIEW + presale 19컬럼, RLS 정책 |
 
-## `.claude/rules/` — 상시 14개 + on-demand 16개 색인 (세션551·568)
+## `.claude/rules/` — 상시 14개 + on-demand 18개 색인 (세션551·568·571)
 
-30개 중 16개에 `paths` 를 붙여 **그 파일을 읽을 때만** 로드되게 했다(상시 로드분 −70KB,
+32개 중 18개에 `paths` 를 붙여 **그 파일을 읽을 때만** 로드되게 했다(상시 로드분 −70KB,
 세션568 에 `scripts/CLAUDE.md` 8개 절 분리로 +8).
 ⚠️ **파일을 안 읽고 `node -e` 로 DB 만 만지는 세션에서는 아래 16개가 안 불려온다** —
 해당하는 일을 한다면 그 규칙 파일을 직접 Read 할 것.
@@ -103,6 +103,8 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `scripts/geocoding-fallback` | geocode-missing·reverse-geocode·fix-placeholder-addresses 수정 | `scripts/collectors/geocode-missing.mjs` 등 |
 | `scripts/declared-deps` | scripts/ 에 새 mjs 파일·새 import 추가 | `scripts/**/*.mjs` |
 | `scripts/test-status` | collectors 테스트 파일 작업 시 참고 | `scripts/collectors/*.test.mjs` |
+| `collectors/data-changing-run-approval` | 운영 데이터를 바꾸는 실행(backfill·fix·cleanup·수집기 --apply) 전 전이표 승인 | `scripts/collectors/**/*.mjs`, `scripts/backfill-*.mjs`, `scripts/fix-*.mjs`, `scripts/cleanup-*.mjs` |
+| `scoring/scoring-engine` | 점수 엔진·등급표·브랜드·프로필 상수를 고칠 때 | `src/scoring/**`, `src/constants/scoringTiers.*`, `brands.ts`, `profiles.*` |
 
 **상시 로드(paths 없음, 14개)** — 어기면 에러 없이 조용히 새거나, 파일을 안 읽는 작업에서도
 필요한 부류라 그대로 둔다: `tool-output-illusion-guard` · `probe-must-be-self-verified` ·
