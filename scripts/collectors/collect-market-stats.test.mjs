@@ -47,7 +47,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 process.env.KOSIS_KEY = "test-key";
 
 const { extractLatestByRegion, parseAllPeriodsByRegion, main } = await import("./collect-market-stats.mjs");
-const { recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { recordCollectorRun, createRegionResolutionTracker, log } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** @param {any} c1 @param {any} c2 @param {any} period @param {any} value */
@@ -173,6 +173,57 @@ describe("parseAllPeriodsByRegion", () => {
   });
 });
 
+// ── 세션568: REGION_MAP 무음 continue 제거 — 통합 시도("전남광주")를 tracker 로 집계 ──
+describe("extractLatestByRegion + tracker (통합 시도 무음 continue 제거)", () => {
+  it("'전남광주' 시도 단위 합계 행 → latestByRegion 에 안 들어가고 tracker.unmergeable 집계", () => {
+    const rows = [
+      makeRow("서울", null, "202601", "100.0"),
+      makeRow("전남광주", null, "202601", "95.0"),
+    ];
+    const tracker = createRegionResolutionTracker();
+    const result = extractLatestByRegion(rows, makeIndicator(), tracker);
+    expect(result["서울"]).toBeDefined();
+    expect(result["광주"]).toBeUndefined();
+    expect(result["전남"]).toBeUndefined();
+    expect(tracker.summary()).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [] });
+  });
+
+  it("기존 이름('서울' 등)은 tracker 를 넘겨도 그대로 매핑된다", () => {
+    const rows = [makeRow("서울", null, "202601", "105.3")];
+    const tracker = createRegionResolutionTracker();
+    const result = extractLatestByRegion(rows, makeIndicator(), tracker);
+    expect(result["서울"]).toEqual({ value: 105.3, period: "202601" });
+    expect(tracker.summary().unmergeable).toBe(0);
+  });
+
+  it("모르는 이름('알수없음') → tracker.unknownNames 에 잡힌다", () => {
+    const rows = [makeRow("알수없음", null, "202601", "100.0")];
+    const tracker = createRegionResolutionTracker();
+    extractLatestByRegion(rows, makeIndicator(), tracker);
+    expect(tracker.summary().unknownNames).toEqual(["알수없음"]);
+  });
+
+  it("tracker 생략 시(기본값) — 기존 호출부와 동일하게 동작(하위호환)", () => {
+    const rows = [makeRow("서울", null, "202601", "100.0")];
+    const result = extractLatestByRegion(rows, makeIndicator());
+    expect(result["서울"].value).toBe(100.0);
+  });
+});
+
+describe("parseAllPeriodsByRegion + tracker (통합 시도 무음 continue 제거)", () => {
+  it("'전남광주' 행 → 결과 배열에 안 들어가고 tracker.unmergeable 집계", () => {
+    const rows = [
+      makeRow("서울", null, "202601", "100.0"),
+      makeRow("전남광주", null, "202601", "95.0"),
+    ];
+    const tracker = createRegionResolutionTracker();
+    const result = parseAllPeriodsByRegion(rows, makeIndicator(), tracker);
+    expect(result).toHaveLength(1);
+    expect(result[0].region).toBe("서울");
+    expect(tracker.summary().unmergeable).toBe(1);
+  });
+});
+
 // ── 세션 330: fetchWithRetry 통일 회귀 가드 ──────────────────
 describe("fetchKosisTable fetchWithRetry 사용 (통일 회귀 가드)", () => {
   it("collect-market-stats.mjs 본문이 fetchWithRetry import 박힘", async () => {
@@ -211,6 +262,21 @@ describe("main() recordCollectorRun 하드닝", () => {
       expect.objectContaining({ status: "failure", ok: 0, fail: 5 }),
     );
     expect(exitSpy).toHaveBeenCalledWith(1);
+    exitSpy.mockRestore();
+  });
+
+  it("'전남광주' 통합 시도 행이 섞여 있으면 main() 이 건너뜀을 로그로 남긴다", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => /** @type {never} */ (undefined));
+    log.mockClear();
+    fetchWithRetryMock.mockResolvedValue({
+      json: async () => [
+        makeRow("서울", null, "202601", "100.0"),
+        makeRow("전남광주", null, "202601", "95.0"),
+      ],
+    });
+    await main();
+    const messages = log.mock.calls.map((/** @type {any[]} */ c) => String(c[1]));
+    expect(messages.some((/** @type {string} */ m) => m.includes("전남광주") && m.includes("행"))).toBe(true);
     exitSpy.mockRestore();
   });
 

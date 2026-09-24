@@ -13,7 +13,7 @@
  *   node scripts/collectors/collect-market-stats.mjs              (Supabase UPDATE)
  *   node scripts/collectors/collect-market-stats.mjs --dry-run    (미리보기만)
  */
-import { loadEnv, getSupabase, log, logError, createReporter, sleep, REGION_MAP, upsertBatch, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, sleep, createRegionResolutionTracker, upsertBatch, recordApiQuota, recordCollectorRun, fetchWithRetry } from "./_shared.mjs";
 
 loadEnv();
 
@@ -99,16 +99,21 @@ async function fetchKosisTable(indicator, startPrdDe, endPrdDe) {
 
 /**
  * KOSIS 행에서 지역별 최신값 추출
+ *
+ * ⚠️ 이 표는 시군구(C2_NM) 단위가 아니라 시도 단위 합계만 준다(C2_NM 은 "전용면적
+ * 구간" 또는 부재 — 세션568 raw 실측). 통합 시도("전남광주")가 오면 시군구로 가를
+ * 수 없으므로 조용히 버리지 않고 `tracker` 로 집계만 한다(호출자가 로그로 남김).
  * @param {KosisRow[]} rows
  * @param {Indicator} indicator
+ * @param {ReturnType<typeof createRegionResolutionTracker>} [tracker]
  * @returns {Record<string, {value: number, period: string}>}
  */
-export function extractLatestByRegion(rows, indicator) {
+export function extractLatestByRegion(rows, indicator, tracker = createRegionResolutionTracker()) {
   /** @type {Record<string, {value: number, period: string}>} */
   const latestByRegion = {};
   for (const row of rows) {
     if (row.C2_NM && row.C2_NM !== "전체") continue;
-    const region = row.C1_NM ? REGION_MAP[row.C1_NM] : undefined;
+    const region = tracker.resolve(row.C1_NM);
     if (!region) continue;
     const value = indicator.parse(row.DT || "", 10);
     if (isNaN(value)) continue;
@@ -131,9 +136,10 @@ export function extractLatestByRegion(rows, indicator) {
 /**
  * @param {KosisRow[]} rows
  * @param {Indicator} indicator
+ * @param {ReturnType<typeof createRegionResolutionTracker>} [tracker]
  * @returns {{region: string, gu: string, base_month: string, value: number}[]}
  */
-export function parseAllPeriodsByRegion(rows, indicator) {
+export function parseAllPeriodsByRegion(rows, indicator, tracker = createRegionResolutionTracker()) {
   /** @type {{region: string, gu: string, base_month: string, value: number}[]} */
   const out = [];
   const monthRe = /^\d{6}$/;
@@ -142,7 +148,7 @@ export function parseAllPeriodsByRegion(rows, indicator) {
     const prd = row.PRD_DE || "";
     if (!monthRe.test(prd) && !quarterRe.test(prd)) continue;
     if (row.C2_NM && row.C2_NM !== "전체") continue;
-    const region = row.C1_NM ? REGION_MAP[row.C1_NM] : undefined;
+    const region = tracker.resolve(row.C1_NM);
     if (!region) continue;
     const value = indicator.parse(row.DT || "", 10);
     if (isNaN(value)) continue;
@@ -222,16 +228,29 @@ export async function main() {
         logError(PHASE, `  ${ind.label}: ${rows.length}건 < 최소 ${ind.minExpected}건 — itmId/prdSe 확인 필요`);
       }
 
-      const latestByRegion = extractLatestByRegion(rows, ind);
+      const regionTracker = createRegionResolutionTracker();
+      const latestByRegion = extractLatestByRegion(rows, ind, regionTracker);
 
       const regionCount = Object.keys(latestByRegion).length;
       log(PHASE, `  ${ind.label}: ${rows.length}건 응답, ${regionCount}개 시도 매핑`);
 
       // ── market_stats_history 시계열 누적 (병존, regions UPDATE 와 동일 응답 재파싱) ──
-      for (const row of parseAllPeriodsByRegion(rows, ind)) {
+      for (const row of parseAllPeriodsByRegion(rows, ind, regionTracker)) {
         const key = `${row.region}::${row.base_month}`;
         if (!historyMap[key]) historyMap[key] = { region: row.region, gu: "", base_month: row.base_month };
         /** @type {Record<string, unknown>} */ (historyMap[key])[ind.col] = row.value;
+      }
+
+      // 세션568: REGION_MAP 무음 continue 제거 — 통합 시도("전남광주")가 시도 단위
+      // 합계로만 오면 가를 수 없어 건너뛰되(광주·전남은 VIEW latest_regions 의 칸별
+      // 최신 non-null 로 이전 값 유지, admin-district-code-reform.md), 그 사실과
+      // 그 밖의 미매핑 이름을 로그로 남긴다.
+      const trackerSummary = regionTracker.summary();
+      if (trackerSummary.unmergeable > 0) {
+        log(PHASE, `  ${ind.label}: 통합 시도라 나눌 수 없어 건너뜀: 전남광주 ${trackerSummary.unmergeable}행`);
+      }
+      if (trackerSummary.unknown > 0) {
+        log(PHASE, `  ${ind.label}: 못 맞춘 C1_NM 이름 ${trackerSummary.unknownNames.length}종: ${trackerSummary.unknownNames.join(", ")} (${trackerSummary.unknown}행)`);
       }
 
       // regions 테이블 UPDATE

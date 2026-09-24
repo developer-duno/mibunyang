@@ -500,6 +500,46 @@ export function resolveRegionName(sidoFull, gu = null) {
   return null; // 시군구가 아닌 토큰(지구·블록 등) — 조용히 한쪽에 붙이지 않는다
 }
 
+/**
+ * **시도 단위 합계만 주는 KOSIS 표**(C2_NM 이 시군구가 아니거나 없는 표)에서
+ * `resolveRegionName` 을 쓸 때의 집계기. 통합 시도("전남광주")가 왔는데 시군구로
+ * 못 가르는 행(= 시도 합계 그 자체)과, 그 밖의 알 수 없는 C1_NM 을 각각 세어
+ * 루프가 끝난 뒤 **한 번**(행마다가 아니라) 로그로 남긴다(세션568).
+ *
+ * 시군구(C2_NM) 단위 데이터가 있는 표는 `resolveRegionName(c1, c2)` 를 직접 쓴다
+ * (예: `collect-unsold-kosis.mjs`) — 이 도우미는 "가를 수 없는" 표 전용이다.
+ *
+ * @returns {{
+ *   resolve: (c1NmOrNull: string | null | undefined) => string | null,
+ *   summary: () => { unmergeable: number, unknown: number, unknownNames: string[] },
+ * }}
+ */
+export function createRegionResolutionTracker() {
+  let unmergeable = 0; // 통합 시도인데 시도 단위 합계라 못 가름
+  /** @type {Map<string, number>} */
+  const unknownNames = new Map(); // REGION_MAP 에도 없고 통합 시도도 아닌 이름
+  return {
+    resolve(c1NmOrNull) {
+      const c1 = c1NmOrNull ?? "";
+      const region = REGION_MAP[c1] ?? resolveRegionName(c1);
+      if (region) return region;
+      if (MERGED_SIDO_RE.test(c1)) {
+        unmergeable++;
+      } else if (c1) {
+        unknownNames.set(c1, (unknownNames.get(c1) ?? 0) + 1);
+      }
+      return null;
+    },
+    summary() {
+      return {
+        unmergeable,
+        unknown: [...unknownNames.values()].reduce((a, b) => a + b, 0),
+        unknownNames: [...unknownNames.keys()],
+      };
+    },
+  };
+}
+
 // 세션95 단계 B: apartments.gu 정규화 (화성시 재오염 방지 방어선).
 // "화성시 동탄구" 같은 복합 문자열이 미래 경로로 들어와도 "화성시"로 축약.
 // 세션94 에서 확정된 화성시 비법정 구 화이트리스트만 처리.

@@ -26,7 +26,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 process.env.KOSIS_KEY = "test-key";
 
 const { parseKosisRows, main } = await import("./collect-housing-supply-ratio.mjs");
-const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
+const { recordCollectorRun, getSupabase, log, createRegionResolutionTracker } = /** @type {any} */ (await import("./_shared.mjs"));
 
 /**
  * @param {string} c1
@@ -126,6 +126,34 @@ describe("parseKosisRows (DT_MLTM_2100 주택보급률)", () => {
     expect(result["서울"]).toBeCloseTo(90.0, 1);
     expect(result["제주"]).toBeCloseTo(98.0, 1);
   });
+
+  // 세션568: REGION_MAP 무음 continue 제거 — 통합 시도("전남광주")는 이 표에서
+  // 시도 단위 합계만 오므로(C2_NM 없음) 가를 수 없어 건너뛰되 tracker 로 집계.
+  it("'전남광주' 시도 단위 합계 행 → 결과에 안 들어가고 tracker.unmergeable 집계", () => {
+    const rows = [
+      makeRow("전남광주", "보급률(다가구 구분거처 반영)", "2023", 100.0),
+      makeRow("서울", "보급률(다가구 구분거처 반영)", "2023", 93.6),
+    ];
+    const tracker = createRegionResolutionTracker();
+    const result = parseKosisRows(rows, tracker);
+    expect(result["서울"]).toBeCloseTo(93.6, 1);
+    expect(result["광주"]).toBeUndefined();
+    expect(result["전남"]).toBeUndefined();
+    expect(tracker.summary()).toEqual({ unmergeable: 1, unknown: 0, unknownNames: [] });
+  });
+
+  it("모르는 이름('지방') → tracker.unknownNames 에 잡힌다", () => {
+    const rows = [makeRow("지방", "보급률(다가구 구분거처 반영)", "2023", 105.0)];
+    const tracker = createRegionResolutionTracker();
+    parseKosisRows(rows, tracker);
+    expect(tracker.summary().unknownNames).toEqual(["지방"]);
+  });
+
+  it("tracker 생략 시(기본값) — 기존 호출부와 동일하게 동작(하위호환)", () => {
+    const rows = [makeRow("서울", "보급률(다가구 구분거처 반영)", "2023", 93.6)];
+    const result = parseKosisRows(rows);
+    expect(result["서울"]).toBeCloseTo(93.6, 1);
+  });
 });
 
 // ── main() collector_runs 기록 하드닝 (KOSIS 러너 차단 사고, 세션 395) ──
@@ -171,5 +199,25 @@ describe("main() recordCollectorRun 하드닝", () => {
       "kosis-housing-supply-ratio",
       { ok: 0, skip: 1 },
     );
+  });
+
+  it("'전남광주' 통합 시도 행이 섞여 있으면 main() 이 건너뜀을 로그로 남긴다", async () => {
+    log.mockClear();
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [
+      makeRow("전남광주", "보급률(다가구 구분거처 반영)", "2023", 100.0),
+      makeRow("서울", "보급률(다가구 구분거처 반영)", "2023", 93.6),
+    ] });
+    getSupabase.mockReturnValue({
+      from: () => ({
+        select: () => ({ is: async () => ({
+          data: [{ id: "1", region: "서울", gu: null, housing_supply_level: null }],
+          error: null,
+        }) }),
+        update: () => ({ eq: async () => ({ error: null }) }),
+      }),
+    });
+    await main();
+    const messages = log.mock.calls.map((/** @type {any[]} */ c) => String(c[1]));
+    expect(messages.some((/** @type {string} */ m) => m.includes("전남광주") && m.includes("1행"))).toBe(true);
   });
 });
