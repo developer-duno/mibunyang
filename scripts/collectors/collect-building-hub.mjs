@@ -27,6 +27,10 @@
  *   node scripts/collectors/collect-building-hub.mjs --dry-run    (미리보기만)
  *   node scripts/collectors/collect-building-hub.mjs --force      (null이 아닌 값도 재수집)
  *
+ * 조회 월 자동 탐지 (세션568): 국토부 건물에너지 공개가 실제로는 약 5개월 지연되어
+ * "2개월 전 고정" 조회가 매 회차 0건으로 헛돌았다(collector_runs 수개월간 ok=0). 표본
+ * 단지 몇 곳으로 최근 달부터 거슬러 자료가 있는 가장 가까운 달을 찾아 그 달로 본조회한다.
+ *
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  *
@@ -149,8 +153,43 @@ async function fetchEnergy(bjdCode, lotMain, lotSub, useYm) {
   return { elec, gas };
 }
 
+// ── 조회 월 자동 탐지 ────────────────────────────────────────
+const MONTH_DETECT_MAX_BACK = 8;
+
+/**
+ * 표본 단지들로 최근 달부터 거슬러 자료가 있는 가장 최근 달을 찾는다(순수 함수).
+ * probe(useYm) 는 그 달의 "표본 중 하나라도 자료가 있는가"를 알려주는 콜백:
+ *   - true  → 그 달 채택, 즉시 반환
+ *   - false → 그 달은 전부 0건(자료 없음 확정), 한 달 더 거슬러감
+ *   - null  → 오류(503 등)로 "모름". 그 달은 건너뛰고(탐지 실패로 세지 않음) 계속 거슬러감
+ *
+ * @param {(useYm: string) => Promise<boolean | null>} probe
+ * @param {{ now?: Date, maxBackMonths?: number }} [opts]
+ * @returns {Promise<{ useYm: string | null, monthsBack: number, calls: number }>}
+ */
+export async function pickLatestAvailableMonth(probe, opts = {}) {
+  const { now = new Date(), maxBackMonths = MONTH_DETECT_MAX_BACK } = opts;
+  let calls = 0;
+  // "2개월 전"부터 시작 — 국토부 공개 지연이 통상 그 언저리라 헛탐지를 줄인다.
+  for (let back = 2; back <= maxBackMonths; back++) {
+    const target = new Date(now.getFullYear(), now.getMonth() - back, 1);
+    const useYm = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
+
+    let result = await probe(useYm);
+    calls++;
+    if (result === null) {
+      // 오류(503 등) — 1회 재시도
+      result = await probe(useYm);
+      calls++;
+    }
+    if (result === true) return { useYm, monthsBack: back, calls };
+    // false(자료 없음 확정) 또는 재시도 후에도 null(모름) → 다음 달로 계속 거슬러감
+  }
+  return { useYm: null, monthsBack: -1, calls };
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
-async function main() {
+export async function main() {
   if (!API_KEY) {
     logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
     process.exit(1);
@@ -183,11 +222,51 @@ async function main() {
     process.exit(1);
   }
 
-  // 조회 월 (2개월 전)
-  const now = new Date();
-  const target = new Date(now.getFullYear(), now.getMonth() - 2, 1);
-  const useYm = `${target.getFullYear()}${String(target.getMonth() + 1).padStart(2, "0")}`;
-  log(PHASE, `조회 월: ${useYm}, bjd_code 보유: ${count}건`);
+  // 조회 월 자동 탐지: 이미 elec_usage_kwh 가 채워진 표본 단지 몇 곳으로
+  // 최근 달부터 거슬러 "실제로 자료가 있는" 가장 최근 달을 찾는다.
+  let apiCalls = 0;
+  const { data: sampleApts, error: sampleErr } = await sb
+    .from("apartments")
+    .select("id, bjd_code, lot_main, lot_sub")
+    .not("elec_usage_kwh", "is", null)
+    .not("bjd_code", "is", null)
+    .order("id", { ascending: true })
+    .limit(3);
+  if (sampleErr || !sampleApts || sampleApts.length === 0) {
+    const errorMessage = `조회 월 탐지용 표본 단지를 찾지 못함 (${sampleErr?.message ?? "표본 0건"}) — 본 조회를 건너뜁니다.`;
+    logError(PHASE, errorMessage);
+    // 세션568 검사관 지적: 실패 경로도 collector_runs 에 남겨 감시 ⑤ 사각을 없앤다(housing-permits.mjs 하드닝 패턴).
+    await recordCollectorRun(PHASE, { ok: 0, fail: 1, skip: 0, status: "failure", errorMessage });
+    process.exit(1);
+  }
+
+  const detect = await pickLatestAvailableMonth(async (candidateYm) => {
+    try {
+      for (const s of sampleApts) {
+        const params = { ...makeLotParams(s.bjd_code, s.lot_main, s.lot_sub), useYm: candidateYm, numOfRows: "10", pageNo: "1" };
+        const elecJson = await hubApiCall("getBeElctyUsgInfo", params);
+        const total = Number(elecJson?.response?.body?.totalCount ?? 0);
+        if (total > 0) return true;
+      }
+      return false;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(PHASE, `  [탐지] ${candidateYm} 조회 실패(모름): ${msg}`);
+      return null;
+    }
+  });
+  apiCalls += detect.calls;
+
+  if (!detect.useYm) {
+    const errorMessage = `조회 월 탐지 실패 — 최근 ${MONTH_DETECT_MAX_BACK}개월 모두 자료 없음/오류. 본 조회를 건너뜁니다 (탐지 호출 ${detect.calls}회).`;
+    logError(PHASE, errorMessage);
+    if (!dryRun) await recordApiQuota("collect-building-hub", "MOLIT_KEY", apiCalls);
+    // 세션568 검사관 지적: 실패 경로도 collector_runs 에 남겨 감시 ⑤ 사각을 없앤다(housing-permits.mjs 하드닝 패턴).
+    await recordCollectorRun(PHASE, { ok: 0, fail: 1, skip: 0, status: "failure", errorMessage });
+    process.exit(1);
+  }
+  const useYm = detect.useYm;
+  log(PHASE, `조회 월: ${useYm} (탐지: 2개월 전부터 ${detect.monthsBack}개월 거슬러 확인, 탐지 호출 ${detect.calls}회), bjd_code 보유: ${count}건`);
 
   // 대상 아파트 조회 (selectAll: 고유키(id) 커서 페이지네이션)
   const apts = await selectAll(
@@ -199,7 +278,6 @@ async function main() {
   );
 
   log(PHASE, `대상: ${apts.length}건`);
-  let apiCalls = 0;
 
   // 첫 호출 시 응답 샘플 로깅 (안전장치 #5)
   let sampleLogged = false;
