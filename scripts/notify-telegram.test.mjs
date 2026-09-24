@@ -4,7 +4,7 @@
  * 대상: sendTelegram (전송/스킵/실패), formatIssue (메시지 포맷)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelegram, formatIssue, formatIssueForConsole, toKst, buildMessages } from "./notify-telegram.mjs";
+import { sendTelegram, formatIssue, formatIssueForConsole, toKst, buildMessages, fitBlock } from "./notify-telegram.mjs";
 
 describe("sendTelegram", () => {
   beforeEach(() => {
@@ -263,5 +263,62 @@ describe("buildMessages", () => {
     expect(msgs.length).toBeGreaterThan(1);
     // 모든 통이 한도 이하 — 이슈가 통 사이에 잘리지 않음
     for (const m of msgs) expect(m.length).toBeLessThanOrEqual(4000);
+  });
+
+  // 세션568 — 이슈 1건 자체가 한 통(헤더 포함)보다 큰 경우. fitBlock 이 줄 단위로 잘라
+  // 모든 통을 한도 이하로 맞춘다(옛 동작은 그 이슈를 안 자르고 통째로 담아 텔레그램 400).
+  it("이슈 1건이 그 자체로 매우 길어도(예: R1 수백 줄) 모든 통이 4000자 이하다", () => {
+    const manyLines = Array(300).fill("  · public.어떤표 — anon UPDATE 실제 도달 가능 (정책=\"이름\")");
+    const issues = /** @type {any[]} */ ([
+      { kind: "nulls", collector: "db-permissions", detail: "주간 DB 권한 점검 — 경보 1종", lines: manyLines },
+    ]);
+    const msgs = buildMessages(issues);
+    for (const m of msgs) expect(m.length).toBeLessThanOrEqual(4000);
+    // 생략 안내가 어딘가에는 있어야 한다(줄이 다 잘렸다는 신호)
+    expect(msgs.join("\n")).toMatch(/생략/);
+  });
+
+  it("첫 이슈가 3,990자 안팎이어도 헤더만 담긴 통은 생기지 않는다(헤더+첫 이슈가 항상 함께)", () => {
+    const bigDetail = "가".repeat(3900);
+    const issues = /** @type {any[]} */ ([
+      { kind: "nulls", collector: "C0", detail: bigDetail },
+      { kind: "nulls", collector: "C1", detail: "짧은 이슈" },
+    ]);
+    const msgs = buildMessages(issues);
+    // 첫 통은 헤더(🛎 이상 N건)와 첫 이슈 제목(NULL 급증)을 함께 담는다 — 헤더 단독 통이 없다.
+    expect(msgs[0]).toContain("이상 2건");
+    expect(msgs[0]).toContain("NULL 급증");
+    for (const m of msgs) expect(m.length).toBeLessThanOrEqual(4000);
+  });
+
+  it("&·< 가 섞인 5,000자 한 줄이 잘려도 미완성 HTML 엔티티를 남기지 않는다", () => {
+    // formatIssue 의 escapeHtml 이 & → &amp; 로 바꾸므로, 자르는 지점에 따라
+    // "&amp;" 같은 엔티티가 중간에서 끊길 수 있다 — 그 잔재를 fitBlock 이 지운다.
+    const longDetail = "A&B<C>".repeat(900); // 5,400자, escape 후 더 길어짐
+    const issues = /** @type {any[]} */ ([{ kind: "empty", collector: "X", detail: longDetail }]);
+    const msgs = buildMessages(issues);
+    for (const m of msgs) {
+      expect(m.length).toBeLessThanOrEqual(4000);
+      expect(m).not.toMatch(/&[a-zA-Z#0-9]*$/);
+    }
+  });
+});
+
+describe("fitBlock", () => {
+  it("짧은 입력은 그대로 반환한다", () => {
+    expect(fitBlock("짧은 텍스트", 4000)).toBe("짧은 텍스트");
+  });
+
+  it("길면 줄 단위로 잘라 생략 안내를 붙이고 한도 이하로 만든다", () => {
+    const block = Array(50).fill("한 줄 텍스트입니다").join("\n"); // 짧은 줄 50개
+    const out = fitBlock(block, 100);
+    expect(out.length).toBeLessThanOrEqual(100);
+    expect(out).toMatch(/생략/);
+  });
+
+  it("첫 줄 하나만으로도 한도를 넘으면 그 줄을 잘라 담는다", () => {
+    const out = fitBlock("A".repeat(200), 50);
+    expect(out.length).toBeLessThanOrEqual(50);
+    expect(out).toMatch(/생략/);
   });
 });

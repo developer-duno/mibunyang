@@ -8,9 +8,11 @@ import {
   PUBLIC_READ_TABLES_BASELINE,
   DEFINER_FUNCTION_ALLOWLIST,
   PUBLIC_EXTENSION_ALLOWLIST,
+  DB_PERM_ITEMS_PER_RULE,
+  permAlertDeliveryFailed,
 } from "./monitor-collectors.mjs";
 import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
-import { formatIssueForConsole } from "./notify-telegram.mjs";
+import { formatIssueForConsole, buildMessages } from "./notify-telegram.mjs";
 
 // 감시 ⑩ — 주 1회 DB 권한 실측 점검 (세션567 신설, 세션568 R1/R4 재설계).
 // anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를
@@ -542,5 +544,288 @@ describe("감시 ⑩ 이슈가 공개 콘솔에 새지 않는다 — formatIssue
     const names = (importLine?.[1] ?? "").split(",").map((s) => s.trim());
     expect(names).toContain("formatIssueForConsole");
     expect(names).not.toContain("formatIssue");
+  });
+});
+
+// 세션568 — 한 규칙(R1~R6)이 수백 줄이면 텔레그램 400 으로 통째로 전송 스킵되어 사람에게
+// 아무것도 안 갔다. 규칙마다 DB_PERM_ITEMS_PER_RULE 개까지만 싣고 넘치면 "… 외 N건" 으로 접는다.
+describe("감시 ⑩ 규칙당 항목 상한 — capRuleItems (세션568)", () => {
+  /**
+   * RLS 꺼진 표 n개를 가진 스냅샷(R2 만 단독으로 검사하기 위한 최소 구성).
+   * @param {number} n
+   */
+  function snapshotWithManyR2Tables(n) {
+    const relations = [];
+    for (let i = 0; i < n; i++) {
+      relations.push({
+        schema: "public", name: `table_${String(i).padStart(3, "0")}`, kind: "r",
+        rls_enabled: false, rls_forced: false,
+        anon_select: false, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+    }
+    return { checked_at: "2026-09-24T00:00:00Z", relations, policies: [], definer_functions: [], public_extensions: [], definer_views: [] };
+  }
+
+  it("R1 이 25건 걸리면 항목은 10개 + '… 외 15건'이 남고, 머리줄 숫자는 자르기 전 전체(25)다", () => {
+    // R1 은 표별로 걸리므로, anon INSERT 표 권한 + 도달 가능한 정책을 가진 표 25개를 만든다.
+    const relations = [];
+    const policies = [];
+    for (let i = 0; i < 25; i++) {
+      const name = `r1table_${String(i).padStart(3, "0")}`;
+      relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: false, anon_insert: true, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+    }
+    const snap = { checked_at: "2026-09-24T00:00:00Z", relations, policies, definer_functions: [], public_extensions: [], definer_views: [] };
+    const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables: [] }));
+    expect(issues).toHaveLength(1);
+    /** @type {string[]} */
+    const allLines = issues[0].lines;
+    const body = allLines.join("\n");
+    expect(body).toMatch(/\[R1\] anon\/authenticated 쓰기 권한 25건/); // 머리줄 = 전체 개수(자르기 전)
+    // R1 구간만 잘라서 본다(같은 정책이 R3 항상참 규칙에도 걸려 r1table_ 이 두 번 나온다).
+    const r1Start = allLines.findIndex((l) => l.startsWith("[R1]"));
+    const r1End = allLines.findIndex((l, i) => i > r1Start && l.startsWith("[R"));
+    const r1Section = allLines.slice(r1Start, r1End === -1 ? undefined : r1End);
+    const itemLines = r1Section.filter((l) => l.includes("r1table_"));
+    expect(itemLines.length).toBe(DB_PERM_ITEMS_PER_RULE);
+    expect(r1Section.join("\n")).toMatch(/… 외 15건/);
+  });
+
+  it("R1 대량 + R2 도 함께 걸리면 [R2] 머리줄이 여전히 살아남는다(한 규칙이 다른 규칙을 안 지운다)", () => {
+    const relations = [];
+    const policies = [];
+    for (let i = 0; i < 25; i++) {
+      const name = `r1table_${String(i).padStart(3, "0")}`;
+      relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: false, anon_insert: true, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+    }
+    // R2 대상 표 1개 추가(RLS 꺼짐, 쓰기 권한은 없어 R1 에는 안 걸림)
+    relations.push({
+      schema: "public", name: "r2table", kind: "r", rls_enabled: false, rls_forced: false,
+      anon_select: false, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+      authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+      column_write_grants: [],
+    });
+    const snap = { checked_at: "2026-09-24T00:00:00Z", relations, policies, definer_functions: [], public_extensions: [], definer_views: [] };
+    const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables: [] }));
+    expect(issues).toHaveLength(1);
+    const body = issues[0].lines.join("\n");
+    expect(body).toMatch(/\[R1\]/);
+    expect(body).toMatch(/\[R2\] RLS 꺼진 표 1개/);
+    expect(body).toMatch(/r2table/);
+  });
+
+  it("대량 경보 이슈를 buildMessages 에 넣으면 모든 통이 4000자 이하다(전송 실제 경로 통합)", () => {
+    const relations = [];
+    const policies = [];
+    for (let i = 0; i < 25; i++) {
+      const name = `r1table_${String(i).padStart(3, "0")}`;
+      relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: false, anon_insert: true, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+      policies.push({ table: name, name: "hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+    }
+    const snap = { checked_at: "2026-09-24T00:00:00Z", relations, policies, definer_functions: [], public_extensions: [], definer_views: [] };
+    const issues = evaluateDbPermissions(snap, { publicReadTables: [] });
+    const msgs = buildMessages(/** @type {any} */ (issues));
+    expect(msgs.length).toBeGreaterThan(0);
+    for (const m of msgs) expect(m.length).toBeLessThanOrEqual(4000);
+  });
+
+  it("R2 만으로도(다른 규칙 무관) 상한 개수만 항목이 남는다", () => {
+    const snap = snapshotWithManyR2Tables(30);
+    const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables: [] }));
+    expect(issues).toHaveLength(1);
+    /** @type {string[]} */
+    const allLines = issues[0].lines;
+    const body = allLines.join("\n");
+    expect(body).toMatch(/\[R2\] RLS 꺼진 표 30개/);
+    const itemLines = allLines.filter((l) => l.includes("table_0"));
+    expect(itemLines.length).toBe(DB_PERM_ITEMS_PER_RULE);
+    expect(body).toMatch(/… 외 20건/);
+  });
+
+  // 검사관 지적(세션568) — R1·R2 만 전용 시험이 있고 R3·R5·R6·R4 에는 상한이 실제로
+  // 적용되는지 검사하는 시험이 없어, capRuleItems 호출을 그 셋에서만 빼도 52개가 전부
+  // 초록이었다. R1~R6(R4 는 신규·사라짐 둘 다)이 모두 11건 이상 걸리는 스냅샷 하나로
+  // 규칙마다 개별 확인한다.
+  it("R1~R6(R4 는 신규·사라짐 둘 다)이 모두 11건 이상 걸리면 규칙마다 항목이 정확히 10개 + '… 외 N건'이다", () => {
+    const N = 11;
+    const relations = [];
+    const policies = [];
+    const definer_functions = [];
+    const public_extensions = [];
+
+    // R3 — anon 대상 USING(true) UPDATE 정책. R3 는 정책만 보고 표 권한 게이트가 없으므로
+    // 표 쓰기 권한을 전부 false 로 둬 R1 에는 안 걸리게 한다(R1 은 "표 권한 true" 가 ①조건).
+    // ⚠️ policies 배열에 R1 정책보다 먼저 넣는다 — R1 의 INSERT 정책(with_check="true")도
+    // R3(항상참) 판정에 함께 걸리는데(별개 규칙이라 겹쳐도 무방), capRuleItems 가 앞에서부터
+    // 10개를 자르므로 R3 구간에 r3_ 항목이 보이려면 policies 순서상 먼저 와야 한다.
+    for (let i = 0; i < N; i++) {
+      const name = `r3_${String(i).padStart(3, "0")}`;
+      relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: false, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+      policies.push({ table: name, name: "r3hole", cmd: "UPDATE", roles: ["anon"], permissive: true, qual: "true", with_check: null });
+    }
+
+    // R1 — anon INSERT 표 권한 + 실제 도달 정책을 가진 표 N개(부수로 R3 에도 걸린다 — 무관).
+    for (let i = 0; i < N; i++) {
+      const name = `r1_${String(i).padStart(3, "0")}`;
+      relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: false, anon_insert: true, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+      policies.push({ table: name, name: "r1hole", cmd: "INSERT", roles: ["anon"], permissive: true, qual: null, with_check: "true" });
+    }
+
+    // R2 — RLS 꺼진 표(쓰기 권한 전부 false 라 R1 에는 안 걸림) N개.
+    for (let i = 0; i < N; i++) {
+      relations.push({
+        schema: "public", name: `r2_${String(i).padStart(3, "0")}`, kind: "r",
+        rls_enabled: false, rls_forced: false,
+        anon_select: false, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+    }
+
+    // R4 — 신규(anon_select true 인데 baseline 밖) N개 + 사라짐(baseline 에만 있고 실제 anon_select 없음) N개.
+    for (let i = 0; i < N; i++) {
+      const name = `r4new_${String(i).padStart(3, "0")}`;
+      relations.push({
+        schema: "public", name, kind: "r", rls_enabled: true, rls_forced: false,
+        anon_select: true, anon_insert: false, anon_update: false, anon_delete: false, anon_truncate: false,
+        authenticated_select: false, authenticated_insert: false, authenticated_update: false, authenticated_delete: false, authenticated_truncate: false,
+        column_write_grants: [],
+      });
+      policies.push({ table: name, name: "r4read", cmd: "SELECT", roles: ["anon"], permissive: true, qual: "true", with_check: null });
+    }
+    const publicReadTables = Array.from({ length: N }, (_, i) => `r4gone_${String(i).padStart(3, "0")}`);
+
+    // R5 — anon 실행 가능 SECURITY DEFINER 함수 N개.
+    for (let i = 0; i < N; i++) {
+      definer_functions.push({ schema: "public", name: `r5_${String(i).padStart(3, "0")}`, anon_execute: true, authenticated_execute: false });
+    }
+
+    // R6 — public 스키마 확장 N개(ALLOWLIST 밖).
+    for (let i = 0; i < N; i++) public_extensions.push(`r6_${String(i).padStart(3, "0")}`);
+
+    const snap = { checked_at: "2026-09-24T00:00:00Z", relations, policies, definer_functions, public_extensions, definer_views: [] };
+    const issues = /** @type {any[]} */ (evaluateDbPermissions(snap, { publicReadTables }));
+    expect(issues).toHaveLength(1);
+    /** @type {string[]} */
+    const allLines = issues[0].lines;
+
+    /**
+     * 규칙 구간(머리줄부터 다음 [Rn] 또는 끝까지)을 잘라, 그 안에서 prefix 를 담은
+     * 항목 줄 개수와 "… 외 N건" 문구를 확인한다.
+     * @param {string} headerRe 머리줄을 찾는 정규식 소스
+     * @param {string} itemPrefix 항목 줄에 포함된 접두(예: "r1_")
+     * @param {number} expectedOmitted
+     */
+    function checkRuleSection(headerRe, itemPrefix, expectedOmitted) {
+      const start = allLines.findIndex((l) => new RegExp(headerRe).test(l));
+      expect(start).toBeGreaterThan(-1);
+      const end = allLines.findIndex((l, i) => i > start && /^\[R\d\]/.test(l));
+      const section = allLines.slice(start, end === -1 ? undefined : end);
+      const itemLines = section.filter((l) => l.includes(itemPrefix));
+      expect(itemLines.length).toBe(DB_PERM_ITEMS_PER_RULE);
+      expect(section.join("\n")).toMatch(new RegExp(`… 외 ${expectedOmitted}건`));
+    }
+
+    const omitted = N - DB_PERM_ITEMS_PER_RULE; // 11 - 10 = 1
+    checkRuleSection(`^\\[R1\\] anon/authenticated 쓰기 권한 ${N}건`, "r1_", omitted);
+    checkRuleSection(`^\\[R2\\] RLS 꺼진 표 ${N}개`, "r2_", omitted);
+    // R3 는 R1 의 INSERT 정책(with_check="true")도 항상참으로 함께 걸려 전체 22건이 된다
+    // (R1 은 표 권한 게이트가 있어 22건이 안 되지만, R3 는 정책만 보므로 걸린다 — 서로 다른
+    // 규칙이니 겹쳐도 무방, 다만 "… 외 N건"의 N 은 그 규칙의 실제 전체 개수 기준이어야 한다).
+    const r3Total = N * 2; // r1_ 의 INSERT 정책 N개 + r3_ 의 UPDATE 정책 N개
+    checkRuleSection(`^\\[R3\\] 항상 참\\(또는 로그인만 하면 참\\) 쓰기 정책 ${r3Total}건`, "r3_", r3Total - DB_PERM_ITEMS_PER_RULE);
+    // R4 는 신규/사라짐이 한 머리줄 아래 두 섹션으로 나뉜다 — 각각 별도 확인.
+    const r4Start = allLines.findIndex((l) => l.startsWith("[R4]"));
+    expect(r4Start).toBeGreaterThan(-1);
+    expect(allLines[r4Start]).toMatch(new RegExp(`신규 ${N}개 / 사라짐 ${N}개`));
+    const r4End = allLines.findIndex((l, i) => i > r4Start && /^\[R\d\]/.test(l));
+    const r4Section = allLines.slice(r4Start, r4End === -1 ? undefined : r4End);
+    const newItems = r4Section.filter((l) => l.includes("신규(명단 밖): r4new_"));
+    const goneItems = r4Section.filter((l) => l.includes("사라짐(기준 안): r4gone_"));
+    expect(newItems.length).toBe(DB_PERM_ITEMS_PER_RULE);
+    expect(goneItems.length).toBe(DB_PERM_ITEMS_PER_RULE);
+    expect(r4Section.join("\n")).toMatch(new RegExp(`신규\\(명단 밖\\)[\\s\\S]*… 외 ${omitted}건`));
+    expect(r4Section.join("\n")).toMatch(new RegExp(`사라짐\\(기준 안\\)[\\s\\S]*… 외 ${omitted}건`));
+    checkRuleSection(`^\\[R5\\] anon/authenticated 실행 가능 SECURITY DEFINER 함수 ${N}개`, "r5_", omitted);
+    checkRuleSection(`^\\[R6\\] public 스키마에 설치된 확장 ${N}개`, "r6_", omitted);
+  });
+});
+
+describe("permAlertDeliveryFailed (세션568)", () => {
+  it("⑩ 이슈가 있고 전송 결과 중 하나라도 실패면 true", () => {
+    const issues = /** @type {any} */ ([{ collector: "db-permissions" }]);
+    expect(permAlertDeliveryFailed(issues, [{ sent: true }, { sent: false }])).toBe(true);
+  });
+
+  it("⑩ 이슈가 있고 전부 성공이면 false", () => {
+    const issues = /** @type {any} */ ([{ collector: "db-permissions" }]);
+    expect(permAlertDeliveryFailed(issues, [{ sent: true }, { sent: true }])).toBe(false);
+  });
+
+  it("⑩ 이슈가 없으면(다른 이슈만) 전송 실패가 있어도 false — 이 판정은 ⑩ 전용", () => {
+    const issues = /** @type {any} */ ([{ collector: "collect-transport" }]);
+    expect(permAlertDeliveryFailed(issues, [{ sent: false }])).toBe(false);
+  });
+
+  it("이슈·전송결과 둘 다 비어 있으면 false", () => {
+    expect(permAlertDeliveryFailed([], [])).toBe(false);
+  });
+});
+
+// main() 이 실제로 permAlertDeliveryFailed 를 호출하고, 그 결과로 exitCode 를 세팅하는지는
+// 함수 단위 테스트로는 못 본다(main() 은 실제 DB·네트워크를 부른다) — 소스 대조로 배선만 확인.
+describe("main() 배선 — 소스 대조 (세션568)", () => {
+  it("전송 루프 뒤 permAlertDeliveryFailed 호출과 process.exitCode = 1 세팅이 있다", () => {
+    const src = readFileSync(new URL("./monitor-collectors.mjs", import.meta.url), "utf8");
+    // 호출부(if 조건 안, 좌변 고정)만 잡는다 — 함수 선언부에는 안 걸린다.
+    const callMatch = /if\s*\(\s*process\.env\.GITHUB_ACTIONS\s*&&\s*permAlertDeliveryFailed\(issues,\s*sendResults\)\s*\)/.exec(src);
+    expect(callMatch).not.toBeNull();
+    const idx = callMatch?.index ?? -1;
+    expect(idx).toBeGreaterThan(-1);
+    const nearby = src.slice(idx, idx + 300);
+    expect(nearby).toMatch(/process\.exitCode\s*=\s*1/);
+  });
+
+  it("이상 없음(월요일 리마인드) 경로도 전송 결과를 확인해 실패 시 exitCode = 1 을 세팅한다", () => {
+    const src = readFileSync(new URL("./monitor-collectors.mjs", import.meta.url), "utf8");
+    const idx = src.indexOf("주간 DB 권한 점검</b> — 이상 없음");
+    expect(idx).toBeGreaterThan(-1);
+    const nearby = src.slice(idx, idx + 400);
+    expect(nearby).toMatch(/remindResult\.sent/);
+    // 줄머리(들여쓰기만) 에 주석 처리된 상태(// process.exitCode = 1)가 아니라 실제로 살아있는
+    // 문장인지 확인 — 그 줄을 직접 찾아 // 로 시작하지 않는지 본다(guards-must-be-mutation-tested
+    // "주석 처리된 코드도 정규식에 매칭된다" 함정 대비).
+    const lines = nearby.split("\n");
+    const exitLine = lines.find((l) => /process\.exitCode\s*=\s*1/.test(l));
+    expect(exitLine).toBeDefined();
+    expect(exitLine?.trim().startsWith("//")).toBe(false);
   });
 });

@@ -156,16 +156,70 @@ const TELEGRAM_MAX_CHARS = 4000;
 const ISSUE_SEPARATOR = "\n\n———\n\n";
 
 /**
+ * 잘린 끝에 남은 미완성 HTML 엔티티(`&` 로 시작하고 `;` 없이 끝나는 조각)를 지운다.
+ * @param {string} s
+ * @returns {string}
+ */
+function stripDanglingEntity(s) {
+  return s.replace(/&[a-zA-Z#0-9]*$/, "");
+}
+
+/**
+ * 텍스트 블록 1개를 maxLen 이하로 맞춘다. 이슈 1건이 그 자체로 한도를 넘을 때 쓴다.
+ * 길이가 maxLen 이하면 그대로 반환하고, 넘으면 `\n` 경계에서만 위에서부터 줄을 담아
+ * 전체가 maxLen 이하가 되게 하고 마지막에 생략 안내 줄을 붙인다.
+ * 첫 줄 하나만으로도 maxLen 을 넘으면 그 줄 자체를 잘라 담되, 잘린 끝의 미완성 HTML
+ * 엔티티(`&amp` 처럼 `;` 없이 끊긴 조각)는 지운다 — 남기면 텔레그램이 400 을 낸다.
+ * @param {string} block
+ * @param {number} maxLen
+ * @returns {string}
+ */
+export function fitBlock(block, maxLen) {
+  if (block.length <= maxLen) return block;
+  const lines = block.split("\n");
+  /** @type {string[]} */
+  const kept = [];
+  let used = 0;
+  let i = 0;
+  for (; i < lines.length; i++) {
+    const line = lines[i];
+    const addLen = line.length + (kept.length > 0 ? 1 : 0); // 줄바꿈 1자
+    if (used + addLen > maxLen) break;
+    kept.push(line);
+    used += addLen;
+  }
+  const skippedCount = lines.length - kept.length;
+  if (kept.length === 0) {
+    // 첫 줄 하나만으로 이미 한도 초과 — 그 줄 자체를 잘라 담는다.
+    const suffix = `\n… (이하 ${lines.length}줄 생략 — 텔레그램 글자 수 한도)`;
+    const cut = stripDanglingEntity(lines[0].slice(0, Math.max(0, maxLen - suffix.length)));
+    return `${cut}${suffix}`;
+  }
+  const suffix = `\n… (이하 ${skippedCount}줄 생략 — 텔레그램 글자 수 한도)`;
+  let result = kept.join("\n");
+  // suffix 를 더해도 한도를 넘으면 kept 뒤쪽 줄을 더 덜어낸다.
+  while (result.length + suffix.length > maxLen && kept.length > 0) {
+    kept.pop();
+    result = kept.join("\n");
+  }
+  const finalSkipped = lines.length - kept.length;
+  return `${result}\n… (이하 ${finalSkipped}줄 생략 — 텔레그램 글자 수 한도)`;
+}
+
+/**
  * 이슈 목록을 텔레그램 메시지 문자열로 합친다.
- * 평소엔 1통으로 모으고, 한도를 넘으면 이슈 경계에서 여러 통으로 나눈다
- * (이슈 1건이 통 사이에 잘리지 않는다).
+ * 평소엔 1통으로 모으고, 한도를 넘으면 이슈 경계에서 여러 통으로 나눈다.
+ * 이슈 1건 자체가 한 통(헤더 포함)보다 크면 `fitBlock` 으로 줄 단위로 잘라 생략 줄을
+ * 붙인다 — 그래서 모든 통은 항상 한도 이하이고, 첫 통은 항상 헤더 + 첫 이슈를 함께 담는다
+ * (헤더만 담긴 통은 생기지 않는다).
  * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls"|"outage", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
  * @returns {string[]} 전송할 메시지 배열 (이슈 0건이면 빈 배열)
  */
 export function buildMessages(issues) {
   if (issues.length === 0) return [];
   const header = `🛎 <b>수집기 감시 — 이상 ${issues.length}건</b>`;
-  const blocks = issues.map(formatIssue);
+  const blockLimit = TELEGRAM_MAX_CHARS - header.length - ISSUE_SEPARATOR.length;
+  const blocks = issues.map((issue) => fitBlock(formatIssue(issue), blockLimit));
 
   /** @type {string[]} */
   const messages = [];
