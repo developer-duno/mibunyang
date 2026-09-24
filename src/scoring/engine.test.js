@@ -50,6 +50,7 @@ import {
   calcAll,
   locationTotalForProfile,
 } from "./engine";
+import { devZoneKeyword, nameMatchesDevZone } from "./scoreFuture";
 import { PRESALE_PREMIUM_COEFF, AGE_PREMIUM } from "@/constants/brands";
 
 // --- 팩토리 함수: 테스트용 아파트 데이터 생성 ---
@@ -3101,4 +3102,114 @@ describe("좌표 자리표시 의심(coordShared) — 중립 채점 + 위치 확
   //   `_coordUnknown: false` 로 되돌리면 위 "중립값" 테스트들이 전부 red 여야 한다.
   //   scoreLocation.ts 의 `apt._coordUnknown ? COORD_UNKNOWN_TRANSPORT_SCORE : rawTransport` 를
   //   `rawTransport`(무조건) 로 바꿔도 동일하게 red.
+});
+
+describe("좌표 의심 단지의 이름-지구 일치 예외 — 그 칸의 개발호재 점수 유지 (세션569)", () => {
+  // 실데이터(apartments_flat 2026-09-24) 이름·원문·gu 를 그대로 옮긴 픽스처.
+  const SIHEUNG_1 = {
+    name: "시흥거모지구 대방 엘리움 더 루체Ⅰ(S-2BL)",
+    region: "경기",
+    gu: "시흥시",
+    cityDev: "시흥거모공공주택지구 0.9km",
+    industryDev: "안산신길 3.8km",
+    transitDev: "경강선 장곡역 공사중",
+    devDist: 1.2,
+  };
+  const BUCHEON_A5 = {
+    name: "부천대장A5 행복주택",
+    region: "경기",
+    gu: "부천시 오정구",
+    cityDev: "부천원종공공주택지구 1km",
+    industryDev: "부천대장2 1km",
+    transitDev: "김포경전철 연장 김포공항역 추진",
+    devDist: 1.5,
+  };
+  const BUCHEON_EPYEON = { ...BUCHEON_A5, name: "e편한세상대장퍼스티움A-5BL 신혼희망타운" };
+  const BUKSUWON = {
+    name: "북수원이목지구 디에트르 더 리체Ⅰ",
+    region: "경기",
+    gu: "수원시 장안구",
+    cityDev: "수원조원 0.6km",
+    industryDev: null,
+    transitDev: "신분당선 수성중사거리역 공사중",
+    devDist: 0.8,
+  };
+  const sub = (/** @type {any} */ cats, /** @type {string} */ name) =>
+    cats.future.subs.find((/** @type {any} */ s) => s.name === name);
+
+  it("핵심어 뽑기 — 끝 숫자·접미어·시군 접두를 떼어낸다 (실데이터 표기)", () => {
+    expect(devZoneKeyword("시흥거모공공주택지구", "시흥시", "경기")).toBe("거모");
+    expect(devZoneKeyword("부천대장2", "부천시 오정구", "경기")).toBe("대장");
+    expect(devZoneKeyword("부천원종공공주택지구", "부천시 오정구", "경기")).toBe("원종");
+    expect(devZoneKeyword("수원조원", "수원시 장안구", "경기")).toBe("조원");
+    expect(devZoneKeyword("안산신길", "시흥시", "경기")).toBe("안산신길"); // 남의 시 이름은 안 뗀다
+    // 검단Ⅳ 의 gu 는 "검단구" 라 "김포" 접두가 떨어지지 않는다(어느 쪽이든 이름과 불일치)
+    expect(devZoneKeyword("김포북변", "검단구", "인천")).toBe("김포북변");
+    expect(devZoneKeyword("한강시네폴리스", "검단구", "인천")).toBe("한강시네폴리스");
+  });
+  it("핵심어 뽑기 — 접미어는 긴 것부터, 2글자 미만은 null", () => {
+    expect(devZoneKeyword("판교제2도시첨단산업단지", null, null)).toBe("판교제2");
+    expect(devZoneKeyword("시흥A지구", "시흥시", "경기")).toBeNull();
+  });
+  it("지구명이 그 단지의 시 이름·시도 약칭 그 자체면 불일치 — 도시명이 든 단지 이름으로 되살리지 않는다(세션569 검사관)", () => {
+    expect(devZoneKeyword("순천", "순천시", "전남")).toBeNull();
+    expect(nameMatchesDevZone("순천 오네뜨센트럴", "순천", "순천시", "전남")).toBe(false);
+    expect(devZoneKeyword("안성1", "안성시", "경기")).toBeNull();
+    expect(nameMatchesDevZone("안성 아양 금호어울림", "안성1", "안성시", "경기")).toBe(false);
+    expect(devZoneKeyword("인천", "중구", "인천")).toBeNull();
+    expect(nameMatchesDevZone("인천 영종 하늘도시", "인천", "중구", "인천")).toBe(false);
+  });
+  it("포함 판정 — 참(시흥거모 도시개발 · 부천대장 산업개발 2곳)", () => {
+    expect(nameMatchesDevZone(SIHEUNG_1.name, "시흥거모공공주택지구", "시흥시", "경기")).toBe(true);
+    expect(nameMatchesDevZone(BUCHEON_A5.name, "부천대장2", "부천시 오정구", "경기")).toBe(true);
+    expect(nameMatchesDevZone(BUCHEON_EPYEON.name, "부천대장2", "부천시 오정구", "경기")).toBe(true);
+  });
+  it("포함 판정 — 거짓(북수원이목·검단Ⅳ·부천대장의 도시개발·시흥거모의 산업개발)", () => {
+    expect(nameMatchesDevZone(BUKSUWON.name, "수원조원", "수원시 장안구", "경기")).toBe(false);
+    expect(nameMatchesDevZone("제일풍경채 검단Ⅳ", "김포북변", "검단구", "인천")).toBe(false);
+    expect(nameMatchesDevZone("제일풍경채 검단Ⅳ", "한강시네폴리스", "검단구", "인천")).toBe(false);
+    expect(nameMatchesDevZone(BUCHEON_EPYEON.name, "부천원종공공주택지구", "부천시 오정구", "경기")).toBe(false);
+    expect(nameMatchesDevZone(SIHEUNG_1.name, "안산신길", "시흥시", "경기")).toBe(false);
+    expect(nameMatchesDevZone(null, "부천대장2", "부천시 오정구", "경기")).toBe(false);
+  });
+
+  it("calcCats 경유 — 시흥거모: 도시개발만 좌표 정상일 때와 같게, 산업·교통은 0 + '위치 확인 중'", () => {
+    const shared = calcCats(makeApt(/** @type {any} */ ({ ...SIHEUNG_1, coordShared: true })), {});
+    const normal = calcCats(makeApt(/** @type {any} */ ({ ...SIHEUNG_1, coordShared: false })), {});
+    expect(sub(shared, "도시개발")?.score).toBe(70); // 0.9km → CITY_DIST_TIERS 1km 등급
+    expect(sub(shared, "도시개발")).toEqual(sub(normal, "도시개발"));
+    for (const name of ["교통개발", "산업개발"]) {
+      expect(sub(shared, name)?.score).toBe(0);
+      expect(sub(shared, name)?.info).toBe("위치 확인 중");
+    }
+  });
+  it("calcCats 경유 — 부천대장 2곳: 산업개발만 좌표 정상일 때와 같게, 도시·교통은 0 + '위치 확인 중'", () => {
+    for (const apt of [BUCHEON_A5, BUCHEON_EPYEON]) {
+      const shared = calcCats(makeApt(/** @type {any} */ ({ ...apt, coordShared: true })), {});
+      const normal = calcCats(makeApt(/** @type {any} */ ({ ...apt, coordShared: false })), {});
+      expect(sub(shared, "산업개발")?.score).toBe(100); // 1km → INDUSTRY_DIST_TIERS 최상위
+      expect(sub(shared, "산업개발")).toEqual(sub(normal, "산업개발"));
+      for (const name of ["교통개발", "도시개발"]) {
+        expect(sub(shared, name)?.score).toBe(0);
+        expect(sub(shared, name)?.info).toBe("위치 확인 중");
+      }
+    }
+  });
+  it("calcCats 경유 — 북수원이목: 이름 불일치라 개발호재 3종 전부 0 + '위치 확인 중' 그대로", () => {
+    const shared = calcCats(makeApt(/** @type {any} */ ({ ...BUKSUWON, coordShared: true })), {});
+    for (const name of ["교통개발", "도시개발", "산업개발"]) {
+      expect(sub(shared, name)?.score).toBe(0);
+      expect(sub(shared, name)?.info).toBe("위치 확인 중");
+    }
+  });
+  it("좌표 정상 단지는 이름-지구 일치 여부와 무관하게 점수·문구가 같다 (예외는 좌표 의심일 때만)", () => {
+    const matching = calcCats(makeApt(/** @type {any} */ ({ ...SIHEUNG_1, coordShared: false })), {});
+    const other = calcCats(
+      makeApt(/** @type {any} */ ({ ...SIHEUNG_1, name: "군자 서희스타힐스", coordShared: false })),
+      {}
+    );
+    const undef = calcCats(makeApt(/** @type {any} */ ({ ...SIHEUNG_1 })), {});
+    expect(matching.future).toEqual(other.future);
+    expect(matching.future).toEqual(undef.future);
+  });
 });
