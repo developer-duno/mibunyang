@@ -2,7 +2,7 @@ import { useState, useCallback, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { SkeletonList } from "@/components/primitives";
 import { useCollectorMonitoring } from "@/hooks/useCollectorMonitoring";
-import { collectorLabel, tableLabel } from "./collectorLabels";
+import { collectorLabel, describeRunMarker, tableLabel } from "./collectorLabels";
 import type { ShowToast, CollectorLastRun } from "@/types/admin";
 
 /** 3일/7일 경과 경고 임계값 (밀리초). */
@@ -29,10 +29,14 @@ function fmtTime(iso: string | null): string {
   return `${p(d.getMonth() + 1)}/${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-/** lastRun.status → 배지 색상/라벨. */
+/** lastRun.status → 배지 색상/라벨. 성공이어도 경고 마커(WARN_STEPS 등)가 있으면 노랑 "성공(경고)"(세션571). */
 function statusBadge(run: CollectorLastRun | null): { color: string; bg: string; label: string } {
   if (!run) return { color: C.muted, bg: C.slate100, label: "실행 기록 없음" };
-  if (run.status === "success") return { color: C.green, bg: C.greenLight, label: "성공" };
+  if (run.status === "success") {
+    if (describeRunMarker(run.errorMessage)?.tone === "warn")
+      return { color: C.amber, bg: C.amberLight, label: "성공(경고)" };
+    return { color: C.green, bg: C.greenLight, label: "성공" };
+  }
   if (run.status === "failure") return { color: C.red, bg: C.redLight, label: "실패" };
   if (run.status === "partial") return { color: C.amber, bg: C.amberLight, label: "부분 성공" };
   return { color: C.muted, bg: C.slate100, label: run.status };
@@ -135,6 +139,17 @@ const S: Record<string, CSSProperties> = {
     wordBreak: "break-word",
     lineHeight: 1.5,
   },
+  runWarn: {
+    marginTop: 6,
+    fontSize: F.micro,
+    fontWeight: 600,
+    color: C.amber,
+    background: C.amberLight,
+    borderRadius: 4,
+    padding: "2px 6px",
+    wordBreak: "break-word",
+    lineHeight: 1.5,
+  },
   quota: { marginTop: 4, fontSize: 10, color: C.muted, wordBreak: "break-word", lineHeight: 1.5 },
   detailEmpty: { fontSize: F.micro, color: C.muted },
 };
@@ -200,6 +215,7 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                 const badge = statusBadge(c.lastRun);
                 const fresh = freshnessColor(c.lastRun?.finishedAt ?? null);
                 const isOpen = expanded.has(c.collector);
+                const marker = describeRunMarker(c.lastRun?.errorMessage);
                 const quotaText = c.recentQuota.map((q) => `${q.apiName ?? "?"} ${q.callCount ?? 0}건`).join(" · ");
                 return (
                   <div key={c.collector} style={S.runCell}>
@@ -236,7 +252,7 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                         ) : (
                           <div style={S.detailEmpty}>수집 실행 기록이 아직 없습니다 (API 호출 기록만 있음)</div>
                         )}
-                        {c.lastRun?.errorMessage && <div style={S.runError}>{c.lastRun.errorMessage}</div>}
+                        {marker && <div style={marker.tone === "warn" ? S.runWarn : S.runError}>{marker.text}</div>}
                         {quotaText && <div style={S.quota}>API 호출: {quotaText}</div>}
                       </div>
                     )}

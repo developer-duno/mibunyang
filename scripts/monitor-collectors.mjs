@@ -25,7 +25,7 @@ import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isA
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
-import { buildBriefing, splitRuns } from "./monitor-briefing.mjs";
+import { buildBriefing, extractWarnRuns, splitRuns } from "./monitor-briefing.mjs";
 import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
 import { groupSharedCoords } from "./fix-placeholder-addresses.mjs";
 import {
@@ -397,7 +397,10 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⑤-b 미발화만 의미가 있다: 재시작으로 죽으면 행 자체가 없고, 치명 실패(failure)는 ⑬ 이 당일 잡는다.
   //   ⚠️ 부작용: 이 배열에 들면 ② 빈 성공 점검(idempotentCollectorSet)에서 빠진다 — naver-pipeline 의
   //   ok 는 6-경고수라 success 로 끝나면 최소 3(치명 단계 1·2·5 는 경고가 될 수 없다)이어서 ② 가 볼 것이 없다.
-  { collector: "naver-pipeline",   stale_days: 4,  owner: "네이버 로컬 파이프라인 완주 기록 (월·목 08:00, bat 끝 1행 — 목요일 회차가 끊기면 토요일 09:00 울린다)" },
+  //   since = 등재일(세션571). 행이 아직 0개여도 "등재 뒤 stale_days 가 지나도록 기록 0" 이면 울린다 —
+  //   첫 정기 실행 9/28(월) 08:00 → 행 기대 12:00. daily 감시 실제 발화 09:48~09:55 KST 라 9/28 아침(3.41일)엔
+  //   조용하고 9/29 09:48(4.41일)부터 울린다. 9/24 로 두면 9/28 아침 오탐.
+  { collector: "naver-pipeline",   stale_days: 4,  since: "2026-09-25", owner: "네이버 로컬 파이프라인 완주 기록 (월·목 08:00, bat 끝 1행 — 목요일 회차가 끊기면 토요일 09:00 울린다)" },
   // naver-devplan = 네이버 개발계획(도로·철도·역·지구) — 세션 517 에 로컬 러너 매월 20일로 크론 편입.
   //   네이버 IP 가 필요해 GH 러너에서 못 돌리고, 편입 전까지는 **어느 스케줄에도 없어** 사람이
   //   손으로 부를 때만 돌았다(세션 510b 지적 → 516 재확인). GH run 이 없어 ①③ 대상 밖 →
@@ -774,6 +777,24 @@ export function scopeCompetitionToAh(categories, fields, ahCounts) {
 }
 
 /**
+ * ⑤-b 미발화 조치 문구(2줄). naver- 접두 수집기는 KOSIS 로컬 러너가 아니라 네이버 로컬 파이프라인(예약 작업
+ * MibunyangNaverCollect, 월·목 08:00)이 돌린다 — 조치 문구도 그쪽을 가리켜야 한다(세션570).
+ * @param {string} collector
+ * @returns {string[]}
+ */
+function staleActionLines(collector) {
+  return collector.startsWith("naver-")
+    ? [
+        `[조치 1] 예약 작업 MibunyangNaverCollect(월·목 08:00) 결과 확인 — schtasks /query /tn MibunyangNaverCollect`,
+        `[조치 2] naver-collect.log 확인 → 남은 단계 수동 재개 뒤 node scripts/record-pipeline-run.mjs done --collector=naver-pipeline --ok=6 --skip=0`,
+      ]
+    : [
+        `[조치 1] 집서버 작업 확인 — schtasks /query /tn MibunyangKosisLocal (로컬 러너 수집기인 경우)`,
+        `[조치 2] 수동 보충 실행 — node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`,
+      ];
+}
+
+/**
  * ⑤ 외부 API 의존 collector 의 "정상 실행 + 데이터 갱신 0건 연속 N회" 탐지.
  * collector_runs 컬럼 진실의 원천 = `collector` (NOT phase). status=success 인데
  * ok_count=0 행이 OUTAGE_MIN_CONSECUTIVE 회 누적되면 외부 API 장기 중단 의심.
@@ -783,19 +804,44 @@ export function scopeCompetitionToAh(categories, fields, ahCounts) {
  *   - checkExternalApiStale: 최근 N행 모두 ok=0 + 첫 ok=0 시각 stale_days 초과 시만 알림
  *     (housing-permits 식 silent partial 누적을 잡되 단발 0건 오탐은 ②가 잡으니 중복 회피)
  *
- * @param {Array<{ collector: string, stale_days: number, owner: string }>} targets
+ * @param {Array<{ collector: string, stale_days: number, owner: string, since?: string }>} targets
+ *   since(선택, "YYYY-MM-DD") = 등재일. 행이 0개일 때의 기준 시각으로 쓴다(세션571) — 없으면 종전대로 skip.
  * @param {Record<string, Array<{ status?: string, ok_count?: number|null, skip_count?: number|null, finished_at?: string|null }>>} runsByCollector
- *   collector 별 최근 N행 (finished_at DESC). 빈 배열이면 점검 skip.
+ *   collector 별 최근 N행 (finished_at DESC). 빈 배열이면 since 가 있을 때만 "등재 뒤 행 0" 판정, 없으면 skip.
  * @param {Date} [now] 기준 시각 (테스트 주입용).
+ * @param {{ queryFailed?: ReadonlySet<string> }} [opts] queryFailed = collector_runs 조회 자체가 실패한
+ *   collector 이름 집합(세션571). 여기 있으면 rows=[] 이어도 "등재 뒤 행 0"으로 판정하지 않는다 —
+ *   조회 실패는 check-failed 이슈가 따로 알린다(호출부 참조).
  * @returns {Issue[]}
  */
-export function checkExternalApiStale(targets, runsByCollector, now = new Date()) {
+export function checkExternalApiStale(targets, runsByCollector, now = new Date(), opts = {}) {
   /** @type {Issue[]} */
   const issues = [];
-  for (const { collector, stale_days, owner } of targets) {
+  for (const { collector, stale_days, owner, since } of targets) {
     const rows = runsByCollector[collector] ?? [];
     // 행이 0개면 기준 시각 자체가 없어 아래 두 분기 다 판정 불가 (세션 504).
-    if (rows.length === 0) continue;
+    // 단 등재일(since)이 있으면 그것을 기준 시각으로 쓴다(세션571) — 기록 자체가 한 번도 안 남는 사고
+    // (bat 끝 호출 누락·.env 로드 실패·쓰기 실패)는 행이 없어서 ⑤-b 가 영영 못 본다.
+    if (rows.length === 0) {
+      // 조회 실패는 행 0 이 아니다 — 세션571 검사관 🟡1
+      if (!since || opts.queryFailed?.has(collector)) continue;
+      const sinceIso = `${since}T00:00:00+09:00`;
+      const sinceMs = new Date(sinceIso).getTime();
+      if (Number.isNaN(sinceMs)) continue;
+      const days = (now.getTime() - sinceMs) / 86400000;
+      if (days <= stale_days) continue;
+      issues.push({
+        kind: "stale",
+        collector,
+        detail: `${owner} 등재(${since}) 뒤 ${Math.floor(days)}일 동안 collector_runs 행 0 — 기록 자체가 안 남고 있음`,
+        lines: [
+          "등재일 이후 한 번도 기록이 없습니다 — run-naver-local.bat 끝의 record-pipeline-run.mjs 호출·.env 로드·collector_runs 쓰기 여부를 확인",
+          ...staleActionLines(collector),
+        ],
+        at: new Date(sinceMs).toISOString(),
+      });
+      continue;
+    }
 
     // ⑤-b 미발화 — 최신 행이 stale_days 초과 = collector 가 안 돌고 있음.
     //    GH yml 없는 로컬 러너 수집기(KOSIS 10종)는 ③ 워크플로 점검 대상 밖이라
@@ -808,19 +854,11 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
           kind: "stale",
           collector,
           detail: `${owner} 마지막 실행 ${Math.floor(idleDays)}일 전 — ${stale_days}일 주기 초과 (미발화 의심)`,
-          // naver- 접두 수집기는 KOSIS 로컬 러너가 아니라 네이버 로컬 파이프라인(예약 작업
-          // MibunyangNaverCollect, 월·목 08:00)이 돌린다 — 조치 문구도 그쪽을 가리켜야 한다(세션570).
-          lines: collector.startsWith("naver-")
-            ? [
-                `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
-                `[조치 1] 예약 작업 MibunyangNaverCollect(월·목 08:00) 결과 확인 — schtasks /query /tn MibunyangNaverCollect`,
-                `[조치 2] naver-collect.log 확인 → 남은 단계 수동 재개 뒤 node scripts/record-pipeline-run.mjs done --collector=naver-pipeline --ok=6 --skip=0`,
-              ]
-            : [
-                `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
-                `[조치 1] 집서버 작업 확인 — schtasks /query /tn MibunyangKosisLocal (로컬 러너 수집기인 경우)`,
-                `[조치 2] 수동 보충 실행 — node scripts/kosis-local-runner.mjs --date=YYYY-MM-DD`,
-              ],
+          // 조치 문구는 naver-/KOSIS 로 갈린다 — staleActionLines(세션570·571).
+          lines: [
+            `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
+            ...staleActionLines(collector),
+          ],
           at: latest.finished_at,
         });
         continue; // 미발화면 아래 outage 판정은 같은 원인 이중 알림 — skip
@@ -955,12 +993,14 @@ export const APPLYHOME_UNSOLD_SAMPLE_LIMIT = 8;
 
 /**
  * ⑫(d) 사람 보류(hold) 기준 명단(세션570, 사장님 결정 2026-09-24) — 세션569 가 "자료 없음"으로 비운 11곳.
+ * + 세션571 대표 2행(사장님 결정 2026-09-24 ⓐ — 화면 대표 행의 0 도 근거 없음: 마지막 청약홈 기록이 2022 무순위 27/1·8/3, 이후 공고 없음).
  * DB 의 hold 명단이 이것과 다르면(추가·해제) 알린다. 의도한 변경이면 이 상수를 같은 PR 에서 고친다
  * (개수가 아니라 **명단**으로 비교한다 — 하나 풀리고 하나 생기면 개수는 같다, expect-ids-not-counts).
  */
 export const HOLD_BASELINE_IDS = Object.freeze([
-  "ah-2021910123", "ah-2021910165", "ah-2022910170", "ah-2022910216", "ah-2022910285", "ah-2022910320",
-  "ah-2022910325", "ah-2025910235", "ah-2025910236", "ah-2025910250", "ah-2025910274",
+  "ah-2021910123", "ah-2021910165", "ah-2022910170", "ah-2022910216", "ah-2022910285", "ah-2022910303",
+  "ah-2022910320", "ah-2022910325", "ah-2022910363", "ah-2025910235", "ah-2025910236", "ah-2025910250",
+  "ah-2025910274",
 ]);
 
 /** ⑫(e) 보류 재검토 기간(개월) — 보류일(unsold_as_of) + 이 기간이 지나면 재검토 알림. 자동 해제는 없다. */
@@ -2652,26 +2692,36 @@ async function fetchLatestCollectorRuns() {
  * 결함이 있어 폐기 (세션 289, 대상 5→15 확대로 실재화). 호출은 monitor run 당 1회뿐.
  * @param {ReadonlyArray<{ collector: string }>} targets
  * @param {number} [limitPer]
- * @returns {Promise<Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>>}
+ * @returns {Promise<{
+ *   grouped: Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>,
+ *   failed: Map<string, unknown>,
+ * }>} grouped = collector 별 최근 N행(조회 성공분만). failed = 조회 자체가 실패한 collector 이름 → error(세션571 — 조회 실패를 "행 0"으로 읽지 않게 분리).
  */
 async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) {
   const sb = getSupabase();
   const names = targets.map((t) => t.collector);
-  if (names.length === 0) return {};
+  if (names.length === 0) return { grouped: {}, failed: new Map() };
   /** @type {Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>} */
   const grouped = {};
+  /** @type {Map<string, unknown>} */
+  const failed = new Map();
   await Promise.all(
     names.map(async (name) => {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("collector_runs")
         .select("collector,status,ok_count,skip_count,finished_at")
         .eq("collector", name)
         .order("finished_at", { ascending: false })
         .limit(limitPer);
+      if (error) {
+        console.log(`[monitor] ⑤ collector_runs 조회 실패(${name}): ${error.message}`);
+        failed.set(name, error);
+        return;
+      }
       if (data && data.length > 0) grouped[name] = data;
     }),
   );
-  return grouped;
+  return { grouped, failed };
 }
 
 /**
@@ -2767,7 +2817,7 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
     const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
     const { data: runs24h } = await sb
       .from("collector_runs")
-      .select("collector,status,ok_count")
+      .select("collector,status,ok_count,error_message")
       .gte("finished_at", since);
 
     const todayUtc = now.toISOString().slice(0, 10);
@@ -2792,6 +2842,7 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
       prevSnapshot,
       issueCount,
       staleCollectors,
+      warnRuns: extractWarnRuns(runs24h ?? []),
       nowIso: now.toISOString(),
     });
 
@@ -2971,8 +3022,13 @@ async function main() {
     );
 
     // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지
-    const runsByCollector = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
-    const externalStaleIssues = checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector);
+    const { grouped: runsByCollector, failed: queryFailed } = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
+    for (const [name, err] of queryFailed) {
+      issues.push(checkFailedIssue(`⑤ 외부 API 점검(${name} 조회)`, err));
+    }
+    const externalStaleIssues = checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector, new Date(), {
+      queryFailed: new Set(queryFailed.keys()),
+    });
     issues = issues.concat(externalStaleIssues);
 
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)

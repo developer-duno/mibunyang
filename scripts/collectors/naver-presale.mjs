@@ -389,6 +389,21 @@ export function parsePresaleAddress(address) {
   return { region, gu, dong };
 }
 
+/**
+ * 단지 상세(complex) 응답이 비어 실패로 센 단지를 로그 한 줄로 설명한다(세션571).
+ * 전엔 `reporter.fail()` 만 해서 "실패 N" 숫자만 남고 **어느 단지인지** 알 수 없었다.
+ * @param {number | string | null | undefined} no preSaleComplexNumber
+ * @param {number | string | null | undefined} seq announcementPreSaleSequence
+ * @param {ListItem | null | undefined} item 목록 항목(단지 이름 출처)
+ * @returns {string}
+ */
+export function describeComplexFailure(no, seq, item) {
+  return `단지 상세 응답 없음 — no=${no} seq=${seq} ${item?.preSaleComplexName ?? "(이름 없음)"}`;
+}
+
+/** [실패 명단] 로그에 펼칠 최대 건수 — 넘으면 앞 20 + ", …" */
+const FAILED_COMPLEX_LOG_LIMIT = 20;
+
 /** complex + detail 응답 → DB 행 변환
  * @param {ComplexData | null | undefined} complex
  * @param {DetailData | null | undefined} detail
@@ -917,6 +932,9 @@ async function main() {
   let regionUnresolved = 0;
   // --region=X 로 좁혀 돌 때 공유 cortarNo 가 실어 온 다른 지역 단지를 건너뛴 수
   let regionFiltered = 0;
+  // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
+  /** @type {string[]} */
+  const failedComplexes = [];
 
   for (let idx = 0; idx < total; idx++) {
     if (reporter.interrupted()) break;
@@ -938,6 +956,9 @@ async function main() {
     // Phase 2: complex 데이터
     const complexData = await fetchComplexData(no, seq);
     if (!complexData?.build_nm) {
+      const why = describeComplexFailure(no, seq, item);
+      log(PHASE, `  [실패] ${why}`);
+      failedComplexes.push(why);
       reporter.fail();
       continue;
     }
@@ -1023,6 +1044,12 @@ async function main() {
         reporter.skip();
       }
     }
+  }
+
+  if (failedComplexes.length > 0) {
+    const shown = failedComplexes.slice(0, FAILED_COMPLEX_LOG_LIMIT);
+    const more = failedComplexes.length > shown.length ? ", …" : "";
+    log(PHASE, `[실패 명단] ${failedComplexes.length}건: ${shown.join(" / ")}${more}`);
   }
 
   // 매칭 tier 집계

@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, waitFor, fireEvent } from "@testing-library/react";
 import { CollectorMonitoring } from "./CollectorMonitoring";
+import { describeRunMarker } from "./collectorLabels";
 
 // 최근(=초록) 시각 — Date.now() 기준 1시간 전
 const recentIso = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -184,5 +185,96 @@ describe("CollectorMonitoring", () => {
     await waitFor(() => {
       expect(/** @type {any} */ (globalThis.fetch).mock.calls.length).toBeGreaterThan(callsBefore);
     });
+  });
+});
+
+/**
+ * 마지막 실행 한 개짜리 응답(세션571 — 마커 색 시험용)
+ * @param {string} status
+ * @param {string|null} errorMessage
+ */
+function oneRun(status, errorMessage) {
+  return makeResponse({
+    collectors: [
+      {
+        collector: "naver-pipeline",
+        lastRun: {
+          status,
+          okCount: 5,
+          failCount: status === "failure" ? 1 : 0,
+          skipCount: 0,
+          elapsedSec: 10,
+          errorMessage,
+          startedAt: recentIso(),
+          finishedAt: recentIso(),
+        },
+        recentQuota: [],
+      },
+    ],
+  });
+}
+
+describe("수집기 상태 마커 색 (세션571 — WARN_STEPS 등)", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    localStorage.setItem("authToken", "admin-token");
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("success + WARN_STEPS → 배지 '성공(경고)' + 펼치면 '경고 단계: molit-units'", async () => {
+    stubFetch(200, oneRun("success", "WARN_STEPS: molit-units"));
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("성공(경고)")).toBeTruthy();
+    });
+    expect(screen.queryByText("성공")).toBeNull();
+    fireEvent.click(screen.getByText("naver-pipeline"));
+    await waitFor(() => {
+      expect(screen.getByText("경고 단계: molit-units")).toBeTruthy();
+    });
+    expect(screen.queryByText("WARN_STEPS: molit-units")).toBeNull();
+  });
+
+  it("success + null → 배지 '성공' 그대로", async () => {
+    stubFetch(200, oneRun("success", null));
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("성공")).toBeTruthy();
+    });
+    expect(screen.queryByText("성공(경고)")).toBeNull();
+  });
+
+  it("failure + STEP_FAILED → 배지 '실패' + '치명 단계 실패 3/6 naver-presale'", async () => {
+    stubFetch(200, oneRun("failure", "STEP_FAILED: 3/6 naver-presale"));
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("실패")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("naver-pipeline"));
+    await waitFor(() => {
+      expect(screen.getByText("치명 단계 실패 3/6 naver-presale")).toBeTruthy();
+    });
+  });
+
+  it("describeRunMarker — 마커 4종·그 밖·빈 값", () => {
+    expect(describeRunMarker("WARN_STEPS: a,b")).toEqual({ tone: "warn", text: "경고 단계: a, b" });
+    expect(describeRunMarker("STEP_FAILED: 3/6 naver-presale")).toEqual({
+      tone: "error",
+      text: "치명 단계 실패 3/6 naver-presale",
+    });
+    expect(describeRunMarker("REGION_UNRESOLVED n=2: 전남광주, 광주")).toEqual({
+      tone: "warn",
+      text: "시도 이름 못 맞춤 2건: 전남광주, 광주",
+    });
+    expect(describeRunMarker("APPLYHOME_NO_DATE n=3: ah-1, ah-2, ah-3")).toEqual({
+      tone: "warn",
+      text: "공고일 없는 청약홈 행 3건: ah-1, ah-2, ah-3",
+    });
+    expect(describeRunMarker("timeout 60s")).toEqual({ tone: "error", text: "timeout 60s" });
+    expect(describeRunMarker(null)).toBeNull();
+    expect(describeRunMarker("")).toBeNull();
   });
 });

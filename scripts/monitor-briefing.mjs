@@ -41,6 +41,35 @@ export function splitRuns(runs24h, idempotentCollectors) {
   return { active, idle, totalOk };
 }
 
+/** 완주했지만 경고 단계가 있던 실행의 마커(scripts/record-pipeline-run.mjs done — 세션570). */
+export const WARN_STEPS_MARKER = "WARN_STEPS:";
+
+/**
+ * 지난 24h collector_runs 중 "성공했지만 경고 단계가 있던" 실행을 뽑는다(세션571).
+ * status=success + error_message 가 `WARN_STEPS: a,b` 로 시작하는 행만. 같은 수집기가 여러 번이면 단계를 합친다.
+ * @param {Array<{ collector?: string|null, status?: string|null, error_message?: string|null }>} runs24h
+ * @returns {Array<{ collector: string, steps: string[] }>}
+ */
+export function extractWarnRuns(runs24h) {
+  /** @type {Map<string, string[]>} */
+  const byCollector = new Map();
+  for (const r of runs24h) {
+    if (r.status !== "success") continue;
+    const msg = r.error_message ?? "";
+    if (!msg.startsWith(WARN_STEPS_MARKER)) continue;
+    const steps = msg
+      .slice(WARN_STEPS_MARKER.length)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    const name = r.collector ?? "(이름 없음)";
+    const acc = byCollector.get(name) ?? [];
+    for (const s of steps) if (!acc.includes(s)) acc.push(s);
+    byCollector.set(name, acc);
+  }
+  return [...byCollector].map(([collector, steps]) => ({ collector, steps }));
+}
+
 /**
  * 매일 아침 현황 브리핑 텍스트 1통을 만든다 (정상이어도 발송 — 빈 브리핑 아님).
  * @param {object} input
@@ -51,6 +80,7 @@ export function splitRuns(runs24h, idempotentCollectors) {
  * @param {{ fill_rate?: number|null } | null} [input.prevSnapshot] 어제 스냅샷 (없으면 어제 대비 생략)
  * @param {number} [input.issueCount] 오늘 이상(경보) 건수 — 상세는 기존 buildMessages 가 별도 통으로
  * @param {string[]} [input.staleCollectors] 장기 미발화(⑤ stale) 판정된 collector 목록
+ * @param {Array<{ collector: string, steps: string[] }>} [input.warnRuns] 경고 단계가 있던 완주(extractWarnRuns, 세션571)
  * @param {string} [input.nowIso] 기준 시각 ISO (표시용, 미지정 시 생략)
  * @returns {string} 텔레그램 HTML 메시지
  */
@@ -62,6 +92,7 @@ export function buildBriefing(input) {
     prevSnapshot = null,
     issueCount = 0,
     staleCollectors = [],
+    warnRuns = [],
     nowIso,
   } = input;
 
@@ -102,6 +133,11 @@ export function buildBriefing(input) {
   // ④ 장기 미발화 수집기
   if (staleCollectors.length > 0) {
     out.push(`🕒 장기 미발화: ${staleCollectors.join(", ")}`);
+  }
+
+  // ⑤ 경고 단계가 있던 완주(세션571) — success 라 ①·⑬ 은 안 울리지만 일부 단계가 비었다
+  if (warnRuns.length > 0) {
+    out.push(`⚠️ 경고 단계 완주: ${warnRuns.map((w) => `${w.collector}(${w.steps.join(", ")})`).join(" · ")}`);
   }
 
   return out.join("\n");

@@ -49,6 +49,7 @@
 - 모든 필드 개별 표시 필수 (AdminDataAudit, fieldMeta.ts `FIELD_SECTIONS` 9섹션 전수 — 정확한 개수·섹션 구성은 fieldMeta.ts 가 진실의 원천, 박제 금지)
 - 스코어링 중간 계산 과정 투명 표시 (AdminScoreBreakdown — 적정가 과정·기여도·가중 합계)
 - catKeys는 `orderedCatEntries(res.cats)` 로 추출 — 필드 목록을 손으로 적지 않는다는 **기존 취지는 그대로**이고, 거기에 표시 순서만 `CAT_DISPLAY_ORDER`(`constants/catOrder.ts`)로 고정한다. `Object.keys(res.cats)` 직접 사용 금지 — 그 순서는 서버 `catsCache` 의 JSON 직렬화 부산물이라 수집기 변경만으로 화면이 조용히 뒤집혔다(세션 487). 존재하지 않는 카테고리는 자동으로 빠지고, `catOrder.test.ts` 가 6개 전량·중복 0 을 잠근다.
+- 관리자 "수집기 상태"(`admin/CollectorMonitoring.tsx`) 마커 색(세션571) — `collectorLabels.ts` `describeRunMarker` 가 `error_message` 마커를 푼다: `WARN_STEPS`·`REGION_UNRESOLVED`·`APPLYHOME_NO_DATE` = 노랑(warn), `STEP_FAILED`·그 밖 = 빨강. success + warn 마커면 배지 "성공(경고)". 마커 형식의 정본 = `scripts/record-pipeline-run.mjs`·`scripts/collectors/_shared.mjs`.
 
 ---
 
