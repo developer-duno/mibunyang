@@ -398,8 +398,8 @@ export const EXTERNAL_API_COLLECTORS = [
   //   ⚠️ 부작용: 이 배열에 들면 ② 빈 성공 점검(idempotentCollectorSet)에서 빠진다 — naver-pipeline 의
   //   ok 는 6-경고수라 success 로 끝나면 최소 3(치명 단계 1·2·5 는 경고가 될 수 없다)이어서 ② 가 볼 것이 없다.
   //   since = 등재일(세션571). 행이 아직 0개여도 "등재 뒤 stale_days 가 지나도록 기록 0" 이면 울린다 —
-  //   첫 정기 실행 9/28(월) 08:00 → 행 기대 12:00. daily 감시 실제 발화 09:48~09:55 KST 라 9/28 아침(3.03일)엔
-  //   조용하고 9/29 09:48(4.03일)부터 울린다. 9/24 로 두면 9/28 아침 오탐.
+  //   첫 정기 실행 9/28(월) 08:00 → 행 기대 12:00. daily 감시 실제 발화 09:48~09:55 KST 라 9/28 아침(3.41일)엔
+  //   조용하고 9/29 09:48(4.41일)부터 울린다. 9/24 로 두면 9/28 아침 오탐.
   { collector: "naver-pipeline",   stale_days: 4,  since: "2026-09-25", owner: "네이버 로컬 파이프라인 완주 기록 (월·목 08:00, bat 끝 1행 — 목요일 회차가 끊기면 토요일 09:00 울린다)" },
   // naver-devplan = 네이버 개발계획(도로·철도·역·지구) — 세션 517 에 로컬 러너 매월 20일로 크론 편입.
   //   네이버 IP 가 필요해 GH 러너에서 못 돌리고, 편입 전까지는 **어느 스케줄에도 없어** 사람이
@@ -809,9 +809,12 @@ function staleActionLines(collector) {
  * @param {Record<string, Array<{ status?: string, ok_count?: number|null, skip_count?: number|null, finished_at?: string|null }>>} runsByCollector
  *   collector 별 최근 N행 (finished_at DESC). 빈 배열이면 since 가 있을 때만 "등재 뒤 행 0" 판정, 없으면 skip.
  * @param {Date} [now] 기준 시각 (테스트 주입용).
+ * @param {{ queryFailed?: ReadonlySet<string> }} [opts] queryFailed = collector_runs 조회 자체가 실패한
+ *   collector 이름 집합(세션571). 여기 있으면 rows=[] 이어도 "등재 뒤 행 0"으로 판정하지 않는다 —
+ *   조회 실패는 check-failed 이슈가 따로 알린다(호출부 참조).
  * @returns {Issue[]}
  */
-export function checkExternalApiStale(targets, runsByCollector, now = new Date()) {
+export function checkExternalApiStale(targets, runsByCollector, now = new Date(), opts = {}) {
   /** @type {Issue[]} */
   const issues = [];
   for (const { collector, stale_days, owner, since } of targets) {
@@ -820,7 +823,8 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
     // 단 등재일(since)이 있으면 그것을 기준 시각으로 쓴다(세션571) — 기록 자체가 한 번도 안 남는 사고
     // (bat 끝 호출 누락·.env 로드 실패·쓰기 실패)는 행이 없어서 ⑤-b 가 영영 못 본다.
     if (rows.length === 0) {
-      if (!since) continue;
+      // 조회 실패는 행 0 이 아니다 — 세션571 검사관 🟡1
+      if (!since || opts.queryFailed?.has(collector)) continue;
       const sinceIso = `${since}T00:00:00+09:00`;
       const sinceMs = new Date(sinceIso).getTime();
       if (Number.isNaN(sinceMs)) continue;
@@ -2688,26 +2692,36 @@ async function fetchLatestCollectorRuns() {
  * 결함이 있어 폐기 (세션 289, 대상 5→15 확대로 실재화). 호출은 monitor run 당 1회뿐.
  * @param {ReadonlyArray<{ collector: string }>} targets
  * @param {number} [limitPer]
- * @returns {Promise<Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>>}
+ * @returns {Promise<{
+ *   grouped: Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>,
+ *   failed: Map<string, unknown>,
+ * }>} grouped = collector 별 최근 N행(조회 성공분만). failed = 조회 자체가 실패한 collector 이름 → error(세션571 — 조회 실패를 "행 0"으로 읽지 않게 분리).
  */
 async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) {
   const sb = getSupabase();
   const names = targets.map((t) => t.collector);
-  if (names.length === 0) return {};
+  if (names.length === 0) return { grouped: {}, failed: new Map() };
   /** @type {Record<string, Array<{ status: string, ok_count: number|null, skip_count: number|null, finished_at: string|null }>>} */
   const grouped = {};
+  /** @type {Map<string, unknown>} */
+  const failed = new Map();
   await Promise.all(
     names.map(async (name) => {
-      const { data } = await sb
+      const { data, error } = await sb
         .from("collector_runs")
         .select("collector,status,ok_count,skip_count,finished_at")
         .eq("collector", name)
         .order("finished_at", { ascending: false })
         .limit(limitPer);
+      if (error) {
+        console.log(`[monitor] ⑤ collector_runs 조회 실패(${name}): ${error.message}`);
+        failed.set(name, error);
+        return;
+      }
       if (data && data.length > 0) grouped[name] = data;
     }),
   );
-  return grouped;
+  return { grouped, failed };
 }
 
 /**
@@ -3008,8 +3022,13 @@ async function main() {
     );
 
     // ⑤ 외부 API 장기 중단 — silent fail (success+ok=0) 연속 누적 탐지
-    const runsByCollector = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
-    const externalStaleIssues = checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector);
+    const { grouped: runsByCollector, failed: queryFailed } = await fetchExternalApiRuns(EXTERNAL_API_COLLECTORS);
+    for (const [name, err] of queryFailed) {
+      issues.push(checkFailedIssue(`⑤ 외부 API 점검(${name} 조회)`, err));
+    }
+    const externalStaleIssues = checkExternalApiStale(EXTERNAL_API_COLLECTORS, runsByCollector, new Date(), {
+      queryFailed: new Set(queryFailed.keys()),
+    });
     issues = issues.concat(externalStaleIssues);
 
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)

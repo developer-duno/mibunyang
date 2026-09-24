@@ -2156,7 +2156,7 @@ describe("dedupScope — daily 에서 기록·거르는 대상은 ⑨·⑪ 뿐",
 describe("checkExternalApiStale — ⑤ 등재일(since) 뒤 행 0 경보 (세션571)", () => {
   const target = [{ collector: "naver-pipeline", stale_days: 4, since: "2026-09-25", owner: "네이버 로컬 파이프라인" }];
 
-  it("since 뒤 stale_days 초과 + 행 0 → stale 1건 (9/29 09:48 KST = 4.03일)", () => {
+  it("since 뒤 stale_days 초과 + 행 0 → stale 1건 (9/29 09:48 KST = 4.41일)", () => {
     const issues = checkExternalApiStale(target, {}, new Date("2026-09-29T00:48:00Z"));
     expect(issues).toHaveLength(1);
     expect(issues[0].kind).toBe("stale");
@@ -2169,7 +2169,7 @@ describe("checkExternalApiStale — ⑤ 등재일(since) 뒤 행 0 경보 (세�
     expect(lines).toContain("MibunyangNaverCollect"); // 기존 naver- 조치 줄 그대로
   });
 
-  it("since 뒤 stale_days 이하(9/28 09:48 KST = 3.03일) → 0건 — 첫 정기 실행 당일 아침 오탐 없음", () => {
+  it("since 뒤 stale_days 이하(9/28 09:48 KST = 3.41일) → 0건 — 첫 정기 실행 당일 아침 오탐 없음", () => {
     expect(checkExternalApiStale(target, { "naver-pipeline": [] }, new Date("2026-09-28T00:48:00Z"))).toHaveLength(0);
   });
 
@@ -2188,5 +2188,32 @@ describe("checkExternalApiStale — ⑤ 등재일(since) 뒤 행 0 경보 (세�
 
   it("운영 목록의 naver-pipeline 은 since 2026-09-25 로 등재돼 있다", () => {
     expect(EXTERNAL_API_COLLECTORS.find((c) => c.collector === "naver-pipeline")?.since).toBe("2026-09-25");
+  });
+
+  // 🟢2 — 경계 미고정(days <= stale_days 를 < 로 바꿔도 통과하던 구멍)을 리터럴 시각으로 못 박는다.
+  it("since + 정확히 4.00일 → 0건 (경계는 초과만 울린다)", () => {
+    expect(checkExternalApiStale(target, {}, new Date("2026-09-28T15:00:00Z"))).toHaveLength(0);
+  });
+
+  it("since + 4.00일 + 1ms → 1건", () => {
+    expect(checkExternalApiStale(target, {}, new Date("2026-09-28T15:00:00.001Z"))).toHaveLength(1);
+  });
+
+  // B3 — 조회 실패는 "등재 뒤 행 0" 으로 판정하지 않는다(세션571 검사관 🟡1)
+  it("queryFailed 에 있는 collector 는 since 뒤 stale_days 초과+행 0 이어도 0건 (조회 실패는 별도 check-failed 가 알린다)", () => {
+    expect(
+      checkExternalApiStale(target, {}, new Date("2026-09-29T00:48:00Z"), {
+        queryFailed: new Set(["naver-pipeline"]),
+      }),
+    ).toHaveLength(0);
+  });
+});
+
+describe("fetchExternalApiRuns/호출부 — ⑤ collector_runs 조회 실패를 check-failed 로 알린다 (세션571, 정적 가드)", () => {
+  it("fetchExternalApiRuns 는 error 를 받아 failed 에 기록하고, 호출부는 그걸 checkFailedIssue 로 push 한다", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8");
+    expect(src).toContain("failed.set(name, error);");
+    expect(src).toContain("queryFailed: new Set(queryFailed.keys())");
+    expect(src).toMatch(/issues\.push\(checkFailedIssue\(`⑤/);
   });
 });
