@@ -24,6 +24,13 @@ color: orange
 - `Promise.all` 대신 **`Promise.allSettled`** 권장 — 한 건 실패로 전체 배치 날아가지 않도록
 - `Promise.all` 쓰려면 반드시 try/catch로 감싸고 재시도 or 로그
 
+### C8. 운영 데이터를 바꾸는 실행 (세션568 — `.claude/rules/collectors/data-changing-run-approval.md`)
+- `--dry-run --impact-out` 이 **차단기·검증보다 앞**에서 계획 전체를 저장하는가 (dry-run 은 발동해도 exit 0)
+- 실제 실행의 차단기는 **어떤 표에도 쓰기 전**에 판정해 전부 멈추는가 (regions 쓰고 apartments 에서 멈추는 부분 반영 금지)
+- 우회 인자가 비율 완화가 아니라 **승인 숫자 일치**(`--expect-zero=<N>`)인가 · 임계는 첫 실행 비율을 실측한 값인가
+- 되돌릴 사본(id·바뀌는 칸·updated_at)을 뜨는 절차가 문서·스크립트에 있는가
+- 무음 `continue` 를 고쳤으면 로그가 아니라 `collector_runs`(skip/warn) 또는 감시 항목으로 올렸는가
+
 ### C4. 공공 API 쿼터
 - data.go.kr 일일 10,000회 공유 (CLAUDE.md)
 - 수집기별 예상 호출 수 주석 또는 카운터 필수

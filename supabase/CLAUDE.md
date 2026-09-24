@@ -53,6 +53,19 @@
 | 분양정보 | 19 (presale_min_price ~ presale_fetched_at) | naver-presale |
 | 대기질 | 1 (air_quality JSONB) | collect-air-quality |
 | 치안 | 1 (crime_safety_grade SMALLINT 1~5) | collect-crime-safety |
+| 미분양 출처 | 1 (unsold_source TEXT — NULL·`kosis`·`applyhome`, CHECK) | collect-unsold-kosis(`kosis`) · collect-applyhome-seed(`applyhome`) — **세션568**(마이그 20260924000200). 판정 규칙 정본 = `scripts/collectors/collect-unsold-kosis.mjs` `shouldSkipKosisFill`·`planUnsoldUpdates` 머리말 |
+
+### 칸 추가 뒤 확인 (세션568)
+
+psql 로 `ADD COLUMN` 을 적용했으면 supabase-js 로 그 칸을 **한 번 조회**해 PostgREST 스키마 캐시가 새 칸을 아는지 본다
+(2026-09-24 `unsold_source` 는 적용 직후 조회·UPDATE 가 바로 됐다 — 캐시가 자동 갱신됐지만, 안 되면 `NOTIFY pgrst, 'reload schema'`).
+그 다음에야 그 칸을 쓰는 스크립트(backfill·수집기)를 돌린다.
+
+### 트리거 — `updated_at` 자동 갱신 (init 마이그 `update_updated_at()`)
+
+- `apartments`·`infra`·`schools`·`transport`·`builders` 등에 `BEFORE UPDATE … EXECUTE FUNCTION update_updated_at()` 가 걸려 있다.
+- ⚠️ **`schools` 는 세션568 부터 `BEFORE UPDATE OF nearby_schools`**(마이그 20260924000300, 2026-09-24 09:39 KST 운영 적용) — 학교 목록을 **쓸 때만** 30일 재수집 시계가 간다. 그 전엔 점수만 다시 매기는 `rescaleOnly`·어린이집 수집기(`nearby_childcare`)가 쓸 때도 시계가 초기화돼 9/23 하루에 2,654행이 몰렸다. 열 지정 트리거는 그 열이 UPDATE 의 **SET 목록에 있을 때** 발화한다(값이 실제로 바뀌었는지 무관 — PostgreSQL CREATE TRIGGER 문서, `INSERT … ON CONFLICT DO UPDATE` 도 같은 기준).
+- ⚠️ 다른 표는 여전히 "어떤 칸을 고쳐도" 갱신이다. `infra-kakao` 는 `updated_at` 30일 + 완결성으로 건너뛴다(`scripts/collectors/infra-kakao.mjs` `buildFreshIds`) — 다른 수집기(대기질 등)가 `infra` 에 쓸 때 시계가 오르면 **같은 함정일 수 있다(실측 필요 — BACKLOG 세션568 후속)**. 공유 표의 `updated_at` 은 "누가 마지막에 건드렸나"일 뿐이다.
 
 ---
 
