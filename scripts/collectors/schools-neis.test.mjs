@@ -1022,10 +1022,14 @@ describe("searchKakao — SC4 + is_end 까지 최대 3쪽 (세션569)", () => {
 
   it("1쪽 15건(is_end=false) + 2쪽 2건(is_end=true) → 17건, 호출 2회, 2쪽은 page=2", async () => {
     fetchMock.mockReset();
+    vi.mocked(sharedMock.sleep).mockClear();
     fetchMock.mockResolvedValueOnce(page(15, false, 1)).mockResolvedValueOnce(page(2, true, 16));
     const docs = await searchKakao(37.5, 127.0, "중학교", 2000);
     expect(docs).toHaveLength(17);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 쪽 사이 대기 — 2쪽이면 정확히 1번, 기존 질의 간격과 같은 100ms
+    expect(sharedMock.sleep).toHaveBeenCalledTimes(1);
+    expect(sharedMock.sleep).toHaveBeenCalledWith(100);
     expect(String(fetchMock.mock.calls[1][0])).toContain("page=2");
     expect(docs.map((d) => d.id)).toEqual(Array.from({ length: 17 }, (_, i) => String(i + 1))); // 쪽 순서대로 이어 붙임
   });
@@ -1036,6 +1040,16 @@ describe("searchKakao — SC4 + is_end 까지 최대 3쪽 (세션569)", () => {
     const docs = await searchKakao(37.5, 127.0, "고등학교", 2000);
     expect(docs).toHaveLength(5);
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("meta 가 없는 응답이면 다음 쪽을 부르지 않는다(호출 1회)", async () => {
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce(/** @type {any} */ ({ json: async () => ({ documents: [{ id: "1", place_name: "학교1", distance: "100" }] }) }))
+      .mockResolvedValueOnce(page(15, true, 2));
+    const docs = await searchKakao(37.5, 127.0, "초등학교", 1000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(docs).toHaveLength(1);
   });
 
   it("3쪽에도 is_end=false 면 3쪽에서 멈춘다(호출 3회, 45건)", async () => {
