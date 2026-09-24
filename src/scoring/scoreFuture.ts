@@ -31,6 +31,68 @@ import type { Apt, Res } from "@/types/scoring";
 // 형식이 안 맞으면 0점 — "무슨 호재인지 모르는데 점수는 있다"를 만들지 않는다.
 // ⚠️ 수집기 출력 형식과 `*_DEV_PATTERN` 은 **한 쌍**이다. 한쪽만 바꾸면 점수가 조용히 0이 된다.
 
+// --- 좌표 의심 단지의 "이름으로 확정되는 지구" 예외 (세션569, 사장님 결정 2026-09-24) ---
+//
+// 좌표 의심(coordShared) 단지는 거리로 매긴 개발호재를 믿을 수 없어 0점으로 둔다(세션568).
+// 다만 **단지 이름에 그 지구 이름이 들어 있으면** 그 지구 안(또는 바로 곁)에 있다는 것은 좌표가 아니라
+// 이름으로 확정된다 — 예: "시흥거모지구 대방 엘리움…" ↔ 도시개발 "시흥거모공공주택지구 0.9km".
+// 이때는 그 칸(도시개발·산업개발 각각 독립)만 좌표 정상일 때와 똑같이 채점한다. 교통개발은 역·거리를
+// 이름으로 확정할 수 없어 예외가 없다. 이 판정은 `_coordUnknown` 일 때만 평가한다(정상 단지 경로 불변).
+
+/** 지구명 끝에서 떼는 접미어 — **긴 것부터** 대조한다("산업단지"가 "도시첨단산업단지"를 먼저 먹지 않게). */
+export const DEV_ZONE_SUFFIXES = [
+  "공공주택지구",
+  "택지개발지구",
+  "도시개발구역",
+  "도시첨단산업단지",
+  "일반산업단지",
+  "국가산업단지",
+  "산업단지",
+  "산단",
+  "지구",
+].sort((a, b) => b.length - a.length);
+
+/** 핵심어가 이보다 짧으면 판정하지 않는다(한 글자 포함은 우연 일치가 너무 흔하다). */
+const DEV_ZONE_KEYWORD_MIN = 2;
+
+/** "부천시 오정구" → "부천", "시흥시" → "시흥", "검단구" → "검단". 시·군·구를 떼고 2글자 미만이면 null. */
+function stripAdminSuffix(token: string | undefined): string | null {
+  const t = (token ?? "").trim();
+  const core = t.replace(/[시군구]$/, "");
+  return core.length >= 2 && core !== t ? core : null;
+}
+
+/**
+ * 지구명 원문에서 핵심어를 뽑는다(순수 함수).
+ * ① 끝의 숫자 제거("부천대장2"→"부천대장") ② 접미어 제거(긴 것부터, 한 번)
+ * ③ 그 단지의 시·군 이름 접두 제거(gu·region 첫 토큰에서 시/군/구를 뗀 것 — "시흥거모"→"거모")
+ * → 2글자 미만이면 null.
+ */
+export function devZoneKeyword(zoneName: string, gu?: string | null, region?: string | null): string | null {
+  let k = zoneName.replace(/\s+/g, "").replace(/\d+$/, "");
+  const suffix = DEV_ZONE_SUFFIXES.find((sfx) => k.endsWith(sfx) && k.length > sfx.length);
+  if (suffix) k = k.slice(0, -suffix.length);
+  for (const prefix of [stripAdminSuffix(gu?.split(/\s+/)[0]), stripAdminSuffix(region?.split(/\s+/)[0])]) {
+    if (prefix && k.startsWith(prefix) && k.length > prefix.length) {
+      k = k.slice(prefix.length);
+      break;
+    }
+  }
+  return k.length >= DEV_ZONE_KEYWORD_MIN ? k : null;
+}
+
+/** 단지 이름(공백 제거)이 지구 핵심어를 포함하는가(순수 함수). */
+export function nameMatchesDevZone(
+  aptName: string | null | undefined,
+  zoneName: string,
+  gu?: string | null,
+  region?: string | null
+): boolean {
+  const kw = devZoneKeyword(zoneName, gu, region);
+  const name = (aptName ?? "").replace(/\s+/g, "");
+  return kw != null && name.includes(kw);
+}
+
 /**
  * 미래가치 점수 (0~100). 4축(인구·교통·도시·산업) **고정 가중치** 합산 후 0~100 정규화.
  *
@@ -87,8 +149,11 @@ export function scoreFuture(apt: Apt): Res {
   // 출처는 LH 사업지구(V-WORLD)에 네이버 지구단위가 더해진 것이라 "LH" 로 못 박아 말하지 않는다.
   const cityMatch = cityDev ? cityDev.trim().match(CITY_DEV_PATTERN) : null;
   // 좌표 자리표시 의심(세션568) — 위 교통개발과 같은 이유로 0점 유지.
+  //   단, 단지 이름이 그 지구 이름을 담고 있으면 좌표 없이도 지구 안임이 확정된다 → 정상 채점(세션569).
+  const cityCoordUnknown =
+    apt._coordUnknown && !(cityMatch && nameMatchesDevZone(apt.name, cityMatch[1], apt.gu, apt.region));
   const citySc =
-    !apt._coordUnknown && cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
+    !cityCoordUnknown && cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
   // 인구 (기본 30%) — 한국 현실 기반 7단계
   let popSc =
@@ -117,8 +182,11 @@ export function scoreFuture(apt: Apt): Res {
   const indStr = Array.isArray(indDev) ? (indDev[0] ?? "") : String(indDev ?? "");
   const indMatch = indStr ? indStr.trim().match(INDUSTRY_DEV_PATTERN) : null;
   // 좌표 자리표시 의심(세션568) — 위 교통·도시개발과 같은 이유로 0점 유지.
+  //   도시개발과 같은 이름 예외(세션569) — 칸마다 독립으로 판정한다.
+  const indCoordUnknown =
+    apt._coordUnknown && !(indMatch && nameMatchesDevZone(apt.name, indMatch[1], apt.gu, apt.region));
   const indSc =
-    !apt._coordUnknown && indMatch ? tierMax(parseFloat(indMatch[2]), INDUSTRY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
+    !indCoordUnknown && indMatch ? tierMax(parseFloat(indMatch[2]), INDUSTRY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
   // 고정 가중치 + 0~100 정규화 (세션511 — 동적 재분배 폐기)
   //
@@ -161,9 +229,9 @@ export function scoreFuture(apt: Apt): Res {
       {
         name: "도시개발",
         score: Math.round(citySc),
-        info: apt._coordUnknown ? "위치 확인 중" : cityDev || "없음",
+        info: cityCoordUnknown ? "위치 확인 중" : cityDev || "없음",
         // 미매칭이어도 원문이 있으면 "없음"이라 하지 않는다(위 교통개발과 같은 규약).
-        detail: apt._coordUnknown
+        detail: cityCoordUnknown
           ? "위치 확인 중 — 정확한 좌표가 확인되면 개발지구 거리를 다시 계산합니다 (0점)"
           : cityMatch
             ? `${cityDev} — 개발지구까지 ${cityMatch[2]}km (500m내 100점 · 1km 70 · 2km 40 · 3km 20 · 그 밖 0)`
@@ -185,10 +253,10 @@ export function scoreFuture(apt: Apt): Res {
         score: Math.round(indSc),
         // 값이 있으면 그대로 보여준다 — 점수가 0이라고 "없음"이라 쓰면 거짓이 된다
         // (세션510: "427곳이 값을 갖고도 '없음' 표시" 와 같은 자리)
-        info: apt._coordUnknown ? "위치 확인 중" : indStr || "없음",
+        info: indCoordUnknown ? "위치 확인 중" : indStr || "없음",
         // 산업단지는 LH 지구보다 드물어(최근접 중앙 3.28km) 등급 간격이 넓다
         // 미매칭이어도 원문이 있으면 "없음"이라 하지 않는다(위 교통개발과 같은 규약).
-        detail: apt._coordUnknown
+        detail: indCoordUnknown
           ? "위치 확인 중 — 정확한 좌표가 확인되면 산업단지 거리를 다시 계산합니다 (0점)"
           : indMatch
             ? `${indStr} — 산업단지까지 ${indMatch[2]}km (1km내 100점 · 2km 75 · 3km 50 · 5km 25 · 그 밖 0)`
