@@ -1,9 +1,17 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { checkCoordSharedDrift, isPastCompletion, COORD_SHARED_BASELINE } from "./monitor-collectors.mjs";
+import {
+  checkCoordSharedDrift,
+  checkCoordCandidateDrift,
+  isPastCompletion,
+  fingerprintIds,
+  COORD_SHARED_BASELINE_IDS,
+  COORD_CANDIDATE_BASELINE_IDS,
+} from "./monitor-collectors.mjs";
 
-// 감시 ⑨ — 좌표 부정확 단지를 사장님께 알린다 (세션563).
+// 감시 ⑨ — 좌표 부정확 단지를 사장님께 알린다 (세션563, 세션568 명단화).
 // 손님 화면에 경고를 다는 대신 여기서 알린다(규칙: our-defect-is-not-customer-warning).
+// 세션568: 개수 대조 → id 명단 대조로 전환(세션565가 개수만 맞고 명단이 3↔3 뒤바뀐 것을 놓쳤다).
 
 const NOW = new Date("2026-09-23T00:00:00Z");
 /** @param {object} o */
@@ -13,7 +21,6 @@ describe("isPastCompletion — 실제 운영 형식으로 판정한다", () => {
   // ⚠️ 2026-09-23 운영 실측: YYYYMM 2,609건 · 빈값 447 · "미정" 9 · "2029 미…" 3 · YYYY-MM-DD **0건**.
   //    coord_shared 56곳은 **전부 YYYYMM** 이다. 그래서 YYYYMM 가지가 실전 경로다.
   it("YYYYMM — 지난 달은 true, 앞으로 올 달은 false", () => {
-    // 기준 시각 = 2026-09-23. 2024년은 이미 지났다(처음에 2024를 미래로 착각해 red 를 받았다).
     expect(isPastCompletion("202407", NOW)).toBe(true);
     expect(isPastCompletion("202412", NOW)).toBe(true);
     expect(isPastCompletion("202908", NOW)).toBe(false);
@@ -21,18 +28,14 @@ describe("isPastCompletion — 실제 운영 형식으로 판정한다", () => {
   });
 
   it("경계 — **이번 달은 아직 안 지난 것**으로 본다(월 단위 비교)", () => {
-    // 준공월이 이번 달이면 그 달 안에 준공되므로 23일 시점에 "지났다"고 단정할 수 없다.
-    // `src/scoring/scorePrice.ts` 의 isPresale 이 쓰는 경계(`idx >= currentMonthIndexKst`)와 같다.
     expect(isPastCompletion("202609", NOW)).toBe(false);
     expect(isPastCompletion("202608", NOW)).toBe(true);
     expect(isPastCompletion("202610", NOW)).toBe(false);
   });
 
   it("⚠️ 서기 20만년 함정 — Date 생성자에 문자열을 넘기지 않는다", () => {
-    // "202211" + "-01" 을 new Date() 에 넘기면 **서기 202211년**이 된다(2026-09-23 실사고).
-    // 그래서 준공 지난 48곳이 "전부 준공 전" 으로 보고됐다. 월 단위 정수 비교로 원천 차단.
-    expect(isPastCompletion("202211", NOW)).toBe(true); // 2022년 11월 = 지났다
-    expect(isPastCompletion("202808", NOW)).toBe(false); // 2028년 8월 = 아직
+    expect(isPastCompletion("202211", NOW)).toBe(true);
+    expect(isPastCompletion("202808", NOW)).toBe(false);
   });
 
   it("⚠️ 월 범위를 벗어나면 거부한다 — '202613' 이 2027-01 로 넘어가면 안 된다", () => {
@@ -41,7 +44,6 @@ describe("isPastCompletion — 실제 운영 형식으로 판정한다", () => {
   });
 
   it("⚠️ 판독 불가는 false — '지났다' 쪽으로 기울면 못 고칠 것을 매일 경보해 감시가 무뎌진다", () => {
-    // ⚠️ 숫자 202407 은 여기 넣지 않는다 — String() 을 거쳐 정상 판독된다(직접 넣어 red 로 확인).
     for (const v of ["미정", "2029 미정", "", null, undefined, "2024", "abc", "20240", "2024071"]) {
       expect(isPastCompletion(v, NOW), String(v)).toBe(false);
     }
@@ -58,45 +60,77 @@ describe("isPastCompletion — 실제 운영 형식으로 판정한다", () => {
   });
 });
 
-describe("checkCoordSharedDrift — 언제 알리고 언제 조용한가", () => {
-  it("기준과 같거나 적고 전부 준공 전이면 조용하다 — 있다는 것 자체는 경보가 아니다", () => {
-    const rows = Array.from({ length: COORD_SHARED_BASELINE }, (_, i) =>
-      apt({ id: `ap-${i}`, completion: "202912" })
-    );
-    expect(checkCoordSharedDrift(rows, { now: NOW })).toEqual([]);
+describe("fingerprintIds — 상태 지문 (시각이 아니다)", () => {
+  it("같은 id 집합(순서 무관하게 정렬해 넣으면)은 같은 지문", () => {
+    expect(fingerprintIds(["a", "b", "c"])).toBe(fingerprintIds(["a", "b", "c"]));
   });
 
-  it("많이 줄면 **기준을 낮추라고** 알린다 — 잘할수록 눈머는 것을 막는다", () => {
-    // 하드코딩 상한이라, 40곳으로 줄어든 뒤 통로가 다시 뚫려 55곳이 돼도 56 미만이라 침묵한다.
-    // 그래서 줄어든 것 자체를 "기준 갱신하라" 로 알린다(세션563 적대검증 🟠).
-    const rows = [apt({ completion: "202912" })];
-    const issues = checkCoordSharedDrift(rows, { now: NOW });
-    expect(issues).toHaveLength(1);
-    expect(issues[0].at).toBe("shrank:1");
-    expect(issues[0].detail).toMatch(/COORD_SHARED_BASELINE/);
+  it("정렬 순서가 다르면 다른 지문 — 정렬은 호출부 책임", () => {
+    expect(fingerprintIds(["a", "b"])).not.toBe(fingerprintIds(["b", "a"]));
   });
 
-  it("기준 근처(여유 안)면 조용하다 — 한두 곳 흔들림에 울지 않는다", () => {
-    const rows = Array.from({ length: COORD_SHARED_BASELINE - 1 }, (_, i) =>
-      apt({ id: `ap-${i}`, completion: "202912" })
-    );
-    expect(checkCoordSharedDrift(rows, { now: NOW })).toEqual([]);
+  it("id 집합이 하나라도 다르면 지문도 다르다", () => {
+    expect(fingerprintIds(["a", "b", "c"])).not.toBe(fingerprintIds(["a", "b", "d"]));
   });
 
-  it("(A) 늘어나면 알린다 — 새 단지가 자리표시 좌표를 받았다는 뜻", () => {
-    const rows = Array.from({ length: COORD_SHARED_BASELINE + 3 }, (_, i) =>
-      apt({ id: `ap-${i}`, completion: "202912" })
-    );
-    const issues = checkCoordSharedDrift(rows, { now: NOW });
-    expect(issues).toHaveLength(1);
-    expect(issues[0].detail).toMatch(/\+3/);
-    expect(issues[0].collector).toBe("coord-shared");
+  it("빈 배열도 안정적인 값을 낸다", () => {
+    expect(fingerprintIds([])).toBe(fingerprintIds([]));
+  });
+});
+
+describe("checkCoordSharedDrift — 명단(id 집합)으로 신규·풀림을 가른다", () => {
+  const BASELINE = ["ap-1", "ap-2", "ap-3"];
+
+  it("명단과 완전히 같으면(집합 일치) 조용하다 — 있다는 것 자체는 경보가 아니다", () => {
+    const rows = BASELINE.map((id) => apt({ id, completion: "202912" }));
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    expect(issues.filter((i) => /^(new|resolved):/.test(String(i.at)))).toEqual([]);
+  });
+
+  it("★개수는 같은데 명단이 뒤바뀌면(3↔3) 신규·풀림 둘 다 잡는다 — 세션565가 놓친 자리", () => {
+    // BASELINE = [ap-1, ap-2, ap-3]. 실제 표시는 [ap-1, ap-4, ap-5] — 개수는 똑같이 3.
+    const rows = ["ap-1", "ap-4", "ap-5"].map((id) => apt({ id, completion: "202912" }));
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    const newcomer = issues.find((i) => String(i.at).startsWith("new:"));
+    const resolved = issues.find((i) => String(i.at).startsWith("resolved:"));
+    expect(newcomer, "명단 밖 2곳(ap-4, ap-5)이 신규로 잡혀야 한다").toBeTruthy();
+    expect(newcomer?.detail).toMatch(/2곳/);
+    expect(resolved, "명단 2곳(ap-2, ap-3)이 풀림으로 잡혀야 한다").toBeTruthy();
+    expect(resolved?.detail).toMatch(/2곳/);
+    expect(resolved?.detail).toMatch(/ap-2/);
+    expect(resolved?.detail).toMatch(/ap-3/);
+  });
+
+  it("명단 그대로면(순서만 다르게 줘도) 조용하다", () => {
+    const rows = ["ap-3", "ap-1", "ap-2"].map((id) => apt({ id, completion: "202912" }));
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    expect(issues.filter((i) => /^(new|resolved):/.test(String(i.at)))).toEqual([]);
+  });
+
+  it("(A-신규) 명단 밖 id 가 새로 표시되면 알린다", () => {
+    const rows = [...BASELINE, "ap-9"].map((id) => apt({ id, completion: "202912" }));
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    const newcomer = issues.find((i) => String(i.at).startsWith("new:"));
+    expect(newcomer).toBeTruthy();
+    expect(newcomer?.detail).toMatch(/명단 밖/);
+    expect(newcomer?.detail).toMatch(/ap-9/);
+    expect(newcomer?.collector).toBe("coord-shared");
+  });
+
+  it("(A-풀림) 명단에 있던 id 가 표시에서 빠지면 '명단에서 빼라' 로 알린다", () => {
+    const rows = [apt({ id: "ap-1", completion: "202912" })]; // ap-2, ap-3 는 빠짐
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    const resolved = issues.find((i) => String(i.at).startsWith("resolved:"));
+    expect(resolved).toBeTruthy();
+    expect(resolved?.detail).toMatch(/풀린/);
+    expect(resolved?.detail).toMatch(/명단에서 빼라/);
   });
 
   it("(B) 준공일이 지났는데 안 풀렸으면 알린다 — 이제는 고칠 수 있다", () => {
-    // 표본이 작아 "기준을 낮추라"(shrank) 도 함께 난다 — (B) 만 골라 본다.
-    const rows = [apt({ name: "지난단지", completion: "202401" }), apt({ id: "ap-2", completion: "202912" })];
-    const issues = checkCoordSharedDrift(rows, { now: NOW }).filter((i) => String(i.at).startsWith("past:"));
+    const rows = [apt({ id: "ap-1", name: "지난단지", completion: "202401" }), apt({ id: "ap-2", completion: "202912" })];
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: ["ap-1", "ap-2"] }).filter((i) =>
+      String(i.at).startsWith("past:"),
+    );
     expect(issues).toHaveLength(1);
     expect(issues[0].detail).toMatch(/준공일이 지난/);
     expect(issues[0].detail).toMatch(/지난단지/); // 어느 단지인지 알려준다
@@ -108,21 +142,99 @@ describe("checkCoordSharedDrift — 언제 알리고 언제 조용한가", () =>
       apt({ id: "b", coord_shared: null, completion: "202401" }),
       apt({ id: "c", coord_shared: "true", completion: "202401" }),
     ];
-    // coord_shared 가 0곳이므로 "기준을 낮추라"(shrank:0) 만 나고, (A)(B) 는 안 난다.
-    const issues = checkCoordSharedDrift(rows, { now: NOW });
-    expect(issues.filter((i) => /^(grew|past):/.test(String(i.at)))).toEqual([]);
+    // 표시된 게 0곳이므로 baselineIds 전부가 "풀림" 으로만 잡히고 (A)(B) 는 안 난다.
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: ["ap-x"] });
+    expect(issues.filter((i) => /^(new|past):/.test(String(i.at)))).toEqual([]);
+    expect(issues.some((i) => String(i.at).startsWith("resolved:"))).toBe(true);
   });
 
-  it("두 경보는 함께 날 수 있다 — 늘었고 그중 준공도 지났다", () => {
-    const rows = Array.from({ length: COORD_SHARED_BASELINE + 1 }, (_, i) =>
-      apt({ id: `ap-${i}`, completion: i === 0 ? "202401" : "202912" })
+  it("두 경보는 함께 날 수 있다 — 신규가 생겼고 그중 준공도 지났다", () => {
+    const rows = [...BASELINE, "ap-9"].map((id) =>
+      apt({ id, completion: id === "ap-9" ? "202401" : "202912" }),
     );
-    expect(checkCoordSharedDrift(rows, { now: NOW })).toHaveLength(2);
+    const issues = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    expect(issues.some((i) => String(i.at).startsWith("new:"))).toBe(true);
+    expect(issues.some((i) => String(i.at).startsWith("past:"))).toBe(true);
   });
 
-  it("⚠️ 기준 건수는 실측값이다 — 임의로 낮추면 매일 거짓 경보가 난다", () => {
-    // 2026-09-23 운영 실측 56곳 → 세션565 42곳 정정 후 14곳 → 세션566 보류 6곳 정정 후 8곳
-    // (전부 준공 전). 이 값이 바뀌면 그 근거를 함께 남겨야 한다.
-    expect(COORD_SHARED_BASELINE).toBe(8);
+  it("`at` 은 시각이 아니라 상태 지문 — 같은 표시 집합이면 매번 같은 값", () => {
+    const rows = [...BASELINE, "ap-9"].map((id) => apt({ id, completion: "202912" }));
+    const issues1 = checkCoordSharedDrift(rows, { now: NOW, baselineIds: BASELINE });
+    const issues2 = checkCoordSharedDrift(rows, { now: new Date("2026-09-24T00:00:00Z"), baselineIds: BASELINE });
+    const at1 = issues1.find((i) => String(i.at).startsWith("new:"))?.at;
+    const at2 = issues2.find((i) => String(i.at).startsWith("new:"))?.at;
+    expect(at1).toBe(at2);
+  });
+
+  it("⚠️ 기준 명단은 실측값이다 — 임의로 줄이면 매일 거짓 경보가 난다", () => {
+    // 2026-09-24 세션568 라이브 재확인: 8곳, 전부 준공 전.
+    expect(COORD_SHARED_BASELINE_IDS).toHaveLength(8);
+    expect(COORD_SHARED_BASELINE_IDS).toEqual(
+      [...COORD_SHARED_BASELINE_IDS].sort(),
+    );
+    for (const id of [
+      "ah-2024910225", "ah-2025910011", "ah-2025910034", "ah-2025910268",
+      "ah-2025910269", "ah-2025930013", "ap-6025734", "ap-6028554",
+    ]) {
+      expect(COORD_SHARED_BASELINE_IDS).toContain(id);
+    }
+  });
+});
+
+describe("checkCoordCandidateDrift — 같은 좌표 후보 중 '기준 명단 밖 신규'만 알린다", () => {
+  /** @param {object} o */
+  const coordApt = (o) => ({ id: "x", name: "단지", lat: 37.5, lng: 127.0, coord_shared: false, ...o });
+
+  it("기준 안 후보만 있으면 조용하다", () => {
+    const rows = [
+      coordApt({ id: "a", name: "A아파트1차" }),
+      coordApt({ id: "b", name: "B빌리지2차" }),
+    ];
+    const issues = checkCoordCandidateDrift(rows, { baselineIds: ["a", "b"] });
+    expect(issues).toEqual([]);
+  });
+
+  it("기준 명단에 없던 새 후보가 생기면 알린다", () => {
+    const rows = [
+      coordApt({ id: "a", name: "A아파트1차" }),
+      coordApt({ id: "b", name: "B빌리지2차" }),
+    ];
+    const issues = checkCoordCandidateDrift(rows, { baselineIds: [] });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toBe("coord-candidate");
+    expect(issues[0].detail).toMatch(/새로 공유/);
+    expect(issues[0].detail).toMatch(/2곳/);
+  });
+
+  it("이미 coord_shared=true 로 표시된 것은 후보 알림에서 제외한다 — ⑨ 본 점검과 중복 회피", () => {
+    const rows = [
+      coordApt({ id: "a", name: "A아파트1차", coord_shared: true }),
+      coordApt({ id: "b", name: "B빌리지2차", coord_shared: true }),
+    ];
+    const issues = checkCoordCandidateDrift(rows, { baselineIds: [] });
+    expect(issues).toEqual([]);
+  });
+
+  it("같은 좌표라도 별개 단지가 아니면(이름이 하나로 모임) 후보에 안 잡힌다", () => {
+    // groupSharedCoords 는 hasDistinctProjects 를 통과해야 후보다. 같은 이름 회차 분리는 하나로 모인다.
+    const rows = [
+      coordApt({ id: "a", name: "같은단지 무순위 1차" }),
+      coordApt({ id: "b", name: "같은단지 무순위 2차" }),
+    ];
+    const issues = checkCoordCandidateDrift(rows, { baselineIds: [] });
+    expect(issues).toEqual([]);
+  });
+
+  it("사라진 후보는 알리지 않는다(정보 로그만, issue 없음)", () => {
+    // 기준 명단에 c 가 있지만 지금은 후보가 아니게 됨(a, b 만 있고 c 는 아예 데이터에 없음)
+    const rows = [coordApt({ id: "a", name: "A아파트1차" }), coordApt({ id: "b", name: "B빌리지2차" })];
+    const issues = checkCoordCandidateDrift(rows, { baselineIds: ["a", "b", "c"] });
+    expect(issues).toEqual([]);
+  });
+
+  it("⚠️ 기준 후보 명단은 실측값이다", () => {
+    // 2026-09-24 세션568 라이브 실측: groupSharedCoords 후보 217개 중 coord_shared 표시 8개를 뺀 209개.
+    expect(COORD_CANDIDATE_BASELINE_IDS).toHaveLength(209);
+    expect(COORD_CANDIDATE_BASELINE_IDS).toEqual([...COORD_CANDIDATE_BASELINE_IDS].sort());
   });
 });

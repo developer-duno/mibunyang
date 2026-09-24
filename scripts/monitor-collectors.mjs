@@ -27,6 +27,7 @@ import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_L
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
 import { buildBriefing, splitRuns } from "./monitor-briefing.mjs";
 import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
+import { groupSharedCoords } from "./fix-placeholder-addresses.mjs";
 
 loadEnv();
 
@@ -896,18 +897,87 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
  *    확인 방법: 최신 `supabase/migrations/*view*.sql` 에서 `rg.` 로 시작하는 SELECT 항목 grep.
  */
 /**
- * 좌표 부정확 단지의 **기준 건수** — 이보다 늘면 경보한다(감시 ⑨).
+ * 좌표 부정확 단지의 **기준 명단** — 개수가 아니라 **id 목록**으로 대조한다(감시 ⑨).
+ *
+ * ⚠️ 세션565 는 "14 · past:6" 을 **개수로만** 대조해, 명단이 3↔3 뒤바뀐 것(고친 3곳↔안 고친
+ * 3곳이 자리를 바꿈)을 놓쳤다(`feedback_expect_ids_not_counts.md`). 개수만 맞으면 내용이
+ * 뒤바뀌어도 통과하므로, 세션568 부터는 **id 집합**으로 신규·풀림을 각각 잡는다.
  *
  * 2026-09-23 실측 56곳 → 같은 날 세션565 가 **42곳을 사람 대조·승인으로 정정**해 14곳 →
  * 세션566 이 보류 6곳을 청약홈 원 공고·기사로 확인해 정정(`docs/audits/2026-09-23-coord-approvals-session566.json`)
  * 하고 flag 도구를 "증거 있을 때만 끈다" 로 고쳐 **8곳**(전부 준공 전 2027-02~2028-08, `past:0`).
- * 준공되면 저절로 풀리므로 **줄어드는 것은 정상**이다 — 늘어날 때만 본다.
- * ⚠️ 세션565 는 이 수를 "14 · past:6" 개수로만 대조해, 명단이 3↔3 뒤바뀐 것을 놓쳤다 — 명단도 함께 볼 것.
+ * 준공되면 저절로 풀리므로 **명단에서 빠지는 것은 정상**이다 — 명단 밖 새 id 가 나타날 때만 본다.
+ * 2026-09-24 세션568 재확인: 라이브 조회로 이 8개 id 와 정확히 일치함을 실측.
  *
- * ⚠️ 이 값을 낮추면 매일 거짓 경보가 나 감시가 무뎌진다. 실측 후에만 고친다:
- *   node -e "...apartments 에서 coord_shared=true 세기..."
+ * ⚠️ 이 명단을 임의로 줄이면 매일 거짓 경보가 나 감시가 무뎌진다. 실측 후에만 고친다:
+ *   node -e "...apartments 에서 coord_shared=true 인 id 를 정렬해 뽑기..."
  */
-export const COORD_SHARED_BASELINE = 8;
+export const COORD_SHARED_BASELINE_IDS = [
+  "ah-2024910225",
+  "ah-2025910011",
+  "ah-2025910034",
+  "ah-2025910268",
+  "ah-2025910269",
+  "ah-2025930013",
+  "ap-6025734",
+  "ap-6028554",
+].sort();
+
+/**
+ * "같은 좌표를 서로 다른 단지가 공유"하는 **후보** 의 기준 명단 — `groupSharedCoords` 가
+ * 뽑는 집합 중 `coord_shared` 로 아직 표시되지 않은 id 들이다.
+ *
+ * ⚠️ "같은 좌표 = 결함" 은 틀린 잣대다(세션556: 후보로 잡힌 115곳 중 45곳이 멀쩡했다,
+ * `feedback_same_coordinate_is_not_a_defect.md`). 그래서 이 명단은 "정상"이 아니라
+ * **"이미 알고 있는 후보 풀"** 이다 — 여기 없던 id 가 새로 후보에 들어오면 그것만 알린다.
+ *
+ * 2026-09-24 세션568 실측: 라이브 `groupSharedCoords` 후보 217개 중 `coord_shared=true`
+ * 로 이미 표시된 8개(=COORD_SHARED_BASELINE_IDS)를 뺀 **209개**.
+ */
+export const COORD_CANDIDATE_BASELINE_IDS = [
+  "ah-2021910013", "ah-2021910105", "ah-2021910122", "ah-2021910125", "ah-2021910149",
+  "ah-2021910156", "ah-2021910159", "ah-2021910166", "ah-2021910177", "ah-2021910187",
+  "ah-2021910188", "ah-2021930007", "ah-2022910022", "ah-2022910023", "ah-2022910028",
+  "ah-2022910046", "ah-2022910047", "ah-2022910053", "ah-2022910065", "ah-2022910067",
+  "ah-2022910075", "ah-2022910087", "ah-2022910095", "ah-2022910098", "ah-2022910099",
+  "ah-2022910100", "ah-2022910114", "ah-2022910122", "ah-2022910132", "ah-2022910141",
+  "ah-2022910148", "ah-2022910151", "ah-2022910158", "ah-2022910165", "ah-2022910172",
+  "ah-2022910175", "ah-2022910182", "ah-2022910189", "ah-2022910190", "ah-2022910194",
+  "ah-2022910196", "ah-2022910197", "ah-2022910205", "ah-2022910212", "ah-2022910213",
+  "ah-2022910214", "ah-2022910224", "ah-2022910226", "ah-2022910229", "ah-2022910235",
+  "ah-2022910239", "ah-2022910253", "ah-2022910257", "ah-2022910259", "ah-2022910261",
+  "ah-2022910269", "ah-2022910270", "ah-2022910273", "ah-2022910280", "ah-2022910286",
+  "ah-2022910299", "ah-2022910306", "ah-2022910307", "ah-2022910308", "ah-2022910315",
+  "ah-2022910316", "ah-2022910318", "ah-2022910321", "ah-2022910323", "ah-2022910327",
+  "ah-2022910329", "ah-2022910335", "ah-2022910337", "ah-2022910340", "ah-2022910342",
+  "ah-2022910345", "ah-2022910346", "ah-2022910348", "ah-2022910352", "ah-2022910353",
+  "ah-2022910359", "ah-2022910360", "ah-2022910362", "ah-2022910372", "ah-2022910375",
+  "ah-2022910376", "ah-2022930004", "ah-2022930023", "ah-2023910008", "ah-2023910018",
+  "ah-2023910026", "ah-2023910027", "ah-2023910028", "ah-2023910029", "ah-2023910030",
+  "ah-2023910033", "ah-2023910035", "ah-2023910036", "ah-2023910039", "ah-2023910040",
+  "ah-2023910045", "ah-2023910046", "ah-2023910048", "ah-2023910049", "ah-2023910050",
+  "ah-2023910054", "ah-2023910055", "ah-2023910056", "ah-2023910059", "ah-2023910065",
+  "ah-2023910068", "ah-2023910069", "ah-2023910070", "ah-2023910072", "ah-2023910076",
+  "ah-2023910079", "ah-2023910080", "ah-2023910081", "ah-2023910085", "ah-2023910089",
+  "ah-2023910090", "ah-2023910093", "ah-2023910097", "ah-2023910100", "ah-2023910107",
+  "ah-2023910110", "ah-2023910112", "ah-2023910113", "ah-2023910114", "ah-2023910120",
+  "ah-2023910123", "ah-2023910128", "ah-2023910129", "ah-2023910132", "ah-2023910133",
+  "ah-2023930003", "ah-2023930019", "ah-2023930042", "ah-2023930044", "ah-2024910001",
+  "ah-2024910002", "ah-2024910005", "ah-2024910014", "ah-2024910018", "ah-2024910022",
+  "ah-2024910023", "ah-2024910024", "ah-2024910025", "ah-2024910028", "ah-2024910034",
+  "ah-2024910038", "ah-2024910042", "ah-2024910045", "ah-2024910053", "ah-2024910054",
+  "ah-2024910056", "ah-2024910064", "ah-2024910065", "ah-2024910068", "ah-2024910078",
+  "ah-2024910081", "ah-2024910086", "ah-2024910089", "ah-2024910094", "ah-2024910095",
+  "ah-2024910097", "ah-2024910098", "ah-2024910118", "ah-2024910120", "ah-2024910123",
+  "ah-2024910127", "ah-2024910144", "ah-2024910166", "ah-2024910170", "ah-2024910184",
+  "ah-2024910208", "ah-2024910221", "ah-2024910240", "ah-2024910241", "ah-2024930009",
+  "ah-2024930024", "ah-2024930035", "ah-2024930039", "ah-2024930047", "ah-2024930048",
+  "ah-2024930060", "ah-2025910074", "ah-2025910104", "ah-2025910156", "ah-2025910157",
+  "ah-2025910171", "ah-2025910179", "ah-2025910185", "ah-2025910263", "ah-2025910279",
+  "ah-2025910280", "ah-2025930006", "ah-2025930018", "ah-2025930019", "ah-2025930027",
+  "ah-2025930028", "ah-2025930031", "ah-2025930042", "ah-2026910003", "ah-2026910004",
+  "ah-2026930001", "ah-2026930029", "ap-6026674", "ap-6028058",
+].sort();
 
 /**
  * **daily 모드에서도 dedup 을 타는** collector — 사람이 손대야만 풀리는 지속 상태 (세션563).
@@ -917,9 +987,6 @@ export const COORD_SHARED_BASELINE = 8;
  * **상태 지문**이어야 한다(안 그러면 키가 매일 달라져 dedup 이 무효다).
  */
 export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
-
-/** 기준보다 이만큼 줄면 "기준을 낮추라" 고 알린다 — 잘할수록 눈머는 것을 막는다(세션563). */
-export const BASELINE_SLACK = 5;
 
 export const GU_JOIN_COLUMNS = [
   "fertility_rate",
@@ -1719,7 +1786,28 @@ export async function fetchDbPermissionsSnapshot(sbArg) {
 }
 
 /**
- * 좌표가 부정확한 단지(`coord_shared`)를 사장님께 알린다 — 감시 ⑨ (세션563)
+ * id 목록을 **상태 지문**(짧은 해시)으로 접는다 — `at` 은 시각이 아니라 상태를 나타내야
+ * dedup(`kind|collector|at`)이 매일 달라지지 않는다(세션563 결). 시각 대신 이 지문을 쓰면
+ * id 집합이 같은 동안은 같은 값, 하나라도 달라지면 다른 값이 된다.
+ *
+ * FNV-1a 32비트 — 암호학적 용도가 아니라 "같은 집합인가" 만 구분하면 되므로 이걸로 충분하다.
+ * @param {string[]} ids 정렬 여부는 호출부 책임(정렬 안 하면 순서만 바뀌어도 지문이 달라진다).
+ * @returns {string} 8자리 16진수
+ */
+export function fingerprintIds(ids) {
+  let h = 0x811c9dc5;
+  for (const id of ids) {
+    for (let i = 0; i < id.length; i++) {
+      h ^= id.charCodeAt(i);
+      h = Math.imul(h, 0x01000193);
+    }
+    h ^= 0; // 구분자 없이도 길이가 다른 id 라 충돌 위험은 실전에서 무시할 수준
+  }
+  return (h >>> 0).toString(16).padStart(8, "0");
+}
+
+/**
+ * 좌표가 부정확한 단지(`coord_shared`)를 사장님께 알린다 — 감시 ⑨ (세션563, 세션568 명단화)
  *
  * ## 왜 감시인가 (손님 화면이 아니라)
  *
@@ -1734,44 +1822,54 @@ export async function fetchDbPermissionsSnapshot(sbArg) {
  * 못 찾는 게 정상이고(2026-09-23 실측: 정정 대상 0곳), 준공되면 저절로 풀린다. 그래서
  * "있다" 자체는 경보가 아니다. 경보는 **늘었을 때**와 **준공이 지났는데도 안 풀렸을 때**다.
  *
+ * ## 왜 개수가 아니라 명단인가 (세션568)
+ *
+ * 개수만 대조하면 "14곳 → 14곳"처럼 그대로여도 **명단이 3↔3 뒤바뀐** 것을 놓친다
+ * (세션565 실사고, `feedback_expect_ids_not_counts.md`). 그래서 이제 명단(id 집합)의
+ * **차집합**으로 신규(A-신규)와 풀림(A-풀림)을 각각 잡는다 — 개수가 같아도 내용이 바뀌면
+ * 둘 다(신규 N + 풀림 N) 걸린다.
+ *
  * @param {Array<{ id?: string|null, name?: string|null, completion?: unknown, coord_shared?: unknown }>} rows
  *   apartments 전체 (coord_shared 포함).
- * @param {{ baseline?: number, now?: Date }} [opts]
- *   baseline = 직전에 알려진 건수(COORD_SHARED_BASELINE). now = 준공 경과 판정 기준 시각.
+ * @param {{ baselineIds?: string[], now?: Date }} [opts]
+ *   baselineIds = 직전에 알려진 id 명단(COORD_SHARED_BASELINE_IDS). now = 준공 경과 판정 기준 시각.
  * @returns {Issue[]}
  */
 export function checkCoordSharedDrift(rows, opts = {}) {
-  const baseline = opts.baseline ?? COORD_SHARED_BASELINE;
+  const baselineIds = opts.baselineIds ?? COORD_SHARED_BASELINE_IDS;
+  const baselineSet = new Set(baselineIds);
   const now = opts.now ?? new Date();
   const shared = rows.filter((r) => r?.coord_shared === true);
+  const sharedIds = shared.map((r) => String(r?.id ?? "")).filter(Boolean);
+  const sharedSet = new Set(sharedIds);
 
   /** @type {Issue[]} */
   const issues = [];
 
-  // ⚠️ 기준보다 **크게 줄면** 기준 자체를 낮추라고 알린다(세션563 적대검증 🟠).
-  //    하드코딩 상한이라, 정정을 잘해 40곳이 된 뒤 통로가 다시 뚫려 55곳이 돼도 56 미만이라
-  //    **침묵한다** — 잘할수록 탐지 폭이 벌어지는 구조다. 기준 갱신을 사람이 하도록 알린다.
-  if (shared.length <= baseline - BASELINE_SLACK) {
+  // (A-신규) 명단에 없던 id 가 새로 표시됐다 — 통로가 다시 뚫렸을 수 있다.
+  const newcomers = shared.filter((r) => !baselineSet.has(String(r?.id ?? "")));
+  if (newcomers.length > 0) {
+    const sample = newcomers.slice(0, 5).map((r) => `${r?.name ?? r?.id}(${r?.id})`).join(" · ");
     issues.push({
       kind: "nulls",
       collector: "coord-shared",
       detail:
-        `좌표 부정확 단지가 ${shared.length}곳으로 줄었다(기준 ${baseline}) — ` +
-        `COORD_SHARED_BASELINE 을 ${shared.length} 로 낮춰야 다시 늘어나는 것을 잡는다`,
-      at: `shrank:${shared.length}`,
+        `명단 밖 좌표 부정확 ${newcomers.length}곳 — ${sample} — ` +
+        `새 단지가 자리표시 좌표를 받았을 수 있다. scripts/fix-placeholder-addresses.mjs --out=<덤프> 로 판정하라`,
+      at: `new:${fingerprintIds(sharedIds.slice().sort())}`,
     });
   }
 
-  // (A) 늘었다 — 새 단지가 들어오며 자리표시 좌표를 받았다는 뜻이다. 통로가 다시 뚫렸을 수 있다.
-  if (shared.length > baseline) {
+  // (A-풀림) 명단에 있었는데 이제 표시가 꺼졌다 — 정정됐거나 준공됐다는 뜻. 명단을 갱신하라고 알린다.
+  const resolved = baselineIds.filter((id) => !sharedSet.has(id));
+  if (resolved.length > 0) {
     issues.push({
       kind: "nulls",
       collector: "coord-shared",
       detail:
-        `좌표 부정확 단지 ${shared.length}곳 (기준 ${baseline}곳 대비 +${shared.length - baseline}) — ` +
-        `새 단지가 자리표시 좌표를 받았을 수 있다. scripts/fix-placeholder-addresses.mjs --out=<덤프> 로 판정하라`,
-      // 같은 이유로 건수 지문(위 주석 참조) — 늘어난 수가 바뀔 때만 다시 알린다.
-      at: `grew:${shared.length}`,
+        `좌표 부정확 표시가 풀린 곳 ${resolved.length}곳(${resolved.join(" · ")}) — ` +
+        `COORD_SHARED_BASELINE_IDS 명단에서 빼라`,
+      at: `resolved:${fingerprintIds(sharedIds.slice().sort())}`,
     });
   }
 
@@ -1786,12 +1884,12 @@ export function checkCoordSharedDrift(rows, opts = {}) {
       detail:
         `준공일이 지난 좌표 부정확 단지 ${fixable.length}곳 — 이제 지도에 있으니 **고칠 수 있다**. ` +
         `scripts/fix-placeholder-addresses.mjs --out=<덤프> 후 --apply-from 으로 반영 (예: ${sample})`,
-      // ⚠️ `at` 은 **시각이 아니라 건수 지문**이다(세션563 적대검증 🟠).
+      // ⚠️ `at` 은 **시각이 아니라 상태 지문**이다(세션563 적대검증 🟠, 세션568 명단화 후에도 유지).
       //    이 상태는 사람이 도구를 고쳐야 풀리는데, 시각을 넣으면 `dedupKey`(kind|collector|at)가
       //    매일 달라져 **매일 텔레그램이 온다.** 고칠 방법이 없는 것을 매일 알리면 사장님이
       //    ①~⑧ 까지 통째로 무시하게 된다 — 2차 피해가 1차보다 크다.
-      //    건수 지문이면 48→47 로 줄 때만 새 알림이 간다(= 실제로 진전이 있을 때).
-      at: `past:${fixable.length}`,
+      //    id 집합 지문이면 그 집합이 바뀔 때만 새 알림이 간다(= 실제로 진전이 있을 때).
+      at: `past:${fingerprintIds(fixable.map((r) => String(r?.id ?? "")).sort())}`,
     });
   }
   return issues;
@@ -1838,16 +1936,57 @@ export function isPastCompletion(completion, now) {
  *    (`.claude/rules/collectors/unordered-pagination-loses-rows.md`). 여기서 행이 새면
  *    `coord_shared` 건수가 실제보다 적게 세어져 **늘어난 것을 놓친다**.
  *
+ * `lat, lng` 는 세션568 에서 추가 — `groupSharedCoords` 로 "같은 좌표를 다른 프로젝트가
+ * 공유"하는 후보를 이 자리에서 함께 집계하려면 좌표값이 필요하다.
+ *
  * @param {any} [sbArg] 테스트 주입용. 생략하면 getSupabase().
  * @returns {Promise<Array<Record<string, any>>>}
  */
 export async function fetchCoordSharedRows(sbArg) {
   const sb = sbArg ?? getSupabase();
   return await selectAll(
-    (s) => s.from("apartments").select(["id", "name", "completion", "coord_shared"].join(", ")),
+    (s) => s.from("apartments").select(["id", "name", "lat", "lng", "completion", "coord_shared"].join(", ")),
     sb,
     "id",
   );
+}
+
+/**
+ * "같은 좌표를 서로 다른 프로젝트가 공유"하는 **후보**가 새로 생겼는지 본다 — 감시 ⑨ 보조(세션568).
+ *
+ * ⚠️ "같은 좌표 = 결함" 은 틀린 잣대다(`feedback_same_coordinate_is_not_a_defect.md` — 세션556
+ * 실측: 후보로 잡힌 115곳 중 45곳이 멀쩡했다). 그래서 이 점검은 "후보가 있다" 를 알리지 않는다 —
+ * **기준 명단(COORD_CANDIDATE_BASELINE_IDS)에 없던 id 가 새로 후보에 들어왔을 때만** 알린다.
+ * 사라진 후보(정정됐거나 더는 겹치지 않게 된 것)는 알리지 않는다 — 정보 손실이 아니라 개선이다.
+ *
+ * @param {Array<{ id?: string|null, name?: string|null, lat?: unknown, lng?: unknown, coord_shared?: unknown }>} rows
+ *   apartments 전체 (lat/lng/coord_shared 포함) — `fetchCoordSharedRows` 결과를 그대로 쓴다.
+ * @param {{ baselineIds?: string[] }} [opts] baselineIds = COORD_CANDIDATE_BASELINE_IDS.
+ * @returns {Issue[]}
+ */
+export function checkCoordCandidateDrift(rows, opts = {}) {
+  const baselineIds = opts.baselineIds ?? COORD_CANDIDATE_BASELINE_IDS;
+  const baselineSet = new Set(baselineIds);
+
+  const { candidates } = groupSharedCoords(rows);
+  // "표시 안 된" 후보만 본다 — 이미 coord_shared=true 인 것은 ⑨ 본 점검이 다룬다(중복 회피).
+  const notShown = candidates.filter((a) => a?.coord_shared !== true);
+  const newcomers = notShown.filter((a) => !baselineSet.has(String(a?.id ?? "")));
+
+  /** @type {Issue[]} */
+  const issues = [];
+  if (newcomers.length > 0) {
+    const sample = newcomers.slice(0, 5).map((a) => `${a?.name ?? a?.id}(${a?.id})`).join(" · ");
+    issues.push({
+      kind: "nulls",
+      collector: "coord-candidate",
+      detail:
+        `같은 좌표를 다른 프로젝트가 새로 공유 ${newcomers.length}곳 — ${sample} — ` +
+        `scripts/fix-placeholder-addresses.mjs --out=<덤프> 로 판정하라`,
+      at: `new:${fingerprintIds(notShown.map((a) => String(a?.id ?? "")).sort())}`,
+    });
+  }
+  return issues;
 }
 
 /**
@@ -2279,15 +2418,25 @@ async function main() {
       console.log(`[monitor] ⑦ 시군구 짝 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    // ⑨ 좌표 부정확 단지 — 늘었거나, 준공이 지나 이제 고칠 수 있게 된 것 (세션563).
+    // ⑨ 좌표 부정확 단지 — 늘었거나, 준공이 지나 이제 고칠 수 있게 된 것 (세션563, 세션568 명단화).
     //    손님 화면에 경고를 다는 대신 **사장님께 알린다**(사장님 지적 2026-09-23).
     //    ⑦ 과 같은 이유로 fail-open — 이 조회가 실패해도 ①~⑦ 은 그대로 보고된다.
     try {
       const coordRows = await fetchCoordSharedRows();
       const coordIssues = checkCoordSharedDrift(coordRows);
+      const candidateIssues = checkCoordCandidateDrift(coordRows);
       const sharedCount = coordRows.filter((r) => r?.coord_shared === true).length;
-      console.log(`[monitor] ⑨ 좌표 부정확 점검: ${sharedCount}곳(기준 ${COORD_SHARED_BASELINE}) → 이상 ${coordIssues.length}건`);
-      issues = issues.concat(coordIssues);
+      const { candidates } = groupSharedCoords(coordRows);
+      const newCandidateCount = candidates.filter((a) => {
+        if (a?.coord_shared === true) return false;
+        return !new Set(COORD_CANDIDATE_BASELINE_IDS).has(String(a?.id ?? ""));
+      }).length;
+      console.log(
+        `[monitor] ⑨ 좌표 부정확 ${sharedCount}곳(명단 ${COORD_SHARED_BASELINE_IDS.length}) · ` +
+        `같은 좌표 후보 ${candidates.length}곳(기준 ${COORD_CANDIDATE_BASELINE_IDS.length}) · ` +
+        `새 후보 ${newCandidateCount}`,
+      );
+      issues = issues.concat(coordIssues, candidateIssues);
     } catch (err) {
       console.log(`[monitor] ⑨ 좌표 부정확 점검 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
     }
