@@ -1162,3 +1162,29 @@ describe("fetchNeisSchoolInfo 분교장 배선 — NEIS_KEY 있을 때 (세션56
     expect(COLLECTOR_SRC).toMatch(/^[ \t]*if \(NEIS_KEY\) log\(PHASE, `분교장 NEIS 매칭 \$\{neisBranchMatched\} · 분교장 미매칭 \$\{neisBranchUnmatched\}`\);/m);
   });
 });
+
+// ── 세션569: --ids 경로의 불필요한 조회 제거 ────────────────────
+// --ids 면 대상이 전부 forceIds 라 전체 schools 조회(30일 skip·오래된 순 정렬 재료)가 쓰이지
+// 않고, 옛 값(oldById)은 dry-run 출력에만 쓰인다. 줄머리 고정 = 주석 처리 무효화도 잡는다.
+describe("--ids 조회 절약 배선 (세션569)", () => {
+  it("--ids 면 전체 schools 조회를 건너뛴다(없으면 옛 조회 그대로)", () => {
+    expect(COLLECTOR_SRC).toMatch(
+      /^[ \t]*const allSchoolRows = idsArg != null \? \[\] : \/\*\* @type \{Array<Record<string, any>>\} \*\/ \(\r?\n[ \t]*await selectAll\(\(s\) => s\.from\("schools"\)\.select\("apartment_id, nearby_schools, updated_at"\), sb, "apartment_id"\)/m,
+    );
+  });
+
+  it("옛 값(oldById)은 dry-run 일 때만 조회한다", () => {
+    expect(COLLECTOR_SRC).toMatch(/^[ \t]*if \(dryRun && forceIds\.size > 0\) \{/m);
+    expect(COLLECTOR_SRC).not.toMatch(/^[ \t]*if \(forceIds\.size > 0\) \{/m);
+  });
+
+  it("oldById 를 읽는 곳은 dry-run 분기 안 한 곳뿐이다", () => {
+    const reads = [...COLLECTOR_SRC.matchAll(/oldById\.get\(/g)];
+    expect(reads).toHaveLength(1);
+    const at = /** @type {number} */ (reads[0].index);
+    const dryIdx = COLLECTOR_SRC.lastIndexOf("if (dryRun) {", at);
+    const upsertIdx = COLLECTOR_SRC.indexOf('from("schools").upsert(', at);
+    expect(dryIdx).toBeGreaterThan(-1);
+    expect(upsertIdx).toBeGreaterThan(at); // 실제 쓰기(upsert)보다 앞 = dry-run 분기 안
+  });
+});

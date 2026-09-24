@@ -728,7 +728,9 @@ async function main() {
   // 세션539 B-1: 무정렬 OFFSET → 고유키(apartment_id) 커서. rescaleOnly()(L444)가 이미
   // 같은 테이블을 .order("apartment_id") 로 훑는 정답 패턴 — 여기 main() 만 빠져 있었다
   // (unordered-pagination-loses-rows.md §1). schools 는 apartment_id 가 1행=1단지 고유키.
-  const allSchoolRows = /** @type {Array<Record<string, any>>} */ (
+  // 세션569: --ids 면 전체 조회를 건너뛴다 — 대상이 전부 forceIds 라 enrichedIds(30일 skip)도
+  // updatedAtById(오래된 순 정렬)도 쓰이지 않는다(selectProcessList 의 rest 가 비어 있다).
+  const allSchoolRows = idsArg != null ? [] : /** @type {Array<Record<string, any>>} */ (
     await selectAll((s) => s.from("schools").select("apartment_id, nearby_schools, updated_at"), sb, "apartment_id")
   );
   const enrichedIds = buildEnrichedIds(allSchoolRows, staleThresholdMs);
@@ -737,9 +739,10 @@ async function main() {
   // dry-run + --ids 확장 출력용 옛 값(school_score/school_grade 포함) 조회 — 위 allSchoolRows
   // 는 회귀 가드(schools-neis.test.mjs "고유키 커서")가 select 문자열을 리터럴로 고정해
   // 컬럼을 늘릴 수 없으므로, 지정된 소수 id 에 한해 별도로 조회한다.
+  // 세션569: 옛 값은 아래 dry-run 출력에만 쓰이므로 실제 쓰기 실행에서는 조회하지 않는다.
   /** @type {Map<string, Record<string, any>>} */
   let oldById = new Map();
-  if (forceIds.size > 0) {
+  if (dryRun && forceIds.size > 0) {
     const { data: oldRows } = await sb
       .from("schools")
       .select("apartment_id, nearby_schools, school_score, school_grade")
