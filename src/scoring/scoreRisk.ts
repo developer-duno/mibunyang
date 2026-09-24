@@ -223,8 +223,12 @@ export function scoreRisk(apt: Apt): Res {
       {
         name: "미분양률",
         score: 100 - unsoldSc,
-        info: unsoldUnknown ? "세대수 미확인 (중립)" : `${unsoldRate}%`,
-        detail: unsoldUnknown ? "세대수 미확인 (중립 40점)" : `${unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)`,
+        info: unsoldUnknown ? (units <= 1 ? "세대수 미확인 (중립)" : "미분양 자료 없음 (중립)") : `${unsoldRate}%`,
+        detail: unsoldUnknown
+          ? units <= 1
+            ? "세대수 미확인 (중립 40점)"
+            : "미분양 자료 없음 (중립 40점)"
+          : `${unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)`,
       },
       {
         name: "경쟁률",

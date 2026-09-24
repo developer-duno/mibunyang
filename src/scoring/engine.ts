@@ -15,7 +15,7 @@ type RegionMedian = NonNullable<ScoringContext["regionMedians"]>[string];
  * null 안전 레이어 + 한글 NFC 정규화.
  * 위험 필드 null → 비관적 기본값(dataReliability:30).
  * 단 unsoldRate 는 null 보존(세션 445) — 100% 초과 폭발값 무력화분을 지역 중위값으로 되채우지 않고
- *   scoreRisk 가 "미분양률 미확인=중립"으로 처리하게 둔다.
+ *   scoreRisk 가 "미분양 자료 없음=중립"(세션568, units<=1 인 경우만 "세대수 미확인")으로 처리하게 둔다.
  * 단 builderDebtRatio·noise 도 null 보존(세션508) — "모르는 것을 나쁘게 단정하는" 비관적 기본값
  *   (구 builderDebtRatio:250, noise:75)을 제거. scoreRisk/scoreLocation 이 null=중립으로 처리한다.
  *   supplyRatio 도 이미 null 보존(세션501, 폴백 150 제거) — 위 "위험 필드" 기본값 목록에서 제외.
