@@ -847,13 +847,31 @@ export const REGION_UNRESOLVED_COLLECTORS = ["market-stats", "avg-income", "kosi
 export const REGION_UNRESOLVED_NAME_LIMIT = 5;
 
 /**
+ * ⑪ 수집기별로 읽는 최근 실행 수 — dedup 지문의 "구간 시작"을 찾는 창(월간 수집기 2년치).
+ * 마커 구간이 이보다 길면 창이 밀릴 때마다 시작 시각이 바뀌어 한 달에 한 번 다시 알린다(허용).
+ */
+export const REGION_UNRESOLVED_RUN_WINDOW = 24;
+
+/**
+ * ⑪ dedup 구간을 끊는 **깨끗한 실행** = status success 이고 마커가 없는 실행 1회.
+ * 실패 실행(마커 없음)은 원천을 못 받아 판정이 없었던 것이라 구간을 끊지 않는다.
+ * @param {{ status?: string|null, error_message?: string|null }} run
+ * @returns {boolean}
+ */
+export function isCleanRegionRun(run) {
+  return run.status === "success" && !parseRegionUnresolved(run.error_message);
+}
+
+/**
  * ⑪ KOSIS 시도 이름 못 맞춤 — 수집기가 남긴 `REGION_UNRESOLVED` 마커(error_message)를 읽는다.
  *
  * 세션568(#595)이 무음 continue 를 **로그**로 바꿨지만 로컬 러너 로그는 사람이 열어야 보인다
  * (data-changing-run-approval.md §4). 그래서 수집기가 collector_runs 에 마커로 남기고 여기서 알린다.
  * **가장 최근 실행만** 본다 — 표기를 반영해 다음 실행이 깨끗하면 경보도 그친다(옛 실행의 마커는 무시).
+ * 옛 실행은 dedup 지문의 "구간 시작"을 찾는 데만 쓴다. 사람이 고쳐야 풀리는 종류라 ⑨ 처럼
+ * daily 에서도 dedup 한다(`ALWAYS_DEDUP_KINDS`).
  *
- * @param {Record<string, Array<{ error_message?: string|null, finished_at?: string|null }>>} runsByCollector
+ * @param {Record<string, Array<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>>} runsByCollector
  *   collector 별 최근 행(finished_at DESC). [0] 이 최신.
  * @param {readonly string[]} [targets]
  * @returns {Issue[]}
@@ -862,10 +880,22 @@ export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLV
   /** @type {Issue[]} */
   const issues = [];
   for (const collector of targets) {
-    const latest = (runsByCollector[collector] ?? [])[0];
+    const runs = runsByCollector[collector] ?? [];
+    const latest = runs[0];
     if (!latest) continue;
     const parsed = parseRegionUnresolved(latest.error_message);
     if (!parsed) continue;
+    // dedup 지문(⑨ 와 같은 monitor_alert_state · dedupKey 재사용, 세션569):
+    //   마커 내용(n·이름) 해시 + "마커가 끊기지 않고 이어진 구간"의 첫 실행 시각.
+    //   같은 내용이 매달 이어지면 같은 키 → 다음 날부터 침묵 / 내용이 바뀌면 새 키 /
+    //   깨끗한 실행이 한 번 끼었다가 다시 생기면 구간이 새로 시작돼 새 키 → 다시 알린다.
+    let streakStart = latest.finished_at ?? "";
+    for (const r of runs) {
+      if (isCleanRegionRun(r)) break; // 구간 끝 — 이 뒤(더 옛날)는 다른 구간
+      if (parseRegionUnresolved(r.error_message)) streakStart = r.finished_at ?? streakStart;
+      // 마커 없는 실패 실행은 구간을 끊지도 늘리지도 않는다(KOSIS 가 안 와 판정 자체가 없었다)
+    }
+    const fp = fingerprintIds([`${collector}|${parsed.n}|${parsed.names.join(",")}`]);
     const shown = parsed.names.slice(0, REGION_UNRESOLVED_NAME_LIMIT);
     const rest = parsed.names.length - shown.length;
     const nameText = `${shown.join(", ")}${rest > 0 ? ` 외 ${rest}건` : ""}`;
@@ -878,8 +908,9 @@ export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLV
         ...(parsed.names.some((nm) => nm.startsWith("전남광주"))
           ? ["통합 시도 합계(전남광주)는 시군구로 가를 수 없는 표라, 원천이 광주·전남을 따로 주기 전까지 새 값이 안 들어옵니다."]
           : []),
+        ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}`] : []),
       ],
-      at: latest.finished_at ?? undefined,
+      at: `${fp}@${streakStart}`,
     });
   }
   return issues;
@@ -1035,6 +1066,32 @@ export const COORD_CANDIDATE_BASELINE_IDS = [
  * **상태 지문**이어야 한다(안 그러면 키가 매일 달라져 dedup 이 무효다).
  */
 export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
+
+/**
+ * daily 에서도 dedup 할 **이슈 종류**(세션569). ⑪ 은 수집기 이름(market-stats 등)이 ②⑤ 와 겹쳐서
+ * 수집기 이름으로 묶으면 그쪽 리마인드까지 막힌다 — 그래서 종류로 가른다.
+ */
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved"]);
+
+/**
+ * @param {Issue} issue
+ * @returns {boolean} daily 에서도 dedup 대상인가
+ */
+export function isAlwaysDedup(issue) {
+  return ALWAYS_DEDUP_COLLECTORS.has(issue.collector) || ALWAYS_DEDUP_KINDS.has(issue.kind);
+}
+
+/**
+ * dedup 을 거칠(= 이미 보낸 키면 빼고, 보낸 뒤 키를 기록할) 이슈. run 모드 = 전부,
+ * daily = "항상 dedup" 대상(⑨·⑪)만 — ①~⑧·⑩ 의 daily 하루 1회 리마인드는 그대로 둔다.
+ * main 의 거르기와 기록이 **같은 이 함수**를 쓴다(한쪽만 넓어지면 dedup 이 죽거나 리마인드가 죽는다).
+ * @param {Issue[]} issues
+ * @param {string} mode
+ * @returns {Issue[]}
+ */
+export function dedupScope(issues, mode) {
+  return mode === "run" ? issues : issues.filter(isAlwaysDedup);
+}
 
 export const GU_JOIN_COLUMNS = [
   "fertility_rate",
@@ -2178,23 +2235,24 @@ async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) 
 }
 
 /**
- * ⑪ 대상 수집기별 **최신 1행**(error_message 포함). collector 별 개별 쿼리 — 전역 최신순 limit 은
+ * ⑪ 대상 수집기별 최근 `REGION_UNRESOLVED_RUN_WINDOW` 행(error_message 포함, [0] 이 최신 — 판정은
+ * 최신 행, 나머지는 dedup 구간 시작 찾기용). collector 별 개별 쿼리 — 전역 최신순 limit 은
  * 매일 도는 수집기가 자리를 차지해 월간 수집기 행이 잘린다(fetchExternalApiRuns 와 같은 이유).
  * @param {readonly string[]} names
- * @returns {Promise<Record<string, Array<{ error_message: string|null, finished_at: string|null }>>>}
+ * @returns {Promise<Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null }>>>}
  */
 async function fetchRegionUnresolvedRuns(names) {
   const sb = getSupabase();
-  /** @type {Record<string, Array<{ error_message: string|null, finished_at: string|null }>>} */
+  /** @type {Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null }>>} */
   const grouped = {};
   await Promise.all(
     names.map(async (name) => {
       const { data, error } = await sb
         .from("collector_runs")
-        .select("collector,error_message,finished_at")
+        .select("collector,status,error_message,finished_at")
         .eq("collector", name)
         .order("finished_at", { ascending: false })
-        .limit(1);
+        .limit(REGION_UNRESOLVED_RUN_WINDOW);
       if (error) throw new Error(`collector_runs(${name}) 조회 실패: ${error.message}`);
       if (data && data.length > 0) grouped[name] = data;
     }),
@@ -2581,14 +2639,14 @@ async function main() {
   // ⚠️ daily 라도 `ALWAYS_DEDUP_COLLECTORS` 는 dedup 을 탄다(세션563). ③stale·④NULL 은
   //    "고치면 멈추는" 상태라 하루 1회 리마인드가 옳지만, ⑨ 좌표 부정확은 **사람이 도구를
   //    고쳐야** 풀려서 매일 울면 감시 전체가 무뎌진다. 건수 지문 `at` 과 짝을 이룬다.
-  if (mode === "run" || issues.some((i) => ALWAYS_DEDUP_COLLECTORS.has(i.collector))) {
-    const scoped = mode === "run" ? issues : issues.filter((i) => ALWAYS_DEDUP_COLLECTORS.has(i.collector));
+  if (mode === "run" || issues.some(isAlwaysDedup)) {
+    const scoped = dedupScope(issues, mode);
     const keys = scoped.map(dedupKey);
     const sentKeys = await fetchSentAlertKeys(keys);
     const freshScoped = filterUnsent(scoped, sentKeys);
     const skipped = scoped.length - freshScoped.length;
     if (skipped > 0) console.log(`[monitor] 이미 알린 이상 ${skipped}건 재발송 skip (dedup, mode=${mode})`);
-    const fresh = mode === "run" ? freshScoped : issues.filter((i) => !ALWAYS_DEDUP_COLLECTORS.has(i.collector) || freshScoped.includes(i));
+    const fresh = mode === "run" ? freshScoped : issues.filter((i) => !isAlwaysDedup(i) || freshScoped.includes(i));
     issues = fresh;
     if (issues.length === 0) {
       console.log("[monitor] 새 이상 없음 (전부 이미 알림, mode=run)");
@@ -2610,7 +2668,9 @@ async function main() {
     else console.log(`  [전송 스킵] ${result.reason}`);
   }
   // 발송 성공 시에만 dedup 키 기록 (전송 실패 시 다음 발화에서 재시도되도록).
-  if (mode === "run" && anySent) await recordSentAlerts(issues);
+  // ⚠️ daily 의 "항상 dedup" 대상(⑨·⑪)도 기록해야 dedup 이 산다(세션569). 전엔 run 모드만 기록해
+  //    ⑨ 의 키가 monitor_alert_state 에 한 번도 안 쌓였다(운영 coord-shared 행 0건 실측) — 매일 울렸다.
+  if (anySent) await recordSentAlerts(dedupScope(issues, mode));
   // 감시 ⑩(db-permissions) 경보는 다른 이슈보다 무겁다 — 전송이 실패하면 Actions 자체를
   // 실패시켜 실패 메일을 두 번째 통로로 쓴다(세션568).
   if (process.env.GITHUB_ACTIONS && permAlertDeliveryFailed(issues, sendResults)) {
