@@ -62,7 +62,7 @@ apartments가 조인하는 표기(`수원시 장안구`)는 **네 컬럼이 전�
 행에 흩어져 있다. 성남·청주·포항·화성에서 같은 패턴이 재현됐다고 조사원이 보고했다.
 
 > **확인 범위 고지**: 이 세 표기·채움 패턴 표는 조사원이 라이브 `regions` 테이블을 직접 SELECT한
-> 결과다. 나는 이 세션에서 연결된 Supabase MCP가 다른 조직(`chita-market`·`sangse-agent`) 소속이라
+> 결과다. 나는 이 세션에서 연결된 Supabase MCP가 다른 조직(`iroum-shared`(옛 `chita-market`, 2026-09-26 개명)·`sangse-agent`) 소속이라
 > mibunyang 프로젝트(`rwdtljipvmqpazrimyns`)에 닿지 않아 **직접 재현하지 못했다**(`supabase/CLAUDE.md`
 > L145-160의 "로컬 CLI가 다른 조직 로그인" 문제와 같은 증상). 대신 아래 §2에서 **각 수집기의 쓰기
 > 코드를 직접 읽어 이 채움 패턴이 코드상 왜 발생할 수밖에 없는지**를 재구성했고, 논리가 일치한다.
