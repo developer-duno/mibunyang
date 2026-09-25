@@ -125,6 +125,11 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRate
                         title={r.product}
                       >
                         {r.product}
+                        {[r.mortgageType, r.repayType, r.rateType].filter(Boolean).length > 0 && (
+                          <div style={{ fontSize: F.micro, color: C.muted, marginTop: 2 }}>
+                            {[r.mortgageType, r.repayType, r.rateType].filter(Boolean).join(" · ")}
+                          </div>
+                        )}
                       </td>
                       <td style={{ ...tdStyle, color: C.blue, fontWeight: 700 }}>
                         {r.rateMin != null ? `${r.rateMin}%` : "-"}
@@ -141,7 +146,7 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRate
                   <div style={{ marginTop: 4 }}>
                     최저 금리 {loanRates[0].rateMin}% 기준:{" "}
                     <strong style={{ color: C.blue }}>
-                      {fmtPrice(Math.round(calcMonthlyPayment(ltvBase, loanRates[0].rateMin, 30) / 10000) * 10000)}/월
+                      {fmtPrice(Math.round(calcMonthlyPayment(ltvBase, loanRates[0].rateMin, 30)))}/월
                     </strong>
                   </div>
                 </div>
