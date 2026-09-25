@@ -79,7 +79,6 @@ export interface BottomNavProps {
   tab: string;
   /** 관리자 네비 분기 (세션 405 — 구 expertLoggedIn 토큰 축에서 role 축으로 교체) */
   adminLoggedIn: boolean;
-  showComp: boolean;
   onNavClick: (_key: string) => void;
   containerMaxWidth: number;
   isDesktop: boolean;

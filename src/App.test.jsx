@@ -240,11 +240,9 @@ describe("App 통합 테스트", () => {
 
       render(<App />);
 
-      // 일반 사용자 네비: 목록, 비교, 상담, 정보
-      expect(screen.getByText("목록")).toBeInTheDocument();
-      expect(screen.getByText("비교")).toBeInTheDocument();
-      expect(screen.getByText("상담")).toBeInTheDocument();
-      expect(screen.getByText("정보")).toBeInTheDocument();
+      // 세션 577(A-12): 손님 네비 = 목록·지도·(곧 분양 — 테스트 기본 OFF)·문의
+      const nav = screen.getByRole("navigation", { name: "메인 내비게이션" });
+      expect(Array.from(nav.querySelectorAll("button")).map((b) => b.textContent)).toEqual(["목록", "지도", "문의"]);
     });
   });
 
@@ -272,57 +270,61 @@ describe("App 통합 테스트", () => {
 
   // 3. 탭 전환
   describe("탭 전환", () => {
-    it("정보 탭 클릭 시 InfoPage가 표시된다", async () => {
+    // 세션 577(A-12): 정보 탭 → 도움말(?) 패널, 상담 탭 → 문의 모달
+    it("도움말(?) 클릭 시 InfoPage 본문이 패널로 뜨고 목록은 그대로다", async () => {
       const user = userEvent.setup();
-      mockFetch.mockResolvedValue({ data: [], dataUpdatedAt: null });
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
 
       render(<App />);
-
-      const infoBtn = screen.getByText("정보");
-      await user.click(infoBtn);
-
-      // InfoPage 내부의 텍스트 존재 확인 (정확한 텍스트는 InfoPage 구현에 따라 다름)
       await waitFor(() => {
-        // InfoPage가 렌더링되면 목록(SearchFilterBar)은 사라짐
-        expect(screen.queryByText(/데이터 로딩 중/)).not.toBeInTheDocument();
+        expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
       });
+
+      await user.click(screen.getByLabelText("도움말"));
+      expect(screen.getByText("미분양 아파트 비교 엔진")).toBeInTheDocument();
+      expect(screen.getByText("카카오로 시작하기")).toBeInTheDocument();
+      expect(screen.queryByText("전문가 상담 신청")).toBeNull();
+      expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
     });
 
-    it("상담 탭 클릭 시 ConsultForm 영역이 표시된다", async () => {
+    it("메뉴 '문의' 클릭 시 문의 모달이 열리고 탭은 목록 그대로다", async () => {
+      const user = userEvent.setup();
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+      });
+
+      const nav = screen.getByRole("navigation", { name: "메인 내비게이션" });
+      const inquiryBtn = /** @type {HTMLButtonElement} */ (
+        Array.from(nav.querySelectorAll("button")).find((b) => b.textContent === "문의")
+      );
+      await user.click(inquiryBtn);
+      expect(await screen.findByRole("dialog", { name: "문의하기" })).toBeInTheDocument();
+      expect(inquiryBtn.getAttribute("aria-current")).toBeNull();
+      const listBtn = Array.from(nav.querySelectorAll("button")).find((b) => b.textContent === "목록");
+      expect(listBtn?.getAttribute("aria-current")).toBe("page");
+      expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+    });
+
+    it("문의 모달을 닫고 목록을 누르면 목록 그대로다", async () => {
       const user = userEvent.setup();
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
 
       render(<App />);
 
-      // 데이터 로드 대기
       await waitFor(() => {
         expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
       });
 
-      const consultBtn = screen.getByText("상담");
-      await user.click(consultBtn);
-
-      // 상담 탭으로 전환되면 Suspense 내 로딩 또는 ConsultForm이 표시됨
+      await user.click(screen.getByTestId("feedback-fab"));
+      await screen.findByRole("dialog", { name: "문의하기" });
+      await user.keyboard("{Escape}");
       await waitFor(() => {
-        // 목록 탭의 카드가 사라지는 것 확인
-        expect(screen.queryByText(/테스트파크1차/)).not.toBeInTheDocument();
-      });
-    });
-
-    it("목록 탭으로 돌아올 수 있다", async () => {
-      const user = userEvent.setup();
-      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
-
-      render(<App />);
-
-      await waitFor(() => {
-        expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+        expect(screen.queryByRole("dialog", { name: "문의하기" })).not.toBeInTheDocument();
       });
 
-      // 정보 탭으로 이동
-      await user.click(screen.getByText("정보"));
-
-      // 다시 목록 탭으로
       await user.click(screen.getByText("목록"));
 
       await waitFor(() => {
@@ -466,15 +468,6 @@ describe("App 통합 테스트", () => {
       vi.unstubAllGlobals();
     });
 
-    // 세션 487: 착륙 지점이 홈 → 목록(LANDING_TAB)으로 바뀌었다. 홈 탭 자체는 그대로라
-    // 홈 위젯을 검증하려면 홈 버튼을 눌러 들어간다.
-    async function gotoHomeTab() {
-      const btn = screen.getAllByRole("button", { name: "홈" })[0];
-      await act(async () => {
-        btn.click();
-      });
-    }
-
     // ── 회귀 가드 (세션 487) ──
     // 사장님 지시로 도메인 착륙 지점을 홈 → 목록으로 바꿨다. 이 두 건이 없으면
     // 누가 `isFeatureHome() ? "home" : "list"` 로 되돌려도 아무도 모른다.
@@ -490,24 +483,15 @@ describe("App 통합 테스트", () => {
       expect(screen.queryByText("📊 시장 현황판")).toBeNull();
     });
 
-    it("홈 탭 버튼은 그대로 남아 있다 (착륙 지점만 바뀐 것이지 홈을 없앤 게 아니다)", async () => {
+    // 세션 577(A-12): 메뉴에서 홈을 뺐다 — 깃발을 켜도 홈 버튼이 없다(HomePage 코드는 한 달 뒤 삭제 전까지 남는다)
+    it("홈 기능이 켜져 있어도 메뉴에 홈 버튼이 없다", async () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
       await waitFor(() => {
-        expect(screen.getAllByRole("button", { name: "홈" }).length).toBeGreaterThan(0);
+        expect(screen.getAllByRole("button", { name: /지역/ }).length).toBeGreaterThan(0);
       });
-    });
-
-    it("홈 탭 진입 — 위젯판 렌더 + D5 잠금 (비로그인)", async () => {
-      vi.stubEnv("VITE_FEATURE_HOME", "true");
-      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
-      render(<App />);
-      await gotoHomeTab();
-      await waitFor(() => {
-        expect(screen.getByText("📊 시장 현황판")).toBeInTheDocument();
-      });
-      expect(screen.getByText("로그인하면 지도가 열려요")).toBeInTheDocument();
+      expect(screen.queryAllByRole("button", { name: "홈" })).toHaveLength(0);
     });
 
     it("?compare= 딥링크: list 탭 전환 + 비교 시트 열림 (홈이 기본 탭이어도 보존)", async () => {
@@ -552,39 +536,27 @@ describe("App 통합 테스트", () => {
       window.history.replaceState(null, "", "/");
     });
 
-    it("홈 추천 카드 상세 클릭: 비로그인도 상세가 열린다 (로그인 안내 모달 아님)", async () => {
-      vi.stubEnv("VITE_FEATURE_HOME", "true");
-      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
-      render(<App />);
-      await gotoHomeTab();
-      await waitFor(() => {
-        expect(screen.getByText("⭐ 추천 TOP 3")).toBeInTheDocument();
-      });
-      const detailBtn = screen.getAllByText("상세보기")[0];
-      await act(async () => {
-        detailBtn.click();
-      });
-      expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
-      expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
-      // 카드 클릭 경로는 pushState 로 주소를 만든다(옛 ?detail= 승격은 replaceState 라 별 경로).
-      await waitFor(() => {
-        expect(window.location.pathname).toMatch(/^\/apt\/.+/);
-      });
-      window.history.replaceState(null, "", "/");
-    });
+    // (세션 577: "홈 추천 카드 상세 클릭" 시험 삭제 — 메뉴에서 홈이 빠져 손님이 홈 탭에 갈 길이 없다. HomePage 는 한 달 뒤 코드째 삭제)
   });
 
-  // 세션574: 떠 있는 "의견" 버튼
-  describe("의견 보내기 버튼", () => {
-    it("비로그인이 누르면 폼 대신 로그인 안내(의견 문구)가 뜬다", async () => {
+  // 세션574: 떠 있는 "의견" 버튼 → 세션 577(A-12): "문의" 버튼 + 문의 모달(의견·업체 문의 탭)
+  describe("문의 버튼", () => {
+    it("비로그인이 누르면 문의 모달이 열리고, 의견 탭의 로그인 버튼 → 로그인 안내(의견 문구)", async () => {
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
       const fab = screen.getByTestId("feedback-fab");
       await act(async () => {
         fab.click();
       });
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-form")).toBeInTheDocument();
+      });
+      expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
+      await act(async () => {
+        screen.getByRole("button", { name: "카카오 로그인하고 의견 보내기" }).click();
+      });
       expect(screen.getByRole("dialog", { name: "로그인 안내" })).toBeInTheDocument();
-      expect(screen.getByText(/의견은 카카오 로그인 후/)).toBeInTheDocument();
+      expect(screen.getAllByText(/의견은 카카오 로그인 후/).length).toBeGreaterThan(0);
       expect(screen.queryByTestId("feedback-form")).not.toBeInTheDocument();
     });
 

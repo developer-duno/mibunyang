@@ -119,12 +119,9 @@ async function loginAsAdmin(page: Page) {
   await setupAdminMocks(page);
   await page.goto("/");
 
-  // 정보 탭 클릭 → InfoPage → 관리자 로그인 링크 (세션 405 — 구 전문가 로그인 버튼 대체, 관리자 유일 입구)
-  // (Playwright 공식 networkidle DISCOURAGED. page.goto default waitUntil='load' + L116/L120 isVisible/toBeVisible 이 진짜 wait)
-  const infoTab = page.getByText("정보", { exact: true });
-  if (await infoTab.isVisible({ timeout: 3000 }).catch(() => false)) {
-    await infoTab.click();
-  }
+  // 헤더 도움말(?) → 패널(= InfoPage) → 관리자 로그인 링크 (세션 577 A-12 — 정보 탭 폐지. 관리자 유일 입구)
+  // 도움말 버튼은 데스크톱·휴대폰 헤더 모두 aria-label="도움말".
+  await page.getByRole("button", { name: "도움말" }).click();
   const loginCta = page.getByText("관리자 로그인", { exact: false });
   await expect(loginCta).toBeVisible({ timeout: 5000 });
   await loginCta.click();

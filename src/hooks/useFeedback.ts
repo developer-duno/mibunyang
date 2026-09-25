@@ -12,8 +12,7 @@ export type FeedbackContext = {
 
 type UseFeedbackArgs = {
   showToast: (_msg: string) => void;
-  isLoggedIn: boolean;
-  /** 비로그인·토큰 만료(401) 때 로그인 안내 모달을 연다 */
+  /** 비로그인(의견 탭의 로그인 버튼)·토큰 만료(401) 때 로그인 안내 모달을 연다 */
   onLoginRequired: () => void;
   context: FeedbackContext;
 };
@@ -27,8 +26,6 @@ const PAGE_NAMES: Record<string, string> = {
   list: "목록",
   map: "지도",
   upcoming: "곧 분양",
-  info: "정보",
-  consult: "상담 신청",
   adminLogin: "관리자 로그인",
   admin: "관리자",
   kakaoCallback: "로그인 처리",
@@ -59,12 +56,13 @@ export function feedbackContextLabel(ctx: FeedbackContext): string {
 }
 
 /**
- * 손님 "의견 보내기" 상태·전송 (세션574).
- * - 열기: 비로그인이면 onLoginRequired(카카오 로그인 안내) — 서버도 로그인 필수라 폼을 열어 봐야 못 보낸다.
+ * 손님 "의견 보내기" 상태·전송 (세션574) + 문의 모달 열고 닫기.
+ * - 열기: 로그인 여부와 무관하게 연다(세션 577 A-12 — 모달이 "문의하기"로 통합돼 업체 문의 탭은 로그인이
+ *   필요 없다). 비로그인이면 의견 탭 안에서 "카카오 로그인하고 의견 보내기"(requestLogin) 로 안내한다.
  * - 보내기: POST /api/feedback (Authorization: Bearer <authToken>). 성공하면 입력을 비우고 닫는다.
  *   닫기만 하면 쓰던 글은 남겨 둔다(실수로 닫아도 다시 열면 그대로).
  */
-export function useFeedback({ showToast, isLoggedIn, onLoginRequired, context }: UseFeedbackArgs) {
+export function useFeedback({ showToast, onLoginRequired, context }: UseFeedbackArgs) {
   const [open, setOpen] = useState(false);
   const [kind, setKind] = useState<FeedbackKind | null>(null);
   const [message, setMessage] = useState("");
@@ -79,15 +77,15 @@ export function useFeedback({ showToast, isLoggedIn, onLoginRequired, context }:
     trimmedLength >= FEEDBACK_MESSAGE_MIN_UI &&
     trimmedLength <= FEEDBACK_MESSAGE_MAX;
 
-  const openFeedback = useCallback(() => {
-    if (!isLoggedIn) {
-      onLoginRequired();
-      return;
-    }
-    setOpen(true);
-  }, [isLoggedIn, onLoginRequired]);
+  const openFeedback = useCallback(() => setOpen(true), []);
 
   const closeFeedback = useCallback(() => setOpen(false), []);
+
+  /** 의견 탭의 "카카오 로그인하고 의견 보내기" — 문의 모달을 닫고 로그인 안내 모달로 */
+  const requestLogin = useCallback(() => {
+    setOpen(false);
+    onLoginRequired();
+  }, [onLoginRequired]);
 
   const submit = useCallback(async () => {
     if (!canSubmit || kind == null) return;
@@ -147,6 +145,7 @@ export function useFeedback({ showToast, isLoggedIn, onLoginRequired, context }:
     open,
     openFeedback,
     closeFeedback,
+    requestLogin,
     kind,
     setKind,
     message,

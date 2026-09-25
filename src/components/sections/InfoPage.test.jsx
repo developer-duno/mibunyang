@@ -14,7 +14,6 @@ function makeProps(overrides = {}) {
     onKakaoLogin: vi.fn(),
     kakaoLoading: false,
     onLogout: vi.fn(),
-    onConsultClick: vi.fn(),
     ...overrides,
   };
 }
@@ -49,7 +48,7 @@ describe("InfoPage", () => {
     expect(screen.getByText("학술 기반")).toBeInTheDocument();
   });
 
-  // 주요 섹션들 — 프로필, 검색, 정렬, 카드, 관심매물, 지도, 상담, FAQ
+  // 주요 섹션들 — 프로필, 검색, 정렬, 카드, 관심매물, 지도, 문의(세션 577 — 옛 상담 신청), FAQ
   it("주요 도움말 섹션이 모두 표시됨", () => {
     render(<InfoPage {...makeProps()} />);
     expect(screen.getByText("프로필 선택 (5가지)")).toBeInTheDocument();
@@ -61,7 +60,8 @@ describe("InfoPage", () => {
     expect(screen.getByText("단지 카드 읽는 법")).toBeInTheDocument();
     expect(screen.getByText("관심매물")).toBeInTheDocument();
     expect(screen.getByText("지도 뷰")).toBeInTheDocument();
-    expect(screen.getByText("상담 신청")).toBeInTheDocument();
+    expect(screen.getByText("문의")).toBeInTheDocument();
+    expect(screen.queryByText("상담 신청")).toBeNull();
     expect(screen.getByText("자주 묻는 질문")).toBeInTheDocument();
   });
 
@@ -151,12 +151,14 @@ describe("InfoPage", () => {
     expect(screen.queryByText(/파트너 전문가 전용/)).toBeNull();
   });
 
-  // 상담 진입 카드 (D4 — 모바일 5탭에서 상담 탭 대신 정보 페이지가 정식 입구)
-  it("상담 신청 카드 렌더 + 클릭 시 onConsultClick (handleNavClick('consult') 경유 = 예산 프리필 보존)", () => {
-    const onConsultClick = vi.fn();
-    render(<InfoPage {...makeProps({ onConsultClick })} />);
-    fireEvent.click(screen.getByRole("button", { name: "상담 신청하기" }));
-    expect(onConsultClick).toHaveBeenCalledTimes(1);
+  // 세션 577(A-12): 상담 탭 폐지 — 전문가 상담 카드·버튼이 사라지고 핵심 흐름 끝이 "문의"
+  it("전문가 상담 신청 카드가 없고 핵심 흐름이 문의로 끝난다", () => {
+    render(<InfoPage {...makeProps()} />);
+    expect(screen.queryByText("전문가 상담 신청")).toBeNull();
+    expect(screen.queryByRole("button", { name: "상담 신청하기" })).toBeNull();
+    expect(screen.getByText("핵심 흐름:").parentElement?.textContent).toBe(
+      "핵심 흐름: 프로필 선택 → 필터로 조건 설정 → 카드 비교 → 상세 분석 → 문의"
+    );
   });
 
   // 도시등급별 교통 보정 섹션

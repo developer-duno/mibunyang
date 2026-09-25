@@ -17,6 +17,7 @@ export interface DetailModalProps extends ResponsiveProps {
   isFav: boolean;
   onFav: (_id: string) => void;
   onShare?: (_id: string) => void;
+  /** "이 단지 문의하기" — App 은 문의 모달을 연다(상세는 닫지 않음, 세션 577 A-12). 이름은 옛 상담 시절 그대로 */
   onConsult?: (_id: string) => void;
   /** 활성 프로필 — 상위 2 카테고리 CatPanel 맞춤 강조용 (세션 382). 미전달 시 강조 0. */
   profile?: Profile;

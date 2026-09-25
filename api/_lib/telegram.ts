@@ -98,3 +98,32 @@ export function formatFeedbackAlert(f: FeedbackAlertInput): string {
   const tail = [f.page || "", apt, toKst(f.createdAt), "관리자 화면에서 보낸 이 확인"].filter(Boolean).map(escapeHtml);
   return [`💬 새 의견 · ${escapeHtml(feedbackKindLabel(f.kind))}`, escapeHtml(cut), `— ${tail.join(" · ")}`].join("\n");
 }
+
+export type ConsultAlertInput = {
+  name: string;
+  phone: string;
+  /** useBizInquiry 가 조합한 글 — "회사: …\n이메일: …\n단지: …\n\n<본문>" (서버가 500자로 자른 값) */
+  message: string;
+  interestedApts: string[];
+};
+
+/**
+ * 업체 문의 알림 문구 (세션 577 A-12 — consults consultType "업체문의" 만):
+ *   🏢 업체 문의
+ *   담당자: <이름> · <연락처>
+ *   <회사·이메일·단지·본문 — 손님 글 그대로>
+ *   — 관련 단지 <id, …> · 관리자 화면 상담 목록에서 확인
+ * 의견 알림과 달리 담당자·연락처를 싣는다 — 업체가 "연락해 달라"고 남긴 영업 연락처라 사장님이 바로 전화할 수
+ * 있어야 한다(A-12 지시서 항목 4). 손님이 쓴 값은 전부 이스케이프한다(`<` 하나로 텔레그램 400 → 알림 유실 방지).
+ */
+export function formatConsultAlert(c: ConsultAlertInput): string {
+  const tail = [c.interestedApts.length ? `관련 단지 ${c.interestedApts.join(", ")}` : "", "관리자 화면 상담 목록에서 확인"]
+    .filter(Boolean)
+    .map(escapeHtml);
+  return [
+    "🏢 업체 문의",
+    `담당자: ${escapeHtml(c.name)} · ${escapeHtml(c.phone)}`,
+    escapeHtml(c.message),
+    `— ${tail.join(" · ")}`,
+  ].join("\n");
+}

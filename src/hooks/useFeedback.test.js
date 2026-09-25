@@ -20,9 +20,7 @@ const CTX = { page: "상세", apartmentId: "ap-6028351", apartmentName: "힐스�
 function setup(overrides = {}) {
   const showToast = vi.fn();
   const onLoginRequired = vi.fn();
-  const hook = renderHook(() =>
-    useFeedback({ showToast, isLoggedIn: true, onLoginRequired, context: CTX, ...overrides })
-  );
+  const hook = renderHook(() => useFeedback({ showToast, onLoginRequired, context: CTX, ...overrides }));
   return { ...hook, showToast, onLoginRequired };
 }
 
@@ -42,18 +40,20 @@ describe("useFeedback (세션574)", () => {
     globalThis.fetch = mockFetch(201, { ok: true, id: 7 });
   });
 
-  it("비로그인이면 열지 않고 로그인 안내를 부른다", () => {
-    const { result, onLoginRequired } = setup({ isLoggedIn: false });
-    act(() => result.current.openFeedback());
-    expect(result.current.open).toBe(false);
-    expect(onLoginRequired).toHaveBeenCalledOnce();
-  });
-
-  it("로그인이면 폼을 연다", () => {
+  // 세션 577(A-12): 문의 모달로 통합 — 로그인 여부와 무관하게 연다(업체 문의 탭은 로그인 불필요)
+  it("openFeedback 은 로그인 안내 없이 모달을 연다", () => {
     const { result, onLoginRequired } = setup();
     act(() => result.current.openFeedback());
     expect(result.current.open).toBe(true);
     expect(onLoginRequired).not.toHaveBeenCalled();
+  });
+
+  it("requestLogin(의견 탭의 로그인 버튼) = 모달 닫고 로그인 안내 1회", () => {
+    const { result, onLoginRequired } = setup();
+    act(() => result.current.openFeedback());
+    act(() => result.current.requestLogin());
+    expect(result.current.open).toBe(false);
+    expect(onLoginRequired).toHaveBeenCalledTimes(1);
   });
 
   it("보내기 활성 = 종류 선택 + 동의 + 10자 이상 셋 다", () => {

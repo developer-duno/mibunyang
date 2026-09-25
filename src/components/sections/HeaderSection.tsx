@@ -1,9 +1,10 @@
 import { memo, useState, useCallback } from "react";
 import type { CSSProperties } from "react";
 import { PROFILES } from "@/constants/profiles";
-import { isFeatureUpcoming, isFeatureHome } from "@/constants/featureFlags";
+import { isFeatureUpcoming } from "@/constants/featureFlags";
 import { C, F } from "@/theme";
 import { IconHelp } from "@/components/icons";
+import { InfoPage } from "./InfoPage";
 import type { Profile } from "@/types/scoring";
 import type { HeaderSectionProps, HelpModalProps } from "@/types/components/HeaderSection.types";
 
@@ -46,20 +47,8 @@ const HM_S: Record<string, CSSProperties> = {
     cursor: "pointer",
     minHeight: 36,
   },
-  scrollBody: { overflowY: "auto", padding: "12px 16px 20px" },
-  sectionTitle: {
-    fontSize: F.base,
-    fontWeight: 800,
-    marginBottom: 8,
-    paddingBottom: 4,
-    borderBottom: `1px solid ${C.border}`,
-  },
-  itemRow: { marginBottom: 6 },
-  itemLabel: { fontSize: F.sm, fontWeight: 700, color: C.text },
-  itemDesc: { fontSize: F.xs, color: C.sub, marginLeft: 6 },
-  footerWrap: { marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}` },
-  footerLine1: { fontSize: F.xs, color: C.muted, lineHeight: 1.6 },
-  footerLine2: { fontSize: F.micro, color: C.muted, marginTop: 4 },
+  // 본문 = InfoPage(자체 좌우 16px 여백) — 패널은 위아래 여백만 (세션 577)
+  scrollBody: { overflowY: "auto", padding: "12px 0 8px" },
 };
 
 /* ── HeaderSection 본체 정적 스타일 ── */
@@ -102,8 +91,16 @@ const HS_S: Record<string, CSSProperties> = {
   mobileProfileLabel: { fontSize: F.base, fontWeight: 700, letterSpacing: -0.3 },
 };
 
-/** 도움말 모달 (데스크톱/모바일 공용) */
-function HelpModal({ onClose }: HelpModalProps) {
+/**
+ * 도움말 모달 (데스크톱/모바일 공용).
+ * 세션 577(A-12): 본문 = InfoPage 그대로(소개·가이드·엔진·FAQ·로그인/로그아웃·마케팅 동의·관리자 로그인 링크).
+ * 정보 탭이 없어져 이 패널이 그 내용의 유일한 입구다. "관리자 로그인" 링크는 패널을 닫고 관리자 로그인 화면으로.
+ */
+function HelpModal({ onClose, onAdminLoginClick, ...info }: HelpModalProps) {
+  const goAdminLogin = useCallback(() => {
+    onClose();
+    onAdminLoginClick();
+  }, [onClose, onAdminLoginClick]);
   return (
     <>
       <div onClick={onClose} style={HM_S.backdrop} />
@@ -115,76 +112,12 @@ function HelpModal({ onClose }: HelpModalProps) {
           </button>
         </div>
         <div style={HM_S.scrollBody}>
-          {HELP_SECTIONS.map((sec, si) => (
-            <div key={si} style={{ marginBottom: si < HELP_SECTIONS.length - 1 ? 16 : 0 }}>
-              <div style={{ ...HM_S.sectionTitle, color: si === 0 ? C.blue : si === 1 ? C.green : C.amber }}>
-                {sec.title}
-              </div>
-              {sec.items.map((item, i) => (
-                <div key={i} style={HM_S.itemRow}>
-                  <span style={HM_S.itemLabel}>{item.t}</span>
-                  <span style={HM_S.itemDesc}>{item.d}</span>
-                </div>
-              ))}
-            </div>
-          ))}
-          <div style={HM_S.footerWrap}>
-            <div style={HM_S.footerLine1}>
-              도시등급별 교통 보정: 특별시(S) · 광역시(A) · 특례시(B) · 일반시(C) · 군(D) 등급에 따라 지하철·버스·IC·KTX
-              가중치가 자동 조정됩니다.
-            </div>
-            <div style={HM_S.footerLine2}>학술 기반: AHP 계층분석법 · 헤도닉 가격모형 · 국토연구원 GTX 분석(2024)</div>
-          </div>
+          <InfoPage {...info} onAdminLoginClick={goAdminLogin} />
         </div>
       </div>
     </>
   );
 }
-
-const HELP_SECTIONS = [
-  {
-    title: "스코어링 엔진 (6개 카테고리 · 41+ 지표)",
-    items: [
-      {
-        t: "가격 매력도",
-        d: "적정가 괴리도(신축프리미엄·면적·브랜드 보정) + 전세가율 + PIR + PSR + 데이터신뢰도 + 택지비비율",
-      },
-      { t: "입지·생활권", d: "교통접근성(도시등급별 자동 보정) + 학군 + 생활인프라(8개) + 환경 + 혐오시설" },
-      { t: "상품성", d: "브랜드티어 + 세대수 + 주차비 + 용적률 + 에너지등급 + 전용률 + 평면 + 내진설계 + 구조(층수)" },
-      { t: "혜택·할인", d: "관리비 절감분 (분양가할인·중도금무이자·옵션무상·발코니확장·캐시백은 자료 확보 시 반영)" },
-      {
-        t: "안전도",
-        d: "미분양률 + 청약경쟁률 + 거래량 + 대출/잔금(DSR) + 시공사재무(DART) + 규제 + 공급량 + 시장환경 + 계약해제율 + 치안 + 초기분양률",
-      },
-      // KTX 는 미래가치 노선급 표(TRANSIT_GRADE)에 없다 — 입지 축이 재는 값이다 (세션 513).
-      {
-        t: "미래가치",
-        d: "인구(순이동 보정) + 교통개발(GTX·도시철도·트램 등 예정 노선) + 도시개발(LH 지구 거리) + 산업개발(산업단지 거리)",
-      },
-    ],
-  },
-  {
-    title: "사용 가이드",
-    items: [
-      { t: "검색·필터", d: "단지명·건설사·지역명 검색 (초성 지원). 시/도·시군구 필터, 예산 범위(억) 설정" },
-      { t: "프로필", d: "실거주·투자·신혼·교육·은퇴 5개 관점 전환. 프로필에 따라 순위가 달라집니다" },
-      { t: "비교", d: "카드 체크로 2~4개 선택 → 목록 상단 '비교 보기' 버튼으로 나란히 비교" },
-      { t: "상세 분석", d: "카드 터치 → 인근 시세, 학군, 대출 분석(LTV/DSR/갭투자) 확인" },
-      {
-        t: "상담",
-        d: "상담 신청 화면(정보 페이지의 '상담 신청하기')에서 관심 단지·예산과 함께 신청하면 전문가가 연락",
-      },
-    ],
-  },
-  {
-    title: "자주 묻는 질문",
-    items: [
-      { t: "등급 기준", d: "S(90+) A(80~89) B+(70~79) B(60~69) C(50~59) D(50미만). 프로필에 따라 달라집니다" },
-      { t: "데이터 업데이트", d: "미분양·시세: 매일 / 실거래: 매월 / 인프라·학교: 매월 자동 수집" },
-      { t: "데이터가 비어있어요", d: "미등록 시 지역 평균 또는 보수적 기본값으로 대체 산출합니다" },
-    ],
-  },
-];
 
 /**
  * 헤더 섹션 — 데스크톱: 고정 상단 바 + 네비 / 모바일: 블루 그라디언트
@@ -196,12 +129,17 @@ export const HeaderSection = memo(function HeaderSection({
   isDesktop,
   tab,
   onNavClick,
-  showComp,
-  compCount,
   adminLoggedIn,
   isLoggedIn,
   containerMaxWidth,
   upcomingCount,
+  kakaoLoading,
+  onKakaoLogin,
+  onLogout,
+  onAdminLoginClick,
+  consentMarketing,
+  consentSubmitting,
+  onToggleMarketingConsent,
 }: HeaderSectionProps) {
   const [helpOpen, setHelpOpen] = useState(false);
   const toggleHelp = useCallback(() => setHelpOpen((v) => !v), []);
@@ -209,25 +147,21 @@ export const HeaderSection = memo(function HeaderSection({
 
   const upcomingEnabled = isFeatureUpcoming();
   const upcomingLabel = upcomingCount != null && upcomingCount > 0 ? `📅 곧 분양 ${upcomingCount}개` : "📅 곧 분양";
-  const homeEnabled = isFeatureHome();
   // 세션 405: 네비 분기 축 = adminLoggedIn (구 expertLoggedIn = 토큰 보유 — 카카오 손님 오노출 quirk 해소)
+  // 세션 577(A-12): 손님 메뉴 = 목록·지도·(곧 분양)·문의 4개 — 휴대폰 BottomNav 와 같은 배열.
+  // 홈·비교·상담·정보 삭제(비교 = 목록 안 버튼, 정보 = 도움말(?) 패널, 문의 = 문의 모달 열기).
   const navItems = adminLoggedIn
     ? [
-        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
         { l: "관리자", k: "admin" },
         { l: "소비자뷰", k: "list" },
         { l: "지도", k: "map" },
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
       ]
     : [
-        // 데스크톱은 비교·상담 유지 (D4 표 — 5탭 재배열은 모바일 BottomNav 만)
-        ...(homeEnabled ? [{ l: "홈", k: "home" }] : []),
         { l: "목록", k: "list" },
         { l: "지도", k: "map" },
         ...(upcomingEnabled ? [{ l: upcomingLabel, k: "upcoming" }] : []),
-        { l: "비교", k: "compare" },
-        { l: "상담", k: "consult" },
-        { l: "정보", k: "info" },
+        { l: "문의", k: "inquiry" },
       ];
 
   if (isDesktop) {
@@ -287,12 +221,12 @@ export const HeaderSection = memo(function HeaderSection({
           {/* 우측: 네비 + 도움말 */}
           <div style={HS_S.desktopRight}>
             {navItems.map((n) => {
-              const isActive =
-                n.k === "compare" ? showComp && tab === "list" : tab === n.k && !(n.k === "list" && showComp);
+              // 세션 577: 비교 탭이 없어져 목록은 비교 시트가 열려 있어도 활성 표시("문의"는 탭이 아니라 활성 없음)
+              const isActive = tab === n.k;
               return (
                 <button
                   key={n.k}
-                  aria-current={!["compare", "logout"].includes(n.k) && tab === n.k ? "page" : undefined}
+                  aria-current={tab === n.k ? "page" : undefined}
                   onClick={() => onNavClick(n.k)}
                   style={{
                     background: isActive ? C.blueLight : "transparent",
@@ -309,7 +243,6 @@ export const HeaderSection = memo(function HeaderSection({
                   }}
                 >
                   {n.l}
-                  {n.k === "compare" && compCount >= 2 ? `(${compCount})` : ""}
                 </button>
               );
             })}
@@ -343,7 +276,20 @@ export const HeaderSection = memo(function HeaderSection({
         </div>
 
         {/* 도움말 모달 — 데스크톱 */}
-        {helpOpen && <HelpModal onClose={closeHelp} />}
+        {helpOpen && (
+          <HelpModal
+            onClose={closeHelp}
+            isLoggedIn={isLoggedIn}
+            adminLoggedIn={adminLoggedIn}
+            onAdminLoginClick={onAdminLoginClick}
+            onKakaoLogin={onKakaoLogin}
+            kakaoLoading={kakaoLoading}
+            onLogout={onLogout}
+            consentMarketing={consentMarketing}
+            consentSubmitting={consentSubmitting}
+            onToggleMarketingConsent={onToggleMarketingConsent}
+          />
+        )}
       </>
     );
   }
@@ -417,7 +363,20 @@ export const HeaderSection = memo(function HeaderSection({
         ))}
       </div>
 
-      {helpOpen && <HelpModal onClose={closeHelp} />}
+      {helpOpen && (
+        <HelpModal
+          onClose={closeHelp}
+          isLoggedIn={isLoggedIn}
+          adminLoggedIn={adminLoggedIn}
+          onAdminLoginClick={onAdminLoginClick}
+          onKakaoLogin={onKakaoLogin}
+          kakaoLoading={kakaoLoading}
+          onLogout={onLogout}
+          consentMarketing={consentMarketing}
+          consentSubmitting={consentSubmitting}
+          onToggleMarketingConsent={onToggleMarketingConsent}
+        />
+      )}
     </div>
   );
 });

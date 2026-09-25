@@ -12,12 +12,24 @@ describe("HeaderSection", () => {
     isDesktop: false,
     tab: "list",
     onNavClick: vi.fn(),
-    showComp: false,
-    compCount: 0,
     adminLoggedIn: false,
     isLoggedIn: false,
     containerMaxWidth: 520,
+    // 도움말(?) 패널 = InfoPage (세션 577)
+    onAdminLoginClick: vi.fn(),
+    onKakaoLogin: vi.fn(),
+    kakaoLoading: false,
+    onLogout: vi.fn(),
   };
+
+  const PROFILE_NAMES = ["실거주", "투자", "신혼부부", "자녀교육", "은퇴"];
+  /** 데스크톱 헤더의 네비 버튼 글자 배열 — 프로필·도움말(글자 없음)·로그아웃 버튼은 뺀다 */
+  function navTexts() {
+    return screen
+      .getAllByRole("button")
+      .map((b) => b.textContent || "")
+      .filter((t) => t !== "" && t !== "로그아웃" && !PROFILE_NAMES.includes(t));
+  }
 
   afterEach(() => vi.unstubAllEnvs());
 
@@ -41,8 +53,30 @@ describe("HeaderSection", () => {
     expect(screen.getByText(/42개 단지/)).toBeInTheDocument();
     expect(screen.getByText("목록")).toBeInTheDocument();
     expect(screen.getByText("지도")).toBeInTheDocument();
-    expect(screen.getByText("상담")).toBeInTheDocument();
-    expect(screen.getByText("정보")).toBeInTheDocument();
+    expect(screen.getByText("문의")).toBeInTheDocument();
+  });
+
+  // 세션 577(A-12): 손님 메뉴 = 목록·지도·(📅 곧 분양)·문의 4개 — 휴대폰 BottomNav 와 같은 배열
+  it("데스크톱 손님 + 곧 분양 ON: 네비 = 목록·지도·📅 곧 분양·문의", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+    expect(navTexts()).toEqual(["목록", "지도", "📅 곧 분양", "문의"]);
+  });
+
+  it("데스크톱 손님 + 곧 분양 OFF: 네비 = 목록·지도·문의", () => {
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "");
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+    expect(navTexts()).toEqual(["목록", "지도", "문의"]);
+  });
+
+  it("데스크톱 '문의' 클릭 → onNavClick('inquiry') + 문의에는 aria-current 없음", () => {
+    const onNavClick = vi.fn();
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} onNavClick={onNavClick} />);
+    const btn = screen.getByRole("button", { name: "문의" });
+    fireEvent.click(btn);
+    expect(onNavClick.mock.calls).toEqual([["inquiry"]]);
+    expect(btn.getAttribute("aria-current")).toBeNull();
+    expect(screen.getByRole("button", { name: "목록" }).getAttribute("aria-current")).toBe("page");
   });
 
   // 데스크톱: 모바일 그라디언트 표시 안 함
@@ -144,53 +178,43 @@ describe("HeaderSection", () => {
     expect(screen.queryByText("관리자")).toBeNull();
   });
 
-  /**
-   * 세션 513 — 도움말의 미래가치 줄이 옛 산식("교통개발(GTX·KTX)")을 말하고 있었다.
-   * 세션511 재설계 후 노선급 표(TRANSIT_GRADE)에 KTX 는 없다 — KTX 거리는 입지 축이 잰다.
-   * ⚠️ 도움말 하단 "도시등급별 교통 보정" 각주의 KTX 는 **참**이므로 전체 텍스트로 금지하면
-   *    안 된다. 미래가치 줄 하나만 좁혀서 본다.
-   */
-  describe("도움말 — 미래가치 설명이 실제 산식과 맞는다", () => {
-    /** 도움말을 열고 '미래가치' 항목 한 줄의 글자만 뽑는다 */
-    function futureRowText() {
+  // 세션 577(A-12): 도움말(?) 패널 본문 = InfoPage 그대로 (정보 탭 폐지)
+  describe("도움말 패널 = InfoPage", () => {
+    it("비로그인: 소개·FAQ·카카오 로그인·관리자 로그인 링크가 보이고 전문가 상담 카드는 없다", () => {
       render(<HeaderSection {...defaultProps} />);
       fireEvent.click(screen.getByLabelText("도움말"));
-      const label = screen.getByText("미래가치");
-      return label.parentElement?.textContent || "";
-    }
-
-    it("미래가치 줄에 KTX 가 없다", () => {
-      expect(futureRowText()).not.toContain("KTX");
+      expect(screen.getByText("미분양 아파트 비교 엔진")).toBeInTheDocument();
+      expect(screen.getByText("자주 묻는 질문")).toBeInTheDocument();
+      expect(screen.getByText("카카오로 시작하기")).toBeInTheDocument();
+      expect(screen.getByText("관리자 로그인")).toBeInTheDocument();
+      expect(screen.queryByText("전문가 상담 신청")).toBeNull();
     });
 
-    it("미래가치 줄이 도시개발을 LH 지구 거리로 설명한다", () => {
-      expect(futureRowText()).toContain("LH 지구 거리");
+    it("로그인: 패널 안에 로그아웃 버튼 + 클릭 시 onLogout", () => {
+      const onLogout = vi.fn();
+      render(<HeaderSection {...defaultProps} isLoggedIn={true} onLogout={onLogout} />);
+      fireEvent.click(screen.getByLabelText("도움말"));
+      fireEvent.click(screen.getByText("로그아웃"));
+      expect(onLogout).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("카카오로 시작하기")).toBeNull();
+    });
+
+    it("'관리자 로그인' 링크 → 패널이 닫히고 onAdminLoginClick 1회", () => {
+      const onAdminLoginClick = vi.fn();
+      render(<HeaderSection {...defaultProps} onAdminLoginClick={onAdminLoginClick} />);
+      fireEvent.click(screen.getByLabelText("도움말"));
+      fireEvent.click(screen.getByText("관리자 로그인"));
+      expect(onAdminLoginClick).toHaveBeenCalledTimes(1);
+      expect(screen.queryByText("자주 묻는 질문")).toBeNull();
     });
   });
 
-  // 통합 홈 (VITE_FEATURE_HOME) — 데스크톱 네비 홈 항목
-  describe("VITE_FEATURE_HOME flag", () => {
-    afterEach(() => vi.unstubAllEnvs());
-
-    it("ON 데스크톱: '홈' 네비 렌더 + 클릭 시 onNavClick('home')", () => {
-      vi.stubEnv("VITE_FEATURE_HOME", "true");
-      const onNavClick = vi.fn();
-      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} onNavClick={onNavClick} />);
-      fireEvent.click(screen.getByRole("button", { name: "홈" }));
-      expect(onNavClick).toHaveBeenCalledWith("home");
-    });
-
-    it("ON 데스크톱: 비교·상담은 유지 (D4 — 재배열은 모바일만)", () => {
-      vi.stubEnv("VITE_FEATURE_HOME", "true");
-      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
-      expect(screen.getByText("비교")).toBeInTheDocument();
-      expect(screen.getByText("상담")).toBeInTheDocument();
-    });
-
-    it("OFF: '홈' 미노출 (회귀 가드)", () => {
-      vi.stubEnv("VITE_FEATURE_HOME", "");
-      render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
-      expect(screen.queryByRole("button", { name: "홈" })).toBeNull();
-    });
+  // 세션 577(A-12): 홈 깃발(VITE_FEATURE_HOME)을 켜도 메뉴에 홈이 없다 — 손님 4개 그대로
+  it("VITE_FEATURE_HOME=true 여도 홈·비교·상담·정보 미노출 + 손님 4개", () => {
+    vi.stubEnv("VITE_FEATURE_HOME", "true");
+    vi.stubEnv("VITE_FEATURE_UPCOMING", "true");
+    render(<HeaderSection {...defaultProps} isDesktop={true} containerMaxWidth={1200} />);
+    expect(navTexts()).toEqual(["목록", "지도", "📅 곧 분양", "문의"]);
+    for (const t of ["홈", "비교", "상담", "정보"]) expect(screen.queryByText(t)).toBeNull();
   });
 });

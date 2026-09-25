@@ -184,4 +184,28 @@ describe("AdminConsults", () => {
     // c2 는 한 번만 (중복 제거)
     expect(screen.getAllByText("고객c2")).toHaveLength(1);
   });
+
+  // 세션 577(A-12): 유형 배지 — 업체문의는 파란 강조 + 메시지 줄바꿈 유지
+  it("업체문의는 파란 배지 '🏢 업체문의', 방문상담은 회색 배지", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        json: () =>
+          Promise.resolve({
+            ok: true,
+            count: 2,
+            data: [
+              { ...row("b1"), consultType: "업체문의", message: "회사: 이로움건설\n이메일: -" },
+              { ...row("v1"), consultType: "방문상담" },
+            ],
+          }),
+      })
+    );
+    render(<AdminConsults aptNames={NAMES} />);
+    expect(await screen.findByText("고객b1")).toBeTruthy();
+    const badges = screen.getAllByTestId("consult-type-badge");
+    expect(badges.map((b) => b.textContent)).toEqual(["🏢 업체문의", "방문상담"]);
+    expect(badges[0].style.background).toBe("rgb(37, 99, 235)"); // C.blue #2563EB
+    expect(badges[1].style.background).not.toBe("rgb(37, 99, 235)");
+  });
 });

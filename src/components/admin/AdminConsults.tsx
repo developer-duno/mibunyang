@@ -177,7 +177,27 @@ export const AdminConsults = memo(function AdminConsults({ aptNames }: AdminCons
                     gap: 8,
                   }}
                 >
-                  <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>{c.name}</span>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>{c.name}</span>
+                    {/* 세션 577(A-12): 유형 배지 — 업체 문의(시행사·분양업체)는 파란 강조 */}
+                    {c.consultType && (
+                      <span
+                        data-testid="consult-type-badge"
+                        style={{
+                          fontSize: F.micro,
+                          fontWeight: 700,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          whiteSpace: "nowrap",
+                          ...(c.consultType === "업체문의"
+                            ? { color: C.white, background: C.blue }
+                            : { color: C.sub, background: C.slate100 }),
+                        }}
+                      >
+                        {c.consultType === "업체문의" ? "🏢 업체문의" : c.consultType}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: F.micro, color: C.muted }}>
                       {c.submittedAt ? new Date(c.submittedAt).toLocaleString("ko-KR") : ""}
@@ -211,7 +231,8 @@ export const AdminConsults = memo(function AdminConsults({ aptNames }: AdminCons
                       예산: {c.budgetMin || "?"} ~ {c.budgetMax || "?"}만원
                     </div>
                   )}
-                  {c.message && <div>메시지: {c.message}</div>}
+                  {/* 업체 문의 메시지는 회사·이메일·단지·본문이 줄마다 나뉘어 있어 줄바꿈을 살린다 */}
+                  {c.message && <div style={{ whiteSpace: "pre-line" }}>메시지: {c.message}</div>}
                 </div>
               </div>
             );

@@ -1013,7 +1013,7 @@ export const DetailModal = memo(function DetailModal({
                       transition: "all .15s",
                     }}
                   >
-                    이 매물 상담하기
+                    이 단지 문의하기
                   </button>
                 )}
                 <div style={DM_S.actionRow}>
@@ -1081,7 +1081,7 @@ export const DetailModal = memo(function DetailModal({
           {/* 오른쪽 고정 레일 (원장 D2, 세션554) — 데스크톱에서만.
               여기 있기 전에는 점수·판정이 "종합" 탭 안에만 있어 시세·입지·금융 탭으로
               넘어가면 사라졌다(목차바의 작은 "종합 NN" 숫자만 남았다).
-              레일은 탭과 무관하게 같은 자리에 머물러 "몇 점인가·무슨 등급인가·상담하기"를 잡아 둔다.
+              레일은 탭과 무관하게 같은 자리에 머물러 "몇 점인가·무슨 등급인가·문의하기"를 잡아 둔다.
 
               ⚠️ DOM 순서상 본문 **뒤**에 둔다 — CTA 가 모달의 마지막 포커서블이어야
               포커스 트랩이 display:none 패널 안쪽을 경계로 잡지 않는다(기존 불변식 유지).
@@ -1128,7 +1128,7 @@ export const DetailModal = memo(function DetailModal({
                     minHeight: 44,
                   }}
                 >
-                  이 매물 상담하기
+                  이 단지 문의하기
                 </button>
               )}
               <div style={DM_S.actionRow}>

@@ -388,10 +388,10 @@ describe("DetailModal StickyJumpNav", () => {
     expect(score?.textContent).not.toContain("공공데이터 상세");
   });
 
-  it("onConsult 제공 시 '이 매물 상담하기' 버튼 가시 + 클릭 시 apt.id 콜백", () => {
+  it("onConsult 제공 시 '이 단지 문의하기' 버튼 가시 + 클릭 시 apt.id 콜백", () => {
     const onConsult = vi.fn();
     render(<DetailModal {...makeProps({ onConsult })} />);
-    const btn = screen.getByText("이 매물 상담하기");
+    const btn = screen.getByText("이 단지 문의하기");
     expect(btn).toBeVisible();
     fireEvent.click(btn);
     // factories makeApt id: 1 (number) — `as string` 캐스트는 런타임 무변환
@@ -400,7 +400,7 @@ describe("DetailModal StickyJumpNav", () => {
 
   it("onConsult 부재 시 상담하기 버튼 미렌더", () => {
     render(<DetailModal {...makeProps()} />);
-    expect(screen.queryByText("이 매물 상담하기")).toBeNull();
+    expect(screen.queryByText("이 단지 문의하기")).toBeNull();
   });
 
   // CTA sticky 바 (세션 407 사장님 지시) — 내용 길면 하단 반투명 겹침, 짧으면 제자리 = sticky 기본 동작

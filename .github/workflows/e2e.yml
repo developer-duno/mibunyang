@@ -57,7 +57,6 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           VITE_FEATURE_UPCOMING: "true"
-          VITE_FEATURE_HOME: "true"
 
       - uses: actions/upload-artifact@v7
         if: ${{ !cancelled() }}

@@ -4,13 +4,17 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { FeedbackFab } from "./FeedbackFab";
 
 describe("FeedbackFab (세션574)", () => {
-  it("의견 보내기 버튼이 보이고 누르면 onClick", () => {
+  // 세션 577(A-12): 글자 "의견" → "문의", 이름·툴팁 "문의하기" (문의 모달 = 의견·업체 문의 탭)
+  it("문의 버튼이 보이고 누르면 onClick", () => {
     const onClick = vi.fn();
     render(<FeedbackFab onClick={onClick} isDesktop={false} />);
     const btn = screen.getByTestId("feedback-fab");
-    expect(btn.getAttribute("aria-label")).toBe("의견 보내기");
+    expect(screen.getByLabelText("문의하기")).toBe(btn);
+    expect(btn.getAttribute("title")).toBe("문의하기");
     expect(btn.tagName).toBe("BUTTON"); // 네이티브 버튼 = Enter·Space 키보드 동작 기본 제공
-    expect(btn.textContent).toContain("의견");
+    expect(btn.textContent).toBe("문의");
+    expect(screen.getByText("문의")).toBeTruthy();
+    expect(screen.queryByText("의견")).toBeNull();
     fireEvent.click(btn);
     expect(onClick).toHaveBeenCalledOnce();
   });

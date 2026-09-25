@@ -3,8 +3,11 @@ import { checkRateLimit } from "./_lib/rateLimit.js";
 import { requireAdminGate } from "./_lib/adminAuth.js";
 import { parsePagination } from "./_lib/validators.js";
 import { withHandler } from "./_lib/handler.js";
+import { sendTelegram, formatConsultAlert } from "./_lib/telegram.js";
 
-const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담"];
+// 세션 577(A-12): "업체문의" = 문의 모달의 🏢 업체 문의 탭(시행사·분양업체, 로그인 불필요). 회사·이메일·단지는
+// message 안에 적혀 온다(consults 표 컬럼 추가 없음). 저장 뒤 사장님 텔레그램 알림 — 다른 유형은 알림 없음.
+const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담", "업체문의"];
 const PHONE_REGEX = /^[\d\-]{8,20}$/;
 
 export default withHandler({
@@ -51,27 +54,45 @@ async function handlePost(req: any, res: any) {
     return res.status(400).json({ ok: false, error: "예산 범위가 올바르지 않습니다" });
   }
 
+  const savedName = name.trim();
+  const savedPhone = phone.trim();
+  const savedApts = interestedApts.map(String).slice(0, 20);
+  const savedMessage = typeof message === "string" ? message.trim().slice(0, 500) : null;
   try {
     // 세션566: 공개 열쇠(anon) 대신 service key 로 저장한다 — anon INSERT 정책을 지웠다.
     // 이 DB 의 anon key 는 자매 사이트(2u.pe.kr) 번들에 공개돼 있어, 정책이 있으면 누구나
     // 이 API 의 검증·레이트리밋을 건너뛰고 표에 직접 넣을 수 있었다(보안 고문 경고 0024).
     const sb = getMibuyangSupabase();
     const { error } = await sb.from("consults").insert({
-      name: name.trim(),
-      phone: phone.trim(),
-      interested_apts: interestedApts.map(String).slice(0, 20),
+      name: savedName,
+      phone: savedPhone,
+      interested_apts: savedApts,
       budget_min: parsedMin,
       budget_max: parsedMax,
       consult_type: consultType || "방문상담",
-      message: typeof message === "string" ? message.trim().slice(0, 500) : null,
+      message: savedMessage,
       consent_at: new Date().toISOString(),
     });
     if (error) throw error;
-    return res.status(201).json({ ok: true });
   } catch (err) {
     console.error("consult insert error:", err instanceof Error ? err.message : err);
     return res.status(500).json({ ok: false, error: "상담 신청 저장에 실패했습니다" });
   }
+
+  // 업체 문의만 텔레그램 알림 (feedback.ts 패턴) — 실패해도 저장은 끝났으므로 201.
+  // 서버리스는 응답 뒤 실행이 멈출 수 있어 await 한다.
+  if (consultType === "업체문의") {
+    try {
+      const r = await sendTelegram(
+        formatConsultAlert({ name: savedName, phone: savedPhone, message: savedMessage ?? "", interestedApts: savedApts })
+      );
+      if (!r.sent) console.warn("consult telegram skipped:", r.reason);
+    } catch (err) {
+      console.warn("consult telegram error:", err instanceof Error ? err.message : err);
+    }
+  }
+
+  return res.status(201).json({ ok: true });
 }
 
 async function handleGet(req: any, res: any) {
