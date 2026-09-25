@@ -36,6 +36,43 @@ export async function stubApartments(page: Page): Promise<void> {
   }
 }
 
+/**
+ * 목록 + 상세 버킷 응답을 임의 픽스처로 바꿔치기한다(세션577 e2e).
+ *
+ * `stubApartments`(위)는 시각회귀 고정 픽스처 하나만 쓰지만, 이 헬퍼는 임의의 목록 JSON과
+ * (선택) 상세 버킷 JSON 맵을 받아 두 종류의 요청을 모두 가로챈다.
+ *
+ * ⚠️ `page.goto()` **전에** 불러야 한다(stubApartments와 동일 제약).
+ *
+ * @param listFixture 목록 응답 그대로(`{ ok, data, dataUpdatedAt, ... }`)
+ * @param detailBuckets 버킷 파일명(`apartments-detail-16-N.json`) → 그 버킷 응답(`{ ok, data }`) 맵.
+ *   생략하거나 어떤 버킷이 맵에 없으면 그 버킷 요청은 가로채지 않는다(실제 정적 파일로 감).
+ */
+export async function stubApartmentsWith(
+  page: Page,
+  listFixture: unknown,
+  detailBuckets: Record<string, unknown> = {}
+): Promise<void> {
+  for (const pattern of ["**/api/supabase/apartments", "**/data/apartments-list.json"]) {
+    await page.route(pattern, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(listFixture),
+      })
+    );
+  }
+  for (const [bucketFile, body] of Object.entries(detailBuckets)) {
+    await page.route(`**/data/${bucketFile}`, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(body),
+      })
+    );
+  }
+}
+
 /** 애니메이션·캐럿 깜빡임 제거 → 픽셀 안정화 */
 export async function freezeAnimations(page: Page): Promise<void> {
   await page.addStyleTag({

@@ -1,0 +1,93 @@
+{
+  "ok": true,
+  "data": [
+    {
+      "id": "ah-2026930023",
+      "priceByArea": [
+        {
+          "area": 59.98,
+          "min": 42000,
+          "max": 48000,
+          "avg": 45000,
+          "count": 12
+        },
+        {
+          "area": 74.96,
+          "min": 55000,
+          "max": 62000,
+          "avg": 58500,
+          "count": 8
+        },
+        {
+          "area": 84.97,
+          "min": 68000,
+          "max": 75000,
+          "avg": 71500,
+          "count": 5
+        }
+      ],
+      "rentByArea": [],
+      "jeonseByArea": [],
+      "priceByFloor": [],
+      "catsCache": {
+        "risk": {
+          "key": "risk",
+          "subs": [],
+          "label": "안전도",
+          "total": 69,
+          "riskRaw": 31
+        },
+        "price": {
+          "key": "price",
+          "subs": [
+            {
+              "info": "데이터 부재",
+              "name": "적정가 괴리도",
+              "score": 30,
+              "detail": "분양가 데이터 없음 (중립 점수)"
+            }
+          ],
+          "label": "가격 매력도",
+          "total": 46,
+          "deviation": "0.0",
+          "fairPrice": 0
+        },
+        "future": {
+          "key": "future",
+          "subs": [],
+          "label": "미래가치",
+          "total": 84
+        },
+        "benefit": {
+          "key": "benefit",
+          "rate": "0.0",
+          "subs": [],
+          "label": "혜택·할인",
+          "total": 0,
+          "noData": true,
+          "totalWon": 0,
+          "wonSource": ""
+        },
+        "product": {
+          "key": "product",
+          "subs": [],
+          "label": "상품성",
+          "total": 56
+        },
+        "location": {
+          "key": "location",
+          "subs": [
+            {
+              "info": "지하철 467m(2호선) · 버스 18개 · IC 1.8km · KTX 17.5km",
+              "name": "교통",
+              "score": 67,
+              "detail": "지하철 467m(2호선) 도보권 · 버스 18개/20 · IC 1.8km 양호 · KTX 17.5km 원거리"
+            }
+          ],
+          "label": "입지·생활권",
+          "total": 87
+        }
+      }
+    }
+  ]
+}
