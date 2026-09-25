@@ -24,14 +24,14 @@ test.describe("문의하기", () => {
     await expect(dialog.getByRole("button", { name: "카카오 로그인하고 의견 보내기" })).toBeVisible();
 
     await dialog.getByRole("tab", { name: /🏢 업체 문의/ }).click();
-    await expect(dialog.getByLabel("회사명")).toBeVisible();
+    await expect(dialog.getByLabel("회사명", { exact: true })).toBeVisible();
 
-    await dialog.getByLabel("회사명").fill("이로움건설");
-    await dialog.getByLabel("담당자").fill("김담당");
-    await dialog.getByLabel("연락처").fill("010-0123-4567");
-    await dialog.getByLabel("이메일 (선택)").fill("biz@example.com");
-    await dialog.getByLabel("관련 단지 (선택)").fill("힐스테이트 앞산 센트럴");
-    await dialog.getByLabel("내용").fill("분양 홍보 협의 문의드립니다");
+    await dialog.getByLabel("회사명", { exact: true }).fill("이로움건설");
+    await dialog.getByLabel("담당자", { exact: true }).fill("김담당");
+    await dialog.getByLabel("연락처", { exact: true }).fill("010-0123-4567");
+    await dialog.getByLabel("이메일 (선택)", { exact: true }).fill("biz@example.com");
+    await dialog.getByLabel("관련 단지 (선택)", { exact: true }).fill("힐스테이트 앞산 센트럴");
+    await dialog.getByLabel("내용", { exact: true }).fill("분양 홍보 협의 문의드립니다");
     await dialog.getByRole("checkbox").check();
 
     const posted = page.waitForRequest((req) => req.url().includes("/api/consults") && req.method() === "POST");
