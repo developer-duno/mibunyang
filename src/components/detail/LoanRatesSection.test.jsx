@@ -85,4 +85,43 @@ describe("LoanRatesSection", () => {
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
+
+  // 월 상환액 시뮬레이션 — 단위 버그 정정 (D4, 세션574)
+  it("월 상환액 시뮬레이션이 '-/월'이 아니라 '만'을 포함한 금액을 표시한다", () => {
+    render(<LoanRatesSection apt={makeApt()} />);
+    fireEvent.click(screen.getByText("은행별 금리 비교"));
+    const sim = screen.getByText(/최저 금리 3\.5% 기준/).closest("div");
+    expect(sim.textContent).not.toContain("-/월");
+    expect(sim.textContent).toMatch(/\d+만\/월/);
+  });
+
+  // 상품 아래 작은 글씨 — 담보유형·상환방식·금리유형 구별 (D4, 세션574)
+  it("상품 아래에 담보유형·상환방식·금리유형 조합을 작은 글씨로 표시한다", () => {
+    useLoanRates.mockReturnValueOnce({
+      rates: [
+        {
+          bank: "테스트은행",
+          product: "주담대A",
+          rateMin: 3.5,
+          rateMax: 4.2,
+          mortgageType: "아파트",
+          repayType: "분할상환",
+          rateType: "변동금리",
+        },
+      ],
+      loading: false,
+      error: null,
+    });
+    render(<LoanRatesSection apt={makeApt()} />);
+    fireEvent.click(screen.getByText("은행별 금리 비교"));
+    expect(screen.getByText("아파트 · 분할상환 · 변동금리")).toBeTruthy();
+  });
+
+  // 구별 필드가 없는 행은 작은 글씨 줄이 없다 (D4, 세션574)
+  it("담보유형 등 필드가 없는 행에는 작은 글씨 줄이 없고 undefined 문자열도 없다", () => {
+    render(<LoanRatesSection apt={makeApt()} />);
+    fireEvent.click(screen.getByText("은행별 금리 비교"));
+    expect(screen.queryByText(/undefined/)).toBeNull();
+    expect(document.body.textContent).not.toContain("undefined");
+  });
 });
