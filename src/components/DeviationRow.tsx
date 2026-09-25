@@ -91,6 +91,7 @@ export const DeviationRow = memo(function DeviationRow({
   value,
   regionLabel,
   compact = true,
+  estimated = false,
 }: {
   spec: DeviationFieldSpec;
   dev: Deviation;
@@ -98,14 +99,17 @@ export const DeviationRow = memo(function DeviationRow({
   regionLabel: string;
   /** 카드용(true)은 문장 조각만, 팝업용(false)은 실제 값도 앞에 붙인다 */
   compact?: boolean;
+  /** `value` 가 실측이 아니라 spec.fallback 의 추정치인가 → 값 문구·스크린리더 문장에 `추정 ` (세션576 D5-b) */
+  estimated?: boolean;
 }) {
-  const aria = deviationAriaLabel(spec, dev, regionLabel, formatDeviationValue(spec, value));
+  const shownValue = formatDeviationValue(spec, value, estimated);
+  const aria = deviationAriaLabel(spec, dev, regionLabel, shownValue);
 
   // 팝업에서는 `1,240만 · 12% 싸요` 처럼 실제 값을 앞에 붙인다. "12% 싸요"만으로는 "그래서
   // 얼마인데?"가 남는데, 그 답이 팝업 다른 자리에 흩어져 있어 손님이 눈으로 찾아야 했다.
   // 카드(compact)는 폭이 좁아 그대로 둔다 — 붙이면 두 줄로 넘쳐 행 높이 고정이 깨진다.
   // 값이 없거나(missing) 비교가 성립 안 하는 줄은 붙일 값 자체가 없다.
-  const valueText = !compact && dev.state === "ok" ? `${formatDeviationValue(spec, value)} · ${dev.text}` : dev.text;
+  const valueText = !compact && dev.state === "ok" ? `${shownValue} · ${dev.text}` : dev.text;
 
   const drawable = dev.state === "ok" && dev.fav != null;
   const fav = dev.fav ?? 50;

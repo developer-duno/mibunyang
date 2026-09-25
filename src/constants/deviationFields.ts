@@ -1,4 +1,5 @@
 import { fmtPrice } from "@/lib/format";
+import { estimateParkingRatio } from "@/constants/parkingEstimate";
 
 /**
  * 편차 스트립에 그릴 필드 정의 — 라벨·유불리 방향·양끝 한글 끝말·문장 조각을 한곳에 모은다.
@@ -47,6 +48,21 @@ export type DeviationFieldSpec = {
    * 그 비용을 치를 이유가 없어 단위만 여기 적어 둔다.
    */
   valueUnit: string;
+  /**
+   * 이 단지의 값(`field`)이 비었을 때 쓸 **추정치** — 쓰면 화면·스크린리더 값 앞에 `추정 ` 이 붙는다.
+   *
+   * `estimate` 는 `from` 에 적은 필드 값을 **그 순서대로** 받는다(`lib/deviation.ts`
+   * `resolveDeviationInput`). 입력 목록과 인자 목록이 한 줄이라 서로 어긋날 수 없고,
+   * `AptCard` 의 memo 비교 함수도 같은 `from` 을 돈다(`deviationInputsEqual`) — 추정에 쓰는
+   * 값만 바뀌었는데 카드가 옛 화면으로 남는 사고(세션 430·461·479)를 손 목록 없이 막는다.
+   *
+   * 산식은 여기에 쓰지 않고 점수 엔진이 쓰는 함수를 부른다 — 같은 모달에서 점수 탭과
+   * 종합 탭이 다른 숫자를 말하지 않게(세션576 D5-b).
+   */
+  fallback?: {
+    from: readonly string[];
+    estimate: (..._values: unknown[]) => number | null;
+  };
 };
 
 /**
@@ -146,6 +162,19 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     unit: "percent",
     goodWord: "여유로워요",
     badWord: "빠듯해요",
+    // 세션576 D5-b: 실측 비율이 없으면 점수 탭과 같은 추정치(주차대수 ÷ max(총세대, 일반분양, 1))로
+    //   그린다. 점수 탭은 `추정 1.13대/세대` 로 채점하는데 이 막대만 `미수집` 이라 같은 모달이
+    //   두 말을 했다(정적 JSON 1,912곳 중 78곳). 추정 조건은 엔진과 같다 — `parkingRatio == null`
+    //   (engine.ts `_noParking`). 추정 불가(주차 0·null, 3 초과 오염)면 그대로 `미수집`.
+    fallback: {
+      from: ["presaleParking", "units", "presaleGeneralSupply"],
+      estimate: (parking, units, generalSupply) =>
+        estimateParkingRatio(
+          parking as number | null | undefined,
+          units as number | null | undefined,
+          generalSupply as number | null | undefined
+        ),
+    },
   },
   {
     field: "avgMaintenanceCost",
@@ -178,10 +207,13 @@ export const DEVIATION_FIELD_NAMES: readonly string[] = OVERVIEW_DEVIATION_FIELD
  * 스크린리더 문구에 넣을 값 표현. 분양가는 "3억 2,000만" 처럼 읽히게 기존 `fmtPrice` 를 쓴다
  * (그 함수는 이미 카드가 쓰고 있어 번들 추가 비용이 0 이다).
  */
-export function formatDeviationValue(spec: DeviationFieldSpec, raw: unknown): string {
+export function formatDeviationValue(spec: DeviationFieldSpec, raw: unknown, estimated = false): string {
   if (raw == null) return "—";
   const n = Number(raw);
   if (!Number.isFinite(n)) return "—";
+  // 추정치는 점수 탭(scoreProduct.ts)·fieldMeta 와 **같은 글자**로 쓴다 — 둘 다 `추정 ${est.toFixed(2)}…`.
+  //   `${n}` 로 두면 99/88 = `1.125대/세대` 가 되어 점수 탭의 `1.13` 과 또 어긋난다.
+  if (estimated) return `추정 ${n.toFixed(2)}${spec.valueUnit}`;
   if (spec.valueUnit === "만원") return fmtPrice(n);
   return `${n}${spec.valueUnit}`;
 }

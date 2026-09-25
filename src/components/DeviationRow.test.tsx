@@ -212,3 +212,33 @@ describe("카드 3줄 정의", () => {
     expect(names).toContain("pp");
   });
 });
+
+describe("DeviationRow — 추정치 표시 (세션576 D5-b)", () => {
+  const parkingSpec = deviationSpec("parkingRatio")!;
+  const avg = dev({ fav: 50, text: "평균 수준", tone: "neutral" });
+
+  it("팝업: 값 문구 앞에 `추정 ` — 점수 탭과 같은 두 자리(1.125 → 1.13)", () => {
+    const { container } = render(
+      <DeviationRow spec={parkingSpec} dev={avg} value={1.125} estimated regionLabel="경기" compact={false} />
+    );
+    expect(rowOf(container).kids[4].textContent).toBe("추정 1.13대/세대 · 평균 수준");
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+      "주차 추정 1.13대/세대. 경기 분양 단지 한가운데 값과 견주면 평균 수준."
+    );
+  });
+
+  it("카드: 보이는 글자는 그대로, 스크린리더 문장에만 `추정`", () => {
+    const { container } = render(
+      <DeviationRow spec={parkingSpec} dev={avg} value={1.125} estimated regionLabel="경기" />
+    );
+    expect(rowOf(container).kids[4].textContent).toBe("평균 수준");
+    expect(screen.getByRole("img").getAttribute("aria-label")).toContain("추정 1.13대/세대");
+  });
+
+  it("추정이 아니면 `추정` 이 없다", () => {
+    const { container } = render(
+      <DeviationRow spec={parkingSpec} dev={avg} value={1.49} regionLabel="경기" compact={false} />
+    );
+    expect(rowOf(container).kids[4].textContent).toBe("1.49대/세대 · 평균 수준");
+  });
+});

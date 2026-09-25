@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { HelpHint } from "./HelpHint";
 import { DeviationRow, ROW_HEIGHT } from "./DeviationRow";
-import { computeDeviation } from "@/lib/deviation";
+import { computeDeviation, resolveDeviationInput } from "@/lib/deviation";
 import type { DeviationFieldSpec } from "@/constants/deviationFields";
 import type { RegionalStats } from "@/scoring/regionalStats";
 import type { Apt } from "@/types/scoring";
@@ -74,7 +74,13 @@ export const DeviationStrip = memo(function DeviationStrip({
   const regionLabel = region || "전국";
 
   const rows = useMemo(
-    () => fields.map((spec) => ({ spec, dev: computeDeviation(spec, raw[spec.field], region, regionStats) })),
+    () =>
+      fields.map((spec) => {
+        // 세션576 D5-b: 값이 비었으면 spec.fallback 의 추정치를 쓴다(점수 탭과 같은 숫자).
+        //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
+        const input = resolveDeviationInput(spec, raw);
+        return { spec, input, dev: computeDeviation(spec, input.value, region, regionStats) };
+      }),
     [fields, raw, region, regionStats]
   );
 
@@ -93,12 +99,13 @@ export const DeviationStrip = memo(function DeviationStrip({
         <HelpHint text={HELP_TEXT} label="지역 비교" />
       </div>
       <div style={S.rows}>
-        {rows.map(({ spec, dev }) => (
+        {rows.map(({ spec, input, dev }) => (
           <DeviationRow
             key={spec.field}
             spec={spec}
             dev={dev}
-            value={raw[spec.field]}
+            value={input.value}
+            estimated={input.estimated}
             regionLabel={regionLabel}
             compact={compact}
           />

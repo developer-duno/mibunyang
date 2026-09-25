@@ -139,6 +139,42 @@ export function computeDeviation(
 }
 
 /**
+ * 편차 한 줄에 넘길 값 — 이 단지 값이 비었고 spec 에 `fallback` 이 있으면 추정치를 쓴다.
+ *
+ * 추정 조건은 `== null` 하나다(점수 엔진 engine.ts `_noParking: apt.parkingRatio == null` 과 같다).
+ * 실측값이 있으면 절대 덮지 않는다. 추정도 못 하면 원값을 그대로 돌려줘 `미수집` 이 된다.
+ */
+export function resolveDeviationInput(
+  spec: DeviationFieldSpec,
+  apt: Record<string, unknown>
+): { value: unknown; estimated: boolean } {
+  const own = apt[spec.field];
+  if (own != null || !spec.fallback) return { value: own, estimated: false };
+  const est = spec.fallback.estimate(...spec.fallback.from.map((f) => apt[f]));
+  return est == null ? { value: own, estimated: false } : { value: est, estimated: true };
+}
+
+/**
+ * 편차 줄들이 읽는 입력이 두 단지에서 같은가 — memo 비교 함수용.
+ *
+ * 필드 값과 **추정에 쓰는 필드(`fallback.from`)** 를 같은 순회에서 본다. 필드 값만 보면
+ * 추정 재료(주차대수 등)만 바뀐 단지가 옛 화면으로 남는다(스킬 silent-cache "키에 빠진 입력").
+ */
+export function deviationInputsEqual(
+  fields: readonly DeviationFieldSpec[],
+  a: Record<string, unknown>,
+  b: Record<string, unknown>
+): boolean {
+  for (const f of fields) {
+    if (a[f.field] !== b[f.field]) return false;
+    for (const dep of f.fallback?.from ?? []) {
+      if (a[dep] !== b[dep]) return false;
+    }
+  }
+  return true;
+}
+
+/**
  * 스크린리더용 문장.
  *
  * ⚠️ **"점수" 라는 글자를 넣지 말 것** — `DetailModal` 테스트의
