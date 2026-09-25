@@ -85,12 +85,12 @@ describe("AptCard memo — 추정 재료만 바뀌어도 다시 그린다 (세�
     const props = makeProps(before);
     const { rerender, container } = render(<AptCard {...props} />);
     const first = container.textContent ?? "";
-    expect(first).toMatch(/가까워요/);
+    expect(first).toContain("추정 300.00m");
 
     // ⚠️ presaleParking **하나만** 바꾼다 — 다른 추적 필드가 같이 바뀌면 그쪽 때문에 다시 그려진다.
     rerender(<AptCard {...props} apt={{ ...before, presaleParking: 1400 }} />);
     const second = container.textContent ?? "";
     expect(second, "추정 재료만 바뀌었는데 카드가 옛 화면 그대로다").not.toBe(first);
-    expect(second).toMatch(/멀어요/);
+    expect(second).toContain("추정 1400.00m");
   });
 });

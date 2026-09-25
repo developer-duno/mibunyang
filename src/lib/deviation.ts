@@ -1,4 +1,4 @@
-import type { DeviationFieldSpec } from "@/constants/deviationFields";
+import { formatDeviationValue, type DeviationFieldSpec } from "@/constants/deviationFields";
 import {
   MIN_ANY_SAMPLE,
   MIN_REGION_SAMPLE,
@@ -19,8 +19,9 @@ export type Deviation = {
    * `sparse`  비교할 단지가 너무 적음 (G1)
    * `uniform` 그 지역이 다 같은 값이라 비교가 무의미 (G2)
    * `missing` 이 단지 값이 없음 / 센티널 (G3)
+   * `estimated` 실측 없이 추정치만 있음 — 값만 보이고 막대 위치·비교 문구는 없다(세션576 D5-b)
    */
-  state: "ok" | "sparse" | "uniform" | "missing";
+  state: "ok" | "sparse" | "uniform" | "missing" | "estimated";
   /** 0~100. **항상 클수록 유리** — 막대가 오른쪽으로 길수록 좋다는 규칙 하나로 통일된다. */
   fav: number | null;
   /** 값 슬롯에 그대로 넣는 문장 조각 */
@@ -155,6 +156,23 @@ export function resolveDeviationInput(
 }
 
 /**
+ * 추정치 줄 — **지역 분포와 견주지 않는다**(세션576 D5-b, 사장님 결정).
+ *
+ * 검사관 실측: 주차 추정치와 실측값의 오차가 p10 −0.61 · p90 +0.69 인데 실측 분포의 사분위 폭은
+ * 0.28 이다. 오차가 분포 폭보다 커서 막대 위치(백분위)와 "평균 수준"·"여유" 같은 비교 문구는 소음이다.
+ * 그래서 값(`추정 1.13대/세대`)만 보이고 막대는 비교 불가 줄과 같은 회색으로 둔다(fav null).
+ */
+export function estimatedDeviation(spec: DeviationFieldSpec, value: unknown): Deviation {
+  return {
+    state: "estimated",
+    fav: null,
+    text: formatDeviationValue(spec, value, true),
+    tone: "neutral",
+    nationalFallback: false,
+  };
+}
+
+/**
  * 편차 줄들이 읽는 입력이 두 단지에서 같은가 — memo 비교 함수용.
  *
  * 필드 값과 **추정에 쓰는 필드(`fallback.from`)** 를 같은 순회에서 본다. 필드 값만 보면
@@ -195,6 +213,8 @@ export function deviationAriaLabel(
       return `${spec.label} ${formattedValue}. ${where}에 비교할 단지가 적어 견주지 못했습니다.`;
     case "uniform":
       return `${spec.label} ${formattedValue}. ${where} 단지들이 모두 같은 값이라 견줄 수 없습니다.`;
+    case "estimated":
+      return `${spec.label} ${formattedValue}. 추정치라 지역 단지들과 견주지 않았습니다.`;
     default:
       // 세션539 A-6: DeviationStrip.tsx 헤더와 같은 이유로 "아파트"라 단정하지 않는다 —
       // 대조군(regionalStats.ts:90)은 region 하나로만 묶여 오피스텔·재건축이 섞여 있다.

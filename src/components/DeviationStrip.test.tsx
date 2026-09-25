@@ -156,7 +156,7 @@ describe("DeviationStrip — 주차 추정 폴백 (세션576 D5-b)", () => {
   /** 용문역 리체스트(ah-2023910096) 모양 — 실측 비율 없음 · 주차 99 · 총세대 59 · 일반분양 88 */
   const yongmun = { parkingRatio: null, presaleParking: 99, units: 59, presaleGeneralSupply: 88 };
 
-  it("팝업: 실측 비율이 없으면 추정치로 그리고 값 앞에 `추정` 을 붙인다", () => {
+  it("팝업: 실측 비율이 없으면 추정치 값만 보인다 — 막대 위치·비교 문구 없음", () => {
     render(
       <DeviationStrip
         apt={apt(yongmun)}
@@ -165,17 +165,16 @@ describe("DeviationStrip — 주차 추정 폴백 (세션576 D5-b)", () => {
         compact={false}
       />
     );
-    expect(screen.getByText("추정 1.13대/세대 · 평균 수준")).toBeInTheDocument();
-    expect(
-      screen.getByRole("img", { name: "주차 추정 1.13대/세대. 경기 분양 단지 한가운데 값과 견주면 평균 수준." })
-    ).toBeInTheDocument();
+    const row = screen.getByRole("img", { name: "주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다." });
+    expect(row.textContent).toBe("주차추정 1.13대/세대");
+    expect(row.querySelector('[style*="border-radius: 99px"][style*="width"]')).toBeNull();
   });
 
-  it("카드(compact): 보이는 글자는 문장 조각만, `추정` 은 스크린리더 문장에 들어간다", () => {
+  it("카드(compact)도 같은 값 문구 하나 — `추정 1.13대/세대`", () => {
     render(<DeviationStrip apt={apt(yongmun)} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={parkingStats()} />);
     expect(
-      screen.getByRole("img", { name: "주차 추정 1.13대/세대. 경기 분양 단지 한가운데 값과 견주면 평균 수준." })
-    ).toBeInTheDocument();
+      screen.getByRole("img", { name: "주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다." }).textContent
+    ).toBe("주차추정 1.13대/세대");
   });
 
   it("추정할 수 없으면 지금처럼 `미수집` — 주차 0 / 3 초과(총세대 오염)", () => {

@@ -122,7 +122,8 @@ export const DeviationRow = memo(function DeviationRow({
   // 비교 자체가 성립하지 않는 줄(표본 부족·그 지역이 다 같은 값)은 안내문이 길다
   // ("비교할 단지가 적어요" = 10자). 트랙·끝말을 그대로 두면 1024 3열에서 폭이 넘친다.
   // 어차피 그릴 막대가 없으므로 안내문이 트랙 자리를 쓰게 한다 — 행 높이 22 는 그대로다.
-  if (dev.state === "sparse" || dev.state === "uniform") {
+  // 세션576 D5-b: 추정치 줄(`estimated`)도 여기다 — 값(`추정 1.13대/세대`)만 보이고 막대 위치는 없다.
+  if (dev.state === "sparse" || dev.state === "uniform" || dev.state === "estimated") {
     return (
       <div style={S.row} role="img" aria-label={aria}>
         <span style={S.label}>{spec.label}</span>

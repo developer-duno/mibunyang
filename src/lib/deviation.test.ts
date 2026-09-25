@@ -3,6 +3,7 @@ import {
   computeDeviation,
   deviationText,
   deviationAriaLabel,
+  estimatedDeviation,
   resolveDeviationInput,
   deviationInputsEqual,
 } from "./deviation";
@@ -336,11 +337,26 @@ describe("주차 추정 폴백 (세션576 D5-b)", () => {
     expect(formatDeviationValue(parkingSpec, 1.49)).toBe("1.49대/세대");
   });
 
-  it("스크린리더 문장에도 `추정` 이 들어간다", () => {
-    const d = { state: "ok" as const, fav: 50, text: "평균 수준", tone: "neutral" as const, nationalFallback: false };
-    expect(deviationAriaLabel(parkingSpec, d, "경기", formatDeviationValue(parkingSpec, 1.125, true))).toBe(
-      "주차 추정 1.13대/세대. 경기 분양 단지 한가운데 값과 견주면 평균 수준."
-    );
+  // 사장님 결정(세션576): 추정 오차(p10 −0.61 · p90 +0.69) > 실측 분포 사분위 폭(0.28) → 막대 위치는 소음.
+  it("추정치 줄은 지역 분포와 견주지 않는다 — 막대 위치 없음(fav null), 값 문구만", () => {
+    expect(estimatedDeviation(parkingSpec, 1.125)).toEqual({
+      state: "estimated",
+      fav: null,
+      text: "추정 1.13대/세대",
+      tone: "neutral",
+      nationalFallback: false,
+    });
+  });
+
+  it("추정치 줄의 스크린리더 문장 — 견주지 않았다고 말한다", () => {
+    expect(
+      deviationAriaLabel(
+        parkingSpec,
+        estimatedDeviation(parkingSpec, 1.125),
+        "경기",
+        formatDeviationValue(parkingSpec, 1.125, true)
+      )
+    ).toBe("주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다.");
   });
 
   it("추정할 수 없으면 원값 그대로 — 주차 0(원천 미기재)·null·3 초과(총세대 오염)", () => {

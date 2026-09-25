@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { HelpHint } from "./HelpHint";
 import { DeviationRow, ROW_HEIGHT } from "./DeviationRow";
-import { computeDeviation, resolveDeviationInput } from "@/lib/deviation";
+import { computeDeviation, estimatedDeviation, resolveDeviationInput } from "@/lib/deviation";
 import type { DeviationFieldSpec } from "@/constants/deviationFields";
 import type { RegionalStats } from "@/scoring/regionalStats";
 import type { Apt } from "@/types/scoring";
@@ -78,8 +78,12 @@ export const DeviationStrip = memo(function DeviationStrip({
       fields.map((spec) => {
         // 세션576 D5-b: 값이 비었으면 spec.fallback 의 추정치를 쓴다(점수 탭과 같은 숫자).
         //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
+        //   추정치는 지역 분포와 견주지 않는다 — 추정 오차가 분포 폭보다 커서 막대 위치가 소음이다.
         const input = resolveDeviationInput(spec, raw);
-        return { spec, input, dev: computeDeviation(spec, input.value, region, regionStats) };
+        const dev = input.estimated
+          ? estimatedDeviation(spec, input.value)
+          : computeDeviation(spec, input.value, region, regionStats);
+        return { spec, input, dev };
       }),
     [fields, raw, region, regionStats]
   );
