@@ -255,6 +255,16 @@ describe("consults handler", () => {
     expect(ok.status).toHaveBeenCalledWith(201);
   });
 
+  it("POST 업체문의: 내용이 여러 줄이면 마지막 문단 전체로 잰다 — 마지막 줄 1자여도 문단 12자면 201 (split(\"\\n\") 변이 가드)", async () => {
+    const res = makeRes();
+    await handler(
+      makePostReq({ consultType: "업체문의", message: "회사: 이로움건설\n이메일: -\n단지: -\n\n분양 홍보 협의 문의\n끝" }),
+      res
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
   it("POST 업체문의: 텔레그램이 실패(throw)해도 저장이 끝났으므로 201", async () => {
     mockSendTelegram.mockRejectedValueOnce(new Error("network"));
     const res = makeRes();
