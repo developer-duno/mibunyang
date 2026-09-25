@@ -31,11 +31,15 @@ function readStripped(relPath) {
 }
 
 describe("leaseTypes — 임대형 판별", () => {
-  it("실측 임대형 9종을 전부 임대로 판정한다", () => {
+  it("실측 임대형 10종을 전부 임대로 판정한다", () => {
     for (const t of LEASE_PRESALE_TYPES) {
       expect(isLeasePresale(t), `${t} 가 임대로 안 잡힘`).toBe(true);
     }
-    expect(LEASE_PRESALE_TYPES.length).toBe(9);
+    expect(LEASE_PRESALE_TYPES.length).toBe(10);
+  });
+
+  it("공공지원민간임대리츠를 임대로 판정한다 (D1/D6, 세션576 — 108곳 분양 오분류 결함)", () => {
+    expect(isLeasePresale("공공지원민간임대리츠")).toBe(true);
   });
 
   it("'임대' 글자가 없는 임대형(시프트)도 잡는다", () => {
@@ -72,6 +76,15 @@ describe("leaseTypes — excludeLeaseUnits", () => {
       { id: "i", presaleType: "민간임대시행자임의" },
     ];
     expect(excludeLeaseUnits(rows).map((r) => r.id)).toEqual(["a", "d", "f", "h"]);
+  });
+
+  it("공공지원민간임대리츠를 camelCase·snake_case 양쪽에서 거른다 (D1/D6, 세션576)", () => {
+    const rows = [
+      { id: "a", presaleType: "공공지원민간임대리츠" },
+      { id: "b", presaleType: "민간분양" },
+      { id: "c", presale_type: "공공지원민간임대리츠" },
+    ];
+    expect(excludeLeaseUnits(rows)).toEqual([{ id: "b", presaleType: "민간분양" }]);
   });
 
   it("snake_case(presale_type, apartments 원본 테이블) 키도 본다", () => {
