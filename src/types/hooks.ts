@@ -375,7 +375,7 @@ export interface UseFilterSortReturn {
 
 /**
  * useAppNavigation 인자 — App.jsx L150 호출 객체.
- * auth/admin/consult/detail 4 도메인 + 추가 필드.
+ * auth/admin 2 도메인 + 추가 필드 (세션 577: 상담 탭 삭제로 consult/detail/budget/setFavoriteIds 제거).
  */
 export interface UseAppNavigationArgs {
   tab: string;
@@ -387,28 +387,13 @@ export interface UseAppNavigationArgs {
     [key: string]: unknown;
   };
   admin: import("./admin").AdminMode;
-  consult: {
-    consultSubmitted: boolean;
-    setConsultSubmitted: (_v: boolean) => void;
-    setConsultForm: (
-      _form:
-        | import("@/hooks/useConsult").ConsultForm
-        | ((_prev: import("@/hooks/useConsult").ConsultForm) => import("@/hooks/useConsult").ConsultForm)
-    ) => void;
-    [key: string]: unknown;
-  };
-  detail: {
-    setDetailAptId: (_id: string | null) => void;
-  };
   compIds: string[];
   setShowCompOpen: (_v: boolean) => void;
-  /** 상세→상담하기 시 해당 단지를 관심 단지에 추가 (useFavorites.setFavoriteIds, 세션 465) */
-  setFavoriteIds: (_idsOrFn: string[] | ((_prev: string[]) => string[])) => void;
   showToast: (_msg: string) => void;
-  budgetMin: string | number | null;
-  budgetMax: string | number | null;
   isLoggedIn: boolean;
   onLoginRequired?: () => void;
+  /** 메뉴 "문의"(k="inquiry") — 문의 모달을 연다. 탭은 바꾸지 않는다 (세션 577) */
+  onOpenInquiry: () => void;
 }
 
 /**
@@ -417,7 +402,5 @@ export interface UseAppNavigationArgs {
 export interface UseAppNavigationReturn {
   handleAdminLogin: () => Promise<void>;
   handleLogout: () => void;
-  switchToInfo: () => void;
-  handleConsultFromDetail: (_aptId: string) => void;
   handleNavClick: (_k: string) => void;
 }

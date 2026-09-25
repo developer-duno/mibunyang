@@ -80,12 +80,12 @@ describe("useKakaoCallbackEffect", () => {
   });
 
   // 레거시 expert role → 일반 손님 취급 (세션 405 전문가 폐지)
-  it("expert role 잔존 레코드 로그인 시 일반 손님(list/home)으로 이동한다", async () => {
+  it("expert role 잔존 레코드 로그인 시 일반 손님(목록)으로 이동한다", async () => {
     const args = makeArgs({ ok: true, token: "t", role: "expert" });
     renderHook(() => useKakaoCallbackEffect(args));
 
     await waitFor(() => {
-      expect(args.setTab).toHaveBeenCalledWith("list"); // featureFlag OFF 테스트 환경 = list
+      expect(args.setTab).toHaveBeenCalledWith("list");
     });
     expect(args.setTab).not.toHaveBeenCalledWith("expert");
     expect(args.admin.setAdminLoggedIn).not.toHaveBeenCalled();
@@ -115,7 +115,7 @@ describe("useKakaoCallbackEffect", () => {
     expect(args.recordView).not.toHaveBeenCalled();
   });
 
-  // 세션 469: pendingTab="map" 이면 로그인 후 지도 탭으로 복귀 (홈 착지 덮음)
+  // 세션 469: pendingTab="map" 이면 로그인 후 지도 탭으로 복귀 (목록 착지 덮음)
   it("user 로그인 + pendingTab='map' 이면 지도 탭으로 복귀한다", async () => {
     const args = makeArgs({ ok: true, token: "t", role: "user", pendingTab: "map" });
     renderHook(() => useKakaoCallbackEffect(args));
@@ -127,17 +127,9 @@ describe("useKakaoCallbackEffect", () => {
     expect(args.setTab).not.toHaveBeenCalledWith("home");
   });
 
-  // 세션 469: VITE_FEATURE_HOME=true 여도 pendingTab="map" 이 홈 착지를 이긴다
-  //
-  // ⚠️ 이 테스트가 지키는 것은 **분기 순서**(map 우선)이지 깃발 ON 경로가 아니다 (세션556 정정).
-  //    `useKakaoCallbackEffect.ts:66` 이 `pendingTab === "map"` 을 먼저 보고 return 하므로
-  //    `isFeatureHome()` 은 else 안에서만 읽힌다 — 즉 아래 stubEnv 를 "true"/""/삭제 어느 쪽으로
-  //    바꿔도 결과가 같다(그래서 깃발에 대해서는 항진명제다). stub 을 남겨 둔 이유는 "깃발이
-  //    켜져도 map 이 이긴다" 는 **의도를 문서로 남기기 위해서**이고, 실제 가드는 아래 두 단언
-  //    (map 호출 O · home 호출 X)이 `if/else` 순서가 뒤집히면 red 를 내는 것이다.
-  //    깃발 ON 경로 자체는 아래 "VITE_FEATURE_HOME=true 면 user 로그인 착지가 home 이다"
-  //    (pendingTab 없음)가 검증한다.
-  it("VITE_FEATURE_HOME=true + pendingTab='map' → 홈이 아니라 지도 탭", async () => {
+  // 세션 577(A-12): 착지 = 목록 — 홈 깃발(VITE_FEATURE_HOME)을 켜도 map 복귀가 먼저, 그다음 목록.
+  //    옛 "깃발 ON 이면 홈 착지" 경로는 삭제됐다(코드에서 isFeatureHome 을 더 읽지 않는다).
+  it("VITE_FEATURE_HOME=true + pendingTab='map' → 지도 탭(홈 아님)", async () => {
     vi.stubEnv("VITE_FEATURE_HOME", "true");
     const args = makeArgs({ ok: true, token: "t", role: "user", pendingTab: "map" });
     renderHook(() => useKakaoCallbackEffect(args));
@@ -160,15 +152,29 @@ describe("useKakaoCallbackEffect", () => {
     expect(args.setTab).not.toHaveBeenCalledWith("map");
   });
 
-  // VITE_FEATURE_HOME ON: 일반 유저 착지가 home (로그인 직후 홈 = 지도 위젯 열린 첫 경험, spec §1)
-  it("VITE_FEATURE_HOME=true 면 user 로그인 착지가 home 이다", async () => {
+  // 세션 577(A-12): 홈 깃발 ON 이어도 일반 유저 착지는 목록 — setTab 호출은 정확히 ["list"] 1번뿐
+  it("VITE_FEATURE_HOME=true 여도 user 로그인 착지는 목록이다", async () => {
     vi.stubEnv("VITE_FEATURE_HOME", "true");
     const args = makeArgs({ ok: true, token: "t", role: "user" });
     renderHook(() => useKakaoCallbackEffect(args));
 
     await waitFor(() => {
-      expect(args.setTab).toHaveBeenCalledWith("home");
+      expect(args.setTab).toHaveBeenCalledWith("list");
     });
+    expect(args.setTab.mock.calls).toEqual([["list"]]);
+    vi.unstubAllEnvs();
+  });
+
+  // 세션 577(A-12): 홈 깃발 ON 이어도 콜백 실패 착지는 목록
+  it("VITE_FEATURE_HOME=true 여도 콜백 실패 착지는 목록이다", async () => {
+    vi.stubEnv("VITE_FEATURE_HOME", "true");
+    const args = makeArgs({ ok: false });
+    renderHook(() => useKakaoCallbackEffect(args));
+
+    await waitFor(() => {
+      expect(args.setTab).toHaveBeenCalledWith("list");
+    });
+    expect(args.setTab.mock.calls).toEqual([["list"]]);
     vi.unstubAllEnvs();
   });
 

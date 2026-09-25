@@ -1,38 +1,24 @@
-import { useCallback, useRef, useEffect } from "react";
+import { useCallback, useEffect } from "react";
 import { trackEvent } from "@/lib/analytics";
-import { isFeatureHome } from "@/constants/featureFlags";
 import type { UseAppNavigationArgs, UseAppNavigationReturn } from "@/types/hooks";
 
 /**
  * 탭 전환/인증 네비게이션 훅
- * useCallback 7개 + useRef 2개 + useEffect 2개
+ * 세션 577(A-12): 상담 탭·정보 탭이 사라져 consult/budget ref·switchToInfo·handleConsultFromDetail 삭제.
+ * "문의"(k="inquiry")는 탭이 아니라 문의 모달 열기(onOpenInquiry) — setTab 을 부르지 않는다.
  */
 export function useAppNavigation({
   tab,
   setTab,
   auth,
   admin,
-  consult,
-  detail,
   compIds,
   setShowCompOpen,
-  setFavoriteIds,
   showToast,
-  budgetMin,
-  budgetMax,
   isLoggedIn,
   onLoginRequired,
+  onOpenInquiry,
 }: UseAppNavigationArgs): UseAppNavigationReturn {
-  // ── useRef (stale closure 방지) ──
-  const consultRef = useRef(consult);
-  const budgetRef = useRef({ budgetMin, budgetMax });
-  useEffect(() => {
-    consultRef.current = consult;
-  }, [consult]);
-  useEffect(() => {
-    budgetRef.current = { budgetMin, budgetMax };
-  }, [budgetMin, budgetMax]);
-
   // ── 관리자 로그인 / 공용 로그아웃 (세션 405 — 비밀번호 로그인은 관리자 전용) ──
   const handleAdminLogin = useCallback(async () => {
     const result = await auth.handleLogin();
@@ -42,9 +28,9 @@ export function useAppNavigation({
         admin.setAdminLoggedIn(true);
         setTab("admin");
       } else {
-        // 레거시 비admin 계정 과도기 — 일반 손님 취급 (PR-3 에서 백엔드가 401 로 차단)
+        // 레거시 비admin 계정 과도기 — 일반 손님 취급 (PR-3 에서 백엔드가 401 로 차단). 착지 = 목록(세션 577)
         if (result.role) localStorage.setItem("userRole", result.role);
-        setTab(isFeatureHome() ? "home" : "list");
+        setTab("list");
       }
     }
   }, [admin, auth, setTab]);
@@ -56,25 +42,15 @@ export function useAppNavigation({
     });
   }, [auth, setShowCompOpen, setTab]);
 
-  // ── 탭 전환 ──
-  const switchToInfo = useCallback(() => setTab("info"), [setTab]);
-
-  // 세션 465: 상담 폼 표시·검증·제출이 전부 favoriteIds 기준(ConsultForm·useConsult)이라
-  // consultForm.interestedApts 에만 넣으면 해당 단지가 통째로 유실됨 → 관심 단지에 직접 추가
-  // (GuideSections "해당 단지가 포함된 상담 신청으로 바로 이동" 카피와 일치)
-  const handleConsultFromDetail = useCallback(
-    (aptId: string) => {
-      setFavoriteIds((prev) => (prev.includes(aptId) ? prev : [...prev, aptId]));
-      detail.setDetailAptId(null);
-      setTab("consult");
-    },
-    [setFavoriteIds, detail, setTab]
-  );
-
   const handleNavClick = useCallback(
     (k: string) => {
       if (k === "logout") return handleLogout();
       trackEvent("tab_switch", { tab: k, previous_tab: tab });
+      // 문의 = 모달 열기 — 탭은 그대로(aria-current 없음)
+      if (k === "inquiry") {
+        onOpenInquiry();
+        return;
+      }
       if (k === "list") {
         setTab("list");
         setShowCompOpen(false);
@@ -95,32 +71,9 @@ export function useAppNavigation({
         setTab("list");
         return;
       }
-      if (k === "consult") {
-        const c = consultRef.current;
-        const b = budgetRef.current;
-        if (c.consultSubmitted) {
-          c.setConsultSubmitted(false);
-          c.setConsultForm({
-            name: "",
-            phone: "",
-            interestedApts: [],
-            budgetMin: "",
-            budgetMax: "",
-            consultType: "방문상담",
-            message: "",
-            consent: false,
-          });
-        } else {
-          c.setConsultForm((prev) => ({
-            ...prev,
-            budgetMin: prev.budgetMin || (b.budgetMin ? String(Number(b.budgetMin) * 10000) : ""),
-            budgetMax: prev.budgetMax || (b.budgetMax ? String(Number(b.budgetMax) * 10000) : ""),
-          }));
-        }
-      }
       setTab(k);
     },
-    [compIds.length, handleLogout, isLoggedIn, onLoginRequired, setShowCompOpen, setTab, showToast, tab]
+    [compIds.length, handleLogout, isLoggedIn, onLoginRequired, onOpenInquiry, setShowCompOpen, setTab, showToast, tab]
   );
 
   // ── useEffect: verify 실패 시 admin 상태 동기화 ──
@@ -134,8 +87,6 @@ export function useAppNavigation({
   return {
     handleAdminLogin,
     handleLogout,
-    switchToInfo,
-    handleConsultFromDetail,
     handleNavClick,
   };
 }

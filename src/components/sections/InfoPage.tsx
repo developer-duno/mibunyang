@@ -20,18 +20,19 @@ const tipText = { fontSize: F.xs, color: C.blue, lineHeight: 1.6 };
 
 /**
  * InfoPage - 스코어링 엔진 구조 + 소비자용 사용 가이드 + FAQ + 로그인/로그아웃 입구 (세션 405)
+ * 세션 577(A-12): 정보 탭이 사라지고 헤더 도움말(?) 패널(HelpModal)의 본문이 됐다. 옛 상담 진입 카드 삭제
+ *   (상담 탭 폐지 — 문의는 메뉴 "문의"·떠 있는 "문의" 버튼의 문의 모달로).
  * - 비로그인: 카카오 로그인 카드 (능동 로그인 입구 — 구 전문가 폼의 카카오 버튼 대체)
  * - 로그인(카카오 손님 포함): 작은 로그아웃 버튼 — 모바일 유일 로그아웃 경로
  * - 관리자 미로그인: 맨 아래 작은 "관리자 로그인" 텍스트 링크 (관리자 유일 입구)
  */
-type InfoPageProps = {
+export type InfoPageProps = {
   isLoggedIn: boolean;
   adminLoggedIn: boolean;
   onAdminLoginClick: () => void;
   onKakaoLogin: () => void;
   kakaoLoading?: boolean;
   onLogout: () => void;
-  onConsultClick: () => void;
   consentMarketing?: boolean | null; // 현재 마케팅 동의 상태 (true/false/null) — D3
   consentSubmitting?: boolean; // 동의 토글 처리 중
   onToggleMarketingConsent?: () => void; // 마케팅 동의 켜기/끄기
@@ -43,7 +44,6 @@ export const InfoPage = memo(function InfoPage({
   onKakaoLogin,
   kakaoLoading,
   onLogout,
-  onConsultClick,
   consentMarketing,
   consentSubmitting,
   onToggleMarketingConsent,
@@ -59,35 +59,9 @@ export const InfoPage = memo(function InfoPage({
         </div>
         <div style={tipBox}>
           <div style={tipText}>
-            <b>핵심 흐름:</b> 프로필 선택 → 필터로 조건 설정 → 카드 비교 → 상세 분석 → 상담 신청
+            <b>핵심 흐름:</b> 프로필 선택 → 필터로 조건 설정 → 카드 비교 → 상세 분석 → 문의
           </div>
         </div>
-      </div>
-
-      {/* 2. 전문가 상담 진입 — 모바일 5탭에서 상담 탭이 빠지는 대신 정보 페이지가 정식 입구 (spec D4) */}
-      <div style={cardStyle}>
-        <div style={titleStyle}>전문가 상담 신청</div>
-        <div style={guideDesc}>
-          관심 단지와 예산을 남기면 전문가가 연락드립니다. 관심매물로 등록한 단지는 자동으로 상담 목록에 포함됩니다.
-        </div>
-        <button
-          onClick={onConsultClick}
-          style={{
-            width: "100%",
-            background: C.blue,
-            border: "none",
-            color: C.white,
-            fontSize: F.base,
-            fontWeight: 700,
-            cursor: "pointer",
-            padding: "12px",
-            borderRadius: 6,
-            minHeight: 44,
-            marginTop: 8,
-          }}
-        >
-          상담 신청하기
-        </button>
       </div>
 
       <GuideSections />

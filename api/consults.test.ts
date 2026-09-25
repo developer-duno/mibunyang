@@ -26,6 +26,13 @@ vi.mock("./_lib/redis.js", () => ({
   kv: { get: vi.fn().mockResolvedValue({ status: "approved" }) },
 }));
 
+// 세션 577(A-12): 업체문의 텔레그램 — 실제 발송 0. 문구 함수(formatConsultAlert)는 진짜를 쓴다.
+const mockSendTelegram = vi.fn().mockResolvedValue({ sent: true });
+vi.mock("./_lib/telegram.js", async (importOriginal) => {
+  const orig = await importOriginal<typeof import("./_lib/telegram.js")>();
+  return { ...orig, sendTelegram: (...a: [string]) => mockSendTelegram(...a) };
+});
+
 // Supabase chainable mock — handleGet: .select().order().order().range() (세션 425 페이지네이션)
 const mockInsert = vi.fn().mockResolvedValue({ error: null });
 const mockRange = vi.fn().mockResolvedValue({ data: [], error: null, count: 0 });
@@ -48,7 +55,11 @@ vi.mock("./_lib/supabase.js", () => ({
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // 세션 577: 한 시험이 쓰지 않고 남긴 ...Once 응답이 다음 시험으로 새지 않게 비운다(clearAllMocks 는 Once 대기열을 안 비운다)
+  mockInsert.mockReset();
+  mockSendTelegram.mockReset();
   mockInsert.mockResolvedValue({ error: null });
+  mockSendTelegram.mockResolvedValue({ sent: true });
   mockRange.mockResolvedValue({ data: [], error: null, count: 0 });
   mockOrder2.mockReturnValue({ range: mockRange });
   mockOrder.mockReturnValue({ order: mockOrder2 });
@@ -192,6 +203,65 @@ describe("consults handler", () => {
     await handler(makePostReq(), res);
     expect(res.status).toHaveBeenCalledWith(201);
     expect(res.json).toHaveBeenCalledWith({ ok: true });
+  });
+
+  // ── 세션 577(A-12): 업체 문의 ──
+  const BIZ_MESSAGE = "회사: 이로움건설\n이메일: -\n단지: 힐스테이트 앞산 센트럴\n\n분양 홍보 협의 문의드립니다";
+
+  it("POST 업체문의: 201 + consult_type 저장 + 텔레그램 1회(업체 문의·회사명 포함)", async () => {
+    const res = makeRes();
+    await handler(
+      makePostReq({
+        name: "김담당",
+        phone: "010-0123-4567",
+        consultType: "업체문의",
+        interestedApts: ["ap-1"],
+        budgetMin: undefined,
+        budgetMax: undefined,
+        message: BIZ_MESSAGE,
+      }),
+      res
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(res.json).toHaveBeenCalledWith({ ok: true });
+    expect(mockInsert.mock.calls[0][0].consult_type).toBe("업체문의");
+    expect(mockSendTelegram).toHaveBeenCalledTimes(1);
+    const text = mockSendTelegram.mock.calls[0][0] as string;
+    expect(text).toContain("업체 문의");
+    expect(text).toContain("회사: 이로움건설");
+    expect(text).toBe(
+      "🏢 업체 문의\n담당자: 김담당 · 010-0123-4567\n" + BIZ_MESSAGE + "\n— 관련 단지 ap-1 · 관리자 화면 상담 목록에서 확인"
+    );
+  });
+
+  it("POST 업체문의: 텔레그램이 실패(throw)해도 저장이 끝났으므로 201", async () => {
+    mockSendTelegram.mockRejectedValueOnce(new Error("network"));
+    const res = makeRes();
+    await handler(makePostReq({ consultType: "업체문의", message: BIZ_MESSAGE }), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+  });
+
+  it("POST 업체문의: 저장 실패면 500 이고 텔레그램 0회", async () => {
+    mockInsert.mockResolvedValueOnce({ error: new Error("DB error") });
+    const res = makeRes();
+    await handler(makePostReq({ consultType: "업체문의", message: BIZ_MESSAGE }), res);
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(0);
+  });
+
+  it("POST 방문상담: 201 + 텔레그램 0회 (기존 유형 동작 불변)", async () => {
+    const res = makeRes();
+    await handler(makePostReq({ consultType: "방문상담" }), res);
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(0);
+  });
+
+  it("POST: 모르는 유형(이상한값)은 400 + 저장·텔레그램 0회", async () => {
+    const res = makeRes();
+    await handler(makePostReq({ consultType: "이상한값" }), res);
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(mockInsert).toHaveBeenCalledTimes(0);
+    expect(mockSendTelegram).toHaveBeenCalledTimes(0);
   });
 
   it("POST: Supabase 저장 실패 시 500을 반환한다", async () => {

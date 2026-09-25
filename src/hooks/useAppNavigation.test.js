@@ -2,10 +2,9 @@
  * useAppNavigation 훅 테스트
  *
  * 탭 전환/인증 네비게이션 훅의 동작을 검증합니다.
- * - handleLogin: 결과 role 에 따라 admin 탭 + userRole 저장 (비admin 은 list/home 폴스루)
- * - handleLogout: auth.handleLogout 에 reset 콜백 전달
- * - switchToInfo: 단순 탭 전환
- * - handleNavClick: logout/list/map(비로그인 차단)/compare/consult 분기
+ * - handleLogin: 결과 role 에 따라 admin 탭 + userRole 저장 (비admin 은 목록 착지)
+ * - handleLogout: auth.handleLogout 에 reset 콜백 전달 (관리자 대시보드 로그아웃도 이것 — 목록 착지)
+ * - handleNavClick: logout/inquiry(문의 모달)/list/map(비로그인 차단)/compare 분기
  *
  * admin 은 AdminMode 전체 타입이지만 본 훅이 쓰는 필드만 mock → 객체에 any cast.
  */
@@ -13,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { renderHook } from "@testing-library/react";
 import { useAppNavigation } from "./useAppNavigation";
+import { trackEvent } from "@/lib/analytics";
 
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 
@@ -27,21 +27,12 @@ function makeArgs(override = {}) {
       handleLogout: vi.fn(),
     },
     admin: { adminLoggedIn: false, setAdminLoggedIn: vi.fn() },
-    consult: {
-      consultSubmitted: false,
-      setConsultSubmitted: vi.fn(),
-      setConsultForm: vi.fn(),
-      fetchConsults: vi.fn(),
-    },
-    detail: { setDetailAptId: vi.fn() },
     compIds: [],
     setShowCompOpen: vi.fn(),
-    setFavoriteIds: vi.fn(),
     showToast: vi.fn(),
-    budgetMin: null,
-    budgetMax: null,
     isLoggedIn: true,
     onLoginRequired: vi.fn(),
+    onOpenInquiry: vi.fn(),
   };
   return /** @type {any} */ ({ ...base, ...override });
 }
@@ -49,15 +40,19 @@ function makeArgs(override = {}) {
 describe("useAppNavigation", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.mocked(trackEvent).mockClear();
   });
 
   // 레거시 비admin(expert) 결과 → 일반 손님 취급 (세션 405 — PR-3 에서 백엔드가 401 차단)
-  it("handleAdminLogin: 비admin 결과면 list/home 으로 폴스루한다", async () => {
+  // 세션 577(A-12): 홈 깃발을 켜도 착지 = 목록
+  it("handleAdminLogin: 비admin 결과면 목록으로 폴스루한다(홈 깃발 ON 이어도)", async () => {
+    vi.stubEnv("VITE_FEATURE_HOME", "true");
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
     await result.current.handleAdminLogin();
-    expect(args.setTab).toHaveBeenCalledWith("list"); // featureFlag OFF 테스트 환경 = list
+    vi.unstubAllEnvs();
+    expect(args.setTab.mock.calls).toEqual([["list"]]);
     expect(args.setTab).not.toHaveBeenCalledWith("expert");
     expect(localStorage.getItem("userRole")).toBe("expert"); // 서버 role 그대로 보존
   });
@@ -109,30 +104,24 @@ describe("useAppNavigation", () => {
     expect(args.setShowCompOpen).toHaveBeenCalledWith(false);
   });
 
-  // switchToInfo 단순 탭 전환 (switchToAdmin/Expert 는 세션 405 전문가 폐지로 제거)
-  it("switchToInfo 가 info 탭으로 전환한다", () => {
+  // 세션 577(A-12): 메뉴 "문의" = 문의 모달 열기 — 탭은 바뀌지 않는다
+  it("handleNavClick: inquiry 키는 문의 모달을 열고 탭을 바꾸지 않는다", () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
-    result.current.switchToInfo();
-    expect(args.setTab).toHaveBeenCalledWith("info");
+    result.current.handleNavClick("inquiry");
+    expect(args.onOpenInquiry).toHaveBeenCalledTimes(1);
+    expect(args.setTab).toHaveBeenCalledTimes(0);
+    expect(args.setShowCompOpen).toHaveBeenCalledTimes(0);
+    expect(vi.mocked(trackEvent).mock.calls).toEqual([["tab_switch", { tab: "inquiry", previous_tab: "list" }]]);
   });
 
-  // handleConsultFromDetail → 관심 단지(favorites) 추가 + 상세 닫기 + consult 탭
-  // 세션 465: 상담 폼 표시·검증·제출이 favoriteIds 기준이라 setConsultForm 이 아닌 setFavoriteIds 경유
-  it("handleConsultFromDetail: 관심 단지에 추가 후 consult 탭으로 전환한다", () => {
+  // 세션 577: 상담·정보 탭이 사라져 그 전환 함수도 반환하지 않는다
+  it("handleNavClick: 반환 객체에 switchToInfo·handleConsultFromDetail 이 없다", () => {
     const args = makeArgs();
     const { result } = renderHook(() => useAppNavigation(args));
 
-    result.current.handleConsultFromDetail("apt-3");
-    expect(args.setFavoriteIds).toHaveBeenCalledTimes(1);
-    // 함수형 업데이트 — 미포함 시 추가, 이미 있으면 그대로
-    const updater = args.setFavoriteIds.mock.calls[0][0];
-    expect(updater(["apt-1"])).toEqual(["apt-1", "apt-3"]);
-    expect(updater(["apt-3"])).toEqual(["apt-3"]);
-    expect(args.consult.setConsultForm).not.toHaveBeenCalled();
-    expect(args.detail.setDetailAptId).toHaveBeenCalledWith(null);
-    expect(args.setTab).toHaveBeenCalledWith("consult");
+    expect(Object.keys(result.current).sort()).toEqual(["handleAdminLogin", "handleLogout", "handleNavClick"]);
   });
 
   // handleNavClick logout → handleLogout 경유

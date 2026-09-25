@@ -6,7 +6,7 @@
  * - 손님 글의 < > & 는 이스케이프 (HTML parse_mode 에서 400 방지)
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { sendTelegram, escapeHtml, formatFeedbackAlert } from "./telegram.js";
+import { sendTelegram, escapeHtml, formatFeedbackAlert, formatConsultAlert } from "./telegram.js";
 
 const ENV_KEYS = ["TELEGRAM_BOT_TOKEN", "TELEGRAM_CHAT_ID"] as const;
 const saved: Record<string, string | undefined> = {};
@@ -148,5 +148,28 @@ describe("formatFeedbackAlert", () => {
   it("모르는 종류 코드는 원문 그대로(이스케이프) 보인다", () => {
     const text = formatFeedbackAlert({ ...base, kind: "<x>" });
     expect(text.split("\n")[0]).toBe("💬 새 의견 · &lt;x&gt;");
+  });
+});
+
+// 세션 577(A-12): 업체 문의 알림 — 담당자·연락처는 싣고(영업 연락처), 손님 글은 전부 이스케이프
+describe("formatConsultAlert", () => {
+  it("정확한 문구 — 첫 줄 🏢 업체 문의, <b> 는 &lt;b&gt; 로", () => {
+    const text = formatConsultAlert({
+      name: "김<b>담당</b>",
+      phone: "010-0123-4567",
+      message: "회사: 이로움&건설\n이메일: -\n단지: 힐스테이트 앞산 센트럴\n\n<b>분양</b> 홍보 협의",
+      interestedApts: ["ap-6028351"],
+    });
+    expect(text).toBe(
+      "🏢 업체 문의\n" +
+        "담당자: 김&lt;b&gt;담당&lt;/b&gt; · 010-0123-4567\n" +
+        "회사: 이로움&amp;건설\n이메일: -\n단지: 힐스테이트 앞산 센트럴\n\n&lt;b&gt;분양&lt;/b&gt; 홍보 협의\n" +
+        "— 관련 단지 ap-6028351 · 관리자 화면 상담 목록에서 확인"
+    );
+  });
+
+  it("관련 단지가 없으면 빈 조각을 남기지 않는다", () => {
+    const text = formatConsultAlert({ name: "김담당", phone: "010-0123-4567", message: "내용", interestedApts: [] });
+    expect(text.split("\n")[3]).toBe("— 관리자 화면 상담 목록에서 확인");
   });
 });

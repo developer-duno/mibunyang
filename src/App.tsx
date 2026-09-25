@@ -12,7 +12,6 @@ import type { UpcomingApiResponse } from "@/types/upcoming";
 
 const CompareSheet = lazyNamed(() => import("@/components/CompareSheet"), "CompareSheet");
 const DetailModal = lazyNamed(() => import("@/components/DetailModal"), "DetailModal");
-const ConsultForm = lazyNamed(() => import("@/components/ConsultForm"), "ConsultForm");
 const AdminDashboard = lazyNamed(() => import("@/components/admin/AdminDashboard"), "AdminDashboard");
 const MapView = lazyNamed(() => import("@/components/sections/MapView"), "MapView");
 const UpcomingPage = lazyNamed(() => import("@/components/UpcomingPage"), "UpcomingPage");
@@ -23,7 +22,6 @@ import { useComparison } from "@/hooks/useComparison";
 import { useFavorites } from "@/hooks/useFavorites";
 import { useRecentlyViewed } from "@/hooks/useRecentlyViewed";
 import { useDetailModal } from "@/hooks/useDetailModal";
-import { useConsult } from "@/hooks/useConsult";
 import { useAuth } from "@/hooks/useAuth";
 import { useAdminMode } from "@/hooks/useAdminMode";
 import { useApartmentData } from "@/hooks/useApartmentData";
@@ -40,12 +38,12 @@ import { useUrlSync } from "@/hooks/useUrlSync";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useFeedback, buildFeedbackContext, feedbackContextLabel } from "@/hooks/useFeedback";
+import { useBizInquiry } from "@/hooks/useBizInquiry";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
 import { FeedbackFab } from "@/components/FeedbackFab";
 import { MarketingConsentModal } from "@/components/MarketingConsentModal";
-import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
 import { HeaderSection } from "@/components/sections/HeaderSection";
 import { AdminLoginForm } from "@/components/sections/AdminLoginForm";
@@ -229,7 +227,6 @@ export default function App() {
     isSortPending,
   } = useFilterSort({ onFilterChange: closeDetail });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
-  const consult = useConsult(showToast, favoriteIds);
   const auth = useAuth(showToast);
   const kakao = useKakaoAuth(showToast);
   const admin = useAdminMode(showToast);
@@ -308,7 +305,8 @@ export default function App() {
     closeLoginPrompt,
   } = useLoginGate({ kakao });
 
-  // ── 의견 보내기 (세션574) — 떠 있는 버튼 + 폼. 비로그인은 로그인 안내 모달("feedback" 문구)로. ──
+  // ── 문의하기 (세션574 의견 → 세션577 A-12 통합) — 메뉴 "문의"·떠 있는 버튼·상세 "이 단지 문의하기" 가 연다.
+  //    의견 탭(로그인 필수 — 비로그인은 탭 안 버튼이 로그인 안내 "feedback" 문구로) + 업체 문의 탭(useBizInquiry). ──
   const requestLoginForFeedback = useCallback(() => {
     setLoginTrigger("feedback");
     setShowLoginPrompt(true);
@@ -319,11 +317,12 @@ export default function App() {
       buildFeedbackContext(tab, showComp, detail.detailAptId ? { id: detail.detailAptId, name: detailAptName } : null),
     [tab, showComp, detail.detailAptId, detailAptName]
   );
-  const feedback = useFeedback({
+  const feedback = useFeedback({ showToast, onLoginRequired: requestLoginForFeedback, context: feedbackContext });
+  const biz = useBizInquiry({
     showToast,
-    isLoggedIn,
-    onLoginRequired: requestLoginForFeedback,
+    open: feedback.open,
     context: feedbackContext,
+    onSent: feedback.closeFeedback,
   });
 
   // ── 지도 뷰포트 보존 (M3) — 탭 전환/언마운트 간 center/level 유지 ──
@@ -339,29 +338,32 @@ export default function App() {
   }, []);
 
   // ── 탭 전환/인증 네비게이션 ──
-  const { handleAdminLogin, switchToInfo, handleConsultFromDetail, handleNavClick } = useAppNavigation({
+  const { handleAdminLogin, handleLogout, handleNavClick } = useAppNavigation({
     tab,
     setTab,
     auth,
     admin,
-    consult,
-    detail,
     compIds,
     setShowCompOpen,
-    setFavoriteIds,
     showToast,
-    budgetMin,
-    budgetMax,
     isLoggedIn,
     onLoginRequired: () => {
       setLoginTrigger("map");
       setShowLoginPrompt(true);
     },
+    onOpenInquiry: feedback.openFeedback,
   });
 
-  // ── 마케팅 수신 동의 모달 (카카오 신규 가입 직후) + 정보 탭 토글 (D3) ──
+  // ── 마케팅 수신 동의 모달 (카카오 신규 가입 직후) + 도움말 패널 토글 (D3) ──
   const { consentOpen, consentSubmitting, consentMarketing, openConsent, submitConsent, initConsent } =
     useMarketingConsent(showToast);
+  // 도움말(?) 패널 = InfoPage (세션 577 — 정보 탭 폐지). HeaderSection 이 memo 라 콜백을 고정한다.
+  const goAdminLogin = useCallback(() => setTab("adminLogin"), []);
+  const kakaoLoginFromHelp = useCallback(() => kakao.initKakaoLogin(null), [kakao]);
+  const toggleMarketingConsent = useCallback(
+    () => submitConsent(consentMarketing !== true),
+    [submitConsent, consentMarketing]
+  );
 
   // ── 카카오 OAuth 콜백 useEffect ──
   useKakaoCallbackEffect({
@@ -457,12 +459,17 @@ export default function App() {
         isDesktop={isDesktop}
         tab={tab}
         onNavClick={handleNavClick}
-        showComp={showComp}
-        compCount={compIds.length}
         adminLoggedIn={admin.adminLoggedIn}
         isLoggedIn={isLoggedIn}
         containerMaxWidth={containerMaxWidth}
         upcomingCount={upcomingCount}
+        onAdminLoginClick={goAdminLogin}
+        onKakaoLogin={kakaoLoginFromHelp}
+        kakaoLoading={kakao.kakaoLoading}
+        onLogout={handleLogout}
+        consentMarketing={consentMarketing}
+        consentSubmitting={consentSubmitting}
+        onToggleMarketingConsent={toggleMarketingConsent}
       />
 
       {dataLoading && (
@@ -728,38 +735,8 @@ export default function App() {
             />
           </Suspense>
         </div>
-      ) : tab === "info" ? (
-        <InfoPage
-          isLoggedIn={isLoggedIn}
-          adminLoggedIn={admin.adminLoggedIn}
-          onAdminLoginClick={() => setTab("adminLogin")}
-          onKakaoLogin={() => kakao.initKakaoLogin(null)}
-          kakaoLoading={kakao.kakaoLoading}
-          onLogout={() => handleNavClick("logout")}
-          onConsultClick={() => handleNavClick("consult")}
-          consentMarketing={consentMarketing}
-          consentSubmitting={consentSubmitting}
-          onToggleMarketingConsent={() => submitConsent(consentMarketing !== true)}
-        />
-      ) : tab === "consult" ? (
-        <div style={{ maxWidth: 640, margin: "0 auto" }}>
-          <Suspense
-            fallback={<div style={{ padding: 40, textAlign: "center", fontSize: 13, color: C.muted }}>로딩 중...</div>}
-          >
-            <ConsultForm
-              scored={scored}
-              favoriteIds={favoriteIds}
-              setFavoriteIds={setFavoriteIds}
-              form={consult.consultForm}
-              setForm={consult.setConsultForm}
-              onSubmit={consult.handleConsultSubmit}
-              submitted={consult.consultSubmitted}
-              showToast={showToast}
-            />
-          </Suspense>
-        </div>
       ) : tab === "adminLogin" ? (
-        <AdminLoginForm auth={auth} onLogin={handleAdminLogin} onBack={() => setTab("info")} />
+        <AdminLoginForm auth={auth} onLogin={handleAdminLogin} onBack={() => setTab("list")} />
       ) : tab === "admin" ? (
         admin.adminLoggedIn ? (
           <Suspense
@@ -771,7 +748,7 @@ export default function App() {
           >
             <AdminDashboard
               admin={admin}
-              onLogout={switchToInfo}
+              onLogout={handleLogout}
               profile={profile}
               setProfile={setProfile}
               customWeights={customWeights}
@@ -867,7 +844,7 @@ export default function App() {
                 onShare={handleShareDetail}
                 isPC={isPC}
                 isDesktop={isDesktop}
-                onConsult={handleConsultFromDetail}
+                onConsult={feedback.openFeedback}
                 profile={profile}
                 adminLoggedIn={admin.adminLoggedIn}
                 regionStats={regionStats}
@@ -880,7 +857,7 @@ export default function App() {
           );
         })()}
 
-      {/* 의견 보내기 — 관리자 대시보드·지도 탭에서는 숨김(지도는 현위치·선택 단지 카드와 겹침, 사장님 결정) (세션574) */}
+      {/* 문의 버튼 — 관리자 대시보드·지도 탭에서는 숨김(지도는 현위치·선택 단지 카드와 겹침, 사장님 결정) (세션574) */}
       {tab !== "admin" && tab !== "map" && (
         <FeedbackFab
           onClick={feedback.openFeedback}
@@ -904,6 +881,9 @@ export default function App() {
             onSubmit={feedback.submit}
             contextLabel={feedbackContextLabel(feedbackContext)}
             isPC={isPC || isDesktop}
+            isLoggedIn={isLoggedIn}
+            onLoginRequest={feedback.requestLogin}
+            biz={biz}
           />
         </Suspense>
       )}
@@ -985,7 +965,6 @@ export default function App() {
       <BottomNav
         tab={tab}
         adminLoggedIn={admin.adminLoggedIn}
-        showComp={showComp}
         onNavClick={handleNavClick}
         containerMaxWidth={containerMaxWidth}
         isDesktop={isDesktop}

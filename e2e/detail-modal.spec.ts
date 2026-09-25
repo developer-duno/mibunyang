@@ -74,8 +74,8 @@ test.describe("상세 모달", () => {
     const width = page.viewportSize()?.width ?? 0;
     const target = width >= 1024 ? modal.getByTestId("detail-rail") : modal.getByTestId("detail-cta-bar");
     await expect(target).toBeInViewport();
-    // 자리와 무관하게 "이 매물 상담하기"가 첫 화면에 보여야 한다.
-    await expect(modal.getByRole("button", { name: "이 매물 상담하기" })).toBeInViewport();
+    // 자리와 무관하게 "이 단지 문의하기"(세션 577 — 옛 "이 매물 상담하기")가 첫 화면에 보여야 한다.
+    await expect(modal.getByRole("button", { name: "이 단지 문의하기" })).toBeInViewport();
   });
 
   test("모달에 단지 정보 섹션 렌더링", async ({ page }) => {

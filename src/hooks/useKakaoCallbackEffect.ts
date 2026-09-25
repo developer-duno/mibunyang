@@ -2,7 +2,6 @@ import { useEffect } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { trackEvent } from "@/lib/analytics";
 import { TOKEN_KEY } from "@/lib/authToken";
-import { isFeatureHome } from "@/constants/featureFlags";
 import type { UseKakaoAuthReturn } from "@/types/hooks";
 import type { AdminMode } from "@/types/admin";
 import type { AuthUser } from "./useAuth";
@@ -61,12 +60,12 @@ export function useKakaoCallbackEffect({
             detail.setDetailAptId(result.pendingDetail);
             recordView?.(result.pendingDetail);
           }
-          // map 트리거로 로그인한 손님은 지도 탭으로 복귀 (탭이라 홈 착지를 덮음 — 세션 469).
+          // map 트리거로 로그인한 손님은 지도 탭으로 복귀 (탭이라 목록 착지를 덮음 — 세션 469).
           // pendingDetail 은 모달이라 setTab 을 덮지 않는 것과 대비.
           if (result.pendingTab === "map") {
             setTab("map");
           } else {
-            setTab(isFeatureHome() ? "home" : "list"); // 로그인 직후 홈 = 지도 위젯 열린 첫 경험 (spec §1)
+            setTab("list"); // 로그인 직후 착지 = 목록 (세션 577 A-12 — "목록이 주력", 홈은 깃발과 무관하게 착지 아님)
           }
           // 현재 마케팅 동의 상태를 정보 탭 토글 초기화에 전달 (D3) — 관리자는 제외
           onConsentLoaded?.(result.consentMarketing ?? null);
@@ -76,7 +75,7 @@ export function useKakaoCallbackEffect({
         showToast("로그인 성공");
         trackEvent("kakao_login", { role, isNew: !result.user?.affiliation });
       } else {
-        setTab(isFeatureHome() ? "home" : "list");
+        setTab("list");
       }
       try {
         window.history.replaceState(null, "", "/");
