@@ -1,4 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "./brands";
+import { estimateParkingRatio } from "./parkingEstimate";
 import { fmtPrice, fmtMoveIn, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
@@ -391,7 +392,21 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     fmt: (v) => (v ? v.split(",").slice(0, 5).join(", ") : "—"),
   },
   // ── 섹션4: 상품성/건축 ──
-  parkingRatio: { label: "주차 비율", section: "상품성", unit: "대/세대", fmt: (v) => n(v, "대/세대") },
+  // 세션576 D5: 실측 주차 비율이 없으면 점수 탭(scoreProduct 주차 항목)과 **같은 산식·같은 꼴**로
+  //   `추정 N대/세대` 를 보인다 — 점수 탭은 그 추정치로 채점하는데 종합 탭만 "—" 라 서로 다른 말을 했다(78곳).
+  //   HighlightField 처럼 apt 없이 불릴 수 있어 apt 가 없으면 추정하지 않는다.
+  parkingRatio: {
+    label: "주차 비율",
+    section: "상품성",
+    unit: "대/세대",
+    fmt: (v, apt) => {
+      if (v == null && apt) {
+        const est = estimateParkingRatio(apt.presaleParking, apt.units, apt.presaleGeneralSupply);
+        if (est != null) return `추정 ${est.toFixed(2)}대/세대`;
+      }
+      return n(v, "대/세대");
+    },
+  },
   floorAreaRatio: { label: "용적률", section: "상품성", unit: "%", fmt: (v) => nPos(v, "%") },
   energyGrade: { label: "에너지 등급", section: "상품성", fmt: (v) => n(v, "등급") },
   greenBldg: { label: "녹색건축", section: "상품성", hidden: true, fmt: (v) => v || "미인증" },
@@ -585,7 +600,8 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     label: "주차대수",
     section: "분양",
     unit: "대",
-    fmt: (v) => (v != null ? nk(v, "대") : "미수집"),
+    // 세션576 D5: 0 은 네이버 원천 미기재다(주차 0면 아파트는 없다) — `nPos` 와 같은 판정, 천 단위 쉼표는 유지.
+    fmt: (v) => (v != null && v > 0 ? nk(v, "대") : "미수집"),
     isNotApplicable: presaleNA,
   },
   presaleMoveIn: { label: "입주시기", section: "분양", fmt: (v) => v ?? "미수집", isNotApplicable: presaleNA },

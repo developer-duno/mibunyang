@@ -162,7 +162,8 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
   const infoItems: InfoItem[] = [
     Number.isFinite(generalSupply) && { l: "일반분양", v: `${generalSupply.toLocaleString("ko-KR")}세대` },
     Number.isFinite(buildings) && { l: "동수", v: `${buildings}동` },
-    Number.isFinite(parking) && { l: "주차대수", v: `${parking.toLocaleString("ko-KR")}대` },
+    // 세션576 D5: 0 은 네이버 원천 미기재(주차 0면 아파트는 없다) → "0대"로 그리지 않고 줄 자체를 뺀다.
+    Number.isFinite(parking) && parking > 0 && { l: "주차대수", v: `${parking.toLocaleString("ko-KR")}대` },
     apt.presaleHousingType && { l: "주택유형", v: String(apt.presaleHousingType) },
     apt.presaleMoveIn && { l: "입주시기", v: String(apt.presaleMoveIn) },
     apt.presaleRecruitDate && { l: "분양시기", v: fmtRecruitDate(apt.presaleRecruitDate) },

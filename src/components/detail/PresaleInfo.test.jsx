@@ -160,3 +160,29 @@ describe("PresaleInfo — 공고 당시 규제", () => {
     expect(screen.getByText("2026.03 공고 기준")).toBeTruthy();
   });
 });
+
+// 세션576 D5: 네이버 presale_parking 0 은 원천 미기재다(주차 0면 아파트는 없다) — "주차대수 0대"로
+//   그리지 않고 줄 자체를 뺀다. ⚠️ 뮤테이션 대상 — `parking > 0` 을 `>= 0` 으로 되돌리면 red 여야 한다.
+describe("PresaleInfo — 주차대수 0(미기재)은 줄을 숨긴다 (D5)", () => {
+  it("presaleParking 0 이면 '주차대수' 줄 자체가 없다", () => {
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "분양중", presaleParking: 0 }))} />);
+    expect(screen.queryByText("주차대수")).toBeNull();
+    expect(screen.queryByText(/0대/)).toBeNull();
+  });
+
+  it("presaleParking null 이어도 줄이 없다", () => {
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "분양중", presaleParking: null }))} />);
+    expect(screen.queryByText("주차대수")).toBeNull();
+  });
+
+  it("presaleParking > 0 이면 지금 그대로 그린다 (천 단위 쉼표 포함)", () => {
+    const { unmount } = render(
+      <PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "분양중", presaleParking: 825 }))} />
+    );
+    expect(screen.getByText("주차대수")).toBeTruthy();
+    expect(screen.getByText("825대")).toBeTruthy();
+    unmount();
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "분양중", presaleParking: 1543 }))} />);
+    expect(screen.getByText("1,543대")).toBeTruthy();
+  });
+});
