@@ -11,6 +11,7 @@ useState (7개: profile, customWeights, hideNoUnsold, upcomingData, upcomingErro
   → 커스텀 훅 13개 (useResponsive → useToast → ... → useShare)
   → useDataPipeline (useMemo 13개 + visibleCount + reset useEffect)
   → useLoginGate (state 3개 + callback 3개, onLoginRequired 참조 위해 Nav 앞에 배치)
+  → useFeedback (세션574 — state 5개 + callback 3개, 로그인 안내에 setLoginTrigger 를 쓰므로 useLoginGate 뒤. 문맥 useMemo 는 그 바로 앞)
   → useAppNavigation (useCallback 7개 + useRef 2개 + useEffect 2개)
   → useKakaoCallbackEffect (void, [tab] deps eslint-disable 유지)
   → useShareCallbacks (callback 3개 + scoredMapRef 내부 관리)

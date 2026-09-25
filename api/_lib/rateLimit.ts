@@ -1,6 +1,7 @@
 import { kv } from "./redis.js";
 
-const LIMITS: Record<string, number> = { login: 5, verify: 60, consult: 10, admin: 30, logout: 10, proxy: 30, kakao: 10, subscribers: 5 };
+// feedback(세션574): 손님 의견 보내기 — 5회/5분/IP. 카카오 로그인(서명 JWT) 뒤 쓰기라 fail-open 그대로.
+const LIMITS: Record<string, number> = { login: 5, verify: 60, consult: 10, admin: 30, logout: 10, proxy: 30, kakao: 10, subscribers: 5, feedback: 5 };
 const DEFAULT_MAX = 5;
 const WINDOW_SEC = 300; // 5분
 

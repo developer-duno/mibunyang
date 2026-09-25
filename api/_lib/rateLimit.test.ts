@@ -86,6 +86,16 @@ describe('checkRateLimit', () => {
     expect(result.limited).toBe(false);
   });
 
+  // 세션574: 손님 의견 보내기 — 5회/5분, 로그인 뒤 쓰기라 Redis 장애 시 fail-open
+  it('feedback 엔드포인트는 5회 제한이고 Redis 장애 시 fail-open 이다', async () => {
+    mockPipeline.exec.mockResolvedValue([5]);
+    expect((await checkRateLimit(makeReq(), 'feedback')).limited).toBe(false);
+    mockPipeline.exec.mockResolvedValue([6]);
+    expect((await checkRateLimit(makeReq(), 'feedback')).limited).toBe(true);
+    mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
+    expect((await checkRateLimit(makeReq(), 'feedback')).limited).toBe(false);
+  });
+
   it('Redis 장애 시 proxy는 fail-open (limited=false)', async () => {
     mockPipeline.exec.mockRejectedValue(new Error('Redis down'));
     const result = await checkRateLimit(makeReq(), 'proxy');
