@@ -14,6 +14,7 @@ import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
 import { TransportCard } from "./detail/TransportCard";
 import { fmtPrice, fmtMoveIn, fmtAddress } from "@/lib/format";
+import { hasKnownArea } from "@/lib/area";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
@@ -407,7 +408,15 @@ export const DetailModal = memo(function DetailModal({
                 {apt.name}
               </h1>
               <div style={{ fontSize: isDesktop ? F.base : F.sm, color: C.muted }}>
-                {[apt.region, apt.gu, apt.dong].filter(Boolean).join(" ")} · {apt.area}㎡ · {fmtPrice(apt.price)}
+                {/* 면적을 모르면 ㎡ 토큰을 통째로 뺀다 — 전에는 "경기 수원시 · ㎡ · 3억" 처럼 단위만 남았다
+                    (세션576 D2). AptCard 태그 줄과 같은 모양(빈 토큰은 filter 로 거른다). */}
+                {[
+                  [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "),
+                  hasKnownArea(apt.area) ? `${apt.area}㎡` : "",
+                  fmtPrice(apt.price),
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
               </div>
               {apt.address ? (
                 <div style={{ fontSize: F.sm, color: C.muted, marginTop: 2 }}>

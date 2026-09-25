@@ -100,4 +100,42 @@ describe("PriceTable", () => {
     // count가 null이면 0으로 처리되어야 크래시 없음
     expect(() => render(<PriceTable apt={/** @type {any} */ (apt)} />)).not.toThrow();
   });
+
+  // 세션576 D2 — 면적이 없는(null) 단지는 거르지 않는다. 옛 코드는 null 을 0㎡ 로 바꿔
+  // "0㎡ 기준 ±20㎡" 로 걸러 행이 전부 사라졌다.
+  it("면적이 없으면 매매 표를 거르지 않고 '총 N건 · 전체 면적' 을 띄운다 (D2)", () => {
+    const apt = makeApt({ priceByArea: makePriceByArea([74, 84, 94]), area: null });
+    const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
+    expect(screen.getAllByTestId("price-table-row")).toHaveLength(3);
+    expect(screen.getByText("총 15건 · 전체 면적")).toBeTruthy();
+    expect(container.textContent).not.toContain("0㎡ 기준");
+    expect(container.textContent).not.toContain("필터");
+  });
+
+  it("면적이 없으면 전세 표도 거르지 않는다 — 세 행 전부 + '전체 면적' (D2)", () => {
+    const apt = makeApt({
+      priceByArea: makePriceByArea([74, 84, 94]),
+      rentByArea: makeRentByArea([74, 84, 94]),
+      area: null,
+    });
+    const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
+    const tables = container.querySelectorAll("table");
+    expect(tables).toHaveLength(2);
+    expect(tables[1].querySelectorAll("tbody tr")).toHaveLength(3);
+    expect(screen.getByText("전체 면적")).toBeTruthy();
+  });
+
+  // 세션576 E4 — 전세 라벨은 전세 표 자신이 걸렸는지로 정한다. 매매만 걸리고 전세는 전부일 때
+  // 옛 코드는 매매의 isFiltered 를 빌려 "84㎡ 기준 ±20㎡ 필터" 라고 찍었다.
+  it("매매만 걸리고 전세는 전부면 전세 라벨은 '전체 면적' 이다 (E4)", () => {
+    const apt = makeApt({
+      priceByArea: makePriceByArea([60, 74, 80, 84, 90, 120]),
+      rentByArea: makeRentByArea([84]),
+      area: 84,
+    });
+    render(<PriceTable apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("총 30건 · 84㎡ 기준 ±10㎡ 필터")).toBeTruthy();
+    expect(screen.getByText("전체 면적")).toBeTruthy();
+    expect(screen.queryByText("84㎡ 기준 ±20㎡ 필터")).toBeNull();
+  });
 });

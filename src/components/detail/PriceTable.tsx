@@ -1,6 +1,7 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice } from "@/lib/format";
+import { hasKnownArea } from "@/lib/area";
 import { thStyle, tdStyle } from "./tableStyles";
 import type { PriceTableProps, PriceAreaRow } from "@/types/detail";
 
@@ -51,13 +52,26 @@ export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: Pr
   }
 
   const allRent = (apt.rentByArea as PriceAreaRow[] | undefined) ?? [];
-  const aptArea = Number(apt.area ?? 0);
+  // 면적을 모르면 거르지 않는다 — 없는 면적을 0㎡ 로 두면 "0㎡ 기준 ±20㎡" 로 행이 전부 사라진다(세션576 D2).
+  const areaKnown = hasKnownArea(apt.area);
+  const aptArea = areaKnown ? Number(apt.area) : 0;
   const totalCount = allSell.reduce((s, p) => s + (p.count ?? 0), 0);
   const narrow = allSell.filter((p) => Math.abs(p.area - aptArea) <= 10);
-  const sellRows = narrow.length >= 3 ? narrow : allSell.filter((p) => Math.abs(p.area - aptArea) <= 20);
+  const sellRows = !areaKnown
+    ? allSell
+    : narrow.length >= 3
+      ? narrow
+      : allSell.filter((p) => Math.abs(p.area - aptArea) <= 20);
   const isFiltered = sellRows.length < allSell.length;
   const narrowRent = allRent.filter((r) => Math.abs(r.area - aptArea) <= 10);
-  const rentRows = narrowRent.length >= 3 ? narrowRent : allRent.filter((r) => Math.abs(r.area - aptArea) <= 20);
+  const rentRows = !areaKnown
+    ? allRent
+    : narrowRent.length >= 3
+      ? narrowRent
+      : allRent.filter((r) => Math.abs(r.area - aptArea) <= 20);
+  // 전세 표 라벨은 전세 표 자신이 걸렸는지로 정한다 — 매매 표의 isFiltered 를 빌리면
+  // 매매만 걸리고 전세는 전부일 때 "±20㎡ 필터" 라고 거짓말한다(세션576 E4).
+  const isRentFiltered = rentRows.length < allRent.length;
 
   return (
     <div
@@ -188,7 +202,7 @@ export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: Pr
             인근 전세 시세 / 전세가율
           </div>
           <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>
-            {isFiltered ? `${aptArea}㎡ 기준 ±${narrowRent.length >= 3 ? 10 : 20}㎡ 필터` : "전체 면적"}
+            {isRentFiltered ? `${aptArea}㎡ 기준 ±${narrowRent.length >= 3 ? 10 : 20}㎡ 필터` : "전체 면적"}
           </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>

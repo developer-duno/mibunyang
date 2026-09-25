@@ -1131,3 +1131,20 @@ describe("DetailModal — 주소 시도 표기 축약 (세션556)", () => {
     expect(screen.getByText(/경기도 성남시 분당구 대장동 596/)).toBeInTheDocument();
   });
 });
+
+// 세션576 D2 — 헤더 한 줄: 면적을 모르면 ㎡ 토큰을 통째로 뺀다(옛: "경기 수원시 영통동 · ㎡ · 5억").
+describe("DetailModal 헤더 면적 토큰", () => {
+  it("면적이 없으면 '㎡' 토큰 없이 '지역 · 가격' 만 보인다 (D2)", () => {
+    const item = makeItem();
+    item.apt = /** @type {any} */ ({ ...item.apt, area: null });
+    render(<DetailModal {...makeProps({ item })} />);
+    const line = screen.getByText("경기 수원시 영통동 · 5억");
+    expect(line.textContent).not.toContain("㎡");
+    expect(line.textContent).not.toContain(" ·  · ");
+  });
+
+  it("면적이 있으면 '지역 · 84㎡ · 가격' 그대로 (D2 회귀)", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.getByText("경기 수원시 영통동 · 84㎡ · 5억")).toBeTruthy();
+  });
+});
