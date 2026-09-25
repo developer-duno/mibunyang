@@ -171,4 +171,30 @@ describe("LoanAnalysis", () => {
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText(/\/월/)).toBeTruthy();
   });
+
+  // 세션576 D2 — 면적이 없는(null) 단지도 면적별 표가 뜬다. 옛 코드는 null 을 0㎡ 로 바꿔
+  // "0㎡ ±20㎡" 에 걸리는 행이 없어 표가 통째로 사라졌다.
+  it("면적이 없어도 면적별 매매/대출 표를 거르지 않는다 (D2)", () => {
+    const apt = makeApt({
+      price: 50000,
+      area: null,
+      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
+      rentByArea: [{ area: 84, min: 23000, avg: 25000, max: 27000 }],
+    });
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("84㎡")).toBeTruthy();
+    expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
+  });
+
+  it("면적이 0 이어도 면적별 매매/대출 표를 거르지 않는다 (D2 경계)", () => {
+    const apt = makeApt({
+      price: 50000,
+      area: 0,
+      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
+      rentByArea: [{ area: 84, min: 23000, avg: 25000, max: 27000 }],
+    });
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("84㎡")).toBeTruthy();
+    expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
+  });
 });

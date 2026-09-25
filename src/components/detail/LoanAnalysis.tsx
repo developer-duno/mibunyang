@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { C, F } from "@/theme";
 import { getZone, calcLTV, ZONE_TYPE, NORMAL_LTV, REGULATED_LTV_RATE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
+import { hasKnownArea } from "@/lib/area";
 import { thStyle, tdStyle } from "./tableStyles";
 import { useRentLoanRates } from "@/hooks/useRentLoanRates";
 import { LoanRatesSection } from "./LoanRatesSection";
@@ -39,12 +40,18 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
   // const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
   const zoneColor = zone === "normal" ? C.green : C.red;
   const aptPrice = Number(apt.price ?? 0);
-  const aptArea = Number(apt.area ?? 0);
+  // 면적을 모르면 면적별 표를 거르지 않는다 — 0㎡ 로 두면 "0㎡ ±20㎡" 에 걸리는 행이 없어 표가 통째로 사라진다(세션576 D2).
+  const areaKnown = hasKnownArea(apt.area);
+  const aptArea = areaKnown ? Number(apt.area) : 0;
   const ltvBase = calcLTV(aptPrice, zone);
   const needCash = aptPrice - ltvBase;
   const allLoan = (apt.priceByArea as PriceAreaRow[] | undefined) ?? [];
   const narrowLoan = allLoan.filter((p) => Math.abs(p.area - aptArea) <= 10);
-  const loanSrc = narrowLoan.length >= 3 ? narrowLoan : allLoan.filter((p) => Math.abs(p.area - aptArea) <= 20);
+  const loanSrc = !areaKnown
+    ? allLoan
+    : narrowLoan.length >= 3
+      ? narrowLoan
+      : allLoan.filter((p) => Math.abs(p.area - aptArea) <= 20);
   const hasDetail = loanSrc.length > 0;
   const rentMinRate = rentRates[0]?.rateMin ?? null;
   const allRent = (apt.rentByArea as PriceAreaRow[] | undefined) ?? [];
