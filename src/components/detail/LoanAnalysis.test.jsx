@@ -185,4 +185,16 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("84㎡")).toBeTruthy();
     expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
   });
+
+  it("면적이 0 이어도 면적별 매매/대출 표를 거르지 않는다 (D2 경계)", () => {
+    const apt = makeApt({
+      price: 50000,
+      area: 0,
+      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
+      rentByArea: [{ area: 84, min: 23000, avg: 25000, max: 27000 }],
+    });
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("84㎡")).toBeTruthy();
+    expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
+  });
 });

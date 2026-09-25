@@ -112,6 +112,15 @@ describe("PriceTable", () => {
     expect(container.textContent).not.toContain("필터");
   });
 
+  // 검사관 보강 — 0 도 "면적 없음"이다(hasKnownArea 의 `> 0` 경계). 0㎡ 로 거르면 행이 사라진다.
+  it("면적이 0 이어도 매매 표를 거르지 않고 '총 N건 · 전체 면적' 을 띄운다 (D2 경계)", () => {
+    const apt = makeApt({ priceByArea: makePriceByArea([74, 84, 94]), area: 0 });
+    const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
+    expect(screen.getAllByTestId("price-table-row")).toHaveLength(3);
+    expect(screen.getByText("총 15건 · 전체 면적")).toBeTruthy();
+    expect(container.textContent).not.toContain("0㎡ 기준");
+  });
+
   it("면적이 없으면 전세 표도 거르지 않는다 — 세 행 전부 + '전체 면적' (D2)", () => {
     const apt = makeApt({
       priceByArea: makePriceByArea([74, 84, 94]),

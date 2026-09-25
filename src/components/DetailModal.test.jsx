@@ -1143,6 +1143,14 @@ describe("DetailModal 헤더 면적 토큰", () => {
     expect(line.textContent).not.toContain(" ·  · ");
   });
 
+  it("면적이 0 이어도 '㎡' 토큰 없이 '지역 · 가격' 만 보인다 (D2 경계)", () => {
+    const item = makeItem();
+    item.apt = /** @type {any} */ ({ ...item.apt, area: 0 });
+    render(<DetailModal {...makeProps({ item })} />);
+    const line = screen.getByText("경기 수원시 영통동 · 5억");
+    expect(line.textContent).not.toContain("㎡");
+  });
+
   it("면적이 있으면 '지역 · 84㎡ · 가격' 그대로 (D2 회귀)", () => {
     render(<DetailModal {...makeProps()} />);
     expect(screen.getByText("경기 수원시 영통동 · 84㎡ · 5억")).toBeTruthy();
