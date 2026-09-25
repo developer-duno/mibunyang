@@ -1,4 +1,5 @@
 import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "@/constants/brands";
+import { estimateParkingRatio } from "@/constants/parkingEstimate";
 import {
   tierMin,
   tierMax,
@@ -79,8 +80,8 @@ export function scoreProduct(apt: Apt): Res {
   //   작은 분모와 짝지으면 비율이 부풀려진다. 둘 중 **큰 쪽**을 쓴다.
   //   실측(정적 JSON 1,646곳, 폴백 후보 = parkingRatio 미수집 + presaleParking 보유 **78곳**):
   //   만점권(1.5↑) 35곳 → **16곳**, 3대/세대 초과 12곳 → **1곳**, 최댓값 309.00 → **4.65**.
-  const parkDenom = Math.max(units, (apt.presaleGeneralSupply ?? 0) as number, 1);
-  const fallbackPR = apt._noParking && apt.presaleParking != null ? (apt.presaleParking as number) / parkDenom : null;
+  //   산식(분모 = max(총세대, 일반분양, 1))과 유효 범위(0 < r <= 3)는 종합 탭과 같은 숫자를 보이려고
+  //   `@/constants/parkingEstimate` 한 곳으로 옮겼다(세션576 D5). 아래 근거 주석은 그 산식의 것이다.
   // 유효 범위는 **양쪽**을 본다. 옛 코드는 상한(≤3)만 봐서 `presaleParking === 0` 을 그대로 통과시켰고,
   //   화면에 `추정 0.00대/세대` 가 28곳 찍혔다 — 주차 0면인 아파트는 존재하지 않으니 그건 측정값이
   //   아니라 **원천 미기재**다(28곳 전부 사전청약·공공분양, 총세대는 223~1,292로 멀쩡하다).
@@ -89,7 +90,13 @@ export function scoreProduct(apt: Apt): Res {
   //   폴백 **산식에서** 3 을 넘으면 총세대 기록이 오염된 자리로 본다는 뜻이다: 남은 1곳도
   //   주차 1,074면인데 총세대가 5로 적혀 있다(일반분양 231). 그런 자리는 폴백을 포기하고
   //   parkingRatio 기본값으로 되돌린다. 직접 수집값에는 이 클램프가 걸리지 않는다.
-  const usableFallbackPR = fallbackPR != null && fallbackPR > 0 && fallbackPR <= 3 ? fallbackPR : null;
+  const usableFallbackPR = apt._noParking
+    ? estimateParkingRatio(
+        apt.presaleParking as number | null | undefined,
+        units,
+        apt.presaleGeneralSupply as number | null | undefined
+      )
+    : null;
   const effectivePR = usableFallbackPR ?? parkingRatio;
   // 세션539: `_noParking` 이면서 폴백 추정치도 없는 곳(정보 자체가 없는 71곳)은 parkingRatio
   //   기본값(0.5, PARKING_LOW_SCORE 로 이어짐)을 더는 채점에 쓰지 않는다 — "모른다"를 "0.5대라서
