@@ -234,6 +234,37 @@ describe("consults handler", () => {
     );
   });
 
+  it("POST 업체문의: 내용(마지막 문단)이 10자 미만이면 400 + 저장·텔레그램 0회 (세션577 검사관 A)", async () => {
+    const res = makeRes();
+    await handler(
+      makePostReq({ consultType: "업체문의", message: "회사: 이로움건설\n이메일: -\n단지: -\n\n짧아요" }),
+      res
+    );
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ ok: false, error: "문의 내용을 10자 이상 적어 주세요" });
+    expect(mockInsert).not.toHaveBeenCalled();
+    expect(mockSendTelegram).not.toHaveBeenCalled();
+  });
+
+  it("POST 업체문의: 빈 줄 없이 온 message 는 전체가 내용 — 9자면 400, 11자면 201", async () => {
+    const short = makeRes();
+    await handler(makePostReq({ consultType: "업체문의", message: "분양홍보문의합니다" }), short);
+    expect(short.status).toHaveBeenCalledWith(400);
+    const ok = makeRes();
+    await handler(makePostReq({ consultType: "업체문의", message: "분양 홍보 문의합니다" }), ok);
+    expect(ok.status).toHaveBeenCalledWith(201);
+  });
+
+  it("POST 업체문의: 내용이 여러 줄이면 마지막 문단 전체로 잰다 — 마지막 줄 1자여도 문단 12자면 201 (split(\"\\n\") 변이 가드)", async () => {
+    const res = makeRes();
+    await handler(
+      makePostReq({ consultType: "업체문의", message: "회사: 이로움건설\n이메일: -\n단지: -\n\n분양 홍보 협의 문의\n끝" }),
+      res
+    );
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
   it("POST 업체문의: 텔레그램이 실패(throw)해도 저장이 끝났으므로 201", async () => {
     mockSendTelegram.mockRejectedValueOnce(new Error("network"));
     const res = makeRes();
