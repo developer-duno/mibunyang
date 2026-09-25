@@ -2,6 +2,7 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LoanRatesSection } from "./LoanRatesSection";
+import { useLoanRates } from "@/hooks/useLoanRates";
 
 // useLoanRates 모킹
 vi.mock("@/hooks/useLoanRates", () => ({
@@ -91,13 +92,19 @@ describe("LoanRatesSection", () => {
     render(<LoanRatesSection apt={makeApt()} />);
     fireEvent.click(screen.getByText("은행별 금리 비교"));
     const sim = screen.getByText(/최저 금리 3\.5% 기준/).closest("div");
-    expect(sim.textContent).not.toContain("-/월");
-    expect(sim.textContent).toMatch(/\d+만\/월/);
+    expect(sim?.textContent).not.toContain("-/월");
+    // 정확값: _ltvBase 35,000만 · rateMin 3.5% · 30년 원리금균등 = 157.17 → Math.round → fmtPrice(157) = "157만"
+    // (검사관 독립 뮤테이션: 단위가 10배 틀려도 정규식만으로는 초록이었다 — 세션575)
+    expect(sim?.textContent).toContain("157만/월");
   });
 
   // 상품 아래 작은 글씨 — 담보유형·상환방식·금리유형 구별 (D4, 세션574)
   it("상품 아래에 담보유형·상환방식·금리유형 조합을 작은 글씨로 표시한다", () => {
-    useLoanRates.mockReturnValueOnce({
+    // mockReturnValueOnce 는 아니다 — LoanRatesSection 이 렌더마다(닫힘→열림) useLoanRates 를
+    // 무조건 호출하므로 once 값이 첫 렌더(닫힌 상태)에서 소비되고 실제 테이블이 그려지는
+    // 두 번째 렌더는 기본 mock 을 쓴다. mockReturnValue 로 고정 후 이 시험 끝에서 원복.
+    const defaultImpl = vi.mocked(useLoanRates).getMockImplementation();
+    vi.mocked(useLoanRates).mockReturnValue({
       rates: [
         {
           bank: "테스트은행",
@@ -112,9 +119,13 @@ describe("LoanRatesSection", () => {
       loading: false,
       error: null,
     });
-    render(<LoanRatesSection apt={makeApt()} />);
-    fireEvent.click(screen.getByText("은행별 금리 비교"));
-    expect(screen.getByText("아파트 · 분할상환 · 변동금리")).toBeTruthy();
+    try {
+      render(<LoanRatesSection apt={makeApt()} />);
+      fireEvent.click(screen.getByText("은행별 금리 비교"));
+      expect(screen.getByText("아파트 · 분할상환 · 변동금리")).toBeTruthy();
+    } finally {
+      if (defaultImpl) vi.mocked(useLoanRates).mockImplementation(defaultImpl);
+    }
   });
 
   // 구별 필드가 없는 행은 작은 글씨 줄이 없다 (D4, 세션574)

@@ -7,6 +7,9 @@ export interface FinlifeRate {
   product?: string;
   rateMin?: number;
   rateMax?: number;
+  mortgageType?: string;
+  repayType?: string;
+  rateType?: string;
   [key: string]: unknown;
 }
 
