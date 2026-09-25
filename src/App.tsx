@@ -880,9 +880,13 @@ export default function App() {
           );
         })()}
 
-      {/* 의견 보내기 — 관리자 대시보드에서는 숨김 (세션574) */}
-      {tab !== "admin" && (
-        <FeedbackFab onClick={feedback.openFeedback} isDesktop={isDesktop} liftForMap={tab === "map"} />
+      {/* 의견 보내기 — 관리자 대시보드·지도 탭에서는 숨김(지도는 현위치·선택 단지 카드와 겹침, 사장님 결정) (세션574) */}
+      {tab !== "admin" && tab !== "map" && (
+        <FeedbackFab
+          onClick={feedback.openFeedback}
+          isDesktop={isDesktop}
+          detailOpen={Boolean(detail.detailAptId) && !isPC}
+        />
       )}
       {feedback.open && (
         <Suspense fallback={null}>

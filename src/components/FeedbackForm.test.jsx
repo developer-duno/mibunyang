@@ -43,7 +43,7 @@ describe("FeedbackForm (세션574)", () => {
     expect(screen.getByTestId("feedback-context").textContent).toBe("현재 화면: 상세 · 힐스테이트테스트 (ap-6028351)");
     expect(screen.getByText(FEEDBACK_CONSENT_TEXT)).toBeTruthy();
     expect(FEEDBACK_CONSENT_TEXT).toBe(
-      "답장을 위해 카카오 계정 이메일·이름과 의견 내용을 저장하는 데 동의합니다 (1년 뒤 자동 삭제)"
+      "답장을 위해 카카오 계정 이메일·이름, 의견 내용, 보던 화면과 접속 환경(브라우저 정보)을 저장하는 데 동의합니다 (1년 뒤 자동 삭제)"
     );
   });
 

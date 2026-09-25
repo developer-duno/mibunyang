@@ -588,6 +588,22 @@ describe("App 통합 테스트", () => {
       expect(screen.queryByTestId("feedback-form")).not.toBeInTheDocument();
     });
 
+    it("지도 탭에서는 의견 버튼을 그리지 않는다 (현위치·선택 단지 카드와 겹침 — 사장님 결정)", async () => {
+      localStorage.setItem("authToken", "user-token");
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
+      const mapNav = screen.getByRole("navigation", { name: "메인 내비게이션" }).querySelectorAll("button");
+      const mapBtn = Array.from(mapNav).find((b) => b.textContent === "지도");
+      expect(mapBtn).toBeTruthy();
+      await act(async () => {
+        /** @type {HTMLButtonElement} */ (mapBtn).click();
+      });
+      await waitFor(() => {
+        expect(screen.queryByTestId("feedback-fab")).not.toBeInTheDocument();
+      });
+    });
+
     it("로그인 손님이 누르면 의견 폼이 열리고 현재 화면이 첨부된다", async () => {
       localStorage.setItem("authToken", "user-token");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });

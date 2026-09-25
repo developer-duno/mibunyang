@@ -89,8 +89,6 @@ describe("formatFeedbackAlert", () => {
   const base = {
     kind: "bug",
     message: "지도에서 <script> 가 보여요 & 깨져요",
-    userName: "홍길동",
-    userEmail: "hong@example.com",
     page: "상세",
     apartmentName: "힐스테이트<테스트>",
     apartmentId: "ap-6028351",
@@ -102,17 +100,33 @@ describe("formatFeedbackAlert", () => {
     expect(text.split("\n")[0]).toBe("💬 새 의견 · 버그·오류");
   });
 
-  it("손님이 쓴 모든 값(내용·이름·화면·단지명)을 이스케이프한다", () => {
-    const text = formatFeedbackAlert({ ...base, userName: "<b>나</b>" });
+  it("손님이 쓴 모든 값(내용·화면·단지명)을 이스케이프한다", () => {
+    const text = formatFeedbackAlert({ ...base, page: "<b>상세</b>" });
     expect(text).toContain("지도에서 &lt;script&gt; 가 보여요 &amp; 깨져요");
-    expect(text).toContain("&lt;b&gt;나&lt;/b&gt;");
+    expect(text).toContain("&lt;b&gt;상세&lt;/b&gt;");
     expect(text).toContain("힐스테이트&lt;테스트&gt; (ap-6028351)");
     expect(text).not.toMatch(/<(script|b|테스트)/);
   });
 
-  it("셋째 줄 = — 이름(이메일) · 화면 · KST 시각", () => {
+  it("셋째 줄 = — 화면 · 단지 · KST 시각 · 관리자 화면에서 보낸 이 확인 (이름·이메일 없음)", () => {
     const text = formatFeedbackAlert(base);
-    expect(text.split("\n")[2]).toBe("— 홍길동(hong@example.com) · 상세 · 힐스테이트&lt;테스트&gt; (ap-6028351) · 9/25 21:03 KST");
+    expect(text.split("\n")[2]).toBe(
+      "— 상세 · 힐스테이트&lt;테스트&gt; (ap-6028351) · 9/25 21:03 KST · 관리자 화면에서 보낸 이 확인"
+    );
+  });
+
+  it("보낸 이의 이메일·이름을 넘겨도 메시지에 싣지 않는다(입력 타입에 칸이 없다)", () => {
+    const text = formatFeedbackAlert({ ...base, userEmail: "hong@example.com", userName: "홍길동" } as any);
+    expect(text).not.toContain("hong@example.com");
+    expect(text).not.toContain("홍길동");
+    expect(text).not.toContain("@");
+  });
+
+  it("200자 자르기는 이모지(서로게이트 쌍)를 반으로 가르지 않는다", () => {
+    const text = formatFeedbackAlert({ ...base, message: "가".repeat(199) + "😀😀😀" });
+    const body = text.split("\n")[1];
+    expect(body).toBe("가".repeat(199) + "😀…");
+    expect(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/.test(body)).toBe(false);
   });
 
   it("내용은 200자까지만 담는다 — 자른 뒤 이스케이프해 엔티티가 반쯤 잘리지 않는다", () => {
@@ -121,15 +135,14 @@ describe("formatFeedbackAlert", () => {
     expect(body).toBe("가".repeat(199) + "&amp;…");
   });
 
-  it("이름·화면이 없으면 빈 조각을 남기지 않는다", () => {
+  it("화면·단지가 없으면 빈 조각을 남기지 않는다", () => {
     const text = formatFeedbackAlert({
       ...base,
-      userName: null,
       page: null,
       apartmentName: null,
       apartmentId: null,
     });
-    expect(text.split("\n")[2]).toBe("— hong@example.com · 9/25 21:03 KST");
+    expect(text.split("\n")[2]).toBe("— 9/25 21:03 KST · 관리자 화면에서 보낸 이 확인");
   });
 
   it("모르는 종류 코드는 원문 그대로(이스케이프) 보인다", () => {

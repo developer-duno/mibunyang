@@ -34,11 +34,14 @@ describe("FeedbackFab (세션574)", () => {
     expect(desktop.style.right).toBe("24px");
   });
 
-  it("지도 탭은 현위치 버튼을 피해 52px 더 위로", () => {
-    const { unmount } = render(<FeedbackFab onClick={vi.fn()} isDesktop liftForMap />);
-    expect(/** @type {HTMLElement} */ (screen.getByTestId("feedback-fab")).style.bottom).toBe("76px");
+  it("휴대폰 상세 모달이 열려 있으면 하단 CTA 바(119px) 위 12px = 131px 로 올라간다", () => {
+    const { unmount } = render(<FeedbackFab onClick={vi.fn()} isDesktop={false} detailOpen />);
+    expect(screen.getByTestId("feedback-fab").getAttribute("style")).toContain(
+      "calc(131px + env(safe-area-inset-bottom, 0px))"
+    );
     unmount();
-    render(<FeedbackFab onClick={vi.fn()} isDesktop={false} liftForMap />);
-    expect(screen.getByTestId("feedback-fab").getAttribute("style")).toContain("calc(128px + env(");
+    // 데스크톱은 상세가 열려 있어도 그대로 바닥 24px
+    render(<FeedbackFab onClick={vi.fn()} isDesktop detailOpen />);
+    expect(/** @type {HTMLElement} */ (screen.getByTestId("feedback-fab")).style.bottom).toBe("24px");
   });
 });

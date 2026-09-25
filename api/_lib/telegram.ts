@@ -71,8 +71,6 @@ const ALERT_MESSAGE_CHARS = 200;
 export type FeedbackAlertInput = {
   kind: string;
   message: string;
-  userName?: string | null;
-  userEmail: string;
   page?: string | null;
   apartmentName?: string | null;
   apartmentId?: string | null;
@@ -83,17 +81,20 @@ export type FeedbackAlertInput = {
  * 새 의견 알림 문구:
  *   💬 새 의견 · <종류 라벨>
  *   <내용 200자>
- *   — <이름>(<이메일>) · <화면> · <단지명 (id)> · <KST 시각>
+ *   — <화면> · <단지명 (id)> · <KST 시각> · 관리자 화면에서 보낸 이 확인
+ * 보낸 이의 이름·이메일은 **넣지 않는다**(사장님 결정 2026-09-25 — 텔레그램은 외부 서버라 개인정보를 싣지 않고,
+ * 보낸 이는 관리자 화면에서 본다). 입력 타입에도 그 칸이 없어 호출처가 실수로 넘길 수 없다.
  * 손님이 쓴 값은 전부 이스케이프한다. 내용은 **자른 뒤** 이스케이프해 엔티티(&amp;)가 반쯤 잘리지 않게 한다.
+ * 자르기는 코드 포인트 단위(Array.from) — 이모지(서로게이트 쌍)가 반으로 잘려 깨진 글자가 되지 않게.
  */
 export function formatFeedbackAlert(f: FeedbackAlertInput): string {
-  const cut = f.message.length > ALERT_MESSAGE_CHARS ? `${f.message.slice(0, ALERT_MESSAGE_CHARS)}…` : f.message;
-  const who = f.userName ? `${f.userName}(${f.userEmail})` : f.userEmail;
+  const chars = Array.from(f.message);
+  const cut = chars.length > ALERT_MESSAGE_CHARS ? `${chars.slice(0, ALERT_MESSAGE_CHARS).join("")}…` : f.message;
   const apt = f.apartmentName
     ? f.apartmentId
       ? `${f.apartmentName} (${f.apartmentId})`
       : f.apartmentName
     : f.apartmentId || "";
-  const tail = [who, f.page || "", apt, toKst(f.createdAt)].filter(Boolean).map(escapeHtml);
+  const tail = [f.page || "", apt, toKst(f.createdAt), "관리자 화면에서 보낸 이 확인"].filter(Boolean).map(escapeHtml);
   return [`💬 새 의견 · ${escapeHtml(feedbackKindLabel(f.kind))}`, escapeHtml(cut), `— ${tail.join(" · ")}`].join("\n");
 }

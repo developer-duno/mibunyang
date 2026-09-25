@@ -64,13 +64,33 @@ const { verifyToken } = await import("./_lib/auth.js");
 const { isBlacklisted } = await import("./_lib/tokenBlacklist.js");
 const { kv } = await import("./_lib/redis.js");
 const { sendTelegram } = await import("./_lib/telegram.js");
-const { getSupabase } = await import("./_lib/supabase.js");
+const { getSupabase, getMibuyangSupabase } = await import("./_lib/supabase.js");
+const { handleCors } = await import("./_lib/cors.js");
 const handler = handlerImport as any;
 
 const USER = { email: "hong@example.com", name: "홍길동", status: "approved" };
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  // resetAllMocks — clearAllMocks 는 한 번만 쓰는 값(mockResolvedValueOnce) 대기열을 비우지 않아, 쓰이지 않은
+  // 값이 다음 시험으로 새어 나간다(검사관 뮤테이션 ① 지적). 구현까지 지우므로 기본값을 아래에서 다시 넣는다.
+  vi.resetAllMocks();
+  mockInsertSelect.mockImplementation(() => ({ single: mockSingle }));
+  mockInsert.mockImplementation(() => ({ select: mockInsertSelect }));
+  mockOrder2.mockImplementation(() => ({ range: mockRange }));
+  mockOrder.mockImplementation(() => ({ order: mockOrder2 }));
+  mockSelect.mockImplementation(() => ({ order: mockOrder }));
+  mockUpdateEq.mockImplementation(() => ({ select: mockUpdateSelect }));
+  mockUpdate.mockImplementation(() => ({ eq: mockUpdateEq }));
+  mockDelete.mockImplementation(() => ({ eq: mockDeleteEq }));
+  mockFrom.mockImplementation(() => ({
+    insert: mockInsert,
+    select: mockSelect,
+    update: mockUpdate,
+    delete: mockDelete,
+  }));
+  (handleCors as any).mockReturnValue(false);
+  (getMibuyangSupabase as any).mockImplementation(() => ({ from: mockFrom }));
+  (getSupabase as any).mockImplementation(() => ({ from: vi.fn(() => ({})) }));
   (checkRateLimit as any).mockResolvedValue({ limited: false });
   (verifyToken as any).mockReturnValue(null);
   (isBlacklisted as any).mockResolvedValue(false);
@@ -280,8 +300,11 @@ describe("feedback handler — POST(손님)", () => {
     expect(sendTelegram).toHaveBeenCalledTimes(1);
     const text = (sendTelegram as any).mock.calls[0][0] as string;
     expect(text.split("\n")[0]).toBe("💬 새 의견 · 버그·오류");
-    expect(text).toContain("홍길동(hong@example.com)");
     expect(text).toContain("힐스테이트테스트 (ap-6028351)");
+    // 텔레그램(외부 서버)에는 보낸 이의 이메일·이름을 싣지 않는다 — 관리자 화면에서 본다
+    expect(text).not.toContain("hong@example.com");
+    expect(text).not.toContain("홍길동");
+    expect(text).toContain("관리자 화면에서 보낸 이 확인");
   });
 
   it("본문에 status·user_email 을 넣어도 무시된다(서버가 정한다)", async () => {

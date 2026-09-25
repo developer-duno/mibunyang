@@ -9,6 +9,7 @@ import { kv } from "./_lib/redis.js";
 import { isUserAccessDenied } from "./_lib/userAccess.js";
 import { sendTelegram, formatFeedbackAlert } from "./_lib/telegram.js";
 import { isFeedbackKind, FEEDBACK_MESSAGE_MAX } from "../src/constants/feedbackKinds.js";
+import { ID_PATTERN } from "./_lib/apartmentValidation.js";
 
 /**
  * 손님 "의견 보내기" (세션574)
@@ -25,7 +26,6 @@ import { isFeedbackKind, FEEDBACK_MESSAGE_MAX } from "../src/constants/feedbackK
 
 const TEXT_FIELD_MAX = 200; // page·apartmentName
 const USER_AGENT_MAX = 300;
-const APARTMENT_ID_RE = /^(ah|ap)-\d+$/;
 const FEEDBACK_STATUSES = ["new", "done"];
 
 type UserRecord = { email?: string; name?: string; status?: string };
@@ -100,7 +100,7 @@ async function handlePost(req: any, res: any) {
   }
   let aptId: string | null = null;
   if (apartmentId !== undefined && apartmentId !== null && apartmentId !== "") {
-    if (typeof apartmentId !== "string" || !APARTMENT_ID_RE.test(apartmentId)) {
+    if (typeof apartmentId !== "string" || !ID_PATTERN.test(apartmentId)) {
       return res.status(400).json({ ok: false, error: "단지 정보가 올바르지 않습니다" });
     }
     aptId = apartmentId;
@@ -142,8 +142,6 @@ async function handlePost(req: any, res: any) {
       formatFeedbackAlert({
         kind,
         message: text,
-        userName,
-        userEmail: email,
         page: pageText,
         apartmentName: aptName,
         apartmentId: aptId,
