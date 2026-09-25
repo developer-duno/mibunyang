@@ -1,9 +1,10 @@
 /**
  * 아파트 ID 파라미터 파싱 및 검증
- * prices.js / unsold-history.js 공용
+ * prices.js / unsold-history.js / presale-detail.js 공용
+ * 허용 접두: ah- (청약홈) · ap- (네이버 분양)
  */
 
-export const ID_PATTERN = /^ah-\d+$/;
+export const ID_PATTERN = /^(ah|ap)-\d+$/;
 
 type ParseResult =
   | { ids: string[] }
