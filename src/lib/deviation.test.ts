@@ -1,6 +1,18 @@
 import { describe, it, expect } from "vitest";
-import { computeDeviation, deviationText, deviationAriaLabel } from "./deviation";
-import { CARD_DEVIATION_FIELDS, OVERVIEW_DEVIATION_FIELDS, deviationSpec } from "@/constants/deviationFields";
+import {
+  computeDeviation,
+  deviationText,
+  deviationAriaLabel,
+  estimatedDeviation,
+  resolveDeviationInput,
+  deviationInputsEqual,
+} from "./deviation";
+import {
+  CARD_DEVIATION_FIELDS,
+  OVERVIEW_DEVIATION_FIELDS,
+  deviationSpec,
+  formatDeviationValue,
+} from "@/constants/deviationFields";
 import { computeRegionalStats, NATIONAL_KEY, type RegionalStats } from "@/scoring/regionalStats";
 import type { Apt } from "@/types/scoring";
 
@@ -307,5 +319,99 @@ describe("deviationFields 정의 자체의 불변식", () => {
 describe("전국 버킷 키가 실제 시도명과 겹치지 않는다", () => {
   it("NATIONAL_KEY 는 기호형이라 '서울' 같은 지역명과 충돌하지 않는다", () => {
     expect(NATIONAL_KEY.startsWith("__")).toBe(true);
+  });
+});
+
+// 세션576 D5-b — 용문역 리체스트(ah-2023910096): 점수 탭은 `추정 1.13대/세대` 로 채점하는데 종합 탭
+// 편차 막대만 `미수집` 이었다. 같은 모달이 두 말을 하지 않게 편차 막대도 같은 추정치를 쓴다.
+describe("주차 추정 폴백 (세션576 D5-b)", () => {
+  const parkingSpec = deviationSpec("parkingRatio")!;
+  const yongmun = { parkingRatio: null, presaleParking: 99, units: 59, presaleGeneralSupply: 88 };
+
+  it("실측 비율이 없으면 점수 탭과 같은 산식의 추정치를 쓴다 — 99 ÷ max(59, 88) = 1.125", () => {
+    expect(resolveDeviationInput(parkingSpec, yongmun)).toEqual({ value: 1.125, estimated: true });
+  });
+
+  it("추정치 값 문구는 점수 탭과 같은 글자 — `추정 1.13대/세대`", () => {
+    expect(formatDeviationValue(parkingSpec, 1.125, true)).toBe("추정 1.13대/세대");
+    expect(formatDeviationValue(parkingSpec, 1.49)).toBe("1.49대/세대");
+  });
+
+  // 사장님 결정(세션576): 추정 오차(p10 −0.61 · p90 +0.69) > 실측 분포 사분위 폭(0.28) → 막대 위치는 소음.
+  it("추정치 줄은 지역 분포와 견주지 않는다 — 막대 위치 없음(fav null), 값 문구만", () => {
+    expect(estimatedDeviation(parkingSpec, 1.125)).toEqual({
+      state: "estimated",
+      fav: null,
+      text: "추정 1.13대/세대",
+      tone: "neutral",
+      nationalFallback: false,
+    });
+  });
+
+  it("추정치 줄의 스크린리더 문장 — 견주지 않았다고 말한다", () => {
+    expect(
+      deviationAriaLabel(
+        parkingSpec,
+        estimatedDeviation(parkingSpec, 1.125),
+        "경기",
+        formatDeviationValue(parkingSpec, 1.125, true)
+      )
+    ).toBe("주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다.");
+  });
+
+  it("추정할 수 없으면 원값 그대로 — 주차 0(원천 미기재)·null·3 초과(총세대 오염)", () => {
+    expect(resolveDeviationInput(parkingSpec, { parkingRatio: null, presaleParking: 0, units: 500 })).toEqual({
+      value: null,
+      estimated: false,
+    });
+    expect(resolveDeviationInput(parkingSpec, { parkingRatio: null, presaleParking: null, units: 500 })).toEqual({
+      value: null,
+      estimated: false,
+    });
+    expect(
+      resolveDeviationInput(parkingSpec, {
+        parkingRatio: null,
+        presaleParking: 1468,
+        units: 5,
+        presaleGeneralSupply: 102,
+      })
+    ).toEqual({ value: null, estimated: false });
+  });
+
+  it("실측 비율이 있으면 추정 재료가 있어도 절대 덮지 않는다", () => {
+    expect(resolveDeviationInput(parkingSpec, { ...yongmun, parkingRatio: 1.49 })).toEqual({
+      value: 1.49,
+      estimated: false,
+    });
+  });
+
+  it("폴백이 없는 필드는 원값 그대로", () => {
+    expect(resolveDeviationInput(priceSpec, { pp: null, presaleParking: 99 })).toEqual({
+      value: null,
+      estimated: false,
+    });
+  });
+});
+
+describe("deviationInputsEqual — memo 비교는 추정 재료까지 본다 (세션576 D5-b)", () => {
+  const base = {
+    pp: 1200,
+    unsoldRate: 4,
+    subwayDist: 300,
+    parkingRatio: null,
+    presaleParking: 99,
+    units: 59,
+    presaleGeneralSupply: 88,
+  };
+
+  it("추정 재료만 바뀌어도 '다르다' — 주차대수·총세대·일반분양 각각", () => {
+    expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base, presaleParking: 120 })).toBe(false);
+    expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base, units: 60 })).toBe(false);
+    expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base, presaleGeneralSupply: 90 })).toBe(false);
+  });
+
+  it("필드 값이 바뀌면 '다르다', 아무것도 안 바뀌면 '같다'", () => {
+    expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base, pp: 1300 })).toBe(false);
+    expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base })).toBe(true);
   });
 });

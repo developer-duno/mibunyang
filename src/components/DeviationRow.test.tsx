@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DeviationRow, ROW_HEIGHT } from "./DeviationRow";
 import { CARD_DEVIATION_FIELDS, deviationSpec } from "@/constants/deviationFields";
-import type { Deviation } from "@/lib/deviation";
+import { estimatedDeviation, type Deviation } from "@/lib/deviation";
 
 const priceSpec = deviationSpec("pp")!;
 const subwaySpec = deviationSpec("subwayDist")!;
@@ -210,5 +210,32 @@ describe("카드 3줄 정의", () => {
     const names = CARD_DEVIATION_FIELDS.map((f) => f.field);
     expect(names, "총액으로 되돌아갔다 — 면적이 작을수록 싸다고 표시된다").not.toContain("price");
     expect(names).toContain("pp");
+  });
+});
+
+describe("DeviationRow — 추정치 표시 (세션576 D5-b)", () => {
+  const parkingSpec = deviationSpec("parkingRatio")!;
+  const avg = dev({ fav: 50, text: "평균 수준", tone: "neutral" });
+  const est = estimatedDeviation(parkingSpec, 1.125);
+
+  for (const compact of [false, true]) {
+    it(`${compact ? "카드" : "팝업"}: 값 문구 \`추정 1.13대/세대\` 하나만 — 막대·끝말·비교 문구 없음`, () => {
+      const { container } = render(
+        <DeviationRow spec={parkingSpec} dev={est} value={1.125} estimated regionLabel="경기" compact={compact} />
+      );
+      const { kids } = rowOf(container);
+      expect(kids.map((k) => k.textContent)).toEqual(["주차", "추정 1.13대/세대"]);
+      expect(container.querySelector('[style*="border-radius: 99px"]')).toBeNull();
+      expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+        "주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다."
+      );
+    });
+  }
+
+  it("추정이 아니면 `추정` 이 없다", () => {
+    const { container } = render(
+      <DeviationRow spec={parkingSpec} dev={avg} value={1.49} regionLabel="경기" compact={false} />
+    );
+    expect(rowOf(container).kids[4].textContent).toBe("1.49대/세대 · 평균 수준");
   });
 });

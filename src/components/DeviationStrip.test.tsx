@@ -3,6 +3,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { DeviationStrip, stripHeight } from "./DeviationStrip";
 import { CARD_DEVIATION_FIELDS, OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { computeRegionalStats } from "@/scoring/regionalStats";
+import { computeDeviation } from "@/lib/deviation";
+import { deviationSpec } from "@/constants/deviationFields";
 import type { Apt } from "@/types/scoring";
 
 /** 경기 21단지 — G1 지역 기준(n≥20)을 넘긴다 */
@@ -140,5 +142,72 @@ describe("DeviationStrip — 통계가 없을 때", () => {
   it("regionStats 가 null 이면 전부 미수집으로 그린다 (크래시 0)", () => {
     render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={null} />);
     expect(screen.getAllByText("미수집")).toHaveLength(3);
+  });
+});
+
+// 세션576 D5-b — 점수 탭은 `추정 1.13대/세대` 로 채점하는데 종합 탭 편차 막대만 `미수집` 이던 결함.
+describe("DeviationStrip — 주차 추정 폴백 (세션576 D5-b)", () => {
+  /** 경기 21단지, 주차 비율 0.625~1.625(가운데 1.125) — 추정치 1.125 가 정확히 가운데에 온다 */
+  function parkingStats() {
+    return computeRegionalStats(
+      Array.from({ length: 21 }, (_, i) => ({ region: "경기", parkingRatio: 0.625 + i * 0.05 }) as unknown as Apt)
+    );
+  }
+  /** 용문역 리체스트(ah-2023910096) 모양 — 실측 비율 없음 · 주차 99 · 총세대 59 · 일반분양 88 */
+  const yongmun = { parkingRatio: null, presaleParking: 99, units: 59, presaleGeneralSupply: 88 };
+
+  it("팝업: 실측 비율이 없으면 추정치 값만 보인다 — 막대 위치·비교 문구 없음", () => {
+    render(
+      <DeviationStrip
+        apt={apt(yongmun)}
+        fields={OVERVIEW_DEVIATION_FIELDS}
+        regionStats={parkingStats()}
+        compact={false}
+      />
+    );
+    const row = screen.getByRole("img", { name: "주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다." });
+    expect(row.textContent).toBe("주차추정 1.13대/세대");
+    expect(row.querySelector('[style*="border-radius: 99px"][style*="width"]')).toBeNull();
+  });
+
+  it("카드(compact)도 같은 값 문구 하나 — `추정 1.13대/세대`", () => {
+    render(<DeviationStrip apt={apt(yongmun)} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={parkingStats()} />);
+    expect(
+      screen.getByRole("img", { name: "주차 추정 1.13대/세대. 추정치라 지역 단지들과 견주지 않았습니다." }).textContent
+    ).toBe("주차추정 1.13대/세대");
+  });
+
+  it("추정할 수 없으면 지금처럼 `미수집` — 주차 0 / 3 초과(총세대 오염)", () => {
+    for (const over of [
+      { parkingRatio: null, presaleParking: 0, units: 500, presaleGeneralSupply: null },
+      { parkingRatio: null, presaleParking: 1468, units: 5, presaleGeneralSupply: 102 },
+    ]) {
+      const { unmount, container } = render(
+        <DeviationStrip
+          apt={apt(over)}
+          fields={OVERVIEW_DEVIATION_FIELDS}
+          regionStats={parkingStats()}
+          compact={false}
+        />
+      );
+      expect(screen.getByRole("img", { name: "주차 자료가 아직 없습니다." })).toBeInTheDocument();
+      expect(container.textContent).not.toContain("추정");
+      unmount();
+    }
+  });
+
+  it("실측 비율이 있으면 지금과 글자 하나 안 다르다 (`추정` 없음)", () => {
+    const stats = parkingStats();
+    const d = computeDeviation(deviationSpec("parkingRatio")!, 1.49, "경기", stats);
+    const { container } = render(
+      <DeviationStrip
+        apt={apt({ ...yongmun, parkingRatio: 1.49 })}
+        fields={OVERVIEW_DEVIATION_FIELDS}
+        regionStats={stats}
+        compact={false}
+      />
+    );
+    expect(screen.getByText(`1.49대/세대 · ${d.text}`)).toBeInTheDocument();
+    expect(container.textContent).not.toContain("추정");
   });
 });
