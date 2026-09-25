@@ -152,7 +152,7 @@
 
 - 🔴 **1차 결함 묶음(세션574~, 사장님 승인 09-25 — 각각 시험+검사관, PR 하나씩, 이 순서)** — 라이브 1,912곳 기준 폭:
   1. ✅ **세션574 #621 → main 79d733c3(09-25 17:02) · 검사관 가능 · 라이브 `prices?apartment_id=ap-6028351`·`presale-detail?apartment_id=ap-6028537` 400→200 실측(분양 탭 스크린샷 1장만 미실행)** — **D3** `api/_lib/apartmentValidation.ts:6` `ID_PATTERN=/^ah-\d+$/` → `ap-` 단지 **943곳(49%)** 이 시세 차트·미분양 추이·청약홈 공식 일정 카드(`PresaleInfo.tsx:129`, 오류 표시 없이 사라짐)·관리자 공급표에서 400. 수리 = `^(ah|ap)-\d+$` + 시험(ap- 양성). ⚠️ 고쳐도 분양가 추이는 ap- 에서 빈 채(prices 10,078행 전부 presale 행) — 미분양 추이 3,126행·공식 일정 710행·공급 3,903행은 새로 보임(시험 대상).
-  2. **D4** `LoanRatesSection.tsx:144` 월 상환액을 만원 단위에서 다시 `/10000` 반올림 → 전 단지 "-/월". 수리 = 반올림 1줄. 같은 표의 "중복 행" 은 결함 아님(담보유형·상환방식 구별 칸 누락, `:93-135`) → 칸 추가.
+  2. ✅ **세션575 #624 → main f66b68cc(09-25 23:15) · 검사관 가능(정규식만 보던 시험을 정확값 '157만/월' 단언으로 보강) · 라이브 첫 카드 '98만/월'·'-/월' 0회·작은 글씨 10줄 실측** — **D4** `LoanRatesSection.tsx:144` 월 상환액을 만원 단위에서 다시 `/10000` 반올림 → 전 단지 "-/월". 수리 = 반올림 1줄. 같은 표의 "중복 행" 은 결함 아님(담보유형·상환방식 구별 칸 누락, `:93-135`) → 칸 추가.
   3. **D2** `PriceTable.tsx:53-58`·`LoanAnalysis.tsx:42,46-47` `Number(apt.area ?? 0)` → 면적 null **161곳**이 "0m² 기준 ±20m²" 필터(표 뜨는 곳 158) · 헤더 `DetailModal.tsx:410` "· m² ·". 수리 = null 이면 필터 끄고 "전체 면적", 헤더 토큰 생략.
   4. **D5** `PresaleInfo.tsx:161,165` 네이버 `presale_parking` 0(미기재)을 "주차대수 0대"로 — **137곳**은 `parking_ratio` 가 따로 있음(반대 방향 80곳은 종합 "미수집"↔점수 "추정 N대"). 수리 = 0 숨김 + 종합 폴백.
   5. **D1/D6** `src/constants/leaseTypes.mjs:20-30` 목록에 `공공지원민간임대리츠` 누락 → 임대 **108곳**이 화면·점수·정적 JSON 필터·KOSIS 배분(`collect-unsold-kosis.mjs:299,336`) 전부 분양 취급(보증금 2억을 분양가로 → 괴리 +72.9%·PIR 6.29 · 미분양 15 배분). **사장님 결정(09-25) = 기존 정책(08-07 세션495 "임대형 제외")대로 1줄 추가** → 목록 1,912→≈1,804. ⚠️ 같은 함수가 배분 분모라 **10/09 KOSIS 회차 배분값이 전부 재계산** → 합친 뒤 `unsold_impact_run` 재시뮬 + 전이표 승인(`data-changing-run-approval`). 옛 값 91곳 정리는 별도 전이표. **마무리 검사관 D 실측(09-25)**: D3 정규식 소비처는 정확히 3곳(prices·unsold-history·presale-detail) · 1차 수리 방향은 CI 감사 12종과 충돌 없음(`audit-customer-facing-excuses` 는 D2·D5 빈칸 문구를 "정확하지 않을 수 있음" 류로 쓰지 않으면 통과).
@@ -164,9 +164,25 @@
 
 > 사장님 지시(09-25 16:3x): 손님이 사이트·정보·미분양 데이터 이용에 관한 건의·버그를 편하게 보내는 통로(투자 자문 창구 아님). 결정(16:46·17:02) = **모든 화면 떠 있는 버튼 · 카카오 로그인 필수 · 텔레그램 즉시 알림 + 관리자 화면 목록 · 비공개 · 동의 체크박스 필수 · 보관 1년 · 스크린샷 1차 제외**. 기존 `consults`(상담 신청, 이름·전화 필수)와 별도 통로. 플랜·지시서 = `.omc/artifacts/session574/plan_feedback.md`·`brief_feedback.md`(gitignore).
 
-- 🟡 **구현 대기(워크트리 `s574-feedback`, 코드 0줄 — Opus 작업반이 스폰 1분 뒤 세션 종료로 중단)**: 표 `site_feedback`(RLS·정책 0·service_role 만·`consent_at`) 마이그+롤백 · `POST/GET/PATCH/DELETE /api/feedback`(Bearer 사용자 JWT·블랙리스트·차단 사용자·kind 4종·1~1000자·동의 필수·rateLimit `feedback: 5`) · `api/_lib/telegram.ts`(HTML 이스케이프·throw 없음) · `FeedbackFab`·`FeedbackForm`·`useFeedback`·`AdminFeedback` · `purge-old-consults.mjs` 에 365일 파기 · 시험·뮤테이션 3 · 전체 vitest 1회.
-- ⚠️ **합치기 직전 사장님 승인 3건(운영 변경)**: ① 운영 DB 에 표 생성(psql, BEGIN→ROLLBACK 시험 뒤) ② **권한 지문이 바뀐다** → `scripts/perm-baseline.mjs` 미리보기 → 기준선 #4 재승인(**9/28(월) 09:00 ⑩ 첫 자동 전에** — 안 하면 거짓 경보) ③ Vercel 환경변수 `TELEGRAM_BOT_TOKEN`·`TELEGRAM_CHAT_ID`(로컬 `.env` 값을 파이프로, 화면 미출력). 라이브 마지막 확인(카카오 로그인 뒤 의견 1건 → 텔레그램 도착)은 👤 사장님.
-- 순서: D3 ✅ 뒤 **다음 PR**(A-10 1차 D4 와 병렬 가능 — 겹치는 파일 0).
+- ✅ **세션575 구현·합침·운영 반영 완료 — PR #625 → main 4a1bbca9(09-25 23:40)**: 표 `site_feedback`(RLS·정책 0·service_role S/I/U/D·시퀀스 USAGE·`consent_at`) 마이그+롤백 · `POST/GET/PATCH/DELETE /api/feedback` · `api/_lib/telegram.ts`(HTML 이스케이프·throw 없음·**알림에 이름·이메일 없음**) · `FeedbackFab`(z 310, 지도 탭 숨김, 휴대폰 상세 모달에선 CTA 바 119+12px 위) · `FeedbackForm`(종류 기본 선택 없음·동의 문구에 보던 화면·접속 환경 명시) · `useFeedback` · `AdminFeedback`(AdminConsults 다음) · `purge-old-consults.mjs` 365일(같은 PHASE 한 행 합산) · `public/privacy.html` 의견 항목·목적·1년 · 시험 +102(뮤테이션 작업반 3 + 검사관 독립 3 전부 빨강) · 검사관 = 코드(Opus) 가능 + 보안 🟢.
+- ✅ **운영 반영 3건(사장님 승인 09-25 23:1x)**: ① S2 되돌림 시험 exit 0(흔적 0) → S4 psql `--single-transaction` 적용(표 0행·anon 거부·service_role 쓰기) ② 권한 기준선 **#4**(146항목 `524d2d08`, 09-25 23:39 — 9/28 09:00 ⑩ 기대 문구 "기준선 #4 09-25") ③ Vercel **production** `TELEGRAM_BOT_TOKEN`·`TELEGRAM_CHAT_ID` 추가(값 미출력). 라이브 실측 = 비로그인 FAB→"의견은 카카오 로그인 후 보낼 수 있어요" 모달 · 로그인 흉내 폼 열림·조건 전 비활성 · 휴대폰 지도 FAB 0 · 휴대폰 상세 겹침 0 · `GET /api/feedback` 401.
+- 🟡 **잔여**: 👤 **사장님 카카오 로그인 뒤 의견 1건 → 텔레그램 도착 확인**(마지막 실전) · `public/privacy.html:24` 시행일(2026-06-16)을 개정일로 갱신할지(사장님 결정) · Vercel **preview** 환경변수는 CLI 대화형 프롬프트(`action_required`)로 못 넣음(미리보기 배포는 알림 skip·저장은 됨 — 필요하면 대시보드에서) · 태블릿 768px 상세 모달에서 버튼이 모달 가장자리와 4px 닿음(버튼 겹침 0) · App 이 `detailOpen` 을 넘기는지 보는 App 단위 시험 없음 · `App.test.jsx` 상세 lazy 3건이 로컬 단독 실행에서 흔들림(기준 커밋도 같음, CI 는 초록) · 로컬 시각 기준선 `list-main-*.png` 에 FAB 가 찍혀 `PW_VISUAL=1` 로 재생성 필요(CI 는 안 돌림) · 사용자(이메일) 단위 도배 상한 없음(IP 5회/5분만).
+
+### A-12. 상단 메뉴 정리 — "목록이 주력" (사장님 결정 세션575, 2026-09-25 22:07)
+
+> 사장님 방향(22:0x): "목록이 주가 되는 기능인데 다른 메뉴는 부실하다. 불필요한 메뉴를 없애고 잘하는 것에 집중. 전문가 구분은 버렸고 **로그인 한 번이면 누구나 모든 정보**를 보는 열린 사이트 — 사용자를 먼저 모으는 게 목표."
+> 결정(AskUserQuestion 22:07): ① 메뉴 = **목록 · 지도 · 곧 분양 · 의견** + 정보는 오른쪽 위 물음표(도움말) 안으로 · **홈·비교·상담 메뉴 제거**(비교는 목록 안 토글 그대로) ② 상담 자리 = **의견(손님 창구, A-11 의 떠 있는 버튼과 같은 폼) + 시행사·분양업체 문의 폼 둘 다** ③ 시기 = 결정만 오늘, **구현은 다음 세션**(별도 PR).
+
+**근거 실측(세션575)**: `consults` 표 0건(만든 뒤 신청 0) · `subscribers` 0명 · 비교는 별도 화면이 아니라 `showComp && tab === "list"` 토글(`HeaderSection.tsx:291`) · 홈은 `VITE_FEATURE_HOME` 깃발 화면 · 정보(`InfoPage.tsx`) = 소개·FAQ·점수 설명·상담 폼 · 분석 이벤트 `tab_switch` 가 이미 있어 Vercel Analytics 에서 메뉴별 클릭 수를 볼 수 있다(로그인 화면이라 사장님만 — 지우기 전 한 번 보면 좋다).
+
+- 🟡 **구현 대기(다음 세션, PR 1~2개)**:
+  1. `HeaderSection.tsx:216-230`·`BottomNav.tsx:21-42` 메뉴 배열에서 홈·비교·상담 제거, "의견" 추가(A-11 폼 열기 — 로그인 필수 그대로). 곧 분양은 유지(깃발 `upcomingEnabled`).
+  2. 정보(`InfoPage`)의 소개·FAQ·점수 설명을 도움말(`toggleHelp`, `HeaderSection.tsx:322`) 패널 안으로 옮기거나 그 패널에서 여는 링크로. `useAppNavigation.ts:60` `switchToInfo` 와 `App.tsx:753` `onLogout={switchToInfo}`(로그아웃 착지가 정보 탭) → 착지를 목록으로 바꾼다. `handleConsultFromDetail`(상세 → 상담) 도 의견 폼 열기로 교체.
+  3. 시행사·분양업체 문의 폼(B2B): 회사·담당자·연락처·단지(선택)·내용 — 기존 `consults` 표·`api/consults.ts`·`AdminConsults` 를 그대로 재활용(이름·전화 필수 구조가 맞다) 하되 문구를 "업체 문의"로. 손님 의견(A-11 `site_feedback`)과 표를 섞지 않는다. 입구 = 도움말 패널 또는 페이지 맨 아래 한 줄(사장님 결정 필요: 메뉴 4개 안에 넣지 않기로 했으므로).
+  4. 홈 화면 컴포넌트(`src/components/home/*`)·깃발은 코드 삭제가 아니라 **깃발 OFF + 메뉴 제거**(되돌리기 쉽게). 삭제는 한 달 뒤 별도.
+  5. e2e(`e2e/*.spec.ts`)에서 "홈"·"비교"·"상담"·"정보" 탭을 클릭하는 시험을 먼저 grep → 같이 고친다.
+  6. 문서: `src/components/CLAUDE.md` 메뉴 표 · `.claude/EASY_WORDS.md` 있으면 · BACKLOG 이 절.
+- ⚠️ 결정 남은 것(구현 전 사장님께): 업체 문의 폼 입구 위치 · 홈 깃발을 끌 때 로그인 직후 첫 화면(홈→목록) · 정보 페이지의 "전문가 상담 신청" 문구 폐기 여부.
 
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - ✅ **(세션572 실측 — run 36079301953, 09:49~09:52 KST, c6e8fede: ⑫ applyhome 8곳·hold 13곳 → 이상 0 · ⑬ 최근 50시간 failure 1행 → 이상 0 · ⑪ 3/3 이상 0 · "이상 없음 (mode=daily)" · check-failed 0 · 공개 JSON(fetchedAt 09-24T18:10Z) 대표 2행 unsold null)** 9/25(금) 09:00~09:55 첫 자연 daily(⑫ hold 13 · ⑬ 첫 자연) — 기대: 공개 로그 "⑫ … applyhome 8곳 · hold 13곳 → 이상 0건" · "⑬ … 이상 0건" · 텔레그램 "오늘 이상 0건". (d) "해제/추가" 가 뜨면 누가 hold 를 바꿨는지 `collector_runs` 로.
@@ -190,7 +206,7 @@
   `updated_at` 범위 = 2026-09-21T20:30~20:34Z(= 09-22 05:30 KST, **내 수정 전**)이므로
   **옛 코드로 돌았는데도 결과가 정상**이었다. 좌표 수정 자체는 옳지만(옛 공식은 false northing 이 없다)
   **"현재 피해 3,068단지" 는 사실이 아니다.**
-  - 🟠 **남은 진짜 결함 = `air_quality_stations` 캐시가 갱신되지 않는다**(세션556 실측 확정).
+  - ✅ **닫힘(2u 세션418 통지 2026-09-25, 세션575 실측 177행 일치)** — 원인은 2u PR #556(09-22) 이 고친 TM 좌표 결함 자체(전국 단지가 제주 관측소 하나로 몰려 캐시가 8종만 받음). 적용 뒤 매일 02:00 100단지 순환으로 쌓여 09-23 47 · 09-24 50 · 09-25 73 = 177행, 394종 중 220종 미수렴은 한 바퀴 ≈30일이라 10월 하순 수렴 · `lat/lng` NULL 정상(양쪽 읽는 코드 0) · 소유 2u 전용 그대로 · mibunyang 할 일 없음. 옛 기록(세션556): `air_quality_stations` 캐시가 갱신되지 않는다.
     `env_air.py` 는 측정소를 찾을 때마다 `_upsert_station` 을 부른다. 그런데:
 
     | 실측 | 값 |

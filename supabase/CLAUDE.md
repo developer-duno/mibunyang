@@ -28,6 +28,7 @@
 | articles | 네이버 매물 정보 | naver-collect.py |
 | complex_price_history | 네이버 시세 이력 | naver-collect.py |
 | consults | 상담 신청 | api/consults.js |
+| site_feedback | 손님 의견 보내기(세션575) — RLS 켬·정책 0·service_role S/I/U/D 만·bigserial 시퀀스 USAGE service_role 만·1년 파기 | api/feedback.ts, purge-old-consults.mjs |
 | api_quota_log | API 쿼터 사용량 추적 | recordApiQuota() |
 | presale_schedule_official | 청약홈 공식 분양일정 12종 + 규제 7종 | collect-applyhome-detail |
 | applyhome_unit_supply | 청약홈 주택형별 공급 세대수 (`source` = apt/remndr/opt) | collect-applyhome-detail, collect-applyhome-remndr |
@@ -125,7 +126,7 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 | **공용** | air_quality_stations | **자매만 쓴다**(`env_air.py`). mibunyang 은 안 건드린다 |
 | **공용** | presale_schedule_official, applyhome_unit_supply, rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | **양쪽 쓰기** — 자매 `service_applyhome_officetel.py`·`service_applyhome_rental.py` 가 오피스텔·임대를 넣는다 |
 | **mibunyang 쓰기 · 자매 읽기** | apartments, prices, unsold_history, schools, transport, builders, regions, trades, trade_stats | 쓰기는 mibunyang 만. **자매가 `mb_models.py` 로 읽으므로 컬럼 삭제·이름 변경 금지** |
-| **mibunyang 전용** | consults, api_quota_log, collector_runs 등 | mibunyang만 |
+| **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs 등 | mibunyang만 |
 | **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details, crawl_jobs, payments, billing_keys 등 | naver-estate-web만 |
 
 **읽기도 계약이다.** "자매가 안 쓰니 마음대로 바꿔도 된다" 가 성립하는 표는 마지막
