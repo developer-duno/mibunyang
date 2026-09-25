@@ -80,6 +80,13 @@ describe("AdminDashboard", () => {
     expect(screen.getByText("상담 요청 목록")).toBeTruthy();
   });
 
+  // 손님 의견 섹션 (세션574)
+  it("손님 의견 섹션을 표시한다", () => {
+    render(<AdminDashboard {...defaultProps()} />);
+    expect(screen.getByTestId("admin-feedback")).toBeTruthy();
+    expect(screen.getByText("손님 의견")).toBeTruthy();
+  });
+
   // 로그아웃 버튼 표시 및 클릭
   it("로그아웃 버튼 클릭 시 handleAdminLogout을 호출한다", () => {
     const props = defaultProps();

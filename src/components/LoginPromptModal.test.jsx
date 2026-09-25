@@ -82,6 +82,13 @@ describe("LoginPromptModal", () => {
     expect(screen.queryByText(/지도에서 단지 위치와 시세를/)).toBeNull();
   });
 
+  // 세션574: 떠 있는 "의견" 버튼 → 의견 카피
+  it('trigger="feedback" → 의견 카피 렌더', () => {
+    render(<LoginPromptModal {...makeProps({ trigger: "feedback" })} />);
+    expect(screen.getByText(/의견은 카카오 로그인 후/)).toBeTruthy();
+    expect(screen.queryByText(/점수 분석과 상세 정보를/)).toBeNull();
+  });
+
   it("trigger 미전달(null) → 기본(상세) 카피 재사용", () => {
     render(<LoginPromptModal {...makeProps({ trigger: undefined })} />);
     expect(screen.getByText(/점수 분석과 상세 정보를/)).toBeTruthy();

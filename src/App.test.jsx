@@ -573,4 +573,33 @@ describe("App 통합 테스트", () => {
       window.history.replaceState(null, "", "/");
     });
   });
+
+  // 세션574: 떠 있는 "의견" 버튼
+  describe("의견 보내기 버튼", () => {
+    it("비로그인이 누르면 폼 대신 로그인 안내(의견 문구)가 뜬다", async () => {
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      const fab = screen.getByTestId("feedback-fab");
+      await act(async () => {
+        fab.click();
+      });
+      expect(screen.getByRole("dialog", { name: "로그인 안내" })).toBeInTheDocument();
+      expect(screen.getByText(/의견은 카카오 로그인 후/)).toBeInTheDocument();
+      expect(screen.queryByTestId("feedback-form")).not.toBeInTheDocument();
+    });
+
+    it("로그인 손님이 누르면 의견 폼이 열리고 현재 화면이 첨부된다", async () => {
+      localStorage.setItem("authToken", "user-token");
+      mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+      render(<App />);
+      await act(async () => {
+        screen.getByTestId("feedback-fab").click();
+      });
+      await waitFor(() => {
+        expect(screen.getByTestId("feedback-form")).toBeInTheDocument();
+      });
+      expect(screen.getByTestId("feedback-context").textContent).toMatch(/^현재 화면: /);
+      expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
+    });
+  });
 });

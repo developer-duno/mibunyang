@@ -11,6 +11,8 @@ import type { LoginTrigger } from "@/types/hooks";
 const PROMPT_COPY = {
   detail: { title: "로그인이 필요합니다", body: ["점수 분석과 상세 정보를", "이용하려면 로그인해주세요."] },
   map: { title: "로그인이 필요합니다", body: ["지도에서 단지 위치와 시세를", "확인하려면 로그인해주세요."] },
+  // 세션574 — 떠 있는 "의견" 버튼을 비로그인이 눌렀을 때
+  feedback: { title: "로그인이 필요합니다", body: ["의견은 카카오 로그인 후", "보낼 수 있어요."] },
 } as const;
 const DEFAULT_COPY = PROMPT_COPY.detail; // trigger null → detail 문구 재사용
 

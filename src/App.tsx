@@ -1,5 +1,5 @@
 // App.tsx — useDataPipeline + useAppNavigation 추출로 520줄 → ~250줄
-import { useState, useEffect, useRef, useCallback, useTransition, Suspense } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo, useTransition, Suspense } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { isFeatureUpcoming } from "@/constants/featureFlags";
 import { LANDING_TAB } from "@/constants/landing";
@@ -16,6 +16,7 @@ const ConsultForm = lazyNamed(() => import("@/components/ConsultForm"), "Consult
 const AdminDashboard = lazyNamed(() => import("@/components/admin/AdminDashboard"), "AdminDashboard");
 const MapView = lazyNamed(() => import("@/components/sections/MapView"), "MapView");
 const UpcomingPage = lazyNamed(() => import("@/components/UpcomingPage"), "UpcomingPage");
+const FeedbackForm = lazyNamed(() => import("@/components/FeedbackForm"), "FeedbackForm");
 import { useToast } from "@/hooks/useToast";
 import { useFilterSort } from "@/hooks/useFilterSort";
 import { useComparison } from "@/hooks/useComparison";
@@ -38,9 +39,11 @@ import { useKakaoCallbackEffect } from "@/hooks/useKakaoCallbackEffect";
 import { useUrlSync } from "@/hooks/useUrlSync";
 import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
+import { useFeedback, buildFeedbackContext, feedbackContextLabel } from "@/hooks/useFeedback";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
+import { FeedbackFab } from "@/components/FeedbackFab";
 import { MarketingConsentModal } from "@/components/MarketingConsentModal";
 import { InfoPage } from "@/components/sections/InfoPage";
 import { BottomNav } from "@/components/sections/BottomNav";
@@ -304,6 +307,24 @@ export default function App() {
     requestLoginForDetail,
     closeLoginPrompt,
   } = useLoginGate({ kakao });
+
+  // ── 의견 보내기 (세션574) — 떠 있는 버튼 + 폼. 비로그인은 로그인 안내 모달("feedback" 문구)로. ──
+  const requestLoginForFeedback = useCallback(() => {
+    setLoginTrigger("feedback");
+    setShowLoginPrompt(true);
+  }, [setLoginTrigger, setShowLoginPrompt]);
+  const detailAptName = detail.detailAptId ? scoredMap.get(detail.detailAptId)?.apt.name : null;
+  const feedbackContext = useMemo(
+    () =>
+      buildFeedbackContext(tab, showComp, detail.detailAptId ? { id: detail.detailAptId, name: detailAptName } : null),
+    [tab, showComp, detail.detailAptId, detailAptName]
+  );
+  const feedback = useFeedback({
+    showToast,
+    isLoggedIn,
+    onLoginRequired: requestLoginForFeedback,
+    context: feedbackContext,
+  });
 
   // ── 지도 뷰포트 보존 (M3) — 탭 전환/언마운트 간 center/level 유지 ──
   // useRef 라 리렌더 0. getViewport 는 MapView 마운트 시 1회 호출(render 중 ref 접근 회피),
@@ -858,6 +879,30 @@ export default function App() {
             </Suspense>
           );
         })()}
+
+      {/* 의견 보내기 — 관리자 대시보드에서는 숨김 (세션574) */}
+      {tab !== "admin" && (
+        <FeedbackFab onClick={feedback.openFeedback} isDesktop={isDesktop} liftForMap={tab === "map"} />
+      )}
+      {feedback.open && (
+        <Suspense fallback={null}>
+          <FeedbackForm
+            open={feedback.open}
+            onClose={feedback.closeFeedback}
+            kind={feedback.kind}
+            onKindChange={feedback.setKind}
+            message={feedback.message}
+            onMessageChange={feedback.setMessage}
+            consent={feedback.consent}
+            onConsentChange={feedback.setConsent}
+            submitting={feedback.submitting}
+            canSubmit={feedback.canSubmit}
+            onSubmit={feedback.submit}
+            contextLabel={feedbackContextLabel(feedbackContext)}
+            isPC={isPC || isDesktop}
+          />
+        </Suspense>
+      )}
 
       {/* 로그인 유도 모달 */}
       <LoginPromptModal

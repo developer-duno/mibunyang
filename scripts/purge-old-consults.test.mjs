@@ -4,7 +4,7 @@
  * 보존기간 경과 상담 파기 — 경과 행만 삭제 / 미경과 보존 / 0행 안전 / dry-run / cutoff 계산
  */
 import { describe, it, expect, vi } from "vitest";
-import { purgeOldConsults, cutoffIso, RETENTION_DAYS } from "./purge-old-consults.mjs";
+import { purgeOldConsults, purgeOldFeedback, purgeAll, cutoffIso, RETENTION_DAYS } from "./purge-old-consults.mjs";
 
 /**
  * mock supabase — select(count,head)+lt = count 반환, delete()+lt = error 반환.
@@ -85,5 +85,67 @@ describe("purgeOldConsults", () => {
     await purgeOldConsults(sb, { retentionDays: 180, now });
     // 180일 전 = 2025-12-28
     expect(selectLt).toHaveBeenCalledWith("submitted_at", "2025-12-28T00:00:00.000Z");
+  });
+});
+
+// 세션574: 손님 의견(site_feedback)도 같은 보존기간 365일 — created_at 기준
+describe("purgeOldFeedback", () => {
+  it("site_feedback 표를 created_at < cutoff 로 집계·삭제한다", async () => {
+    const { sb, from, selectLt, deleteLt } = makeSb({ count: 4 });
+    const now = new Date("2026-06-26T00:00:00.000Z");
+    const r = await purgeOldFeedback(sb, { now });
+    expect(r).toMatchObject({ matched: 4, deleted: 4, dryRun: false });
+    expect(from).toHaveBeenCalledWith("site_feedback");
+    expect(from).not.toHaveBeenCalledWith("consults");
+    expect(selectLt).toHaveBeenCalledWith("created_at", "2025-06-26T00:00:00.000Z");
+    expect(deleteLt).toHaveBeenCalledWith("created_at", "2025-06-26T00:00:00.000Z");
+  });
+
+  it("dry-run 이면 삭제 안 함, 0건이면 삭제 호출 안 함", async () => {
+    const a = makeSb({ count: 2 });
+    expect((await purgeOldFeedback(a.sb, { dryRun: true })).deleted).toBe(0);
+    expect(a.del).not.toHaveBeenCalled();
+    const b = makeSb({ count: 0 });
+    expect((await purgeOldFeedback(b.sb)).deleted).toBe(0);
+    expect(b.del).not.toHaveBeenCalled();
+  });
+
+  it("상담 파기는 여전히 consults 표 submitted_at 기준 (회귀 가드)", async () => {
+    const { sb, from, selectLt } = makeSb({ count: 0 });
+    const now = new Date("2026-06-26T00:00:00.000Z");
+    await purgeOldConsults(sb, { now });
+    expect(from).toHaveBeenCalledWith("consults");
+    expect(selectLt).toHaveBeenCalledWith("submitted_at", "2025-06-26T00:00:00.000Z");
+  });
+});
+
+describe("purgeAll", () => {
+  it("상담·의견 둘 다 파기하고 삭제 수를 합산한다 (같은 PHASE 한 행)", async () => {
+    const { sb, from } = makeSb({ count: 3 });
+    const r = await purgeAll(sb);
+    expect(r.deleted).toBe(6);
+    expect(r.errors).toEqual([]);
+    expect(from.mock.calls.map((c) => c[0])).toEqual(["consults", "consults", "site_feedback", "site_feedback"]);
+  });
+
+  it("한쪽이 실패해도 다른 쪽은 파기하고, 실패는 errors 로 돌려준다", async () => {
+    const deleteLt = vi.fn().mockResolvedValue({ error: null });
+    const consultCount = vi.fn().mockResolvedValue({ count: 0, error: { message: "boom" } });
+    const feedbackCount = vi.fn().mockResolvedValue({ count: 2, error: null });
+    const from = vi.fn((t) => ({
+      select: () => ({ lt: t === "consults" ? consultCount : feedbackCount }),
+      delete: () => ({ lt: deleteLt }),
+    }));
+    const r = await purgeAll(/** @type {any} */ ({ from }));
+    expect(r.deleted).toBe(2);
+    expect(r.errors).toHaveLength(1);
+    expect(r.errors[0]).toMatch(/^consults: count 실패/);
+  });
+
+  it("dry-run 은 양쪽 모두 삭제 0", async () => {
+    const { sb, del } = makeSb({ count: 5 });
+    const r = await purgeAll(sb, { dryRun: true });
+    expect(r.deleted).toBe(0);
+    expect(del).not.toHaveBeenCalled();
   });
 });
