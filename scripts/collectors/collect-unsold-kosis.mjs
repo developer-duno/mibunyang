@@ -19,7 +19,7 @@
  * unsold_history 도 만들지 않는다. 분모에는 남긴다. 해제는 backfill-unsold-source.mjs 계획 파일로만.
  */
 import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
-import { isLeasePresale } from "../../src/constants/leaseTypes.mjs";
+import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 import { writeFileSync } from "node:fs";
 
 /** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
@@ -239,7 +239,7 @@ export function resolveKosisGuKey(region, gu, guMap) {
  *    사람 결정이라 어떤 자동 판정에도 섞지 않는다). **분모(`unitsByKosisKey`)에는 그대로 남는다** —
  *    빼면 같은 시의 다른 단지 추정치가 바뀐다(보류는 "이 단지 값을 안 쓴다"이지 "이 단지가 없다"가 아니다).
  * 1. 무효(지역·구·세대수≤1) → `skip_invalid`
- * 2. 임대형(presale_type) → `skip_lease`(분모에서도 제외)
+ * 2. 임대형(presale_type 또는 이름 — isLeaseUnit, 세션577) → `skip_lease`(분모에서도 제외)
  * 3. `unsold_source === "applyhome"` → `skip_preserved`(존중). **C6(세션569)**: 공고일 + 6개월이 지났으면
  *    존중하지 않고 5번으로 간다(행에 `applyhomeExpired: true` 표시 — 전이표에서 따로 센다). 공고일이
  *    비었으면 `skip_applyhome_no_date`(존중 유지 + 경고 마커 APPLYHOME_NO_DATE).
@@ -296,7 +296,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
     const guMap = unsoldByRegionGu[apt.region];
     const kosisKey = resolveKosisGuKey(apt.region, apt.gu, guMap);
     keyByAptId.set(apt.id, kosisKey);
-    if (!kosisKey || isLeasePresale(apt.presale_type)) continue;
+    if (!kosisKey || isLeaseUnit(apt)) continue;
     const denomKey = `${apt.region}::${kosisKey}`;
     unitsByKosisKey[denomKey] = (unitsByKosisKey[denomKey] || 0) + apt.units;
   }
@@ -332,8 +332,8 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       continue;
     }
 
-    // 규칙 2 — 임대형.
-    if (isLeasePresale(apt.presale_type)) {
+    // 규칙 2 — 임대형 = 유형(presale_type) 또는 이름(국민임대·행복주택·장기전세·재개발임대, 세션577 — isLeaseUnit).
+    if (isLeaseUnit(apt)) {
       plan.push({ ...base, action: "skip_lease" });
       continue;
     }
@@ -839,7 +839,7 @@ export async function main() {
       const monthMap = allMonthsMap[apt.region];
       const kosisKey = monthMap ? resolveKosisGuKey(apt.region, apt.gu, /** @type {any} */ (monthMap)) : null;
       historyKeyByAptId.set(apt.id, kosisKey);
-      if (!kosisKey || isLeasePresale(apt.presale_type)) continue;
+      if (!kosisKey || isLeaseUnit(apt)) continue;
       const denomKey = `${apt.region}::${kosisKey}`;
       unitsByGuForHistory[denomKey] = (unitsByGuForHistory[denomKey] || 0) + apt.units;
     }
@@ -853,7 +853,7 @@ export async function main() {
     if (holdHistoryExcluded.length > 0) log(PHASE, `unsold_history hold 제외: ${holdHistoryExcluded.length}건`);
     for (const apt of historyApartments) {
       if (!apt.region || !apt.units || apt.units <= 1) continue;
-      if (isLeasePresale(apt.presale_type)) continue;
+      if (isLeaseUnit(apt)) continue;
 
       const monthMap = allMonthsMap[apt.region];
       if (!monthMap) continue;

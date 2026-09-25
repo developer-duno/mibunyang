@@ -15,7 +15,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { LEASE_PRESALE_TYPES, isLeasePresale, excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
+import { LEASE_PRESALE_TYPES, LEASE_NAME_PATTERN, isLeasePresale, isLeaseName, isLeaseUnit, excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -104,6 +104,80 @@ describe("leaseTypes — excludeLeaseUnits", () => {
   });
 });
 
+// ── 이름 규칙 (세션577) — 유형이 분양으로 잘못 온 임대 8곳 (DB 실측 2026-09-26) ──
+/** 이름에 임대 낱말이 있는데 presale_type 이 민간분양/공공분양 인 실측 8곳 */
+const NAME_LEASE_8 = [
+  { id: "ap-6027713", name: "센트레빌아스테리움시그니처 장기전세", presale_type: "민간분양" },
+  { id: "ap-6028667", name: "두산위브더프레스티지 장기전세", presale_type: "민간분양" },
+  { id: "ap-6021553", name: "안성아양5 국민임대", presale_type: "민간분양" },
+  { id: "ap-6023146", name: "평택고덕A-2블록 국민임대", presale_type: "공공분양" },
+  { id: "ap-6026602", name: "신길센트럴자이 재개발임대", presale_type: "민간분양" },
+  { id: "ap-6006404", name: "상수2구역 재개발임대", presale_type: "민간분양" },
+  { id: "ap-6028642", name: "남양주진접2 A-4블록 행복주택", presale_type: "공공분양" },
+  { id: "ap-6025559", name: "힐스테이트클래시안 재개발임대", presale_type: "민간분양" },
+];
+/** 이름에 '임대'가 있지만 분양이 맞는 2곳(토지임대부 분양주택) */
+const LAND_LEASE_SALE_2 = [
+  { id: "ap-6026860", name: "고덕강일3단지 토지임대부 사전청약", presale_type: "공공분양" },
+  { id: "ap-6027352", name: "마곡지구16단지 토지임대부 사전청약(나눔형)", presale_type: "공공분양" },
+];
+
+describe("leaseTypes — isLeaseName (이름 규칙 4개)", () => {
+  it("실측 8곳 이름을 전부 임대로 판정한다", () => {
+    for (const r of NAME_LEASE_8) expect(isLeaseName(r.name), r.name).toBe(true);
+  });
+
+  it("재개발임대 3곳을 임대로 판정한다 (뮤테이션 a 앵커)", () => {
+    expect(isLeaseName("신길센트럴자이 재개발임대")).toBe(true);
+    expect(isLeaseName("상수2구역 재개발임대")).toBe(true);
+    expect(isLeaseName("힐스테이트클래시안 재개발임대")).toBe(true);
+  });
+
+  it("토지임대부(분양) 2곳은 임대가 아니다 — 넓은 '임대' 판정 금지 (뮤테이션 c 앵커)", () => {
+    expect(isLeaseName("고덕강일3단지 토지임대부 사전청약")).toBe(false);
+    expect(isLeaseName("마곡지구16단지 토지임대부 사전청약(나눔형)")).toBe(false);
+  });
+
+  it("일반 분양 이름·비문자열·빈 문자열은 false", () => {
+    expect(isLeaseName("힐스테이트 앞산 센트럴")).toBe(false);
+    expect(isLeaseName("이안 리츠카운티")).toBe(false);
+    expect(isLeaseName(null)).toBe(false);
+    expect(isLeaseName(undefined)).toBe(false);
+    expect(isLeaseName("")).toBe(false);
+    expect(isLeaseName(123)).toBe(false);
+  });
+
+  it("LEASE_NAME_PATTERN 은 4개 낱말 그대로다", () => {
+    expect(LEASE_NAME_PATTERN.source).toBe("국민임대|행복주택|장기전세|재개발임대");
+  });
+});
+
+describe("leaseTypes — isLeaseUnit (유형 또는 이름)", () => {
+  it("유형이 분양이어도 이름이 임대면 true", () => {
+    expect(isLeaseUnit({ presale_type: "민간분양", name: "안성아양5 국민임대" })).toBe(true);
+  });
+
+  it("유형이 임대면 이름과 무관하게 true (camelCase)", () => {
+    expect(isLeaseUnit({ presaleType: "국민임대", name: "아무 이름" })).toBe(true);
+  });
+
+  it("토지임대부 분양은 false, 둘 다 null 이면 false", () => {
+    expect(isLeaseUnit({ presale_type: "공공분양", name: "고덕강일3단지 토지임대부 사전청약" })).toBe(false);
+    expect(isLeaseUnit({ presale_type: null, name: null })).toBe(false);
+    expect(isLeaseUnit(null)).toBe(false);
+  });
+
+  it("excludeLeaseUnits 가 이름-임대 8곳을 빼고 토지임대부 2곳·일반 분양은 남긴다", () => {
+    const rows = [
+      ...NAME_LEASE_8,
+      ...LAND_LEASE_SALE_2,
+      { id: "normal-1", name: "힐스테이트 앞산 센트럴", presale_type: "민간분양" },
+      { id: "camel-lease", name: "어떤단지 국민임대", presaleType: "공공분양" },
+    ];
+    expect(excludeLeaseUnits(rows).map((r) => r.id)).toEqual(["ap-6026860", "ap-6027352", "normal-1"]);
+  });
+});
+
 describe("배선 가드 — 출력 길목에 실제로 꽂혀 있는가", () => {
   it("collect-data.mjs writeOutputs 가 걸러진 배열로 전 출력을 만든다", () => {
     // 출력 3종 = apartments.json · apartments-list.json · 상세 버킷.
@@ -147,6 +221,23 @@ describe("배선 가드 — 출력 길목에 실제로 꽂혀 있는가", () => 
     expect(src).toMatch(/const\s+visible\s*=\s*excludeLeaseUnits\(\s*allData\s*\)/);
     expect(src).toMatch(/const\s+cleaned\s*=\s*visible\.map\(\s*sanitize\s*\)/);
     expect(src).toMatch(/count:\s*cleaned\.length/);
+  });
+
+  it("collect-unsold-kosis.mjs 는 유형만 보는 옛 판정(isLeasePresale(apt.presale_type))을 쓰지 않는다 (세션577)", () => {
+    const src = readStripped("scripts/collectors/collect-unsold-kosis.mjs");
+    expect(src.match(/isLeasePresale\(\s*apt\.presale_type\s*\)/g) ?? []).toHaveLength(0);
+    expect(src).toMatch(/import\s*\{[^}]*\bisLeaseUnit\b[^}]*\}\s*from\s*["']\.\.\/\.\.\/src\/constants\/leaseTypes\.mjs["']/);
+  });
+
+  it("collect-unsold-kosis.mjs 의 임대 제외 4곳(분모·규칙 2·history 분모·history 행)이 isLeaseUnit(apt) 다 — 좌변 고정", () => {
+    const src = readStripped("scripts/collectors/collect-unsold-kosis.mjs");
+    // 분모 2곳(planUnsoldUpdates 1단계 · unsold_history 분모) — `if (!kosisKey || isLeaseUnit(apt)) continue;`
+    expect(src.match(/if \(!kosisKey \|\| isLeaseUnit\(apt\)\) continue;/g) ?? []).toHaveLength(2);
+    // 규칙 2 — `if (isLeaseUnit(apt)) {` 다음 줄이 skip_lease
+    expect(src).toMatch(/if \(isLeaseUnit\(apt\)\) \{\s*plan\.push\(\{ \.\.\.base, action: "skip_lease" \}\);/);
+    // history 행 생성 루프 — `if (isLeaseUnit(apt)) continue;`
+    expect(src.match(/if \(isLeaseUnit\(apt\)\) continue;/g) ?? []).toHaveLength(1);
+    expect(src.match(/isLeaseUnit\(apt\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
   });
 
   it("네 길목 전부 단일 출처(src/constants/leaseTypes.mjs)를 import 한다 — 목록 복제 금지", () => {

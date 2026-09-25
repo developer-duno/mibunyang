@@ -18,6 +18,14 @@
 //   ② 오폭: '민간분양' 계열에 '임대'가 섞인 값이 새로 생기면 분양 단지를 지워버린다.
 //   → 실측한 값만 명시 열거한다. 새 presaleType 이 나타나면 이 배열에 손으로 추가할 것.
 //     (수집기는 무변경 — DB 에는 계속 쌓이므로 나중에 추가해도 데이터 손실 0)
+//
+// 이름 규칙 4개(2026-09-26, 세션577) — 유형만으로는 못 잡는 임대가 있다.
+//   DB 실측(2026-09-26): 이름에 국민임대·행복주택·장기전세·재개발임대가 들어 있는데
+//   presale_type 이 '민간분양'/'공공분양' 인 행 8곳(네이버 분양 목록이 임대 공고에 유형을 분양으로 줬다).
+//   presale_type 은 naver-presale.mjs 가 **매 회차 덮어쓰므로** 데이터를 고쳐도 되돌아간다 → 판정을 코드에 둔다.
+//   → 유형 목록과 같은 원칙: 넓은 '임대' 부분 문자열이 아니라 **실측한 4개 낱말만** 명시 열거한다.
+//   ⚠️ '토지임대부'는 넣지 않는다 — 토지임대부 **분양**주택이다(실측 2곳: 고덕강일3단지·마곡지구16단지
+//      토지임대부 사전청약, 둘 다 공공분양). 넓은 '임대' 판정이면 이 둘이 지워진다(위 ② 오폭의 실물).
 
 /** @type {readonly string[]} 손님 화면에서 제외할 presaleType 실측값 */
 export const LEASE_PRESALE_TYPES = Object.freeze([
@@ -47,7 +55,34 @@ export function isLeasePresale(presaleType) {
 }
 
 /**
- * 손님 화면 출력에서 임대형 단지를 걸러낸다.
+ * 이름으로 판정하는 임대 낱말 4개(세션577 실측). 넓은 '임대' 금지 — '토지임대부'(분양)가 걸린다.
+ * @type {RegExp}
+ */
+export const LEASE_NAME_PATTERN = /국민임대|행복주택|장기전세|재개발임대/;
+
+/**
+ * 단지 이름에 임대 낱말(LEASE_NAME_PATTERN)이 들어 있는가.
+ * 문자열이 아니거나 빈 문자열이면 false(분양으로 간주 — isLeasePresale 과 같은 쪽으로 기운다).
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+export function isLeaseName(name) {
+  return typeof name === "string" && name !== "" && LEASE_NAME_PATTERN.test(name);
+}
+
+/**
+ * 임대 단지인가 = 유형(presaleType/presale_type)이 임대 **또는** 이름에 임대 낱말.
+ * camelCase(정적 JSON·VIEW)와 snake_case(apartments 원본) 양쪽 키를 본다.
+ * @param {{ presaleType?: unknown; presale_type?: unknown; name?: unknown } | null | undefined} row
+ * @returns {boolean}
+ */
+export function isLeaseUnit(row) {
+  if (!row || typeof row !== "object") return false;
+  return isLeasePresale(row.presaleType ?? row.presale_type) || isLeaseName(row.name);
+}
+
+/**
+ * 손님 화면 출력에서 임대형 단지를 걸러낸다(유형 또는 이름 — isLeaseUnit).
  * camelCase(`presaleType`, apartments_flat VIEW·정적 JSON)와
  * snake_case(`presale_type`, apartments 원본 테이블) 양쪽 키를 모두 본다.
  * @template {Record<string, unknown>} T
@@ -58,6 +93,6 @@ export function excludeLeaseUnits(rows) {
   if (!Array.isArray(rows)) return [];
   return rows.filter((r) => {
     if (!r || typeof r !== "object") return true;
-    return !isLeasePresale(r.presaleType ?? r.presale_type);
+    return !isLeaseUnit(r);
   });
 }

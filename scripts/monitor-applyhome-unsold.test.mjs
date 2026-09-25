@@ -115,13 +115,14 @@ describe("⑫ main 배선 (소스)", () => {
 });
 
 describe("⑫ (d)(e) 사람 보류(hold) — 세션570", () => {
-  it("기준 명단은 결정된 13곳(정렬) 그대로 — 세션570 11곳 + 세션571 대표 2행(910303·910363)", () => {
+  it("기준 명단은 결정된 14곳(정렬) 그대로 — 세션570 11곳 + 세션571 대표 2행(910303·910363) + 세션577 음성아이파크(ap-6026677)", () => {
     expect([...HOLD_BASELINE_IDS]).toEqual([
       "ah-2021910123", "ah-2021910165", "ah-2022910170", "ah-2022910216", "ah-2022910285", "ah-2022910303",
       "ah-2022910320", "ah-2022910325", "ah-2022910363", "ah-2025910235", "ah-2025910236", "ah-2025910250",
       "ah-2025910274",
+      "ap-6026677",
     ]);
-    expect([...HOLD_BASELINE_IDS].length).toBe(13);
+    expect([...HOLD_BASELINE_IDS].length).toBe(14);
     expect([...HOLD_BASELINE_IDS]).toEqual([...HOLD_BASELINE_IDS].sort());
     expect(HOLD_REVIEW_MONTHS).toBe(6);
   });
