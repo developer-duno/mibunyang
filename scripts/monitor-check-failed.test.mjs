@@ -8,6 +8,11 @@ import {
   checkFailedIssue,
   isAlwaysDedup,
   dedupScope,
+  dedupKey as dedupKeyOf,
+  HOLD_ALERT_KEY_PREFIX,
+  HOLD_BASELINE_IDS,
+  holdAlertResolved,
+  checkApplyhomeUnsold,
 } from "./monitor-collectors.mjs";
 import { formatIssue } from "./notify-telegram.mjs";
 
@@ -38,6 +43,8 @@ function okDeps() {
     fetchFailureRuns: async () => [
       { collector: "kosis-unsold", status: "failure", ok_count: 0, fail_count: 0, error_message: "차단기", finished_at: new Date().toISOString() },
     ],
+    // 운영 monitor_alert_state 를 절대 지우지 않게 — 시험은 항상 가짜(세션572)
+    clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
 }
 
@@ -77,6 +84,7 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
       fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchFailureRuns: boom,
+      clearHoldAlertKeys: async () => {},
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
@@ -115,5 +123,80 @@ describe("main 배선 (소스)", () => {
 
   it("daily 스윕이 runDailyGuardedChecks 결과를 issues 에 싣는다", () => {
     expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);/);
+  });
+
+  // ⑫(d) 열쇠 삭제가 접두 전체를 지우는지(정확일치로 좁아지면 다른 단지의 hold 열쇠가 남는다) — 세션572 검사관 🟡1
+  it("clearAlertKeysByPrefix 가 LIKE 접두 삭제를 쓴다(정확일치로 좁히면 안 된다)", () => {
+    const start = src.indexOf("async function clearAlertKeysByPrefix(prefix)");
+    expect(start).toBeGreaterThan(-1);
+    const end = src.indexOf("\n}", start);
+    const body = src.slice(start, end);
+    expect(body).toContain('.from("monitor_alert_state")');
+    expect(body).toContain(".delete(");
+    expect(body).toContain('.like("alert_key", `${prefix}%`)');
+  });
+});
+
+// 감시 ⑫(d) 해소 날 hold 열쇠 삭제(세션572 — 세션571 검사관 🟡5: 한 번 울린 열쇠가 영원히 남아 재발이 침묵)
+/** @param {string} id */
+const holdRow = (id) => ({ id, name: `보류${id}`, unsold: null, unsold_source: "hold", unsold_as_of: "2026-09-24", competition_shortfall: null });
+
+describe("⑫(d) 해소 시 hold 열쇠 삭제(세션572)", () => {
+  /** @param {Array<Record<string, any>>} ahRows */
+  function depsWith(ahRows) {
+    /** @type {string[]} */
+    const calls = [];
+    const deps = {
+      ...okDeps(),
+      fetchAhRows: async () => ahRows,
+      clearHoldAlertKeys: async (/** @type {string} */ prefix) => { calls.push(prefix); },
+    };
+    return { deps, calls };
+  }
+
+  it("① DB hold 명단 = 기준(13곳) → 삭제 1회, 인자 = HOLD_ALERT_KEY_PREFIX", async () => {
+    const { deps, calls } = depsWith(HOLD_BASELINE_IDS.map(holdRow));
+    const issues = await runDailyGuardedChecks(deps);
+    expect(issues.some((i) => String(i.at ?? "").startsWith("hold:"))).toBe(false);
+    expect(calls).toEqual([HOLD_ALERT_KEY_PREFIX]);
+  });
+
+  it("② DB 명단 ≠ 기준(12곳) → 삭제 0회 + (d) 이슈 1건", async () => {
+    const { deps, calls } = depsWith(HOLD_BASELINE_IDS.slice(1).map(holdRow));
+    const issues = await runDailyGuardedChecks(deps);
+    expect(issues.filter((i) => String(i.at ?? "").startsWith("hold:"))).toHaveLength(1);
+    expect(calls).toEqual([]);
+  });
+
+  it("③ ⑫ 조회가 throw → 삭제 0회 + check-failed 1건(hold 0 을 해소로 오독하지 않는다)", async () => {
+    const { deps, calls } = depsWith([]);
+    deps.fetchAhRows = async () => { throw new Error("boom-ah"); };
+    const issues = await runDailyGuardedChecks(deps);
+    expect(failed(issues)).toHaveLength(1);
+    expect(failed(issues)[0].detail).toBe("⑫ 청약홈 미분양 값 점검 실행 실패 — boom-ah");
+    expect(calls).toEqual([]);
+  });
+
+  it("④ holdAlertResolved — (d) 만 있으면 false · (a)(b)(c)(e) 만 있으면 true · 빈 배열 true", () => {
+    const now = new Date("2026-10-08T21:00:00Z");
+    const d = checkApplyhomeUnsold([holdRow("h-1")], { now, holdBaseline: ["h-2"] });
+    expect(d.map((i) => String(i.at).split(":")[0])).toEqual(["hold"]);
+    expect(holdAlertResolved(d)).toBe(false);
+    const others = checkApplyhomeUnsold([
+      { id: "ah-a", name: "a", unsold: 10, unsold_source: "applyhome", unsold_as_of: "2020-01-01", competition_shortfall: 3 },
+      { id: "ah-b", name: "b", unsold: 10, unsold_source: "applyhome", unsold_as_of: null, competition_shortfall: 3 },
+      { id: "ah-c", name: "c", unsold: 10, unsold_source: "applyhome", unsold_as_of: "2026-08-14", competition_shortfall: 0 },
+      { ...holdRow("h-1"), unsold_as_of: "2025-01-01" },
+    ], { now, holdBaseline: ["h-1"] });
+    expect(others.map((i) => String(i.at).split(":")[0]).sort()).toEqual(["expired", "holdstale", "nodate", "soldout"]);
+    expect(holdAlertResolved(others)).toBe(true);
+    expect(holdAlertResolved([])).toBe(true);
+  });
+
+  it("HOLD_ALERT_KEY_PREFIX = dedupKey 형식의 (d) 접두, LIKE 와일드카드 없음", () => {
+    expect(HOLD_ALERT_KEY_PREFIX).toBe("applyhome-unsold|unsold-applyhome|hold:");
+    expect(HOLD_ALERT_KEY_PREFIX).not.toMatch(/[_%]/);
+    const d = checkApplyhomeUnsold([holdRow("h-1")], { holdBaseline: ["h-2"] });
+    expect(dedupKeyOf(d[0]).startsWith(HOLD_ALERT_KEY_PREFIX)).toBe(true);
   });
 });

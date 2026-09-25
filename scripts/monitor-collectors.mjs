@@ -1003,6 +1003,13 @@ export const HOLD_BASELINE_IDS = Object.freeze([
   "ah-2025910274",
 ]);
 
+/**
+ * ⑫(d) 열쇠 접두 — DB hold 명단이 기준과 같아진 날(해소) 이 접두의 열쇠를 `monitor_alert_state` 에서 지운다.
+ * 안 지우면 한 번 울린 열쇠가 영원히 남아 **같은 사고가 다시 나도 침묵**한다(세션571 검사관 🟡5, 세션572).
+ * 손으로 문자열을 적지 않고 `dedupKey` 로 만든다 — 열쇠 형식이 바뀌어도 어긋나지 않게.
+ */
+export const HOLD_ALERT_KEY_PREFIX = dedupKey({ kind: "applyhome-unsold", collector: "unsold-applyhome", detail: "", at: "hold:" });
+
 /** ⑫(e) 보류 재검토 기간(개월) — 보류일(unsold_as_of) + 이 기간이 지나면 재검토 알림. 자동 해제는 없다. */
 export const HOLD_REVIEW_MONTHS = 6;
 
@@ -1099,7 +1106,9 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
         "hold = 사람이 '자료 없음'을 확정해 수집기가 덮지 않는 단지입니다. 기준 명단은 monitor-collectors.mjs 의 HOLD_BASELINE_IDS.",
         "의도한 변경(backfill-unsold-source.mjs 의 mark_hold·release_hold_*)이면 기준 명단을 같은 PR 에서 고치세요. 아니면 누가 출처를 바꿨는지 확인하세요.",
       ],
-      at: `hold:${fingerprintIds(holdIds)}`,
+      // 열쇠 = DB 명단 지문 + 기준 명단 지문 — 기준만 바뀐 사고도 새 열쇠(세션571 검사관 🟡2).
+      // 구분자 '+' 는 지문(8자리 16진수)에도 dedupKey 의 '|' 에도 안 나온다.
+      at: `hold:${fingerprintIds(holdIds)}+${fingerprintIds(holdBaseline)}`,
     });
   }
   const holdStale = hold.filter((r) => isApplyhomeExpired(r.unsold_as_of, now, HOLD_REVIEW_MONTHS) === true);
@@ -1116,6 +1125,16 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
     });
   }
   return issues;
+}
+
+/**
+ * ⑫(d) 가 해소됐나 — `checkApplyhomeUnsold` 결과에 (d)(`at` 이 `hold:` 로 시작) 이슈가 없으면 true.
+ * (e) `holdstale:` 는 `hold:` 로 시작하지 않으므로 섞이지 않는다.
+ * @param {Issue[]} ahIssues
+ * @returns {boolean}
+ */
+export function holdAlertResolved(ahIssues) {
+  return !ahIssues.some((i) => String(i.at ?? "").startsWith("hold:"));
 }
 
 /**
@@ -2291,6 +2310,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchRegionRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
  *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
+ *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
  */
@@ -2301,6 +2321,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchRegionRuns = deps.fetchRegionRuns ?? fetchRegionUnresolvedRuns;
   const fetchAhRows = deps.fetchAhRows ?? fetchApplyhomeUnsoldRows;
   const fetchFailureRuns = deps.fetchFailureRuns ?? (() => fetchRecentFailureRuns());
+  const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
 
@@ -2356,6 +2377,9 @@ export async function runDailyGuardedChecks(deps = {}) {
     const ahIssues = checkApplyhomeUnsold(ahRows);
     const holdCount = ahRows.filter((r) => r?.unsold_source === "hold").length;
     console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length - holdCount}곳 · hold ${holdCount}곳 → 이상 ${ahIssues.length}건`);
+    // (d) 해소(DB hold 명단 = 기준) 날 옛 hold 열쇠를 지운다 — 같은 사고가 다시 나면 다시 울리게(세션572).
+    // 조회가 throw 한 날은 runFailOpenCheck 가 먼저 잡아 여기까지 안 온다(hold 0 을 해소로 오독하지 않는다).
+    if (holdAlertResolved(ahIssues)) await clearHoldAlertKeys(HOLD_ALERT_KEY_PREFIX);
     return ahIssues;
   }));
 
@@ -2790,6 +2814,27 @@ async function recordSentAlerts(issues) {
     if (error) console.log(`[monitor] dedup 상태 기록 실패(다음 중복 1회 가능): ${error.message}`);
   } catch (err) {
     console.log(`[monitor] dedup 상태 기록 오류: ${err instanceof Error ? err.message : String(err)}`);
+  }
+}
+
+/**
+ * 접두가 같은 알림 열쇠를 monitor_alert_state 에서 지운다 — ⑫(d) 해소 날 전용(세션572).
+ * 실패는 throw 하지 않는다(fail-open) — dedup 인프라 오류가 감시를 막으면 안 된다(fetchSentAlertKeys 와 같은 철학).
+ * ⚠️ prefix 에 LIKE 와일드카드(`_`·`%`)가 없어야 한다(HOLD_ALERT_KEY_PREFIX 는 없다 — 시험이 지킨다).
+ * @param {string} prefix
+ * @returns {Promise<void>}
+ */
+async function clearAlertKeysByPrefix(prefix) {
+  try {
+    const sb = getSupabase();
+    const { count, error } = await sb.from("monitor_alert_state").delete({ count: "exact" }).like("alert_key", `${prefix}%`);
+    if (error) {
+      console.log(`[monitor] ⑫(d) 열쇠 정리 실패(감시는 계속): ${error.message}`);
+      return;
+    }
+    if ((count ?? 0) > 0) console.log(`[monitor] ⑫(d) 해소 — hold 열쇠 ${count}개 삭제(같은 사고가 다시 나면 다시 울린다)`);
+  } catch (err) {
+    console.log(`[monitor] ⑫(d) 열쇠 정리 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
   }
 }
 

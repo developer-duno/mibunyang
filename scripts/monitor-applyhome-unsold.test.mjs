@@ -130,13 +130,34 @@ describe("⑫ (d)(e) 사람 보류(hold) — 세션570", () => {
     expect(checkApplyhomeUnsold(HOLD_BASELINE_IDS.map((id) => hold(id)), { now: NOW })).toEqual([]);
   });
 
-  it("(d) 추가·해제를 id 로 펼치고, at 은 DB hold 명단 지문", () => {
+  it("(d) 추가·해제를 id 로 펼치고, at 은 DB hold 명단 지문 + 기준 명단 지문(세션572)", () => {
     const rows = [hold("h-1"), hold("h-new")];
     const d = byPrefix(checkApplyhomeUnsold(rows, { now: NOW, holdBaseline: ["h-1", "h-2"] }), "hold:");
     expect(d?.kind).toBe("applyhome-unsold");
     expect(d?.detail).toContain("추가 1: h-new");
     expect(d?.detail).toContain("해제 1: h-2");
-    expect(d?.at).toBe(`hold:${fingerprintIds(["h-1", "h-new"])}`);
+    expect(d?.at).toBe(`hold:${fingerprintIds(["h-1", "h-new"])}+${fingerprintIds(["h-1", "h-2"])}`);
+  });
+
+  it("(d) ★ 같은 DB 명단이어도 기준 명단이 다르면 at 이 다르다 — 기준만 바뀐 사고도 새 열쇠(세션572)", () => {
+    const rows = [hold("h-1"), hold("h-2")];
+    const d1 = byPrefix(checkApplyhomeUnsold(rows, { now: NOW, holdBaseline: ["h-1", "h-3"] }), "hold:");
+    const d2 = byPrefix(checkApplyhomeUnsold(rows, { now: NOW, holdBaseline: ["h-1", "h-4"] }), "hold:");
+    expect(d1).toBeDefined();
+    expect(d2).toBeDefined();
+    expect(d1?.at).not.toBe(d2?.at);
+  });
+
+  it("(d) 같은 DB·같은 기준이면 at 이 같다(하루 지나도) — dedup 이 이어진다", () => {
+    const rows = [hold("h-1")];
+    const opts = { holdBaseline: ["h-1", "h-2"] };
+    const d1 = byPrefix(checkApplyhomeUnsold(rows, { ...opts, now: NOW }), "hold:");
+    const d2 = byPrefix(checkApplyhomeUnsold(rows, { ...opts, now: new Date(NOW.getTime() + 86400000) }), "hold:");
+    expect(d1?.at).toBeDefined();
+    expect(d1?.at).toBe(d2?.at);
+    // 기준 명단 순서가 달라도 같은 열쇠(정렬 후 지문)
+    const d3 = byPrefix(checkApplyhomeUnsold(rows, { holdBaseline: ["h-2", "h-1"], now: NOW }), "hold:");
+    expect(d3?.at).toBe(d1?.at);
   });
 
   it("(d) ★ 개수가 같아도(하나 풀리고 하나 생김) 알린다 — 같은 명단이면 침묵", () => {
@@ -148,7 +169,7 @@ describe("⑫ (d)(e) 사람 보류(hold) — 세션570", () => {
   it("(d) hold 가 하나도 없으면(backfill 전·전부 풀림) 해제 N 으로 알린다", () => {
     const d = byPrefix(checkApplyhomeUnsold([], { now: NOW, holdBaseline: ["h-1"] }), "hold:");
     expect(d?.detail).toContain("해제 1: h-1");
-    expect(d?.at).toBe(`hold:${fingerprintIds([])}`);
+    expect(d?.at).toBe(`hold:${fingerprintIds([])}+${fingerprintIds(["h-1"])}`);
   });
 
   it("(e) 보류일 + 6개월이 지나야 재검토 알림 — 그 전은 침묵, 자동 해제 문구 포함", () => {
