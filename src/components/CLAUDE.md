@@ -134,3 +134,8 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 
 - 키보드 단축키: 1~5 프로필, Ctrl+Z undo, Ctrl+Shift+Z redo, Escape 모달닫기
 - 헤더 화이트 테마: C.borderStrong("#D1D5DB"), 모바일 borderBottom 1.5px
+
+## 세션576 (2026-09-26) — 면적·주차 표시 규칙
+- **면적 없음 판정 한 곳** `src/lib/area.ts hasKnownArea(area)`(null·0·음수 = 없음, 점수 엔진 `_noArea` 와 동일) — `PriceTable`·`LoanAnalysis` 는 면적 없으면 표를 거르지 않고 "전체 면적", `DetailModal` 헤더는 ㎡ 토큰을 뺀다(D2 #627). 전세 표 라벨은 전세 표 자신의 필터 여부(E4).
+- **주차대수 0 = 원천 미기재** → `PresaleInfo` 줄 숨김, `fieldMeta.presaleParking` "미수집"(D5 #629). 편차 막대(`DeviationStrip`)는 `spec.fallback{from, estimate}` 로 실측 없으면 추정치를 쓰되 **값만**(`추정 1.13대/세대`, state `"estimated"`, 막대 위치·비교 문구 없음 — 추정 오차 > 분포 폭, D5-b #631). memo 비교는 `deviationInputsEqual`(추정 재료까지 같은 순회). 카드 편차 3줄엔 주차 없음.
+- 화면 결함 지시서를 쓸 땐 **그 문구를 그리는 부품**을 먼저 확정한다(`fieldMeta` 표는 `tabExtraFields` 가 편차 필드를 빼서 손님 종합 탭에 안 그려짐 — 관리자 감사 화면 전용). 정본 = `.claude/WORK_RULES.md` Plan 절.

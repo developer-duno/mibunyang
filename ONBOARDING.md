@@ -75,7 +75,7 @@ mibunyang/
 
 | 자원 | 상세 |
 |---|---|
-| Supabase DB | mibunyang `rwdtljipvmqpazrimyns` / naver-estate-web `gcfckzqrcujktloilwpz` |
+| Supabase DB | mibunyang **과 naver-estate-web(2u) 모두** `rwdtljipvmqpazrimyns`(대시보드 "네이버에스테이트", 2026-09-23 실측 — 루트 CLAUDE.md 공유 인프라 표). `gcfckzqrcujktloilwpz` 는 공용 프로젝트 **iroum-shared(옛 chita-market, 2026-09-26 개명)** — 이 저장소 코드·설정에서 참조 0 |
 | data.go.kr API Key | MOLIT_KEY 일일 10,000건 공유 |
 | 집 서버 IP | 192.168.219.101 (네이버 수집) |
 | Vercel Team | `developer-dunos-projects` |

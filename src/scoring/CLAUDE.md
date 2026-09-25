@@ -10,3 +10,6 @@
 (`paths: src/scoring/**`, `src/constants/{scoringTiers,brands,profiles}*` — 이 디렉토리를 수정·조회할 때 자동 로드).
 
 ⚠️ 파일을 안 읽고 `node -e` 로 DB 만 만지는 세션에서는 안 불려온다 — 해당하면 직접 Read.
+
+## 세션576 (2026-09-26) — 주차 산식 위치
+- 주차 비율 **추정 산식은 `src/constants/parkingEstimate.ts` 한 곳**(`estimateParkingRatio(presaleParking, units, presaleGeneralSupply)` = 주차대수 ÷ max(총세대, 일반분양, 1), `0 < r ≤ 3` 만 값). `scoreProduct.ts` 는 이 함수를 부른다(값·문구 무변경, 리팩터 전후 동일성 시험 `parkingEstimate.test.js`). constants → scoring 방향 import 금지(순환) — 그래서 constants 층에 둔다.
