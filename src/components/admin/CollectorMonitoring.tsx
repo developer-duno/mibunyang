@@ -252,7 +252,11 @@ export function CollectorMonitoring({ showToast }: { showToast: ShowToast }) {
                         ) : (
                           <div style={S.detailEmpty}>수집 실행 기록이 아직 없습니다 (API 호출 기록만 있음)</div>
                         )}
-                        {marker && <div style={marker.tone === "warn" ? S.runWarn : S.runError}>{marker.text}</div>}
+                        {marker && (
+                          <div data-tone={marker.tone} style={marker.tone === "warn" ? S.runWarn : S.runError}>
+                            {marker.text}
+                          </div>
+                        )}
                         {quotaText && <div style={S.quota}>API 호출: {quotaText}</div>}
                       </div>
                     )}

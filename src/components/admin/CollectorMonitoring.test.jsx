@@ -1,8 +1,8 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, waitFor, fireEvent } from "@testing-library/react";
+import { render, screen, waitFor, fireEvent, cleanup } from "@testing-library/react";
 import { CollectorMonitoring } from "./CollectorMonitoring";
-import { describeRunMarker } from "./collectorLabels";
+import { describeRunMarker, collectorLabel } from "./collectorLabels";
 
 // 최근(=초록) 시각 — Date.now() 기준 1시간 전
 const recentIso = () => new Date(Date.now() - 60 * 60 * 1000).toISOString();
@@ -231,7 +231,7 @@ describe("수집기 상태 마커 색 (세션571 — WARN_STEPS 등)", () => {
       expect(screen.getByText("성공(경고)")).toBeTruthy();
     });
     expect(screen.queryByText("성공")).toBeNull();
-    fireEvent.click(screen.getByText("naver-pipeline"));
+    fireEvent.click(screen.getByText("네이버 로컬 파이프라인"));
     await waitFor(() => {
       expect(screen.getByText("경고 단계: molit-units")).toBeTruthy();
     });
@@ -253,10 +253,59 @@ describe("수집기 상태 마커 색 (세션571 — WARN_STEPS 등)", () => {
     await waitFor(() => {
       expect(screen.getByText("실패")).toBeTruthy();
     });
-    fireEvent.click(screen.getByText("naver-pipeline"));
+    fireEvent.click(screen.getByText("네이버 로컬 파이프라인"));
     await waitFor(() => {
       expect(screen.getByText("치명 단계 실패 3/6 naver-presale")).toBeTruthy();
     });
+  });
+
+  it("warn 마커 배경색이 error 마커와 다르고 amber 팔레트 값과 같다 (세션571 검사관 지적 — 색 검사)", async () => {
+    const { C } = await import("@/theme");
+    // jsdom 은 style.background 를 rgb() 로 정규화해 반환하므로 팔레트 hex 를 같은 형식으로 변환해 비교한다
+    /** @param {string} hex */
+    const hexToRgb = (hex) => {
+      const h = hex.replace("#", "");
+      const r = parseInt(h.slice(0, 2), 16);
+      const g = parseInt(h.slice(2, 4), 16);
+      const b = parseInt(h.slice(4, 6), 16);
+      return `rgb(${r}, ${g}, ${b})`;
+    };
+    stubFetch(200, oneRun("success", "WARN_STEPS: molit-units"));
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("성공(경고)")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("네이버 로컬 파이프라인"));
+    /** @type {any} */
+    let warnEl;
+    await waitFor(() => {
+      warnEl = screen.getByText("경고 단계: molit-units");
+      expect(warnEl).toBeTruthy();
+    });
+    expect(warnEl.getAttribute("data-tone")).toBe("warn");
+    expect(warnEl.style.background).toBe(hexToRgb(C.amberLight));
+
+    cleanup();
+    vi.unstubAllGlobals();
+    stubFetch(200, oneRun("failure", "STEP_FAILED: 3/6 naver-presale"));
+    render(<CollectorMonitoring showToast={vi.fn()} />);
+    await waitFor(() => {
+      expect(screen.getByText("실패")).toBeTruthy();
+    });
+    fireEvent.click(screen.getByText("네이버 로컬 파이프라인"));
+    /** @type {any} */
+    let errorEl;
+    await waitFor(() => {
+      errorEl = screen.getByText("치명 단계 실패 3/6 naver-presale");
+      expect(errorEl).toBeTruthy();
+    });
+    expect(errorEl.getAttribute("data-tone")).toBe("error");
+    // error 쪽은 background 가 없어(runError 스타일에 background 미지정) warn 배경색과 다르다
+    expect(errorEl.style.background).not.toBe(hexToRgb(C.amberLight));
+  });
+
+  it("collectorLabel('naver-pipeline') — 네이버 로컬 파이프라인 라벨 (세션572 G4)", () => {
+    expect(collectorLabel("naver-pipeline")).toBe("네이버 로컬 파이프라인");
   });
 
   it("describeRunMarker — 마커 4종·그 밖·빈 값", () => {

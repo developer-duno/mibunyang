@@ -40,7 +40,7 @@
  *                                 → set `{unsold_source:null, unsold_as_of:null}` (다음 9일 KOSIS 회차가 채운다)
  *   - `release_hold_to_applyhome` expect `{unsold:null, unsold_source:"hold"}`
  *                                 → set `{unsold, unsold_rate, unsold_source:"applyhome", unsold_as_of:<공고일>}`
- *   - `mark_hold_from_zero`       expect `{unsold:0, unsold_rate:null, unsold_source:null}`
+ *   - `mark_hold_from_zero`       expect `{unsold:0, unsold_rate:null, unsold_source:null, unsold_as_of:null}`
  *                                 → set `{unsold:null, unsold_source:"hold", unsold_as_of:<보류 결정일>}` (세션571 — 화면 대표
  *                                   행의 근거 없는 0 을 보류로. hold 제약이 값 NULL 이라 unsold 도 같이 비운다)
  *   - `release_hold_to_zero`      expect `{unsold:null, unsold_source:"hold"}`
@@ -117,7 +117,7 @@ export function buildHoldPlanRow(op, p) {
   if (op === "mark_hold_from_zero") {
     return {
       ...head,
-      expect: { unsold: 0, unsold_rate: null, unsold_source: null },
+      expect: { unsold: 0, unsold_rate: null, unsold_source: null, unsold_as_of: null },
       set: { unsold: null, unsold_source: "hold", unsold_as_of: needDate() },
     };
   }

@@ -487,12 +487,12 @@ describe("hold op 3종 (세션570) — buildHoldPlanRow 계약", () => {
 
 // ── 세션571 — 화면 대표 행의 0 을 보류로(mark_hold_from_zero) + 되돌림(release_hold_to_zero) ──
 describe("hold op 2종 추가 (세션571) — mark_hold_from_zero / release_hold_to_zero", () => {
-  it("mark_hold_from_zero — expect 0·률 NULL·출처 NULL → set 값 NULL·출처 hold·보류일", async () => {
+  it("mark_hold_from_zero — expect 0·률 NULL·출처 NULL·기준일 NULL → set 값 NULL·출처 hold·보류일", async () => {
     const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
     const row = buildHoldPlanRow("mark_hold_from_zero", { id: "ah-2022910363", name: "대표", date: "2026-09-24" });
     expect(row).toEqual({
       id: "ah-2022910363", name: "대표", op: "mark_hold_from_zero",
-      expect: { unsold: 0, unsold_rate: null, unsold_source: null },
+      expect: { unsold: 0, unsold_rate: null, unsold_source: null, unsold_as_of: null },
       set: { unsold: null, unsold_source: "hold", unsold_as_of: "2026-09-24" },
     });
     // DB 가 지금 0 이면 통과, 이미 비었으면(null) "unsold: DB=null expect=0" 으로 거절
@@ -500,6 +500,13 @@ describe("hold op 2종 추가 (세션571) — mark_hold_from_zero / release_hold
     const r = checkPlanRow(row, dbRow({ id: "ah-2022910363", unsold: null, unsold_rate: null, unsold_source: null }));
     expect(r.ok).toBe(false);
     expect(r.reason).toBe("unsold: DB=null expect=0");
+    // unsold_as_of 가 이미 채워져 있으면(null 이 아니면) 불일치로 거절한다(세션572 G5 — 검사관 지적)
+    const r2 = checkPlanRow(
+      row,
+      dbRow({ id: "ah-2022910363", unsold: 0, unsold_rate: null, unsold_source: null, unsold_as_of: "2026-01-01" }),
+    );
+    expect(r2.ok).toBe(false);
+    expect(r2.reason).toBe('unsold_as_of: DB="2026-01-01" expect=null');
     expect(() => buildHoldPlanRow("mark_hold_from_zero", { id: "x" })).toThrow(/date/);
   });
 
