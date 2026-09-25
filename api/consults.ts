@@ -8,6 +8,9 @@ import { sendTelegram, formatConsultAlert } from "./_lib/telegram.js";
 // 세션 577(A-12): "업체문의" = 문의 모달의 🏢 업체 문의 탭(시행사·분양업체, 로그인 불필요). 회사·이메일·단지는
 // message 안에 적혀 온다(consults 표 컬럼 추가 없음). 저장 뒤 사장님 텔레그램 알림 — 다른 유형은 알림 없음.
 const VALID_CONSULT_TYPES = ["방문상담", "전화상담", "온라인상담", "업체문의"];
+// 세션 577 마무리 검사관 A: 업체문의 내용(message 의 마지막 문단 = 화면 "내용" 칸) 하한은 화면(useBizInquiry
+// BIZ_CONTENT_MIN=10)만 믿으면 API 직접 호출로 빈 내용이 저장·텔레그램 알림된다 → 서버에서도 같은 값으로 막는다.
+const BIZ_CONTENT_MIN = 10;
 const PHONE_REGEX = /^[\d\-]{8,20}$/;
 
 export default withHandler({
@@ -58,6 +61,13 @@ async function handlePost(req: any, res: any) {
   const savedPhone = phone.trim();
   const savedApts = interestedApts.map(String).slice(0, 20);
   const savedMessage = typeof message === "string" ? message.trim().slice(0, 500) : null;
+  if (consultType === "업체문의") {
+    // 화면이 조합한 꼴 = "회사: …\n이메일: …\n단지: …\n\n<내용>" — 마지막 빈 줄 뒤가 내용. 빈 줄이 없으면 전체가 내용.
+    const content = (savedMessage ?? "").split("\n\n").pop()?.trim() ?? "";
+    if (content.length < BIZ_CONTENT_MIN) {
+      return res.status(400).json({ ok: false, error: `문의 내용을 ${BIZ_CONTENT_MIN}자 이상 적어 주세요` });
+    }
+  }
   try {
     // 세션566: 공개 열쇠(anon) 대신 service key 로 저장한다 — anon INSERT 정책을 지웠다.
     // 이 DB 의 anon key 는 자매 사이트(2u.pe.kr) 번들에 공개돼 있어, 정책이 있으면 누구나
