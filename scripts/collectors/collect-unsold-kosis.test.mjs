@@ -929,6 +929,33 @@ describe("planUnsoldUpdates", () => {
     expect(target?.newEstimate).toBe(50);
   });
 
+  it("유형이 분양이어도 이름이 임대면 skip_lease — 분모에서도 빠진다 (세션577 이름 규칙)", () => {
+    const u = { "경기": { "수원시": 20 } };
+    const plan = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "name-lease", name: "안성아양5 국민임대", presale_type: "민간분양", units: 400 }),
+        apt({ id: "target-1", units: 100 }),
+      ],
+      unsoldByRegionGu: u,
+    });
+    expect(plan.find((p) => p.id === "name-lease")?.action).toBe("skip_lease");
+    const target = plan.find((p) => p.id === "target-1");
+    expect(target?.action).toBe("write");
+    expect(target?.totalUnitsInGu).toBe(100); // 이름-임대 400 이 빠져 target 100 만
+    expect(target?.newEstimate).toBe(20); // round(20*100/100)
+    // 대조군 — 토지임대부(분양)는 임대가 아니다: 분모에 남아 500, 추정 round(20*100/500)=4
+    const control = planUnsoldUpdates({
+      apartments: [
+        apt({ id: "land-lease", name: "고덕강일3단지 토지임대부 사전청약", presale_type: "공공분양", units: 400 }),
+        apt({ id: "target-1", units: 100 }),
+      ],
+      unsoldByRegionGu: u,
+    });
+    expect(control.find((p) => p.id === "land-lease")?.action).toBe("write");
+    expect(control.find((p) => p.id === "target-1")?.totalUnitsInGu).toBe(500);
+    expect(control.find((p) => p.id === "target-1")?.newEstimate).toBe(4);
+  });
+
   it("두 단어 gu('천안시 동남구') — 분모는 같은 시 전체(동남구+서북구) 비임대 합", () => {
     const plan = planUnsoldUpdates({
       apartments: [
@@ -1597,5 +1624,51 @@ describe("사람 보류 hold (세션570)", () => {
       expect(historyRows.some((/** @type {any} */ r) => r.apartment_id === "h-1")).toBe(false);
       expect(historyRows.some((/** @type {any} */ r) => r.apartment_id === "z-1")).toBe(true);
     });
+  });
+});
+
+// ── main() unsold_history 경로(842·856줄) — 이름-임대도 분모·행에서 빠진다 (세션577) ──
+describe("main() unsold_history — 이름-임대 제외 (세션577)", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+
+  /** @param {Partial<any>} o */
+  const row = (o = {}) => ({
+    id: "x", name: "단지", region: "경기", gu: "수원시",
+    units: 100, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null,
+    ...o,
+  });
+
+  it("--apply — 이름-임대 단지는 history 행이 없고, 이웃 단지 분모에서도 빠진다(20*100/100=20)", async () => {
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      row({ id: "name-lease", name: "안성아양5 국민임대", presale_type: "민간분양", units: 400 }),
+      row({ id: "target-1", name: "타겟", units: 100 }),
+    ]);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202607", DT: "20" }] });
+    /** @type {any[]} */
+    const updateCalls = [];
+    getSupabase.mockReturnValue({
+      from: (/** @type {string} */ table) => ({ update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, table, payload) }) }),
+    });
+    const { log: logMock, upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
+    upsertBatch.mockReset();
+    upsertBatch.mockResolvedValue(0);
+    logMock.mockImplementation(() => {});
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+      getSupabase.mockReset();
+      logMock.mockReset();
+    }
+    const historyRows = upsertBatch.mock.calls.find((/** @type {any[]} */ c) => c[0] === "unsold_history")?.[1] ?? [];
+    expect(historyRows.map((/** @type {any} */ r) => [r.apartment_id, r.base_month, r.unsold_count])).toEqual([["target-1", "202607", 20]]);
+    // 규칙 2(계획) 쪽도 — apartments UPDATE 는 target 하나뿐(이름-임대는 skip_lease)
+    expect(updateCalls.filter((c) => c.table === "apartments").map((c) => [c.id, c.payload.unsold])).toEqual([["target-1", 20]]);
   });
 });
