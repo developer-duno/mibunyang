@@ -51,7 +51,7 @@
  * "임대 목록"에서 빠져 **분양 단지로 손님 목록에 새로 나타난다**(21곳 실측, 사장님 결정 2026-09-26
  * 12:2x). 이 플래그를 켜면 그 단지들만 `presale_type` 을 현재값 그대로 남기고, 나머지 16칸(번호
  * 포함)은 기존과 똑같이 비운다 — 판정 잣대는 `src/constants/leaseTypes.mjs` 의 `isLeasePresale`
- * 하나뿐이다(도구 자체 정규식 금지, 수집기 게이트와 같은 함수를 쓴다).
+ * 하나뿐이다(도구 자체 정규식 금지, 손님 목록의 임대 제외(`isLeaseUnit`)가 쓰는 유형 판정과 같은 함수).
  *
  * ## 사용법
  *   node scripts/cleanup-presale-links.mjs --out=<계획.json>                                  (dry-run)

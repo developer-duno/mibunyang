@@ -317,4 +317,25 @@ describe("run — --keep-lease-type dry-run (세션578 🔴2 후속)", () => {
     expect(target.expected.presale_type).toBe("행복주택");
     expect(target.expected.naver_presale_no).toBeNull();
   });
+
+  it("플래그 없이 돌리면 임대 계열이어도 presale_type 을 null 로 비운다(keptLeaseTypeCount 0/summary.keepLeaseType false)", async () => {
+    const tables = {
+      apartments: [
+        apt({ id: "ap-6027751", name: "서울원아이파크", region: "서울", gu: "노원구",
+          naver_presale_no: "6027751", presale_min_price: 89900, presale_pp: 3861 }),
+        apt({ id: "ah-9000004", name: "임대유지단지", region: "경기", gu: "성남시",
+          naver_presale_no: "6027751", presale_type: "행복주택" }),
+      ],
+      prices: [],
+    };
+    const sb = makeFakeSupabase(tables);
+    const fs = makeMemFs();
+    const r = await run({ argv: ["--out=plan.json"], sb, cwd: CWD, now: new Date(2026, 8, 26, 14, 0, 0), ...fs });
+    expect(r.code).toBe(0);
+    const plan = JSON.parse(/** @type {string} */ (fs.files.get(resolve(CWD, "plan.json"))));
+    expect(plan.summary.keepLeaseType).toBe(false);
+    expect(plan.summary.keptLeaseTypeCount).toBe(0);
+    const target = plan.plan.find((/** @type {any} */ t) => t.id === "ah-9000004");
+    expect(target.expected.presale_type).toBeNull();
+  });
 });
