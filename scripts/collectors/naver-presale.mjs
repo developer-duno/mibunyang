@@ -13,6 +13,9 @@
  *   node scripts/collectors/naver-presale.mjs --probe            # API 접근성 테스트
  *
  * 환경변수: SUPABASE_URL, SUPABASE_SERVICE_KEY
+ *
+ * 매칭 게이트(세션578): 2~4순위(bjd·좌표·이름) 매칭은 분양 주소와 **같은 시도·같은 시군구**(`sameDistrict`)
+ * 단지에만 붙는다 — 주소로 시군구를 못 가르면 신규 생성 경로로. 1순위(번호 일치)는 지역 무관.
  */
 import { execFileSync } from "child_process";
 import { fileURLToPath } from "url";
@@ -20,7 +23,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
-  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu,
+  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP,
 } from "./_shared.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
@@ -373,15 +376,20 @@ export function parsePresaleAddress(address) {
     if (VALID_REGIONS.includes(p0)) region = p0;
   }
 
-  // gu 추출: "구"가 있으면 우선, 없으면 "시/군" (첫 토큰 제외)
-  for (const p of parts) {
-    if (/구$/.test(p)) { gu = p; break; }
-  }
-  if (!gu) {
-    for (const p of parts) {
-      if (/[시군]$/.test(p) && p !== parts[0]) { gu = p; break; }
-    }
-  }
+  // gu 추출: "구"가 있으면 우선, 없으면 "시/군".
+  // 세션578: 후보는 **시도 뒤 두 토큰(parts[1], parts[2])만**, "…지구" 는 제외한다. 옛 코드는 주소의 아무
+  // 토큰이나 봐서 `고덕국제화계획지구`·`탕정지구`·`운정3지구`·`일광지구` 를 시군구로 읽었고, 시군구 게이트가
+  // 그 가짜 gu 로 정당한 매칭을 끊었다(검사관 실측 4건). "N공구"(공사 구역)도 같은 이유로 제외한다.
+  // 단, 진짜 시군구 표(GU_LAWD_MAP)에 있는 이름은 제외 규칙에 걸려도 구로 본다 — "용인시 수지구"(…지구)가 그 예.
+  const regionGus = region && Object.prototype.hasOwnProperty.call(GU_LAWD_MAP, region)
+    ? /** @type {Record<string, string>} */ (/** @type {any} */ (GU_LAWD_MAP)[region])
+    : null;
+  /** @param {string} p */
+  const isRealGu = (p) => !!regionGus && Object.prototype.hasOwnProperty.call(regionGus, normalizeGu(/** @type {string} */ (region), p) ?? "");
+  const guCands = parts.slice(1, 3);
+  gu = guCands.find((p) => /구$/.test(p) && (!/(지|공)구$/.test(p) || isRealGu(p)))
+    ?? guCands.find((p) => /[시군]$/.test(p))
+    ?? null;
   for (const p of parts) {
     if (/[읍면동가리로]$/.test(p) && p !== gu) { dong = p; break; }
   }
@@ -585,27 +593,85 @@ export function dedupUpdateRows(rows) {
   return [...byId.values()];
 }
 
+/**
+ * 두 시군구 표기가 같은 시군구를 가리키는가 (세션578 — 분양 매칭 게이트와 정리 도구가 **같은 잣대**를 쓴다).
+ *
+ * 규칙:
+ *   - `region === "세종"` → 참 (세종은 구·군이 없는 단일 시라 DB gu 가 null)
+ *   - 둘 중 하나라도 비면(null·빈 문자열) → 거짓 (모르면 같다고 보지 않는다)
+ *   - 둘 다 두 낱말 이상 → 전체 일치 (`"수원시 권선구"` ≠ `"수원시 영통구"`)
+ *   - 한쪽이 한 낱말 → 첫 낱말 일치 (`"청주시"` = `"청주시 서원구"` — 청약홈 출처 행은 구 없이 시만 갖는다)
+ *
+ * ⚠️ 이 함수를 고치면 `scripts/cleanup-presale-links.mjs` 의 오염 판정도 같이 바뀐다 — 일부러 한 함수다.
+ * 둘이 갈리면 도구가 끊은 링크를 수집기가 다음 회차에 다시 붙인다.
+ *
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} guA
+ * @param {string | null | undefined} guB
+ * @returns {boolean}
+ */
+export function sameDistrict(region, guA, guB) {
+  if (region === "세종") return true;
+  const a = typeof guA === "string" ? guA.trim() : "";
+  const b = typeof guB === "string" ? guB.trim() : "";
+  if (!a || !b) return false;
+  const wa = a.split(/\s+/);
+  const wb = b.split(/\s+/);
+  if (wa.length >= 2 && wb.length >= 2) return wa.join(" ") === wb.join(" ");
+  return wa[0] === wb[0];
+}
+
 /** 4단계 매칭: presale → 기존 apartments (indexes 옵션: Map 기반 O(1) 룩업)
+ *
+ * 세션578 시군구 게이트:
+ *   - 왜: 2~4순위가 브랜드 낱말 유사도만으로 **다른 시군구** 단지에 붙어 ap-* 279곳 + 그 외 140곳이
+ *     남의 분양 번호·분양가를 떠안았다(음성아이파크 ← 서울원아이파크 88km).
+ *   - 무엇: 2·3·4순위 후보는 분양 주소의 시도와 같고 `sameDistrict` 로 시군구가 같아야 한다.
+ *     주소로 시도·시군구를 못 가르면 2~4순위를 전부 건너뛰고 null(→ 호출자가 신규 생성 경로로 간다).
+ *   - 예외: 1순위(번호 일치)는 지역 무관 그대로 — 이미 박힌 오염 링크는 `cleanup-presale-links.mjs` 가 끊는다.
+ *     세종은 DB gu 가 null 이라 시도만 맞으면 통과.
+ *
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
  * @param {AptIndexes} [indexes]
+ * @param {{ gateBlocked: number }} [stats] 넘기면 "이름 유사도 기준은 넘었지만 시군구 게이트로 버린 후보가
+ *   하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
  * @returns {{ apartment: AptForMatch; confidence: number; tier: number } | null}
  */
-export function matchPresaleToApt(presale, apartments, indexes) {
+export function matchPresaleToApt(presale, apartments, indexes, stats) {
   const presaleNo = String(presale.naver_presale_no || "");
   const buildName = presale._name || "";
   const lat = presale._enrich?.lat;
   const lng = presale._enrich?.lng;
   const bjdCode = presale._enrich?.bjd_code;
 
-  // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색)
+  // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색) — 지역 무관(세션578 게이트 예외)
   if (presaleNo) {
     const exact = indexes?.byPresaleNo?.get(presaleNo)
       ?? apartments.find(a => a.naver_presale_no === presaleNo);
     if (exact) return { apartment: exact, confidence: 1.0, tier: 1 };
   }
 
-  // 2순위: bjd_code + 이름 유사도 >= 0.5 (Map 그룹 또는 전체 탐색)
+  // 세션578 게이트 재료: 분양 주소의 시도·시군구(DB 표기로 정규화)
+  const parsed = parsePresaleAddress(presale._enrich?.address);
+  const pRegion = parsed.region;
+  const pGu = normalizeGu(pRegion ?? "", parsed.gu) ?? null;
+  // 세종은 gu 가 없어도 된다. 그 외에는 시도·시군구 둘 다 알아야 2~4순위를 본다.
+  const districtKnown = !!pRegion && (pRegion === "세종" || !!pGu);
+  let blocked = false;
+  /** @param {AptForMatch} a */
+  const inDistrict = (a) => {
+    const guMatch = sameDistrict(pRegion, a.gu, pGu);
+    const ok = districtKnown && a.region === pRegion && guMatch;
+    if (!ok) blocked = true;
+    return ok;
+  };
+  const finish = (/** @type {{ apartment: AptForMatch; confidence: number; tier: number } | null} */ r) => {
+    if (blocked && stats) stats.gateBlocked++;
+    return r;
+  };
+
+  // 2순위: bjd_code + 이름 유사도 >= 0.5 (Map 그룹 또는 전체 탐색) + 시군구 게이트
   if (bjdCode) {
     const candidates = indexes?.byBjd?.get(bjdCode) ?? apartments;
     /** @type {AptForMatch | null} */
@@ -614,12 +680,14 @@ export function matchPresaleToApt(presale, apartments, indexes) {
     for (const a of candidates) {
       if (!indexes?.byBjd && a.bjd_code !== bjdCode) continue;
       const sim = stringSimilarity(buildName, a.name);
-      if (sim >= MATCH_THRESHOLD_BJD && sim > bestSim) { best = a; bestSim = sim; }
+      if (sim < MATCH_THRESHOLD_BJD) continue;
+      if (!inDistrict(a)) continue;
+      if (sim > bestSim) { best = a; bestSim = sim; }
     }
-    if (best) return { apartment: best, confidence: bestSim, tier: 2 };
+    if (best) return finish({ apartment: best, confidence: bestSim, tier: 2 });
   }
 
-  // 3순위: 좌표 MATCH_DISTANCE_M 이내 + 이름 유사도
+  // 3순위: 좌표 MATCH_DISTANCE_M 이내 + 이름 유사도 + 시군구 게이트
   if (lat && lng) {
     /** @type {AptForMatch | null} */
     let best = null;
@@ -631,26 +699,29 @@ export function matchPresaleToApt(presale, apartments, indexes) {
       const dist = Math.sqrt(dlat * dlat + dlng * dlng);
       if (dist > MATCH_DISTANCE_M) continue;
       const sim = stringSimilarity(buildName, a.name);
-      if (sim >= MATCH_THRESHOLD_GEO && sim > bestSim) { best = a; bestSim = sim; }
+      if (sim < MATCH_THRESHOLD_GEO) continue;
+      if (!inDistrict(a)) continue;
+      if (sim > bestSim) { best = a; bestSim = sim; }
     }
-    if (best) return { apartment: best, confidence: bestSim, tier: 3 };
+    if (best) return finish({ apartment: best, confidence: bestSim, tier: 3 });
   }
 
-  // 4순위: 동일 region 내 이름 유사도
-  const { region } = parsePresaleAddress(presale._enrich?.address);
-  if (region && buildName) {
+  // 4순위: 동일 region 내 이름 유사도 + 시군구 게이트
+  if (pRegion && buildName) {
     /** @type {AptForMatch | null} */
     let best = null;
     let bestSim = 0;
     for (const a of apartments) {
-      if (a.region !== region) continue;
+      if (a.region !== pRegion) continue;
       const sim = stringSimilarity(buildName, a.name);
-      if (sim >= MATCH_THRESHOLD_REGION && sim > bestSim) { best = a; bestSim = sim; }
+      if (sim < MATCH_THRESHOLD_REGION) continue;
+      if (!inDistrict(a)) continue;
+      if (sim > bestSim) { best = a; bestSim = sim; }
     }
-    if (best) return { apartment: best, confidence: bestSim, tier: 4 };
+    if (best) return finish({ apartment: best, confidence: bestSim, tier: 4 });
   }
 
-  return null;
+  return finish(null);
 }
 
 /** 분양 데이터 → 신규 아파트 레코드 생성 (테스트 가능하도록 export)
@@ -946,6 +1017,8 @@ async function main() {
   let regionUnresolved = 0;
   // --region=X 로 좁혀 돌 때 공유 cortarNo 가 실어 온 다른 지역 단지를 건너뛴 수
   let regionFiltered = 0;
+  // 세션578: 이름 유사도는 넘었지만 시군구 게이트로 후보를 버린 분양 수(matchPresaleToApt stats)
+  const matchStats = { gateBlocked: 0 };
   // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
   /** @type {string[]} */
   const failedComplexes = [];
@@ -1000,7 +1073,7 @@ async function main() {
     }
 
     // Phase 4: 매칭
-    const match = matchPresaleToApt(row, apts, aptIndexes);
+    const match = matchPresaleToApt(row, apts, aptIndexes, matchStats);
 
     if (match) {
       tierCounts[match.tier]++;
@@ -1065,7 +1138,7 @@ async function main() {
   }
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked}`);
 
   // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
   // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.

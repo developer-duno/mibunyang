@@ -97,6 +97,7 @@ scripts/
     │     ├── extractPresaleFields() — DRY 필드 추출 (update·insert 공용)
     │     ├── buildNewApartment()   — 신규 단지 생성 (ap-{no}, unit_source="naver_presale")
     │     └── matchPresaleToApt()   — 4단계 tier 매칭 (Map O(1) Tier1·2, tier 반환, tierCounts 집계)
+    │           └ 2~4순위 시군구 게이트(sameDistrict, 세션578) — 분양 주소와 같은 시도·시군구 단지에만 붙는다
     └── naver-presale-jwt.py  JWT 추출 헬퍼 (new.land, 향후 인증 필요 시 fallback)
 
 supabase/
