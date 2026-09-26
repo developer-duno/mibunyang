@@ -9,10 +9,13 @@ const UNSOLD_CHART_HINT =
   "이 단지의 안 팔린 세대(미분양)가 달마다 어떻게 변했는지예요. 빨강은 전체 미분양, 점선(┄)은 다 지어진 뒤에도 안 팔린 '준공후 미분양'이라 더 주의해서 봐야 해요. 매월 자동 수집.";
 
 /** 미분양 추이 차트 — DetailModal 내 표시 */
-export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds }: UnsoldChartProps) {
+export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds, unsold }: UnsoldChartProps) {
   const { data, loading, error, retry } = useUnsoldHistory(apartmentId, siblingIds);
 
   if (!apartmentId) return null;
+  // 현재 미분양 값이 없는(hold·출처 없이 비움) 단지의 옛 이력은 "지금도 미분양이 줄고 있다"로 읽힌다 — 세션577 검사관 C 1-2.
+  // unsold_source 는 화면에 안 오므로 현재 값 null 로 판정한다. 0 은 "자료 있음"이라 그린다.
+  if (unsold == null) return null;
   if (loading)
     return (
       <div
