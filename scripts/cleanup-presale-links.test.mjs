@@ -100,6 +100,60 @@ describe("findContaminatedLinks — 판정 (T1-1)", () => {
   });
 });
 
+describe("findContaminatedLinks — --trust-ids 명단 신뢰 모드 (세션578 15:2x 후속)", () => {
+  it("(a) trustIds+onlyIds: 주인 행 없는 ah-* → 대상(unlink, ownerId null, evidence trust-ids)", () => {
+    // fixtureTables 의 ah-9000003 은 naver_presale_no=6999999 인데 ap-6999999 행이 없다(주인없음)
+    const t = findContaminatedLinks(/** @type {any} */ (fixtureTables().apartments),
+      { onlyIds: new Set(["ah-9000003"]), trustIds: true });
+    expect(t.map((x) => x.id)).toEqual(["ah-9000003"]);
+    expect(t[0].action).toBe("unlink");
+    expect(t[0].ownerId).toBeNull();
+    expect(t[0].ownerName).toBeNull();
+    expect(t[0].ownerRegion).toBeNull();
+    expect(t[0].ownerGu).toBeNull();
+    expect(t[0].km).toBeNull();
+    expect(t[0].evidence).toBe("trust-ids");
+  });
+
+  it("(b) trustIds+onlyIds: 주인 없는 ap-* 남의 번호 → 대상(ap-restore, expected.naver_presale_no 는 자기 번호)", () => {
+    const rows = [
+      apt({ id: "ap-9100001", name: "번호도둑단지", region: "전남", gu: "여수시", naver_presale_no: "9999999" }),
+      // ap-9999999 행 자체가 DB 에 없다(주인 행 없음)
+    ];
+    const t = findContaminatedLinks(/** @type {any} */ (rows), { onlyIds: new Set(["ap-9100001"]), trustIds: true });
+    expect(t.map((x) => x.id)).toEqual(["ap-9100001"]);
+    expect(t[0].action).toBe("ap-restore");
+    expect(t[0].ownerId).toBeNull();
+    expect(t[0].evidence).toBe("trust-ids");
+    expect(expectedValues(t[0].id).naver_presale_no).toBe("9100001");
+  });
+
+  it("(c) trustIds: ap-* 인데 이미 자기 번호 → 대상 아님", () => {
+    const rows = [
+      apt({ id: "ap-9200001", name: "정상단지", region: "서울", gu: "강남구", naver_presale_no: "9200001" }),
+    ];
+    const t = findContaminatedLinks(/** @type {any} */ (rows), { onlyIds: new Set(["ap-9200001"]), trustIds: true });
+    expect(t).toEqual([]);
+  });
+
+  it("(d) 플래그 꺼짐: 주인 없는 행은 기존대로 건너뜀(회귀)", () => {
+    const t = findContaminatedLinks(/** @type {any} */ (fixtureTables().apartments),
+      { onlyIds: new Set(["ah-9000003"]), trustIds: false });
+    expect(t).toEqual([]);
+  });
+
+  it("trustIds+onlyIds: 주인 행이 있고 같은 시군구(원래는 대상 아님)여도 명단에 있으면 대상(외부 판정 신뢰)", () => {
+    const rows = [
+      apt({ id: "ap-9300001", name: "주인", region: "서울", gu: "노원구", naver_presale_no: "9300001" }),
+      apt({ id: "ah-9300002", name: "명단행", region: "서울", gu: "노원구", naver_presale_no: "9300001" }),
+    ];
+    const t = findContaminatedLinks(/** @type {any} */ (rows), { onlyIds: new Set(["ah-9300002"]), trustIds: true });
+    expect(t.map((x) => x.id)).toEqual(["ah-9300002"]);
+    expect(t[0].evidence).toBe("trust-ids");
+    expect(t[0].ownerId).toBe("ap-9300001");
+  });
+});
+
 describe("APT_COLS — 사본 19칸이 조회에서 빠지지 않는다", () => {
   it("APT_COLS 가 19칸을 다 담고, selectAll 의 select 리터럴과 같다", () => {
     const cols = APT_COLS.split(",").map((c) => c.trim());
@@ -337,5 +391,57 @@ describe("run — --keep-lease-type dry-run (세션578 🔴2 후속)", () => {
     expect(plan.summary.keptLeaseTypeCount).toBe(0);
     const target = plan.plan.find((/** @type {any} */ t) => t.id === "ah-9000004");
     expect(target.expected.presale_type).toBeNull();
+  });
+});
+
+describe("run — --trust-ids 통합 (T1-1 (e), 세션578 15:2x 후속)", () => {
+  it("(e-1) --trust-ids 없이 --ids-file 만 → exit 0 기존 동작(회귀)", async () => {
+    const sb = makeFakeSupabase(fixtureTables());
+    const fs = makeMemFs();
+    const r = await run({
+      argv: ["--out=plan.json", "--ids-file=ids.json"], sb, cwd: CWD,
+      now: new Date(2026, 8, 26, 15, 0, 0),
+      readFile: (p) => (p.endsWith("ids.json") ? JSON.stringify(["ap-6026677"]) : fs.readFile(p)),
+      writeFile: fs.writeFile, exists: (p) => p.endsWith("ids.json") || fs.exists(p),
+    });
+    expect(r.code).toBe(0);
+    expect(r.targets).toBe(1);
+    const plan = JSON.parse(/** @type {string} */ (fs.files.get(resolve(CWD, "plan.json"))));
+    expect(plan.summary.trustIds).toBe(false);
+    expect(plan.summary.trustIdsCount).toBe(0);
+  });
+
+  it("(e-2) --trust-ids 만(--ids-file 없음) → exit 1", async () => {
+    const sb = makeFakeSupabase(fixtureTables());
+    const fs = makeMemFs();
+    const r = await run({ argv: ["--out=plan.json", "--trust-ids"], sb, cwd: CWD, ...fs });
+    expect(r.code).toBe(1);
+    expect(sb.calls).toHaveLength(0);
+    expect(fs.files.size).toBe(0);
+  });
+
+  it("(e-3) --trust-ids + --ids-file: 주인 행 없는 명단 대상이 계획에 반영되고 요약에 '명단 신뢰' 건수가 찍힌다", async () => {
+    const tables = {
+      apartments: [
+        apt({ id: "ah-9400001", name: "주인없음명단", region: "부산", gu: "해운대구", naver_presale_no: "9499999" }),
+      ],
+      prices: [],
+    };
+    const sb = makeFakeSupabase(tables);
+    const fs = makeMemFs();
+    const r = await run({
+      argv: ["--out=plan.json", "--ids-file=ids.json", "--trust-ids", "--why=세션578 15:2x 149곳"],
+      sb, cwd: CWD, now: new Date(2026, 8, 26, 16, 0, 0),
+      readFile: (p) => (p.endsWith("ids.json") ? JSON.stringify(["ah-9400001"]) : fs.readFile(p)),
+      writeFile: fs.writeFile, exists: (p) => p.endsWith("ids.json") || fs.exists(p),
+    });
+    expect(r.code).toBe(0);
+    expect(r.targets).toBe(1);
+    const plan = JSON.parse(/** @type {string} */ (fs.files.get(resolve(CWD, "plan.json"))));
+    expect(plan.summary.trustIds).toBe(true);
+    expect(plan.summary.trustIdsCount).toBe(1);
+    const target = plan.plan.find((/** @type {any} */ t) => t.id === "ah-9400001");
+    expect(target.action).toBe("unlink");
+    expect(target.owner).toEqual({ id: null, name: null, region: null, gu: null });
   });
 });
