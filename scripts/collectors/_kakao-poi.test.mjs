@@ -33,6 +33,7 @@ import {
   phaseConsistent,
   extractBlockTokens,
   blockConflict,
+  stripRoundWords,
 } from "./_kakao-poi.mjs";
 
 /**
@@ -689,5 +690,29 @@ describe("extractBlockTokens / blockConflict — 글자 접두 블록 토큰 (�
     expect(blockConflict("오산세교 A-13블록 호반써밋", "오산세교 A13BL 호반써밋")).toBe(false);
     expect(blockConflict("X(AB23BL)", "X")).toBe(false);          // 한쪽만 있으면 판단 보류(false)
     expect(blockConflict("검단 파라곤", "검단파라곤")).toBe(false); // 둘 다 없음
+  });
+});
+
+// ── stripRoundWords (세션581) — 분양 매칭 차수·블록 게이트의 전처리 ─────────────
+// `cleanName` 은 괄호를 통째로 지워 `(A7BL)`·`(1BL)` 같은 블록 표기를 잃는다. 차수·블록 충돌을
+// 보려면 **괄호는 남기고 회차 낱말만** 떼야 한다(회차 `2차` 가 남으면 단지 차수로 오인된다).
+describe("stripRoundWords — 괄호는 남기고 회차 낱말만 뗀다 (세션581)", () => {
+  it("회차 낱말 + 그 뒤 N차를 떼고 괄호 속 블록은 남긴다", () => {
+    const s = stripRoundWords("래미안 센트리폴 무순위 2차 (1BL)");
+    expect(s).toBe("래미안 센트리폴 (1BL)");
+    expect([...extractPhases(s)]).toEqual(["1"]);          // 회차 2차는 사라지고 블록 1 만
+    expect([...extractBlockTokens(stripRoundWords("호반써밋 첨단3지구(A7BL) 무순위 1차"))]).toEqual(["A7"]);
+  });
+
+  it("괄호 속 회차 낱말 뒤의 N차(공고 회차)도 뗀다 — 단지 차수로 남지 않는다", () => {
+    const s = stripRoundWords("평택지제역자이 무순위(사후) 1차");
+    expect([...extractPhases(s)]).toEqual([]);
+    expect(s.replace(/[\s()]/g, "")).toBe("평택지제역자이");
+  });
+
+  it("회차 낱말이 없으면 그대로 — 괄호 속 단지 차수 `(2차)` 도 남는다", () => {
+    expect(stripRoundWords("XX(2차)")).toBe("XX(2차)");
+    expect([...extractPhases(stripRoundWords("XX(2차)"))]).toEqual(["2"]);
+    expect(stripRoundWords(null)).toBe("");
   });
 });

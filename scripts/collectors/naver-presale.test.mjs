@@ -327,7 +327,8 @@ describe("matchPresaleToApt", () => {
   it("bjd_code 일치 + 이름 유사도 >= 0.5이면 매칭한다", () => {
     const row = toPresaleRow(createComplexResponse(), null, createListItem());
     row._name = "테스트아파트";
-    const apts = [createApartment({ bjd_code: "1144012000", name: "테스트아파트 1단지" })];
+    // 세션581: "테스트아파트 1단지"(정리 유사도 0.80·짧은 쪽 6자)는 이름 게이트가 막는다 → 괄호 표기로
+    const apts = [createApartment({ bjd_code: "1144012000", name: "테스트아파트(1단지)" })];
 
     const result = matchPresaleToApt(row, apts);
     expect(result).not.toBeNull();
@@ -376,7 +377,7 @@ describe("matchPresaleToApt", () => {
     const apts = [createApartment({
       bjd_code: "9999999999",
       region: "서울",
-      name: "테스트아파트 2단지",
+      name: "테스트아파트(2단지)", // 세션581: 이름 게이트 통과 꼴(원 유사도 0.71 ≥ 0.7)
       lat: 35.0,
       lng: 129.0,
       naver_presale_no: null,
@@ -391,7 +392,8 @@ describe("matchPresaleToApt", () => {
 // ── matchPresaleToApt 경계값 ────────────────────────────────
 
 describe("matchPresaleToApt 경계값", () => {
-  // Tier 2 임계값 정확히 0.5: "가나다라" vs "가나마바" → LCS=2, sim=4/8=0.5
+  // Tier 2 임계값 정확히 0.5: "가나다라" vs "가나다라(가상의부속명)" → LCS=4, sim=8/16=0.5
+  // 세션581: 옛 "가나마바"(0.5)는 이름 게이트(정리 유사도 0.85)가 막는다 — 괄호 부속은 정리하면 같은 이름이라 통과
   it("Tier 2 유사도 정확히 0.5이면 매칭 성공한다", () => {
     const row = toPresaleRow(
       createComplexResponse({ build_nm: "가나다라", bubdong_code: "1111010100" }),
@@ -400,7 +402,7 @@ describe("matchPresaleToApt 경계값", () => {
     row._name = "가나다라";
     row._enrich = /** @type {any} */ ({ lat: 37.5, lng: 126.9, bjd_code: "1111010100", address: "부산광역시 해운대구 우동 1" });
     const apts = [createApartment({
-      bjd_code: "1111010100", name: "가나마바",
+      bjd_code: "1111010100", name: "가나다라(가상의부속명)",
       naver_presale_no: null, lat: 35.0, lng: 129.0, region: "부산", gu: "해운대구",
     })];
 
@@ -428,7 +430,8 @@ describe("matchPresaleToApt 경계값", () => {
   });
 
   // Tier 3 임계값 정확히 0.4 + 거리 500m 이내
-  // "가나다라마" vs "가나바사아" → LCS=2, sim=4/10=0.4
+  // "가나다라마" vs "가나다라마(가상의부속명칭이길게붙은예)" → LCS=5, sim=10/25=0.4
+  // (세션581: 옛 "가나바사아"(0.4)는 이름 게이트가 막는다 — 괄호 부속은 정리하면 같은 이름이라 통과)
   // 위도 차이 = 450/111000 ≈ 0.00405 → 거리 ≈ 450m (500m 이내)
   it("Tier 3 유사도 0.4 + 거리 500m 이내이면 매칭 성공한다", () => {
     const baseLat = 37.5;
@@ -439,7 +442,7 @@ describe("matchPresaleToApt 경계값", () => {
     row._name = "가나다라마";
     row._enrich = /** @type {any} */ ({ lat: baseLat, lng: 126.9, bjd_code: "9999999999", address: "제주특별자치도 제주시 연동 1" });
     const apts = [createApartment({
-      bjd_code: "8888888888", name: "가나바사아",
+      bjd_code: "8888888888", name: "가나다라마(가상의부속명칭이길게붙은예)",
       naver_presale_no: null, lat: baseLat + 450 / 111000, lng: 126.9, region: "제주", gu: "제주시",
     })];
 
@@ -467,16 +470,17 @@ describe("matchPresaleToApt 경계값", () => {
     expect(result).toBeNull();
   });
 
-  // Tier 4 임계값 정확히 0.7: "가나다라마바사아자차" vs "가나다라마바사카타파" → LCS=7, sim=14/20=0.7
+  // Tier 4 임계값 정확히 0.7: "가나다라마바사" vs "가나다라마바사(아자차카)" → LCS=7, sim=14/20=0.7
+  // (세션581: 옛 "가나다라마바사아자차"↔"…카타파"(0.7)는 이름 게이트가 막는다 — 괄호 부속은 정리하면 같은 이름이라 통과)
   it("Tier 4 유사도 정확히 0.7이면 매칭 성공한다", () => {
     const row = toPresaleRow(
-      createComplexResponse({ build_nm: "가나다라마바사아자차", address: "서울시 강남구 역삼동 1" }),
+      createComplexResponse({ build_nm: "가나다라마바사", address: "서울시 강남구 역삼동 1" }),
       null, createListItem()
     );
-    row._name = "가나다라마바사아자차";
+    row._name = "가나다라마바사";
     row._enrich = /** @type {any} */ ({ lat: 35.0, lng: 129.0, bjd_code: "9999999999", address: "서울시 강남구 역삼동 1" });
     const apts = [createApartment({
-      bjd_code: "8888888888", name: "가나다라마바사카타파",
+      bjd_code: "8888888888", name: "가나다라마바사(아자차카)",
       naver_presale_no: null, lat: 33.0, lng: 127.0, region: "서울", gu: "강남구",
     })];
 
@@ -742,7 +746,8 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
     const row = gateRow({ name: "중흥S-클래스", address: "경기도 양주시 옥정동 1" });
     const apts = [
       createApartment({ id: "far", name: "중흥S-클래스", region: "경기", gu: "수원시 권선구", bjd_code: "1", lat: 33.0, lng: 127.0 }),
-      createApartment({ id: "near", name: "양주역중흥S-클래스", region: "경기", gu: "양주시", bjd_code: "2", lat: 33.0, lng: 127.0 }),
+      // 세션581: 옛 "양주역중흥S-클래스"(정리 유사도 0.82·7자)는 이름 게이트가 막는다 → 괄호 표기(원 유사도 0.78 < 먼 후보 1.0 은 그대로)
+      createApartment({ id: "near", name: "중흥S-클래스(양주)", region: "경기", gu: "양주시", bjd_code: "2", lat: 33.0, lng: 127.0 }),
     ];
     const stats = { gateBlocked: 0 };
     expect(matchPresaleToApt(row, apts, undefined, stats)?.apartment.id).toBe("near");
@@ -886,7 +891,8 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
 
   it("[매칭] 로그 줄에 ap제외·임대불일치·id복원 수를 싣고, main 카운터·인덱스가 그 칸을 갖는다(소스 확인)", () => {
     const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
-    expect(src).toMatch(/const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 \}/);
+    // 세션581 에 phaseConflict·nameWeak·blocked 칸이 뒤에 붙었다 — 여기서는 세션579 칸만 본다(전체는 세션581 describe).
+    expect(src).toMatch(/const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0,/);
     expect(src).toMatch(/ap제외=\$\{matchStats\.apSkipped\} 임대불일치=\$\{matchStats\.leaseMismatch\} id복원=\$\{matchStats\.idHealed\}/);
     expect(src).toMatch(/const aptIndexes = \{ byPresaleNo, byBjd, byId \}/);
     expect(src).toMatch(/if \(a\.id\) byId\.set\(a\.id, a\)/);
@@ -1012,6 +1018,149 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
     expect(matchPresaleToApt(row, apts, undefined, s)).toBeNull();
     expect(s.gateBlocked).toBe(1);
     expect(s.apSkipped).toBe(0);
+  });
+});
+
+// ── 세션581 이름·차수 게이트 ────────────────────────────────────────────────
+// 캐시 257건 흉내에서 ah-* 후보에 2·3순위 오답 7건(곤지암·둔산·순천·제기동역·에코델타·센트리폴 3BL→1BL·A6→A7).
+// 예시 쌍은 전부 그 흉내(pairs17_signals.log)와 지시서 표 그대로다. 후보는 ah-*·같은 시군구.
+// ⚠️ 원 유사도가 2순위 기준(0.5) 미만인 쌍(화성비봉 0.49·곤지암제일풍경채 0.40·제기동역 0.47·순천 0.45)은
+//    2순위로는 게이트까지 오지 못하므로 3순위(좌표 500m 안, 기준 0.4) 경로로 시험한다 — 실전도 3순위였다.
+describe("matchPresaleToApt 이름·차수 게이트 (세션581)", () => {
+  const MAPO = "서울특별시 마포구 서교동 1";
+  const MAPO_BJD = "1144012000";
+
+  /**
+   * 2순위 경로 — 같은 법정동, 분양 행에 좌표 없음.
+   * @param {string} presaleName @param {string} candName
+   */
+  const tier2 = (presaleName, candName) => ({
+    row: gate579Row({ name: presaleName, address: MAPO, bjd: MAPO_BJD }),
+    apts: [createApartment({ id: "ah-2025000001", name: candName, bjd_code: MAPO_BJD, lat: 33.0, lng: 127.0 })],
+  });
+  /**
+   * 3순위 경로 — 분양 행에 법정동 없음, 후보는 300m 안.
+   * @param {string} presaleName @param {string} candName
+   */
+  const tier3 = (presaleName, candName) => ({
+    row: gate579Row({ name: presaleName, address: MAPO, lat: 37.5, lng: 126.9 }),
+    apts: [createApartment({ id: "ah-2025000002", name: candName, bjd_code: "1144099999", lat: 37.5 + 300 / 111000, lng: 126.9 })],
+  });
+  const newStats = () => /** @type {any} */ ({
+    gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, blocked: null,
+  });
+
+  // ── 통과(게이트가 막으면 안 되는 쌍) ──
+  it.each([
+    ["관저푸르지오센트럴파크2단지", "관저 푸르지오 센트럴파크 2단지(무순위 1차)"], // 차수 교집합 {2}
+    ["테스트아파트 1차", "테스트아파트(무순위 3차)"],                             // 회차를 떼면 한쪽만 차수 → one-sided
+    ["곤지암역센트럴아이파크", "곤지암역 센트럴 아이파크(임의공급 1차)"],         // 정리 이름 1.00
+    ["남울산노르웨이숲", "남울산 노르웨이숲(조합원 취소분)"],                      // 1.00
+    ["신천역에피트", "신천역 에피트(2차)"],                                        // 1.00(6자라 부분문자열 구제는 없음)
+    ["여주역자이헤리티지", "여주역자이 헤리티지(임의공급1차)"],                    // 1.00
+  ])("통과 — %s ↔ %s (2순위, 게이트 카운터 0)", (p, c) => {
+    const { row, apts } = tier2(p, c);
+    const s = newStats();
+    const r = matchPresaleToApt(row, apts, undefined, s);
+    expect(r?.apartment.id).toBe("ah-2025000001");
+    expect(r?.tier).toBe(2);
+    expect(s.phaseConflict).toBe(0);
+    expect(s.nameWeak).toBe(0);
+    expect(s.blocked).toBeNull();
+  });
+
+  it("통과 — 부분문자열 구제: 정리 유사도 0.81 < 0.85 여도 짧은 쪽 11자가 긴 쪽 안에 있으면 통과", () => {
+    const { row, apts } = tier2("등촌역한울에이치밸리움", "등촌역한울에이치밸리움1차아파트");
+    const s = newStats();
+    expect(matchPresaleToApt(row, apts, undefined, s)?.apartment.id).toBe("ah-2025000001");
+    expect(s.nameWeak).toBe(0);
+  });
+
+  // ── 거부 G-A 차수·블록 충돌 ──
+  it.each([
+    ["래미안센트리폴3BL", "래미안 센트리폴(1BL)", 2],                                   // 3 ↔ 1
+    ["제일풍경채첨단3지구A6BL", "호반써밋 첨단3지구(A7BL)", 2],                          // A6 ↔ A7(괄호 속)
+    ["화성비봉지구B1블록금성백조예미지2차", "화성비봉 공공주택지구 B2블록 호반써밋", 3], // B1 ↔ B2
+  ])("거부(차수충돌) — %s ↔ %s", (p, c, tier) => {
+    const { row, apts } = tier === 2 ? tier2(p, c) : tier3(p, c);
+    const s = newStats();
+    expect(matchPresaleToApt(row, apts, undefined, s)).toBeNull();
+    expect(s.phaseConflict).toBe(1);
+    expect(s.nameWeak).toBe(0);
+    expect(s.blocked?.reason).toBe("차수충돌");
+    expect(s.blocked?.name).toBe(c);
+    expect(s.blocked?.tier).toBe(tier);
+  });
+
+  // ── 거부 G-B 이름 약함 ──
+  it.each([
+    ["둔산엘리프더센트럴", "둔산 더샵 엘리프", 2],                // 0.63
+    ["힐스테이트광주곤지암역", "곤지암역 제일풍경채", 3],         // 0.40
+    ["이안센트럴제기동역", "제기동역 아이파크", 3],               // 0.47
+    ["순천한양립스파크포레", "순천 한양수자인 디에스티지", 3],    // 0.45
+    ["에코델타시티아테라", "에코델타시티 7블록 호반써밋", 2],     // 0.55
+    ["힐스테이트", "힐스테이트 초월역 2BL", 2],                   // 부분문자열이지만 짧은 쪽 5자 < 8 → 0.63
+  ])("거부(이름약함) — %s ↔ %s", (p, c, tier) => {
+    const { row, apts } = tier === 2 ? tier2(p, c) : tier3(p, c);
+    const s = newStats();
+    expect(matchPresaleToApt(row, apts, undefined, s)).toBeNull();
+    expect(s.nameWeak).toBe(1);
+    expect(s.phaseConflict).toBe(0);
+    expect(s.blocked?.reason).toBe("이름약함");
+    expect(s.blocked?.name).toBe(c);
+    expect(s.blocked?.tier).toBe(tier);
+  });
+
+  it("blocked.sim 은 원 이름 유사도(게이트 앞 판정값)", () => {
+    const { row, apts } = tier2("둔산엘리프더센트럴", "둔산 더샵 엘리프");
+    const s = newStats();
+    matchPresaleToApt(row, apts, undefined, s);
+    expect(s.blocked?.sim).toBeCloseTo(0.625, 3);
+  });
+
+  it("게이트가 유사도 더 높은 후보(차수 충돌)를 버리고 다른 정상 후보를 고른다", () => {
+    const row = gate579Row({ name: "관저푸르지오센트럴파크2단지", address: MAPO, bjd: MAPO_BJD });
+    const apts = [
+      createApartment({ id: "ah-2025000010", name: "관저 푸르지오 센트럴파크 1단지", bjd_code: MAPO_BJD, lat: 33.0, lng: 127.0 }),       // 0.92, 1단지
+      createApartment({ id: "ah-2025000011", name: "관저 푸르지오 센트럴파크 2단지 아파트", bjd_code: MAPO_BJD, lat: 33.0, lng: 127.0 }), // 0.90, 2단지
+    ];
+    const s = newStats();
+    const r = matchPresaleToApt(row, apts, undefined, s);
+    expect(r?.apartment.id).toBe("ah-2025000011");
+    expect(r?.tier).toBe(2);
+    expect(s.phaseConflict).toBe(1);
+    expect(s.blocked?.name).toBe("관저 푸르지오 센트럴파크 1단지");
+    expect(s.blocked?.sim).toBeGreaterThan(0.9);
+  });
+
+  it("blocked 는 호출마다 null 로 다시 시작한다(앞 공고의 차단이 다음 공고 로그로 새지 않는다)", () => {
+    const s = newStats();
+    const bad = tier2("둔산엘리프더센트럴", "둔산 더샵 엘리프");
+    matchPresaleToApt(bad.row, bad.apts, undefined, s);
+    expect(s.blocked).not.toBeNull();
+    const ok = tier2("남울산노르웨이숲", "남울산 노르웨이숲(조합원 취소분)");
+    expect(matchPresaleToApt(ok.row, ok.apts, undefined, s)?.tier).toBe(2);
+    expect(s.blocked).toBeNull();
+    expect(s.nameWeak).toBe(1); // 누적 카운터는 그대로
+  });
+
+  it("1순위(번호 일치)는 게이트를 거치지 않는다(무변경)", () => {
+    const row = gate579Row({ name: "래미안센트리폴3BL", address: MAPO, bjd: MAPO_BJD });
+    const apts = [createApartment({ id: "ah-2025000020", name: "래미안 센트리폴(1BL)", naver_presale_no: row.naver_presale_no })];
+    const s = newStats();
+    expect(matchPresaleToApt(row, apts, undefined, s)?.tier).toBe(1);
+    expect(s.phaseConflict).toBe(0);
+  });
+
+  it("[매칭] 로그 줄·matchStats 초기값·이름 게이트 차단 로그(소스 확인)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    expect(src).toMatch(
+      /const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, blocked: null \}/,
+    );
+    expect(src).toMatch(/id복원=\$\{matchStats\.idHealed\} 차수충돌=\$\{matchStats\.phaseConflict\} 이름약함=\$\{matchStats\.nameWeak\}`\)/);
+    expect(src).toMatch(
+      /const match = matchPresaleToApt\(row, apts, aptIndexes, matchStats\);\s*if \(matchStats\.blocked\) \{\s*const b = matchStats\.blocked;\s*log\(PHASE, `  ⚠ 이름 게이트 차단: \$\{row\._name\} → \$\{b\.name\} \(tier=\$\{b\.tier\} sim=\$\{b\.sim\.toFixed\(2\)\} 이유=\$\{b\.reason\}\)`\);/,
+    );
   });
 });
 

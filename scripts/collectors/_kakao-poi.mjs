@@ -96,6 +96,32 @@ export function cleanName(name) {
 }
 
 /**
+ * 괄호 안이 회차 낱말(+N차)뿐인 묶음과 그 **바로 뒤의 N차** — `"무순위(사후) 1차"` 의 `(사후) 1차`.
+ * `ROUND_WORDS` 원본을 그대로 끼워 만든다(낱말 목록을 두 벌 두지 않는다).
+ */
+const PAREN_ROUND_WORDS = new RegExp(String.raw`\(\s*(?:${ROUND_WORDS.source})\s*\)(?:\s*\d+\s*차)?`, "g");
+
+/**
+ * 회차 낱말만 떼고 **괄호는 남긴다** — 분양 매칭 차수·블록 게이트의 전처리(세션581).
+ *
+ * `cleanName` 은 괄호를 통째로 지워 `(A7BL)`·`(1BL)` 같은 블록 표기를 잃는다. 그 이름으로
+ * `phaseConsistent`/`blockConflict` 를 보면 `호반써밋 첨단3지구(A7BL)` 가 블록 없는 이름이 되어
+ * A6BL 공고와 충돌하지 않는 것으로 보인다. 반대로 회차 `무순위 2차` 의 `2차` 를 남기면 단지 차수로
+ * 오인해 멀쩡한 쌍을 충돌로 버린다. 그래서 괄호는 두고 회차 낱말(+바로 뒤 N차)만 뗀다.
+ * 괄호 안이 회차 낱말뿐인 묶음(`(사후)`·`(무순위 1차)`)은 묶음째 떼고 그 뒤 N차(공고 회차)도 뗀다.
+ * `cleanName` 과 결과가 다른 게 정상이다(그쪽은 검색용·유사도용, 이쪽은 차수·블록 판정용).
+ * @param {unknown} name
+ * @returns {string}
+ */
+export function stripRoundWords(name) {
+  return String(name ?? "")
+    .replace(PAREN_ROUND_WORDS, " ")
+    .replace(ROUND_WORDS, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * 차수/블록 **숫자** 추출용.
  *
  * ⚠️ 세션543 에 `fix-placeholder-addresses.mjs` 에서 **이리로 옮겼다**(도구는 재수출). 정정 도구와
