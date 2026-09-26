@@ -212,7 +212,8 @@ async function fetchJwtFallback() {
   }
 }
 
-async function ensureJwt() {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function ensureJwt() {
   if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) return jwtToken;
 
   // 1차: Python curl_cffi (TLS fingerprint 우회)
@@ -782,7 +783,8 @@ async function probeEndpoints() {
  * @param {string} cortarNo
  * @returns {Promise<ListItem[]>}
  */
-async function fetchPresaleList(cortarNo) {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function fetchPresaleList(cortarNo) {
   if (!cortarNo) return [];
 
   const results = [];
@@ -818,7 +820,8 @@ async function fetchPresaleList(cortarNo) {
  * @param {string | number | null | undefined} complexNo
  * @param {string | number | null | undefined} seq
  */
-async function fetchComplexData(complexNo, seq) {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function fetchComplexData(complexNo, seq) {
   const no = Number(complexNo), s = Number(seq);
   if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
   return await presalePost("/api/complex/detail", { build_dtl_cd: no, supp_cd: s });
@@ -828,7 +831,8 @@ async function fetchComplexData(complexNo, seq) {
  * @param {string | number | null | undefined} complexNo
  * @param {string | number | null | undefined} seq
  */
-async function fetchDetailData(complexNo, seq) {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function fetchDetailData(complexNo, seq) {
   const no = Number(complexNo), s = Number(seq);
   if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
   return await presalePost("/api/complex/schedule", { build_dtl_cd: no, supp_cd: s });
