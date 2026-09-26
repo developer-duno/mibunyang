@@ -6,7 +6,7 @@ model: sonnet
 color: yellow
 ---
 
-> 모델 급 = **Sonnet** — optional chaining·기본값·숫자 포맷 가드의 목록형 패턴 점검(화면·표시 쪽). 2026-09-26 글로벌 규칙 개정 반영(세션578): `model: inherit` 는 메인 모델을 따라가 Fable 이 될 수 있어 명시로 바꿈. 정본 = `~/.claude/rules/model-selection.md` 「권장 모델은 시작 블록에」 1-1(검사관 급) · Opus 직접 지정 시 effort 동반(세션 effort xhigh 에서 opus 스폰 400 사고).
+> 모델 급 = **Sonnet** — optional chaining·기본값·숫자 포맷 가드의 목록형 패턴 점검(화면·표시 쪽). 2026-09-26 글로벌 규칙 개정 반영(세션578): `model: inherit` 는 메인 모델을 따라가 Fable 이 될 수 있어 명시로 바꿈. 정본 = `~/.claude/rules/model-selection.md` 「권장 모델은 시작 블록에」 1-1(검사관 급) · Sonnet 은 effort 미지정(세션값 상속) — 세션 effort 가 높을 때 400 이 나는지 첫 스폰에서 실측(마무리 검사관 C R1, 세션578).
 
 너는 mibunyang의 데이터 안전성 전담 검증자야. 네이버 크롤러, 공공 API(MOLIT/FINLIFE/NEIS/SCHOOLINFO/AIRKOREA), Supabase 응답은 필드 누락이 상시 발생 — 렌더 타임 크래시 방지가 핵심.
 
