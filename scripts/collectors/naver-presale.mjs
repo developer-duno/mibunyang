@@ -376,15 +376,14 @@ export function parsePresaleAddress(address) {
     if (VALID_REGIONS.includes(p0)) region = p0;
   }
 
-  // gu 추출: "구"가 있으면 우선, 없으면 "시/군" (첫 토큰 제외)
-  for (const p of parts) {
-    if (/구$/.test(p)) { gu = p; break; }
-  }
-  if (!gu) {
-    for (const p of parts) {
-      if (/[시군]$/.test(p) && p !== parts[0]) { gu = p; break; }
-    }
-  }
+  // gu 추출: "구"가 있으면 우선, 없으면 "시/군".
+  // 세션578: 후보는 **시도 뒤 두 토큰(parts[1], parts[2])만**, "…지구" 는 제외한다. 옛 코드는 주소의 아무
+  // 토큰이나 봐서 `고덕국제화계획지구`·`탕정지구`·`운정3지구`·`일광지구` 를 시군구로 읽었고, 시군구 게이트가
+  // 그 가짜 gu 로 정당한 매칭을 끊었다(검사관 실측 4건).
+  const guCands = parts.slice(1, 3);
+  gu = guCands.find((p) => /구$/.test(p) && !/지구$/.test(p))
+    ?? guCands.find((p) => /[시군]$/.test(p))
+    ?? null;
   for (const p of parts) {
     if (/[읍면동가리로]$/.test(p) && p !== gu) { dong = p; break; }
   }

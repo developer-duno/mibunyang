@@ -756,6 +756,35 @@ describe("parsePresaleAddress 특수 주소", () => {
   });
 });
 
+// ── parsePresaleAddress — "…지구" 는 시군구가 아니다 (세션578 검사관) ──
+// 옛 코드는 주소의 아무 토큰 중 "구"로 끝나는 첫 것을 gu 로 잡아 사업지구 이름이 시군구가 됐고,
+// 시군구 게이트가 그 가짜 gu 로 정당한 매칭을 끊었다. 후보는 시도 뒤 두 토큰, "지구" 제외.
+
+describe("parsePresaleAddress — 사업지구 이름을 시군구로 읽지 않는다 (세션578)", () => {
+  it("고덕국제화계획지구 → gu 평택시", () => {
+    expect(parsePresaleAddress("경기도 평택시 고덕국제화계획지구 A-49블록")).toEqual({ region: "경기", gu: "평택시", dong: null });
+  });
+  it("탕정지구 → gu 아산시 · dong 탕정면(기존 판정 그대로)", () => {
+    expect(parsePresaleAddress("충청남도 아산시 탕정면 탕정지구 2-A1블록")).toEqual({ region: "충남", gu: "아산시", dong: "탕정면" });
+  });
+  it("운정3지구 → gu 파주시", () => {
+    expect(parsePresaleAddress("경기도 파주시 운정3지구 A23블록")).toEqual({ region: "경기", gu: "파주시", dong: null });
+  });
+  it("일광지구 → gu 기장군 · dong 일광면(기존 판정 그대로)", () => {
+    expect(parsePresaleAddress("부산광역시 기장군 일광면 일광지구 B5블록")).toEqual({ region: "부산", gu: "기장군", dong: "일광면" });
+  });
+  it("시 다음 일반구는 그대로 구가 이긴다(성남시 분당구 → 분당구)", () => {
+    expect(parsePresaleAddress("경기도 성남시 분당구 야탑동").gu).toBe("분당구");
+  });
+  it("게이트: 사업지구 주소의 분양이 같은 시(평택시) 단지에 매칭된다", () => {
+    const row = toPresaleRow(createComplexResponse({ build_nm: "고덕자이센트로" }), null, createListItem());
+    row._name = "고덕자이센트로";
+    row._enrich = /** @type {any} */ ({ lat: null, lng: null, bjd_code: null, address: "경기도 평택시 고덕국제화계획지구 A-49블록" });
+    const apts = [createApartment({ id: "pt", name: "고덕자이센트로", region: "경기", gu: "평택시", bjd_code: "1", lat: 33.0, lng: 127.0 })];
+    expect(matchPresaleToApt(row, apts)?.apartment.id).toBe("pt");
+  });
+});
+
 // ── toPresaleRow 충돌 필드 우선순위 ──────────────────────────
 
 describe("toPresaleRow 필드 충돌", () => {

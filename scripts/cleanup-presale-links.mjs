@@ -29,6 +29,7 @@
  * `unsold*` 4칸·세대수(units)·시공사(builder)·준공월(completion)·좌표(lat/lng)·최고층·bjd_code 는
  * 오염 매칭 때 enrich 로 채워졌을 **수도** 있지만, 원래 값인지 남의 값인지 판별할 근거가 없어 그대로 둔다.
  * 또 `(price, pp)` 가 지금 분양 칸과 다른 옛 prices 행(오염 이전 회차 값이 섞였을 수 있음)도 남긴다.
+ * UPDATE 에 현재값 조건이 없어 확인 뒤 몇 ms 사이 경합 가능 — 월/목 08:00~14:00 네이버 러너 시간을 피해 반영한다.
  *
  * ## 안전장치 (`cleanup-unsold-by-ids.mjs` 와 같은 수준 — `.claude/rules/collectors/data-changing-run-approval.md`)
  *   1. dry-run 이 기본. `--out=<계획.json>` 필수. 전이표를 콘솔에 먼저 보여 준다.

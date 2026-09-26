@@ -26,7 +26,7 @@ const CWD = "F:/fake-cwd";
 function apt(p) {
   /** @type {Record<string, any>} */
   const r = {
-    id: p.id, name: p.name ?? p.id, region: p.region ?? "서울", gu: p.gu ?? "마포구",
+    id: p.id, name: p.name ?? p.id, region: p.region ?? "서울", gu: "gu" in p ? p.gu : "마포구", // gu:null(세종)을 그대로 살린다
     lat: p.lat ?? null, lng: p.lng ?? null, naver_presale_no: p.naver_presale_no ?? null,
     naver_presale_seq: p.naver_presale_seq ?? null,
   };
@@ -59,6 +59,9 @@ function fixtureTables() {
       { id: 5, apartment_id: "ap-6026677", house_type: "presale_min", price: 89900, pp: 3861, recorded_at: "2026-09-10" },
       { id: 6, apartment_id: "ap-6026677", house_type: "084.99A", price: 89900, pp: 3861, recorded_at: "2026-09-10" },
       { id: 7, apartment_id: "ap-6027751", house_type: "presale_min", price: 89900, pp: 3861, recorded_at: "2026-09-10" },
+      // 가격은 같고 평당가만 다르거나 비어 있는 행 — (price, pp) 둘 다 같아야 지운다(검사관 M2)
+      { id: 8, apartment_id: "ap-6026677", house_type: "presale_min", price: 89900, pp: 3900, recorded_at: "2026-07-01" },
+      { id: 9, apartment_id: "ap-6026677", house_type: "presale_min", price: 89900, pp: null, recorded_at: "2026-07-08" },
     ],
   };
 }
@@ -126,6 +129,13 @@ describe("selectPricesToDelete — (price, pp) 같은 presale_min 행만 (T1-4)"
     const { prices } = fixtureTables();
     const sel = selectPricesToDelete({ id: "ap-6026677", presale_min_price: 89900, presale_pp: 3861 }, /** @type {any} */ (prices));
     expect(sel.map((p) => p.id)).toEqual([2, 3, 4, 5]);
+  });
+  it("가격만 같고 평당가가 다르거나(3900) 비어 있으면(null) 지우지 않는다 (검사관 M2)", () => {
+    const { prices } = fixtureTables();
+    const sel = selectPricesToDelete({ id: "ap-6026677", presale_min_price: 89900, presale_pp: 3861 }, /** @type {any} */ (prices));
+    const ids = sel.map((p) => p.id);
+    expect(ids).not.toContain(8);
+    expect(ids).not.toContain(9);
   });
   it("지금 분양가가 비었으면 아무것도 고르지 않는다", () => {
     const { prices } = fixtureTables();
@@ -219,7 +229,7 @@ describe("run — 안전장치·끝까지 (T1-3·T1-5·T1-6)", () => {
     // 서울원아이파크(주인)·같은 시군구 행은 그대로
     expect(tables.apartments.find((a) => a.id === "ap-6027751")?.presale_pp).toBe(3861);
     expect(tables.apartments.find((a) => a.id === "ah-9000002")?.naver_presale_no).toBe("6027751");
-    expect(sb.tables.prices.map((p) => p.id)).toEqual([1, 6, 7]);
+    expect(sb.tables.prices.map((p) => p.id)).toEqual([1, 6, 7, 8, 9]);
   });
 
   it("사본 뒤 DB 가 바뀐 행은 반영하지 않는다(현재값 달라짐 skip)", async () => {
@@ -234,7 +244,20 @@ describe("run — 안전장치·끝까지 (T1-3·T1-5·T1-6)", () => {
     expect(r2.staleSkipped).toBe(1);
     expect(r2.ok).toBe(1);
     expect(eum?.naver_presale_no).toBe("6027751");
-    expect(sb.tables.prices.filter((p) => p.apartment_id === "ap-6026677")).toHaveLength(6);
+    expect(sb.tables.prices.filter((p) => p.apartment_id === "ap-6026677")).toHaveLength(8);
+  });
+
+  it("prices 삭제가 일부 행을 안 지우면(돌려주지 않으면) 사후검증이 잡아 code 1 (검사관 M5)", async () => {
+    const tables = fixtureTables();
+    const fs = makeMemFs();
+    const r1 = await run({ argv: ["--out=plan.json"], sb: makeFakeSupabase(tables), cwd: CWD, now: new Date(2026, 8, 26, 12, 0, 0), ...fs });
+    const sb = makeFakeSupabase(tables, { failDeleteIds: new Set([3]) });
+    const r2 = await run({ argv: ["--apply", `--from=${r1.beforePath}`], sb, cwd: CWD, ...fs });
+    expect(r2.ok).toBe(2);
+    expect(r2.fail).toBe(0);
+    expect(r2.pricesDeleted).toBe(3);
+    expect(sb.tables.prices.some((p) => p.id === 3)).toBe(true);
+    expect(r2.code).toBe(1);
   });
 
   it("성공은 돌아온 행으로만 센다 — UPDATE 가 행을 안 돌려주면 실패로 세고 code 1", async () => {
@@ -248,6 +271,6 @@ describe("run — 안전장치·끝까지 (T1-3·T1-5·T1-6)", () => {
     expect(r2.fail).toBe(1);
     expect(r2.code).toBe(1);
     // 실패한 단지의 prices 는 지우지 않는다
-    expect(sb.tables.prices.filter((p) => p.apartment_id === "ap-6026677")).toHaveLength(6);
+    expect(sb.tables.prices.filter((p) => p.apartment_id === "ap-6026677")).toHaveLength(8);
   });
 });
