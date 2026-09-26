@@ -122,7 +122,7 @@ const LAND_LEASE_SALE_2 = [
   { id: "ap-6027352", name: "마곡지구16단지 토지임대부 사전청약(나눔형)", presale_type: "공공분양" },
 ];
 
-describe("leaseTypes — isLeaseName (이름 규칙 4개)", () => {
+describe("leaseTypes — isLeaseName (이름 규칙 5개)", () => {
   it("실측 8곳 이름을 전부 임대로 판정한다", () => {
     for (const r of NAME_LEASE_8) expect(isLeaseName(r.name), r.name).toBe(true);
   });

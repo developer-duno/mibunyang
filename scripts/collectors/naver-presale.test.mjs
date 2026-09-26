@@ -847,10 +847,134 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
     expect(r?.tier).toBe(2);
   });
 
-  it("[매칭] 로그 줄에 ap제외·임대불일치 수를 싣고, main 카운터가 두 칸을 갖는다(소스 확인)", () => {
+  it("[매칭] 로그 줄에 ap제외·임대불일치·id복원 수를 싣고, main 카운터·인덱스가 그 칸을 갖는다(소스 확인)", () => {
     const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
-    expect(src).toMatch(/const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 \}/);
-    expect(src).toMatch(/ap제외=\$\{matchStats\.apSkipped\} 임대불일치=\$\{matchStats\.leaseMismatch\}/);
+    expect(src).toMatch(/const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 \}/);
+    expect(src).toMatch(/ap제외=\$\{matchStats\.apSkipped\} 임대불일치=\$\{matchStats\.leaseMismatch\} id복원=\$\{matchStats\.idHealed\}/);
+    expect(src).toMatch(/const aptIndexes = \{ byPresaleNo, byBjd, byId \}/);
+    expect(src).toMatch(/if \(a\.id\) byId\.set\(a\.id, a\)/);
+  });
+
+  // ── 보완(세션579 20:5x) — H1 id 주인 1순위 · H2 공고 이름 임대 판정 · H3 후보 유형 무시 · H4 게이트 순서 ──
+
+  /**
+   * 번호를 고른 1순위 시험용 행.
+   * @param {string} no
+   */
+  const noRow = (no) => {
+    const row = gate579Row({ name: "아무이름", address: BANPO, bjd: BANPO_BJD });
+    row.naver_presale_no = no;
+    return row;
+  };
+  /**
+   * 인덱스 모양을 main 과 같게 만든다.
+   * @param {any[]} apts
+   */
+  const idx = (apts) => ({
+    byPresaleNo: new Map(apts.filter((a) => a.naver_presale_no).map((a) => [a.naver_presale_no, a])),
+    byBjd: new Map(),
+    byId: new Map(apts.map((a) => [a.id, a])),
+  });
+
+  it("12. H1① — ap-7000007 이 필드에 7000099 를 쥐고 있어도 공고 7000007 → ap-7000007 tier 1", () => {
+    const apts = [createApartment({ id: "ap-7000007", name: "딴이름", naver_presale_no: "7000099" })];
+    const r = matchPresaleToApt(noRow("7000007"), apts, idx(apts));
+    expect(r?.apartment.id).toBe("ap-7000007");
+    expect(r?.tier).toBe(1);
+    expect(r?.confidence).toBe(1.0);
+  });
+
+  it("13. H1② — 공고 7000099 → 필드 보유 행(ap-7000007)보다 id 주인 ap-7000099 가 먼저", () => {
+    const apts = [
+      createApartment({ id: "ap-7000007", name: "딴이름", naver_presale_no: "7000099" }),
+      createApartment({ id: "ap-7000099", name: "딴이름2", naver_presale_no: null }),
+    ];
+    expect(matchPresaleToApt(noRow("7000099"), apts, idx(apts))?.apartment.id).toBe("ap-7000099");
+  });
+
+  it("14. H1③ — ap-<번호> 행이 없으면 번호 필드 조회로(회귀)", () => {
+    const apts = [createApartment({ id: "ah-2024000010", name: "딴이름", naver_presale_no: "7000123" })];
+    const r = matchPresaleToApt(noRow("7000123"), apts, idx(apts));
+    expect(r?.apartment.id).toBe("ah-2024000010");
+    expect(r?.tier).toBe(1);
+  });
+
+  it("15. H1④ — 인덱스 없이(apartments 만) 호출해도 id 주인을 찾는다", () => {
+    const apts = [
+      createApartment({ id: "ap-7000007", name: "딴이름", naver_presale_no: "7000099" }),
+      createApartment({ id: "ap-7000099", name: "딴이름2", naver_presale_no: null }),
+    ];
+    expect(matchPresaleToApt(noRow("7000099"), apts)?.apartment.id).toBe("ap-7000099");
+  });
+
+  it("16. H1-b — idHealed 는 id 주인의 필드가 공고 번호와 다를 때만 1", () => {
+    const healed = [createApartment({ id: "ap-7000007", name: "딴이름", naver_presale_no: "7000099" })];
+    const s1 = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 };
+    expect(matchPresaleToApt(noRow("7000007"), healed, idx(healed), s1)?.tier).toBe(1);
+    expect(s1.idHealed).toBe(1);
+
+    const same = [createApartment({ id: "ap-7000007", name: "딴이름", naver_presale_no: "7000007" })];
+    const s2 = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 };
+    expect(matchPresaleToApt(noRow("7000007"), same, idx(same), s2)?.tier).toBe(1);
+    expect(s2.idHealed).toBe(0);
+  });
+
+  const NOWON = "서울특별시 노원구 월계동 1";
+  const NW_BJD = "1135010200";
+
+  it("17. H2⑤ — 유형 민간분양·이름 '…재개발임대' 공고 → 보통 이름 ah 후보만 → null(leaseMismatch 1)", () => {
+    const row = gate579Row({ name: "노원롯데캐슬시그니처 재개발임대", address: NOWON, bjd: NW_BJD });
+    expect(row.presale_type).toBe("민간분양");
+    const apts = [createApartment({
+      id: "ah-2024000011", name: "노원롯데캐슬시그니처", region: "서울", gu: "노원구", bjd_code: NW_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const s = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 };
+    expect(matchPresaleToApt(row, apts, undefined, s)).toBeNull();
+    expect(s.leaseMismatch).toBe(1);
+  });
+
+  it("18. H2⑥ — 같은 공고 → 임대 이름 ah(1.00)와 보통 이름 ah(0.80)가 함께면 임대 이름 ah", () => {
+    const row = gate579Row({ name: "노원롯데캐슬시그니처 재개발임대", address: NOWON, bjd: NW_BJD });
+    const apts = [
+      createApartment({ id: "ah-2024000011", name: "노원롯데캐슬시그니처", region: "서울", gu: "노원구", bjd_code: NW_BJD, lat: 33.0, lng: 127.0 }),
+      createApartment({ id: "ah-2024000012", name: "노원롯데캐슬시그니처 재개발임대", region: "서울", gu: "노원구", bjd_code: NW_BJD, lat: 33.0, lng: 127.0 }),
+    ];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024000012");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("19. H2⑦ — 유형 null·이름 '…행복주택' 공고 → 임대 이름 ah 행 매칭", () => {
+    const row = gate579Row({ name: "DMC센트럴자이 행복주택", address: EUNPYEONG, bjd: EP_BJD });
+    row.presale_type = null;
+    const apts = [createApartment({
+      id: "ah-2024930046", name: "DMC센트럴자이 행복주택", region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024930046");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("20. H3⑧ — 분양 공고 → 이름은 보통·presale_type '행복주택'인 ah 후보 → tier 2(후보 유형은 보지 않는다)", () => {
+    const row = gate579Row({ name: "은평뉴타운", address: EUNPYEONG, bjd: EP_BJD });
+    const apts = [createApartment({
+      id: "ah-2024000013", name: "은평뉴타운", presale_type: "행복주택",
+      region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024000013");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("21. H4⑨ — 다른 시군구 ap-* 후보만 → null · gateBlocked 1 · apSkipped 0(시군구 게이트가 먼저)", () => {
+    const row = gate579Row({ name: "오티에르반포", address: BANPO, bjd: BANPO_BJD });
+    const apts = [createApartment({
+      id: "ap-6027478", name: "오티에르반포", region: "서울", gu: "강남구", bjd_code: BANPO_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const s = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 };
+    expect(matchPresaleToApt(row, apts, undefined, s)).toBeNull();
+    expect(s.gateBlocked).toBe(1);
+    expect(s.apSkipped).toBe(0);
   });
 });
 

@@ -332,7 +332,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       continue;
     }
 
-    // 규칙 2 — 임대형 = 유형(presale_type) 또는 이름(국민임대·행복주택·장기전세·재개발임대, 세션577 — isLeaseUnit).
+    // 규칙 2 — 임대형 = 유형(presale_type) 또는 이름(국민임대·행복주택·장기전세·재개발임대·청년안심주택, 세션577·579 — isLeaseUnit).
     if (isLeaseUnit(apt)) {
       plan.push({ ...base, action: "skip_lease" });
       continue;
