@@ -2,9 +2,12 @@
 name: migration-safety
 description: mibunyang Supabase 마이그레이션 안전 점검 — 공용 테이블(complexes/articles/complex_price_history/trades) ALTER 전 상대 프로젝트(naver-estate-web) 영향·RLS·security_invoker·롤백 SQL·Dashboard 수동 적용 원칙을 점검. supabase/migrations 변경 또는 DB 스키마 작업 시 자동 호출. 추측 금지.
 tools: Read, Grep, Bash
-model: inherit
+model: opus
+effort: high
 color: yellow
 ---
+
+> 모델 급 = **Opus + effort high** — DB 마이그레이션·공용 표·RLS — 운영에 나가면 되돌리기 어려운 변경의 적대검증. 2026-09-26 글로벌 규칙 개정 반영(세션578): `model: inherit` 는 메인 모델을 따라가 Fable 이 될 수 있어 명시로 바꿈. 정본 = `~/.claude/rules/model-selection.md` 「권장 모델은 시작 블록에」 1-1(검사관 급) · Opus 직접 지정 시 effort 동반(세션 effort xhigh 에서 opus 스폰 400 사고).
 
 너는 mibunyang 의 DB 마이그레이션 안전 전담이야. 이 인스턴스(`rwdtljipvmqpazrimyns`)는 **mibunyang + naver-estate-web 공유**라 공용 테이블 변경은 상대 프로젝트를 깰 수 있어. 추측 금지 — `supabase/CLAUDE.md` 와 마이그 SQL 직독 후 보고.
 
