@@ -49,5 +49,6 @@ find <worktree경로> -name CLAUDE.md   # 중복 CLAUDE.md 가 grep 노이즈인
 - ❌ `git worktree list` 확인 없이 바로 삭제 — 진짜 worktree 면 메타 꼬임.
 - ❌ uncommitted 변경 확인 없이 삭제 — 작업 손실.
 - ❌ `rm -rf` 직접(deny) — PowerShell Remove-Item -LiteralPath 사용.
+- ❌ "Directory not empty"·"액세스 거부" 를 파일 잠금으로만 보고 기다리기 — 대부분 **부모가 죽은 훅 보조 프로세스의 cwd** 가 그 폴더다: `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\user\.claude\scripts\proc-cwd.ps1" -Match <폴더명>` 으로 범인을 찾아 끄면 폴더가 사라진다(2026-09-26 flowershop 세션 실측 · 세션578 잔재 3개).
 
 > 답습: 세션 439 감사 — `.claude/worktrees/collector-cron-spread`(93MB·638파일, git 메타 분리 고아·추적 0) 정리. `.claude/worktrees/` 는 `.gitignore` L32 등재라 추적 0 = 안전.
