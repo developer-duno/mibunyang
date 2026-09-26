@@ -232,5 +232,5 @@
   },
   "checks": "재조회 89/89 기대 상태(ap=자기 번호·ah=null) · 분양 칸 빈 값 89/89 · presale_min 잔여 0 · VIEW 중복 제거에 가려진 12곳의 대표 행 전부 목록 보임 · 목록 보임→숨김 0",
   "snapshots_copy": "D:\\mibunyang-backups\\session579\\ (F: 이동형 드라이브 외 1부)",
-  "followups": "BACKLOG A-13"
+  "followups": "BACKLOG A-13 · 반영 뒤 러너 흉내에서 끊은 79개 중 32개 재부착 확인 → 수집기 후보 게이트 PR #650(같은 세션) · 남은 1(이안센트럴제기동역 → 제기동역 아이파크, 3순위 0.47)"
 }
