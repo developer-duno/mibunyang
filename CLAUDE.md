@@ -6,7 +6,7 @@
 
 - **사용자 대화 시 쉬운 말 원칙** — 자세히는 [.claude/EASY_WORDS.md](.claude/EASY_WORDS.md)
 - **현재 진행 상황** — 세션 296+ 이력은 글로벌 메모리 `~/.claude/projects/f--mibunyang/memory/` (MEMORY.md 인덱스 + session_*.md) 가 진실의 원천. 과거 세션 1~354 = [.claude/SESSION_LOG_ARCHIVE_2026H1.md](.claude/SESSION_LOG_ARCHIVE_2026H1.md) · [.claude/SESSION_LOG.md](.claude/SESSION_LOG.md) (스텁) · [.claude/DB_QUALITY.md](.claude/DB_QUALITY.md) · [.claude/BACKLOG.md](.claude/BACKLOG.md) · `.claude/NEXT_SESSION.md` (개인 로컬, git 미추적)
-- **새 작업 시작 시 작업 규칙** — [.claude/WORK_RULES.md](.claude/WORK_RULES.md) (Plan→Guard→Work→Review · **구현자·검사관 모델 사다리** 절 — 2026-09-26 글로벌 개정 반영)
+- **새 작업 시작 시 작업 규칙** — [.claude/WORK_RULES.md](.claude/WORK_RULES.md) (Plan→Guard→Work→Review · **구현자·검사관 모델 사다리 · 모델 전환 지점 멈춤** 절 — 2026-09-26 글로벌 개정 반영)
 - **CLAUDE.md 본문 편집 전 메타 규칙** — [.claude/META_RULES.md](.claude/META_RULES.md) (비대화 방지, 상한 150줄)
 - **환경변수 / 로컬 자원 / 자주 쓰는 스킬** — [.claude/ENV_VARS.md](.claude/ENV_VARS.md) · [.claude/LOCAL_RESOURCES.md](.claude/LOCAL_RESOURCES.md) · [.claude/SKILLS.md](.claude/SKILLS.md)
 - **외부 API 키 발급처 + 도구 카탈로그** — [.claude/API_REGISTRY.md](.claude/API_REGISTRY.md) · [.claude/CLAUDE_TOOLBOX.md](.claude/CLAUDE_TOOLBOX.md)
