@@ -779,6 +779,13 @@ describe("parsePresaleAddress — 사업지구 이름을 시군구로 읽지 않
   it("구 뒤의 공구는 그대로 두고 구가 이긴다(연수구 송도동 6공구 → 연수구)", () => {
     expect(parsePresaleAddress("인천광역시 연수구 송도동 6공구").gu).toBe("연수구");
   });
+  it("진짜 구인 \"수지구\"(…지구)는 시군구 표에 있어 구로 읽힌다(용인시 수지구)", () => {
+    const r = parsePresaleAddress("경기도 용인시 수지구 풍덕천동 1");
+    expect(r).toEqual({ region: "경기", gu: "수지구", dong: "풍덕천동" });
+  });
+  it("표에 없는 사업지구는 여전히 제외된다(고덕국제화계획지구 → 평택시)", () => {
+    expect(parsePresaleAddress("경기도 평택시 고덕국제화계획지구 A-49블록").gu).toBe("평택시");
+  });
   it("시 다음 일반구는 그대로 구가 이긴다(성남시 분당구 → 분당구)", () => {
     expect(parsePresaleAddress("경기도 성남시 분당구 야탑동").gu).toBe("분당구");
   });

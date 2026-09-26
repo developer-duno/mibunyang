@@ -23,7 +23,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
-  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu,
+  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP,
 } from "./_shared.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
@@ -380,8 +380,14 @@ export function parsePresaleAddress(address) {
   // 세션578: 후보는 **시도 뒤 두 토큰(parts[1], parts[2])만**, "…지구" 는 제외한다. 옛 코드는 주소의 아무
   // 토큰이나 봐서 `고덕국제화계획지구`·`탕정지구`·`운정3지구`·`일광지구` 를 시군구로 읽었고, 시군구 게이트가
   // 그 가짜 gu 로 정당한 매칭을 끊었다(검사관 실측 4건). "N공구"(공사 구역)도 같은 이유로 제외한다.
+  // 단, 진짜 시군구 표(GU_LAWD_MAP)에 있는 이름은 제외 규칙에 걸려도 구로 본다 — "용인시 수지구"(…지구)가 그 예.
+  const regionGus = region && Object.prototype.hasOwnProperty.call(GU_LAWD_MAP, region)
+    ? /** @type {Record<string, string>} */ (/** @type {any} */ (GU_LAWD_MAP)[region])
+    : null;
+  /** @param {string} p */
+  const isRealGu = (p) => !!regionGus && Object.prototype.hasOwnProperty.call(regionGus, normalizeGu(/** @type {string} */ (region), p) ?? "");
   const guCands = parts.slice(1, 3);
-  gu = guCands.find((p) => /구$/.test(p) && !/(지|공)구$/.test(p))
+  gu = guCands.find((p) => /구$/.test(p) && (!/(지|공)구$/.test(p) || isRealGu(p)))
     ?? guCands.find((p) => /[시군]$/.test(p))
     ?? null;
   for (const p of parts) {
