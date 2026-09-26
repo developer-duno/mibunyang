@@ -122,7 +122,7 @@ const LAND_LEASE_SALE_2 = [
   { id: "ap-6027352", name: "마곡지구16단지 토지임대부 사전청약(나눔형)", presale_type: "공공분양" },
 ];
 
-describe("leaseTypes — isLeaseName (이름 규칙 4개)", () => {
+describe("leaseTypes — isLeaseName (이름 규칙 5개)", () => {
   it("실측 8곳 이름을 전부 임대로 판정한다", () => {
     for (const r of NAME_LEASE_8) expect(isLeaseName(r.name), r.name).toBe(true);
   });
@@ -131,6 +131,11 @@ describe("leaseTypes — isLeaseName (이름 규칙 4개)", () => {
     expect(isLeaseName("신길센트럴자이 재개발임대")).toBe(true);
     expect(isLeaseName("상수2구역 재개발임대")).toBe(true);
     expect(isLeaseName("힐스테이트클래시안 재개발임대")).toBe(true);
+  });
+
+  it("청년안심주택을 임대로 판정한다 (세션579 — 실측 63곳 전부 임대 유형, 뮤테이션 ⓒ 앵커)", () => {
+    expect(isLeaseName("홍대크리원 청년안심주택")).toBe(true);
+    expect(isLeaseUnit({ presale_type: "민간분양", name: "홍대크리원 청년안심주택" })).toBe(true);
   });
 
   it("토지임대부(분양) 2곳은 임대가 아니다 — 넓은 '임대' 판정 금지 (뮤테이션 c 앵커)", () => {
@@ -147,8 +152,8 @@ describe("leaseTypes — isLeaseName (이름 규칙 4개)", () => {
     expect(isLeaseName(123)).toBe(false);
   });
 
-  it("LEASE_NAME_PATTERN 은 4개 낱말 그대로다", () => {
-    expect(LEASE_NAME_PATTERN.source).toBe("국민임대|행복주택|장기전세|재개발임대");
+  it("LEASE_NAME_PATTERN 은 5개 낱말 그대로다(세션579 청년안심주택 추가)", () => {
+    expect(LEASE_NAME_PATTERN.source).toBe("국민임대|행복주택|장기전세|재개발임대|청년안심주택");
   });
 });
 
