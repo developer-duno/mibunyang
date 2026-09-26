@@ -53,10 +53,17 @@
  * 포함)은 기존과 똑같이 비운다 — 판정 잣대는 `src/constants/leaseTypes.mjs` 의 `isLeasePresale`
  * 하나뿐이다(도구 자체 정규식 금지, 손님 목록의 임대 제외(`isLeaseUnit`)가 쓰는 유형 판정과 같은 함수).
  *
+ * ## `--trust-ids` (명단 신뢰 모드, 세션578 15:2x 후속)
+ * 주인 행 `ap-<번호>` 가 DB 에 없어 기본 판정(`findContaminatedLinks`)이 건너뛰는 행도, 그 판정을
+ * **도구 밖에서**(네이버 주소 읽기 전용 대조) 이미 끝낸 명단이면 그대로 신뢰해 정리한다. 왜 —
+ * 다른 시군구·주인 행 없음 302곳 중 149곳(다른 시군구 114 + 응답없음 ap-* 35)은 주인 행이 없어
+ * 이 도구 스스로는 판정할 수 없지만, 네이버 실측으로 이미 오염이 확정됐다(`--ids-file` 필수).
+ *
  * ## 사용법
  *   node scripts/cleanup-presale-links.mjs --out=<계획.json>                                  (dry-run)
  *   node scripts/cleanup-presale-links.mjs --out=<계획.json> --ids-file=<id목록.json>         (그 명단 안에서만 판정)
  *   node scripts/cleanup-presale-links.mjs --out=<계획.json> --keep-lease-type                (임대 계열 유형은 남긴다)
+ *   node scripts/cleanup-presale-links.mjs --out=<계획.json> --ids-file=<id목록.json> --trust-ids --why="…"  (명단 신뢰 모드, --ids-file 필수)
  *   node scripts/cleanup-presale-links.mjs --apply --from=<계획.json.before.<ts>.json> --why="세션578 오염 링크"
  *
  * ⚠️ 파이프(`| tail`)를 붙이지 말 것 — SIGPIPE 로 중간에 죽는다
@@ -94,19 +101,22 @@ export const APT_COLS = "id, name, region, gu, lat, lng, naver_presale_no, naver
  * @typedef {{
  *   id: string; name: string | null; region: string | null; gu: string | null;
  *   presale_type: string | null; presale_pp: number | null; presale_min_price: number | null;
- *   ownerId: string; ownerName: string | null; ownerRegion: string | null; ownerGu: string | null;
- *   km: number | null; action: "ap-restore" | "unlink";
+ *   ownerId: string | null; ownerName: string | null; ownerRegion: string | null; ownerGu: string | null;
+ *   km: number | null; action: "ap-restore" | "unlink"; evidence: "owner-district" | "trust-ids";
  * }} Target
  */
 
 /**
  * 오염 링크 판정 — DB 접근 없는 순수 함수.
  * @param {AptRow[]} rows apartments 전량(주인 행 조회용)
- * @param {{ onlyIds?: Set<string> | null }} [opts] `onlyIds` 가 있으면 그 명단 안의 행만 판정(주인 조회는 전량)
+ * @param {{ onlyIds?: Set<string> | null; trustIds?: boolean }} [opts] `onlyIds` 가 있으면 그 명단 안의
+ *   행만 판정(주인 조회는 전량). `trustIds` 가 참이면 명단 안 행은 **주인 행이 없어도** 대상으로 삼는다
+ *   (판정 근거가 도구 밖의 외부 실측 — `evidence: "trust-ids"`, 세션578 15:2x).
  * @returns {Target[]}
  */
 export function findContaminatedLinks(rows, opts = {}) {
   const onlyIds = opts.onlyIds ?? null;
+  const trustIds = !!opts.trustIds;
   /** @type {Map<string, AptRow>} */
   const byId = new Map(rows.map((r) => [r.id, r]));
   /** @type {Target[]} */
@@ -115,6 +125,26 @@ export function findContaminatedLinks(rows, opts = {}) {
     if (onlyIds && !onlyIds.has(a.id)) continue;
     const no = a.naver_presale_no == null ? "" : String(a.naver_presale_no).trim();
     if (!no) continue;
+    if (a.id.startsWith("ap-") && no === a.id.slice("ap-".length)) continue; // 이미 자기 번호
+
+    // 명단 신뢰 모드(trustIds): 명단 안 행은 번호·자기번호 판정만 거치고, 주인 행 유무·시군구와
+    // 무관하게 대상으로 삼는다 — 판정 근거가 이 함수 밖(외부 실측)이기 때문이다.
+    if (trustIds) {
+      const owner = byId.get(`ap-${no}`);
+      const km = owner != null && a.lat != null && a.lng != null && owner.lat != null && owner.lng != null
+        ? Math.round(haversineKm(a.lat, a.lng, owner.lat, owner.lng) * 10) / 10
+        : null;
+      out.push({
+        id: a.id, name: a.name ?? null, region: a.region ?? null, gu: a.gu ?? null,
+        presale_type: a.presale_type ?? null, presale_pp: a.presale_pp ?? null,
+        presale_min_price: a.presale_min_price ?? null,
+        ownerId: owner?.id ?? null, ownerName: owner?.name ?? null,
+        ownerRegion: owner?.region ?? null, ownerGu: owner?.gu ?? null,
+        km, action: a.id.startsWith("ap-") ? "ap-restore" : "unlink", evidence: "trust-ids",
+      });
+      continue;
+    }
+
     const owner = byId.get(`ap-${no}`);
     if (!owner) continue; // 주인 행 없음 — 판정 불가, 대상 아님
     if (owner.id === a.id) continue; // 자기 번호
@@ -129,6 +159,7 @@ export function findContaminatedLinks(rows, opts = {}) {
       presale_min_price: a.presale_min_price ?? null,
       ownerId: owner.id, ownerName: owner.name ?? null, ownerRegion: owner.region ?? null, ownerGu: owner.gu ?? null,
       km, action: a.id.startsWith("ap-") ? "ap-restore" : "unlink",
+      evidence: "owner-district",
     });
   }
   out.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
@@ -309,6 +340,7 @@ export async function run(deps) {
   const idsArg = argValue(argv, "ids-file");
   const why = argValue(argv, "why");
   const keepLeaseType = argv.includes("--keep-lease-type");
+  const trustIds = argv.includes("--trust-ids");
 
   if (apply && !fromArg) {
     logError(PHASE, "--apply 는 --from=<dry-run 이 만든 before 사본.json> 없이 실행할 수 없음");
@@ -318,10 +350,15 @@ export async function run(deps) {
     logError(PHASE, "--out=<계획.json> 필요 (dry-run 결과·사본·역계획을 남길 자리)");
     return { code: 1 };
   }
+  if (trustIds && !idsArg) {
+    logError(PHASE, "명단 신뢰 모드는 --ids-file 필수");
+    return { code: 1 };
+  }
 
   log(PHASE, apply ? "=== 실제 반영 모드 (--apply) ===" : "DRY-RUN — DB 변경 0 (반영하려면 --apply --from=<before 사본>)");
   if (why) log(PHASE, `사유: ${why}`);
   if (keepLeaseType && !apply) log(PHASE, "--keep-lease-type: 임대 계열 유형은 presale_type 을 현재값 그대로 남긴다");
+  if (trustIds && !apply) log(PHASE, `--trust-ids: 판정 근거는 외부 — ${why ?? "(사유 미기재)"}`);
 
   if (apply) return applyFromSnapshot({ sb, cwd, readFile, fromPath: /** @type {string} */ (fromArg) });
 
@@ -350,7 +387,7 @@ export async function run(deps) {
   ));
   log(PHASE, `apartments 전량 ${rows.length}행 (고유키 커서)`);
 
-  const targets = findContaminatedLinks(rows, { onlyIds });
+  const targets = findContaminatedLinks(rows, { onlyIds, trustIds });
   if (targets.length > MAX_TARGETS) {
     logError(PHASE, `대상 ${targets.length}건 — 1,000 초과(.in() 상한). --ids-file 로 나눠서 돌릴 것`);
     return { code: 1, targets: targets.length };
@@ -380,8 +417,11 @@ export async function run(deps) {
   for (let i = 0; i < targets.length; i++) {
     const t = targets[i];
     const s = snapTargets[i];
+    const ownerStr = t.ownerId == null
+      ? "주인 행 없음(명단 신뢰)"
+      : `${t.ownerId} · ${t.ownerName ?? "-"} · ${t.ownerRegion ?? "?"}|${t.ownerGu ?? "?"} · ${t.km == null ? "거리불명" : `${t.km}km`}`;
     log(PHASE, `  ${t.id} · ${t.name ?? "-"} · ${t.region ?? "?"}|${t.gu ?? "?"} · ${t.presale_type ?? "-"} · 평당 ${t.presale_pp ?? "null"}`
-      + ` → 주인 ${t.ownerId} · ${t.ownerName ?? "-"} · ${t.ownerRegion ?? "?"}|${t.ownerGu ?? "?"} · ${t.km == null ? "거리불명" : `${t.km}km`}`
+      + ` → 주인 ${ownerStr}`
       + ` · 동작 ${t.action === "ap-restore" ? `ap-복원(번호→${t.id.slice(3)})` : "끊기(번호 null)"}`
       + ` · prices 삭제 ${s.prices.length}행`
       + (s.keptLeaseType ? " · [유형 유지]" : ""));
@@ -389,6 +429,7 @@ export async function run(deps) {
   const apCount = targets.filter((t) => t.action === "ap-restore").length;
   const priceTotal = snapTargets.reduce((n, s) => n + s.prices.length, 0);
   const keptLeaseTypeCount = snapTargets.filter((s) => s.keptLeaseType).length;
+  const trustIdsCount = targets.filter((t) => t.evidence === "trust-ids").length;
   /** @type {Record<string, Record<string, number>>} */
   const dist = { "ap-*": {}, "그 외": {} };
   for (const t of targets) {
@@ -397,7 +438,8 @@ export async function run(deps) {
     g[b] = (g[b] ?? 0) + 1;
   }
   log(PHASE, `\n=== 요약: 대상 ${targets.length} · ap-* ${apCount} · 그 외 ${targets.length - apCount} · prices 삭제 예정 ${priceTotal}행`
-    + (keepLeaseType ? ` · 유형 유지 ${keptLeaseTypeCount}` : "") + " ===");
+    + (keepLeaseType ? ` · 유형 유지 ${keptLeaseTypeCount}` : "")
+    + (trustIds ? ` · 명단 신뢰 ${trustIdsCount}` : "") + " ===");
   log(PHASE, `  거리 분포 ${JSON.stringify(dist)}`);
 
   const ts = formatTimestamp(now);
@@ -413,7 +455,7 @@ export async function run(deps) {
     generatedAt, why, idsFile: idsArg,
     summary: {
       targets: targets.length, ap: apCount, other: targets.length - apCount, pricesToDelete: priceTotal, dist,
-      keepLeaseType, keptLeaseTypeCount,
+      keepLeaseType, keptLeaseTypeCount, trustIds, trustIdsCount,
     },
     plan: snapTargets.map((s) => ({ id: s.id, name: s.name, action: s.action, expected: s.expected, owner: s.owner, km: s.km, priceIds: s.prices.map((p) => p.id) })),
   }, null, 2));
