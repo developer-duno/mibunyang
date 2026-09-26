@@ -50,5 +50,6 @@ find <worktree경로> -name CLAUDE.md   # 중복 CLAUDE.md 가 grep 노이즈인
 - ❌ uncommitted 변경 확인 없이 삭제 — 작업 손실.
 - ❌ `rm -rf` 직접(deny) — PowerShell Remove-Item -LiteralPath 사용.
 - ❌ "Directory not empty"·"액세스 거부" 를 파일 잠금으로만 보고 기다리기 — 대부분 **부모가 죽은 훅 보조 프로세스의 cwd** 가 그 폴더다: `powershell -NoProfile -ExecutionPolicy Bypass -File "C:\Users\user\.claude\scripts\proc-cwd.ps1" -Match <폴더명>` 으로 범인을 찾아 끄면 폴더가 사라진다(2026-09-26 flowershop 세션 실측 · 세션578 잔재 3개).
+- ❌ proc-cwd 가 hits=0 인데도 액세스 거부를 "원인 불명"으로 두기 — IDE 진단(`<new-diagnostics>`)에 그 폴더 파일 경로가 뜨면 **VS Code 가 그 폴더 파일을 열고 있다**(워크트리에서 vitest 를 돌리면 `node_modules/.vite`·`.vite-temp`·`.cache` 실제 폴더가 생김, 링크 아님). 등록은 `git worktree remove` 로 풀리니 폴더는 사장님이 탭을 닫은 뒤 `Remove-Item -LiteralPath <폴더> -Recurse -Force`(세션579·580·581 세 번 반복).
 
 > 답습: 세션 439 감사 — `.claude/worktrees/collector-cron-spread`(93MB·638파일, git 메타 분리 고아·추적 0) 정리. `.claude/worktrees/` 는 `.gitignore` L32 등재라 추적 0 = 안전.
