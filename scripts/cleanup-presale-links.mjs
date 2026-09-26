@@ -30,6 +30,8 @@
  * 오염 매칭 때 enrich 로 채워졌을 **수도** 있지만, 원래 값인지 남의 값인지 판별할 근거가 없어 그대로 둔다.
  * 또 `(price, pp)` 가 지금 분양 칸과 다른 옛 prices 행(오염 이전 회차 값이 섞였을 수 있음)도 남긴다.
  * UPDATE 에 현재값 조건이 없어 확인 뒤 몇 ms 사이 경합 가능 — 월/목 08:00~14:00 네이버 러너 시간을 피해 반영한다.
+ * `--keep-lease-type` 으로 남긴 `presale_type` 도 왜인지 모른 채 남긴 값이다 — 21곳이 목록에 분양으로
+ * 새로 나타나는 손님 노출 위험을 피하려는 임시 조치이지, 그 유형이 진짜 맞다는 검증은 아니다.
  *
  * ## 안전장치 (`cleanup-unsold-by-ids.mjs` 와 같은 수준 — `.claude/rules/collectors/data-changing-run-approval.md`)
  *   1. dry-run 이 기본. `--out=<계획.json>` 필수. 전이표를 콘솔에 먼저 보여 준다.
@@ -44,9 +46,17 @@
  *   6. 대상이 1,000 을 넘으면 exit 1(`.in()` 상한 — `unordered-pagination-loses-rows.md`).
  *   7. apartments 전량은 `selectAll(…, "id")` 고유키 커서로 읽는다.
  *
+ * ## `--keep-lease-type` (세션578 🔴2 후속)
+ * 오염 대상 중 **지금 유형이 임대 계열**(`isLeasePresale`)인 단지는 유형을 비우면 그 단지가
+ * "임대 목록"에서 빠져 **분양 단지로 손님 목록에 새로 나타난다**(21곳 실측, 사장님 결정 2026-09-26
+ * 12:2x). 이 플래그를 켜면 그 단지들만 `presale_type` 을 현재값 그대로 남기고, 나머지 16칸(번호
+ * 포함)은 기존과 똑같이 비운다 — 판정 잣대는 `src/constants/leaseTypes.mjs` 의 `isLeasePresale`
+ * 하나뿐이다(도구 자체 정규식 금지, 수집기 게이트와 같은 함수를 쓴다).
+ *
  * ## 사용법
  *   node scripts/cleanup-presale-links.mjs --out=<계획.json>                                  (dry-run)
  *   node scripts/cleanup-presale-links.mjs --out=<계획.json> --ids-file=<id목록.json>         (그 명단 안에서만 판정)
+ *   node scripts/cleanup-presale-links.mjs --out=<계획.json> --keep-lease-type                (임대 계열 유형은 남긴다)
  *   node scripts/cleanup-presale-links.mjs --apply --from=<계획.json.before.<ts>.json> --why="세션578 오염 링크"
  *
  * ⚠️ 파이프(`| tail`)를 붙이지 말 것 — SIGPIPE 로 중간에 죽는다
@@ -56,6 +66,7 @@ import {
   loadEnv, getSupabase, log, logError, createSemaphore, selectAll, haversineKm,
 } from "./collectors/_shared.mjs";
 import { sameDistrict } from "./collectors/naver-presale.mjs";
+import { isLeasePresale } from "../src/constants/leaseTypes.mjs";
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
 import { resolve } from "node:path";
 
@@ -126,14 +137,20 @@ export function findContaminatedLinks(rows, opts = {}) {
 
 /**
  * 동작별 기대 새 값(19칸). ap-* 는 자기 번호로 복원, 그 외는 번호도 null.
+ * `keepLeaseType` 이 참이고 `currentPresaleType` 이 임대 계열(`isLeasePresale`)이면
+ * `presale_type` 만 현재값 그대로 남긴다(사장님 결정 2026-09-26 12:2x — 세션578 🔴2 후속).
  * @param {string} id
+ * @param {{ keepLeaseType?: boolean; currentPresaleType?: string | null }} [opts]
  * @returns {Record<string, string | null>}
  */
-export function expectedValues(id) {
+export function expectedValues(id, opts = {}) {
   /** @type {Record<string, string | null>} */
   const v = {};
   for (const f of SNAP_FIELDS) v[f] = null;
   if (id.startsWith("ap-")) v.naver_presale_no = id.slice("ap-".length);
+  if (opts.keepLeaseType && isLeasePresale(opts.currentPresaleType ?? null)) {
+    v.presale_type = opts.currentPresaleType ?? null;
+  }
   return v;
 }
 
@@ -291,6 +308,7 @@ export async function run(deps) {
   const fromArg = argValue(argv, "from");
   const idsArg = argValue(argv, "ids-file");
   const why = argValue(argv, "why");
+  const keepLeaseType = argv.includes("--keep-lease-type");
 
   if (apply && !fromArg) {
     logError(PHASE, "--apply 는 --from=<dry-run 이 만든 before 사본.json> 없이 실행할 수 없음");
@@ -303,6 +321,7 @@ export async function run(deps) {
 
   log(PHASE, apply ? "=== 실제 반영 모드 (--apply) ===" : "DRY-RUN — DB 변경 0 (반영하려면 --apply --from=<before 사본>)");
   if (why) log(PHASE, `사유: ${why}`);
+  if (keepLeaseType && !apply) log(PHASE, "--keep-lease-type: 임대 계열 유형은 presale_type 을 현재값 그대로 남긴다");
 
   if (apply) return applyFromSnapshot({ sb, cwd, readFile, fromPath: /** @type {string} */ (fromArg) });
 
@@ -346,10 +365,13 @@ export async function run(deps) {
     /** @type {Record<string, unknown>} */
     const current = {};
     for (const f of SNAP_FIELDS) current[f] = r[f] ?? null;
+    const keptLeaseType = keepLeaseType && isLeasePresale(t.presale_type);
     return {
-      id: t.id, name: t.name, action: t.action, current, expected: expectedValues(t.id),
+      id: t.id, name: t.name, action: t.action, current,
+      expected: expectedValues(t.id, { keepLeaseType, currentPresaleType: t.presale_type }),
       prices: selectPricesToDelete(t, priceRows),
       owner: { id: t.ownerId, name: t.ownerName, region: t.ownerRegion, gu: t.ownerGu }, km: t.km,
+      keptLeaseType,
     };
   });
 
@@ -361,10 +383,12 @@ export async function run(deps) {
     log(PHASE, `  ${t.id} · ${t.name ?? "-"} · ${t.region ?? "?"}|${t.gu ?? "?"} · ${t.presale_type ?? "-"} · 평당 ${t.presale_pp ?? "null"}`
       + ` → 주인 ${t.ownerId} · ${t.ownerName ?? "-"} · ${t.ownerRegion ?? "?"}|${t.ownerGu ?? "?"} · ${t.km == null ? "거리불명" : `${t.km}km`}`
       + ` · 동작 ${t.action === "ap-restore" ? `ap-복원(번호→${t.id.slice(3)})` : "끊기(번호 null)"}`
-      + ` · prices 삭제 ${s.prices.length}행`);
+      + ` · prices 삭제 ${s.prices.length}행`
+      + (s.keptLeaseType ? " · [유형 유지]" : ""));
   }
   const apCount = targets.filter((t) => t.action === "ap-restore").length;
   const priceTotal = snapTargets.reduce((n, s) => n + s.prices.length, 0);
+  const keptLeaseTypeCount = snapTargets.filter((s) => s.keptLeaseType).length;
   /** @type {Record<string, Record<string, number>>} */
   const dist = { "ap-*": {}, "그 외": {} };
   for (const t of targets) {
@@ -372,7 +396,8 @@ export async function run(deps) {
     const b = bucket(t.km);
     g[b] = (g[b] ?? 0) + 1;
   }
-  log(PHASE, `\n=== 요약: 대상 ${targets.length} · ap-* ${apCount} · 그 외 ${targets.length - apCount} · prices 삭제 예정 ${priceTotal}행 ===`);
+  log(PHASE, `\n=== 요약: 대상 ${targets.length} · ap-* ${apCount} · 그 외 ${targets.length - apCount} · prices 삭제 예정 ${priceTotal}행`
+    + (keepLeaseType ? ` · 유형 유지 ${keptLeaseTypeCount}` : "") + " ===");
   log(PHASE, `  거리 분포 ${JSON.stringify(dist)}`);
 
   const ts = formatTimestamp(now);
@@ -386,7 +411,10 @@ export async function run(deps) {
   const generatedAt = now.toISOString();
   writeFile(outAbs, JSON.stringify({
     generatedAt, why, idsFile: idsArg,
-    summary: { targets: targets.length, ap: apCount, other: targets.length - apCount, pricesToDelete: priceTotal, dist },
+    summary: {
+      targets: targets.length, ap: apCount, other: targets.length - apCount, pricesToDelete: priceTotal, dist,
+      keepLeaseType, keptLeaseTypeCount,
+    },
     plan: snapTargets.map((s) => ({ id: s.id, name: s.name, action: s.action, expected: s.expected, owner: s.owner, km: s.km, priceIds: s.prices.map((p) => p.id) })),
   }, null, 2));
   writeFile(beforePath, JSON.stringify({
@@ -486,6 +514,8 @@ async function applyFromSnapshot({ sb, cwd, readFile, fromPath }) {
   log(PHASE, `\n=== 반영 완료: 성공 ${okIds.length} / 실패 ${fail} / 현재값 달라짐(건너뜀) ${staleSkipped.length} · prices 삭제 ${pricesDeleted}행 ===`);
 
   // 반영 직후 재조회 — 기대 상태인 행 수
+  // 유형(presale_type)은 검증 대상이 아니다 — 유지분은 애초에 현재값 그대로 반영했으므로
+  // 재조회 기대치(번호·presale_pp)가 keepLeaseType 유무와 무관하게 변하지 않는다.
   let code = fail > 0 ? 1 : 0;
   if (okIds.length > 0) {
     const { data: vData, error: vErr } = await sb

@@ -122,6 +122,24 @@ describe("expectedValues — 동작 분류 (T1-2·T1-4)", () => {
     expect(v.naver_presale_no).toBeNull();
     expect(SNAP_FIELDS.every((f) => v[f] === null)).toBe(true);
   });
+
+  it("--keep-lease-type 켬 + 임대 계열(행복주택) → presale_type 만 현재값, 나머지 16칸 null·번호 정상 처리", () => {
+    const v = expectedValues("ah-9000001", { keepLeaseType: true, currentPresaleType: "행복주택" });
+    expect(v.presale_type).toBe("행복주택");
+    expect(v.naver_presale_no).toBeNull();
+    const others = PRESALE_FIELDS.filter((f) => f !== "presale_type");
+    expect(others.every((f) => v[f] === null)).toBe(true);
+  });
+
+  it("--keep-lease-type 꺼짐 + 임대 계열이어도 presale_type 은 기존대로 null", () => {
+    const v = expectedValues("ah-9000001", { keepLeaseType: false, currentPresaleType: "행복주택" });
+    expect(v.presale_type).toBeNull();
+  });
+
+  it("--keep-lease-type 켬 + 임대 계열 아님(민간분양) → presale_type 도 null(기존과 동일)", () => {
+    const v = expectedValues("ah-9000001", { keepLeaseType: true, currentPresaleType: "민간분양" });
+    expect(v.presale_type).toBeNull();
+  });
 });
 
 describe("selectPricesToDelete — (price, pp) 같은 presale_min 행만 (T1-4)", () => {
@@ -272,5 +290,31 @@ describe("run — 안전장치·끝까지 (T1-3·T1-5·T1-6)", () => {
     expect(r2.code).toBe(1);
     // 실패한 단지의 prices 는 지우지 않는다
     expect(sb.tables.prices.filter((p) => p.apartment_id === "ap-6026677")).toHaveLength(8);
+  });
+});
+
+describe("run — --keep-lease-type dry-run (세션578 🔴2 후속)", () => {
+  it("임대 계열 유형 오염 대상은 전이표에 [유형 유지] 표시 + 계획 summary 에 keepLeaseType·keptLeaseTypeCount", async () => {
+    const tables = {
+      apartments: [
+        apt({ id: "ap-6027751", name: "서울원아이파크", region: "서울", gu: "노원구",
+          naver_presale_no: "6027751", presale_min_price: 89900, presale_pp: 3861 }),
+        // --keep-lease-type 대상 — 임대 계열(행복주택), 다른 시군구 오염
+        apt({ id: "ah-9000004", name: "임대유지단지", region: "경기", gu: "성남시",
+          naver_presale_no: "6027751", presale_type: "행복주택" }),
+      ],
+      prices: [],
+    };
+    const sb = makeFakeSupabase(tables);
+    const fs = makeMemFs();
+    const r = await run({ argv: ["--out=plan.json", "--keep-lease-type"], sb, cwd: CWD, now: new Date(2026, 8, 26, 13, 0, 0), ...fs });
+    expect(r.code).toBe(0);
+    expect(r.targets).toBe(1);
+    const plan = JSON.parse(/** @type {string} */ (fs.files.get(resolve(CWD, "plan.json"))));
+    expect(plan.summary.keepLeaseType).toBe(true);
+    expect(plan.summary.keptLeaseTypeCount).toBe(1);
+    const target = plan.plan.find((/** @type {any} */ t) => t.id === "ah-9000004");
+    expect(target.expected.presale_type).toBe("행복주택");
+    expect(target.expected.naver_presale_no).toBeNull();
   });
 });
