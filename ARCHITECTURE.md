@@ -97,7 +97,8 @@ scripts/
     │     ├── extractPresaleFields() — DRY 필드 추출 (update·insert 공용)
     │     ├── buildNewApartment()   — 신규 단지 생성 (ap-{no}, unit_source="naver_presale")
     │     └── matchPresaleToApt()   — 4단계 tier 매칭 (Map O(1) Tier1·2, tier 반환, tierCounts 집계)
-    │           └ 2~4순위 시군구 게이트(sameDistrict, 세션578) — 분양 주소와 같은 시도·시군구 단지에만 붙는다
+    │           ├ 2~4순위 시군구 게이트(sameDistrict, 세션578) — 분양 주소와 같은 시도·시군구 단지에만 붙는다
+    │           └ 2~4순위 후보 게이트(세션579·581) — ap-* 제외 · 임대/분양 이름 일치 · 차수·블록 충돌 거부(_kakao-poi phaseConsistent·blockConflict) · 정리한 이름 유사도 <0.85 이고 부분문자열도 아니면 거부
     └── naver-presale-jwt.py  JWT 추출 헬퍼 (new.land, 향후 인증 필요 시 fallback)
 
 supabase/

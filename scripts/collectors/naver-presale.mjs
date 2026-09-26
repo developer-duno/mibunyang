@@ -26,7 +26,11 @@ import {
   resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP,
 } from "./_shared.mjs";
 import { isLeaseName, isLeasePresale } from "../../src/constants/leaseTypes.mjs";
+import {
+  cleanName, stripRoundWords, phaseConsistent, blockConflict, KAKAO_STRONG_SIM, KAKAO_SUB_MIN_LEN,
+} from "./_kakao-poi.mjs";
 
+/** @typedef {{ name: string; tier: number; sim: number; reason: "차수충돌" | "이름약함" }} GateBlocked */
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
 /** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]>; byId: Map<string, AptForMatch> }} AptIndexes */
 /** @typedef {{ build_dtl_cd?: number | string | null; supp_cd?: number | string | null; build_nm?: string; min_price?: number | null; max_price?: number | null; pyper_price?: number | null; supp_sclass?: string | null; supp_proc_step_nm?: string | null; preview_image?: string | null; house_supp_cnt?: number | null; dong_cnt?: number | null; parking_cnt?: number | null; sell_office_phone?: string | null; build_point?: string | null; mvi_date?: string | null; recruit_date?: string | null; schdl_info?: unknown; bclass_nm?: string | null; total_house_cnt?: number | null; cmpy_nm?: string | null; max_flr_cnt?: number | null; ypos?: number | string | null; xpos?: number | string | null; bubdong_code?: string | null; address?: string | null }} ComplexData */
@@ -640,15 +644,33 @@ export function sameDistrict(region, guA, guB) {
  *     후보 **이름**의 임대 낱말(`isLeaseName`)이 다르면 뺀다 — 후보의 presale_type 은 남의 링크로 덮인 행이 있어 보지 않는다.
  *   - 1순위는 id 주인(`ap-<공고 번호>` 행)을 번호 필드보다 먼저 본다 — ap-* 행을 만드는 곳은 이 수집기의 `ap-${no}` 한 곳뿐이라
  *     그 행이 번호의 주인이다. 번호 필드를 남의 링크로 잃은 ap-* 도 이 길로 자기 공고에 다시 붙는다(`idHealed`).
- *   - 남는 구멍: ah-* 행 + 임대 여부가 같은 공고 + 같은 시군구 + 비슷한 이름은 여전히 붙는다
- *     (예: 분양 이안센트럴제기동역 → 제기동역 아이파크 3순위 0.47 · 임대 신정3지구 국민임대 → ah 신정3지구 장기전세 2순위 0.56).
+ *   - 남는 구멍(세션579 시점): ah-* 행 + 임대 여부가 같은 공고 + 같은 시군구 + 비슷한 이름은 여전히 붙었다
+ *     (예: 분양 이안센트럴제기동역 → 제기동역 아이파크 3순위 0.47 — 세션581 이름 게이트가 막는다 ·
+ *     임대 신정3지구 국민임대 → ah 신정3지구 장기전세 2순위 0.56).
+ *
+ * 세션581 이름·차수 게이트(세션579 후보 게이트 **뒤**, 2~4순위에만):
+ *   - 왜: 캐시 257건 흉내에서 ah-* 후보에 2·3순위 오답 7건 — 곤지암(힐스테이트광주곤지암역 → 곤지암역 제일풍경채)·
+ *     화성비봉 B1→B2·순천·제기동역·에코델타·센트리폴 3BL→1BL·첨단3지구 A6→A7. 원 유사도 기준(0.4~0.7)이 브랜드·지명 낱말만
+ *     겹쳐도 넘고, 차수·블록이 다른 옆 단지도 막지 못했다.
+ *   - G-A 차수·블록 충돌: 공고·후보 이름에 `stripRoundWords`(괄호는 남기고 회차 낱말만 뗌 — `cleanName` 은 `(A7BL)` 을
+ *     잃는다)를 적용해 `phaseConsistent === "conflict"` 또는 `blockConflict` 면 후보 제외(`phaseConflict`).
+ *   - G-B 이름 약함: `cleanName` 후 공백 제거 이름의 유사도가 `KAKAO_STRONG_SIM`(0.85) 미만이고, 짧은 쪽이
+ *     `KAKAO_SUB_MIN_LEN`(8자) 이상이면서 한쪽이 다른 쪽을 품는 부분문자열 구제도 없으면 후보 제외(`nameWeak`).
+ *     카카오 POI '강함' 기준 재사용(사장님 결정 2026-09-27).
+ *   - 남는 구멍: 영문 표기 차이(`SK뷰` ↔ `SK VIEW`, `아이파크` ↔ `IPARK`)는 다른 이름으로 보여 G-B 에 막히고
+ *     신규 행이 될 수 있다 — 정상 링크 대리 표본 143쌍 중 2쌍. 짧은 이름에 차수만 붙은 쌍(`OO아파트` ↔ `OO아파트 1단지`,
+ *     짧은 쪽 8자 미만·정리 유사도 0.85 미만)도 부분문자열 구제를 못 받아 신규 행으로 간다. 임대 **유형** 공고인데
+ *     이름에 임대 낱말이 없고 후보 이름엔 있는 짝(`은평뉴타운`[행복주택] ↔ `은평뉴타운 행복주택`)도 이름약함으로
+ *     신규 행 — 대리 표본 143쌍 중 0건.
  *
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
  * @param {AptIndexes} [indexes]
- * @param {{ gateBlocked: number; apSkipped?: number; leaseMismatch?: number; idHealed?: number }} [stats] 넘기면 "이름 유사도 기준은
+ * @param {{ gateBlocked: number; apSkipped?: number; leaseMismatch?: number; idHealed?: number; phaseConflict?: number; nameWeak?: number; blocked?: GateBlocked | null }} [stats] 넘기면 "이름 유사도 기준은
  *   넘었지만 시군구 게이트로 버린 후보가 하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
  *   `apSkipped`·`leaseMismatch` 도 같은 방식(세션579 후보 게이트로 버린 후보가 있으면 공고 1건당 1).
+ *   `phaseConflict`·`nameWeak` 도 같은 방식(세션581 이름·차수 게이트). `blocked` 는 호출마다 null 로 시작해,
+ *   이 공고에서 세션581 게이트로 버린 후보 중 원 이름 유사도가 가장 높은 1건을 담는다(로그용).
  *   `idHealed` 는 1순위를 id 주인으로 찾았는데 그 행의 `naver_presale_no` 가 공고 번호와 다를 때 1.
  * @returns {{ apartment: AptForMatch; confidence: number; tier: number } | null}
  */
@@ -658,6 +680,8 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
   const lat = presale._enrich?.lat;
   const lng = presale._enrich?.lng;
   const bjdCode = presale._enrich?.bjd_code;
+  // 세션581: 앞 공고의 차단 기록이 이 공고 로그로 새지 않게 비운다(값이 있을 때만 — 칸이 없던 stats 에 칸을 만들지 않는다)
+  if (stats?.blocked) stats.blocked = null;
 
   // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색) — 지역 무관(세션578 게이트 예외)
   if (presaleNo) {
@@ -693,16 +717,44 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
   const presaleIsLease = isLeasePresale(presale.presale_type) || isLeaseName(buildName);
   let apSkipped = false;
   let leaseMismatch = false;
-  /** @param {AptForMatch} a */
-  const candidateOk = (a) => {
+  // 세션581 이름·차수 게이트 재료: 공고 이름의 두 가지 정리형(차수·블록 판정용 / 유사도용)
+  const presaleStripped = stripRoundWords(buildName);
+  const presaleClean = cleanName(buildName).replace(/\s+/g, "");
+  let phaseConflict = false;
+  let nameWeak = false;
+  /** @type {GateBlocked | null} */
+  let gateBest = null;
+  /**
+   * @param {AptForMatch} a @param {number} sim 원 이름 유사도 @param {number} tier
+   * @param {GateBlocked["reason"]} reason
+   */
+  const noteGate = (a, sim, tier, reason) => {
+    if (!gateBest || sim > gateBest.sim) gateBest = { name: a.name, tier, sim, reason };
+  };
+  /** @param {AptForMatch} a @param {number} sim 원 이름 유사도 @param {number} tier */
+  const candidateOk = (a, sim, tier) => {
     if (String(a.id ?? "").startsWith("ap-")) { apSkipped = true; return false; }
     if (isLeaseName(a.name) !== presaleIsLease) { leaseMismatch = true; return false; }
+    // 세션581 G-A 차수·블록 충돌 — 괄호 속 블록을 지키려고 cleanName 이 아니라 stripRoundWords
+    const candStripped = stripRoundWords(a.name);
+    if (phaseConsistent(presaleStripped, candStripped) === "conflict" || blockConflict(presaleStripped, candStripped)) {
+      phaseConflict = true; noteGate(a, sim, tier, "차수충돌"); return false;
+    }
+    // 세션581 G-B 이름 약함 — 정리 이름 유사도 0.85 미만이고 부분문자열 구제(짧은 쪽 8자 이상)도 없으면 제외
+    const candClean = cleanName(a.name).replace(/\s+/g, "");
+    const nameSim = stringSimilarity(presaleClean, candClean);
+    const sub = Math.min(presaleClean.length, candClean.length) >= KAKAO_SUB_MIN_LEN
+      && (presaleClean.includes(candClean) || candClean.includes(presaleClean));
+    if (nameSim < KAKAO_STRONG_SIM && !sub) { nameWeak = true; noteGate(a, sim, tier, "이름약함"); return false; }
     return true;
   };
   const finish = (/** @type {{ apartment: AptForMatch; confidence: number; tier: number } | null} */ r) => {
     if (blocked && stats) stats.gateBlocked++;
     if (apSkipped && stats) stats.apSkipped = (stats.apSkipped ?? 0) + 1;
     if (leaseMismatch && stats) stats.leaseMismatch = (stats.leaseMismatch ?? 0) + 1;
+    if (phaseConflict && stats) stats.phaseConflict = (stats.phaseConflict ?? 0) + 1;
+    if (nameWeak && stats) stats.nameWeak = (stats.nameWeak ?? 0) + 1;
+    if (gateBest && stats) stats.blocked = gateBest;
     return r;
   };
 
@@ -722,7 +774,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_BJD) continue;
       if (!inDistrict(a)) continue;
-      if (!candidateOk(a)) continue;
+      if (!candidateOk(a, sim, 2)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 2 });
@@ -742,7 +794,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_GEO) continue;
       if (!inDistrict(a)) continue;
-      if (!candidateOk(a)) continue;
+      if (!candidateOk(a, sim, 3)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 3 });
@@ -758,7 +810,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_REGION) continue;
       if (!inDistrict(a)) continue;
-      if (!candidateOk(a)) continue;
+      if (!candidateOk(a, sim, 4)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 4 });
@@ -1067,7 +1119,9 @@ async function main() {
   // --region=X 로 좁혀 돌 때 공유 cortarNo 가 실어 온 다른 지역 단지를 건너뛴 수
   let regionFiltered = 0;
   // 세션578: 이름 유사도는 넘었지만 시군구 게이트로 후보를 버린 분양 수(matchPresaleToApt stats)
-  const matchStats = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 };
+  // 세션581: phaseConflict·nameWeak = 이름·차수 게이트로 후보를 버린 공고 수, blocked = 이번 공고의 대표 차단 1건(로그용)
+  /** @type {{ gateBlocked: number; apSkipped: number; leaseMismatch: number; idHealed: number; phaseConflict: number; nameWeak: number; blocked: GateBlocked | null }} */
+  const matchStats = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, blocked: null };
   // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
   /** @type {string[]} */
   const failedComplexes = [];
@@ -1123,6 +1177,11 @@ async function main() {
 
     // Phase 4: 매칭
     const match = matchPresaleToApt(row, apts, aptIndexes, matchStats);
+    if (matchStats.blocked) {
+      const b = matchStats.blocked;
+      const outcome = match ? `tier${match.tier} ${match.apartment.id}` : "매칭없음";
+      log(PHASE, `  ⚠ 이름 게이트 차단: ${row._name} → ${b.name} (tier=${b.tier} sim=${b.sim.toFixed(2)} 이유=${b.reason}) 결과=${outcome}`);
+    }
 
     if (match) {
       tierCounts[match.tier]++;
@@ -1187,7 +1246,7 @@ async function main() {
   }
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch} id복원=${matchStats.idHealed}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch} id복원=${matchStats.idHealed} 차수충돌=${matchStats.phaseConflict} 이름약함=${matchStats.nameWeak}`);
 
   // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
   // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.

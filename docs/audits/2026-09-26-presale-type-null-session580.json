@@ -1,0 +1,42 @@
+{
+  "session": 580,
+  "date": "2026-09-26",
+  "repo_main_after": "edde9362 — 코드 변경 0(일회성 도구는 세션579 의 null-presale-type-by-ids.mjs 그대로)",
+  "why": "세션580 D3(사장님 결정 2026-09-26 23:2x '유형 비우기 → 지금 반영') — 청약홈 출처 분양 단지 7곳: 링크는 세션578 에서 끊겼는데 남의 네이버 링크에서 온 임대 유형(presale_type)만 남아 손님 목록에서 숨어 있었다. 이름에 임대 낱말 없음 + 청약홈 원 공고(무순위·불법행위 재공급 목록 2회 호출 1,699행)의 사업주체 = 재개발·재건축 조합·신탁사·시티주택건설 = 분양.",
+  "tools": [
+    ".omc/artifacts/session579/null-presale-type-by-ids.mjs (일회성 — 링크 없는 행의 presale_type 만 비움)"
+  ],
+  "actions": [
+    {
+      "step": 1,
+      "when_kst": "2026-09-26 23:25",
+      "what": "ah-* 7곳 presale_type → null (dry-run 7/7 → --apply 성공 7 · 실패 0 · 건너뜀 0 · 검증 '명단 전체 유형 null 행 7/7')",
+      "before": "ids_ah7_typeonly.json.presale_type.before.20260926-142501.json (파일명 UTC)"
+    }
+  ],
+  "counts": {
+    "targets": 7,
+    "type_only_ah": 7,
+    "list_hidden_to_visible": 6,
+    "bake_count_expected": "1,827 → 1,833 (굽기 흉내 — 동대구역 센텀 화성파크드림 ah-2022910020 은 VIEW 대표 행이 아니라 목록 수에 안 잡힘)"
+  },
+  "ids": {
+    "type_only_applyhome_7": [
+      "ah-2021910034",
+      "ah-2022910020",
+      "ah-2023930044",
+      "ah-2024930070",
+      "ah-2025910005",
+      "ah-2025910207",
+      "ah-2025910208"
+    ]
+  },
+  "evidence": {
+    "file": ".omc/artifacts/session580/ah7_evidence.log",
+    "applyhome_rows": 1699,
+    "summary": "쌍문역 시티프라디움(시티주택건설) · 동대구역 센텀 화성파크드림(신암2 재개발조합) · 한화포레나 천안노태 2단지(신한자산신탁) · e편한세상 송파 파크센트럴(거여2 재개발조합) · 안양역 푸르지오 더샵(2차)(안양1동진흥 재건축조합) · 힐스테이트 가야 2단지(우리자산신탁) · 중흥S-클래스 힐더포레(딸기원2 재개발조합) — 붙어 있던 네이버 번호 7개는 578 캐시에 없음"
+  },
+  "checks": "반영 뒤 대상 중 유형 남은 행 0 · 굽기 흉내 1,827 → 1,833(+6) · 9/27 03:0x 굽기 기대 = 1,833 · 새로 보이는 명단 = 세션579 41곳 + 이 6곳",
+  "snapshots_copy": ".omc/artifacts/session580/ (로컬만 — D:\\mibunyang-backups 사본은 없음)",
+  "followups": "BACKLOG A-13 · 임대 유형 유지 명단 143 중 ah 몫 7 은 이것으로 종결, ap 몫 136 은 9/28 러너 뒤 결정"
+}
