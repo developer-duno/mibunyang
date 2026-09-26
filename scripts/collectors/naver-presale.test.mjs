@@ -719,6 +719,141 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
   });
 });
 
+/**
+ * 세션579 후보 게이트 시험용 분양 행 — gateRow 와 같고 공고 유형(supp_sclass → presale_type)만 고를 수 있다.
+ * 번호(6025041)는 어느 후보와도 안 겹친다(1순위 배제). sclass 를 안 주면 팩토리 기본 "민간분양".
+ * @param {{ name: string; address: string | null; lat?: number | null; lng?: number | null; bjd?: string | null; sclass?: string }} p
+ */
+function gate579Row(p) {
+  const complex = createComplexResponse({ build_nm: p.name, ...(p.sclass ? { supp_sclass: p.sclass } : {}) });
+  const row = toPresaleRow(complex, null, createListItem());
+  row._name = p.name;
+  row._enrich = /** @type {any} */ ({
+    lat: p.lat ?? null, lng: p.lng ?? null, bjd_code: p.bjd ?? null, address: p.address,
+  });
+  return row;
+}
+
+describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
+  const BANPO = "서울특별시 서초구 반포동 1";
+  const BANPO_BJD = "1165010700";
+  const EUNPYEONG = "서울특별시 은평구 수색동 1";
+  const EP_BJD = "1138011000";
+
+  it("1. 2순위 — 후보가 ap-* 뿐(같은 bjd·같은 시군구·유사도 0.92) → null", () => {
+    const row = gate579Row({ name: "오티에르반포", address: BANPO, bjd: BANPO_BJD });
+    const apts = [createApartment({
+      id: "ap-6027478", name: "오티에르반포1", region: "서울", gu: "서초구", bjd_code: BANPO_BJD, lat: 33.0, lng: 127.0,
+    })];
+    expect(matchPresaleToApt(row, apts)).toBeNull();
+  });
+
+  it("2. 2순위 — ap-* 쪽 유사도가 더 높아도 ah-* 를 고른다(tier 2)", () => {
+    const row = gate579Row({ name: "오티에르반포", address: BANPO, bjd: BANPO_BJD });
+    const apts = [
+      createApartment({ id: "ap-6027478", name: "오티에르반포", region: "서울", gu: "서초구", bjd_code: BANPO_BJD, lat: 33.0, lng: 127.0 }),
+      createApartment({ id: "ah-2024000001", name: "오티에르반포2", region: "서울", gu: "서초구", bjd_code: BANPO_BJD, lat: 33.0, lng: 127.0 }),
+    ];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024000001");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("3. 3순위 — 500m 안 ap-* → null", () => {
+    const row = gate579Row({ name: "테스트아파트", address: "서울시 마포구 서교동 1", lat: 37.5, lng: 126.9 });
+    const apts = [createApartment({ id: "ap-6020001", lat: 37.5 + 300 / 111000, lng: 126.9 })];
+    expect(matchPresaleToApt(row, apts)).toBeNull();
+  });
+
+  it("4. 4순위 — 같은 region·같은 시군구 유사도 1.0 ap-* → null", () => {
+    const row = gate579Row({ name: "테스트아파트", address: "서울시 마포구 서교동 1" });
+    const apts = [createApartment({ id: "ap-6020002", lat: 33.0, lng: 127.0 })];
+    expect(matchPresaleToApt(row, apts)).toBeNull();
+  });
+
+  it("5. 1순위 — ap-* 행의 naver_presale_no 와 번호 일치 → 그대로 tier 1(무변경)", () => {
+    const row = gate579Row({ name: "오티에르반포 장기전세", address: BANPO, bjd: BANPO_BJD, sclass: "시프트(장기전세)" });
+    const apts = [createApartment({
+      id: "ap-6025041", name: "전혀다른이름", region: "서울", gu: "서초구", naver_presale_no: row.naver_presale_no,
+    })];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ap-6025041");
+    expect(r?.tier).toBe(1);
+  });
+
+  it("6. G2 — 임대 공고(행복주택) → 이름에 임대 낱말 없는 ah-* 후보 → null", () => {
+    const row = gate579Row({ name: "DMC센트럴자이 행복주택", address: EUNPYEONG, bjd: EP_BJD, sclass: "행복주택" });
+    expect(row.presale_type).toBe("행복주택");
+    const apts = [createApartment({
+      id: "ah-2024930045", name: "DMC센트럴자이", region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    expect(matchPresaleToApt(row, apts)).toBeNull();
+  });
+
+  it("7. G2 — 임대 공고 → 이름 '…행복주택' ah-* 후보 → tier 2 매칭", () => {
+    const row = gate579Row({ name: "DMC센트럴자이 행복주택", address: EUNPYEONG, bjd: EP_BJD, sclass: "행복주택" });
+    const apts = [createApartment({
+      id: "ah-2024930046", name: "DMC센트럴자이 행복주택", region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024930046");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("8. G2 — 분양 공고(민간분양) → 이름 '…국민임대' ah-* 후보 → null", () => {
+    const row = gate579Row({ name: "은평뉴타운", address: EUNPYEONG, bjd: EP_BJD });
+    expect(row.presale_type).toBe("민간분양");
+    const apts = [createApartment({
+      id: "ah-2024000002", name: "은평뉴타운 국민임대", region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    expect(matchPresaleToApt(row, apts)).toBeNull();
+  });
+
+  it("9. G2 — 분양 공고 → 보통 이름 ah-* 후보 → 매칭 유지(회귀)", () => {
+    const row = gate579Row({ name: "은평뉴타운", address: EUNPYEONG, bjd: EP_BJD });
+    const apts = [createApartment({
+      id: "ah-2024000003", name: "은평뉴타운", region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024000003");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("10. stats — ap 제외면 apSkipped 1, 임대 불일치면 leaseMismatch 1, 둘 다 gateBlocked 0", () => {
+    const apRow = gate579Row({ name: "오티에르반포", address: BANPO, bjd: BANPO_BJD });
+    const apApts = [createApartment({
+      id: "ap-6027478", name: "오티에르반포1", region: "서울", gu: "서초구", bjd_code: BANPO_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const s1 = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 };
+    expect(matchPresaleToApt(apRow, apApts, undefined, s1)).toBeNull();
+    expect(s1).toEqual({ gateBlocked: 0, apSkipped: 1, leaseMismatch: 0 });
+
+    const leaseRow = gate579Row({ name: "DMC센트럴자이 행복주택", address: EUNPYEONG, bjd: EP_BJD, sclass: "행복주택" });
+    const leaseApts = [createApartment({
+      id: "ah-2024930045", name: "DMC센트럴자이", region: "서울", gu: "은평구", bjd_code: EP_BJD, lat: 33.0, lng: 127.0,
+    })];
+    const s2 = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 };
+    expect(matchPresaleToApt(leaseRow, leaseApts, undefined, s2)).toBeNull();
+    expect(s2).toEqual({ gateBlocked: 0, apSkipped: 0, leaseMismatch: 1 });
+  });
+
+  it("11. G2×G4 — 청년안심주택 공고(민간임대시행자임의) → 이름 '…청년안심주택' ah-* 후보 → 매칭", () => {
+    const row = gate579Row({
+      name: "홍대크리원 청년안심주택", address: "서울특별시 마포구 서교동 1", bjd: "1144012000", sclass: "민간임대시행자임의",
+    });
+    const apts = [createApartment({ id: "ah-2024000004", name: "홍대크리원 청년안심주택", lat: 33.0, lng: 127.0 })];
+    const r = matchPresaleToApt(row, apts);
+    expect(r?.apartment.id).toBe("ah-2024000004");
+    expect(r?.tier).toBe(2);
+  });
+
+  it("[매칭] 로그 줄에 ap제외·임대불일치 수를 싣고, main 카운터가 두 칸을 갖는다(소스 확인)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    expect(src).toMatch(/const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 \}/);
+    expect(src).toMatch(/ap제외=\$\{matchStats\.apSkipped\} 임대불일치=\$\{matchStats\.leaseMismatch\}/);
+  });
+});
+
 describe("sameDistrict — 게이트·정리 도구 공용 시군구 판정 (세션578)", () => {
   it("한 낱말 시 ↔ 두 낱말 '시 구' — 첫 낱말 일치면 참", () => {
     expect(sameDistrict("충북", "청주시", "청주시 서원구")).toBe(true);

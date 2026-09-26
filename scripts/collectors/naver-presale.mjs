@@ -25,6 +25,7 @@ import {
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
   resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP,
 } from "./_shared.mjs";
+import { isLeaseName, isLeasePresale } from "../../src/constants/leaseTypes.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
 /** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]> }} AptIndexes */
@@ -632,11 +633,19 @@ export function sameDistrict(region, guA, guB) {
  *   - 예외: 1순위(번호 일치)는 지역 무관 그대로 — 이미 박힌 오염 링크는 `cleanup-presale-links.mjs` 가 끊는다.
  *     세종은 DB gu 가 null 이라 시도만 맞으면 통과.
  *
+ * 세션579 후보 게이트(시군구 게이트를 지난 후보에만):
+ *   - 왜: 같은 시군구 안에서 ① ap-* 행(id 뒤 숫자 = 자기 네이버 단지 번호)에 같은 단지의 장기전세·행복주택 공고가
+ *     덮어씌워지고 ② 임대 공고가 분양 행에 붙어 그 단지가 손님 목록에서 사라졌다(세션579 정리 79개 중 32개 재부착 흉내).
+ *   - 무엇: 2~4순위 후보에서 ap-* 는 뺀다. 공고 유형의 임대 여부(`isLeasePresale`)와 후보 **이름**의 임대 낱말(`isLeaseName`)이
+ *     다르면 뺀다 — 후보의 presale_type 은 남의 링크로 덮인 행이 있어 보지 않는다.
+ *   - 예외: 1순위(번호 일치)는 그대로. ap-* 가 자기 번호로 붙는 길은 1순위뿐이다.
+ *
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
  * @param {AptIndexes} [indexes]
- * @param {{ gateBlocked: number }} [stats] 넘기면 "이름 유사도 기준은 넘었지만 시군구 게이트로 버린 후보가
- *   하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
+ * @param {{ gateBlocked: number; apSkipped?: number; leaseMismatch?: number }} [stats] 넘기면 "이름 유사도 기준은 넘었지만
+ *   시군구 게이트로 버린 후보가 하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
+ *   `apSkipped`·`leaseMismatch` 도 같은 방식(세션579 후보 게이트로 버린 후보가 있으면 공고 1건당 1).
  * @returns {{ apartment: AptForMatch; confidence: number; tier: number } | null}
  */
 export function matchPresaleToApt(presale, apartments, indexes, stats) {
@@ -667,8 +676,20 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
     if (!ok) blocked = true;
     return ok;
   };
+  // 세션579 후보 게이트 재료: 공고의 임대 여부(유형) — 후보는 이름만 본다
+  const presaleIsLease = isLeasePresale(presale.presale_type);
+  let apSkipped = false;
+  let leaseMismatch = false;
+  /** @param {AptForMatch} a */
+  const candidateOk = (a) => {
+    if (String(a.id ?? "").startsWith("ap-")) { apSkipped = true; return false; }
+    if (isLeaseName(a.name) !== presaleIsLease) { leaseMismatch = true; return false; }
+    return true;
+  };
   const finish = (/** @type {{ apartment: AptForMatch; confidence: number; tier: number } | null} */ r) => {
     if (blocked && stats) stats.gateBlocked++;
+    if (apSkipped && stats) stats.apSkipped = (stats.apSkipped ?? 0) + 1;
+    if (leaseMismatch && stats) stats.leaseMismatch = (stats.leaseMismatch ?? 0) + 1;
     return r;
   };
 
@@ -683,6 +704,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_BJD) continue;
       if (!inDistrict(a)) continue;
+      if (!candidateOk(a)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 2 });
@@ -702,6 +724,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_GEO) continue;
       if (!inDistrict(a)) continue;
+      if (!candidateOk(a)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 3 });
@@ -717,6 +740,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_REGION) continue;
       if (!inDistrict(a)) continue;
+      if (!candidateOk(a)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 4 });
@@ -1022,7 +1046,7 @@ async function main() {
   // --region=X 로 좁혀 돌 때 공유 cortarNo 가 실어 온 다른 지역 단지를 건너뛴 수
   let regionFiltered = 0;
   // 세션578: 이름 유사도는 넘었지만 시군구 게이트로 후보를 버린 분양 수(matchPresaleToApt stats)
-  const matchStats = { gateBlocked: 0 };
+  const matchStats = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0 };
   // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
   /** @type {string[]} */
   const failedComplexes = [];
@@ -1142,7 +1166,7 @@ async function main() {
   }
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch}`);
 
   // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
   // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.
