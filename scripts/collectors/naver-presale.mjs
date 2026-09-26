@@ -379,9 +379,9 @@ export function parsePresaleAddress(address) {
   // gu 추출: "구"가 있으면 우선, 없으면 "시/군".
   // 세션578: 후보는 **시도 뒤 두 토큰(parts[1], parts[2])만**, "…지구" 는 제외한다. 옛 코드는 주소의 아무
   // 토큰이나 봐서 `고덕국제화계획지구`·`탕정지구`·`운정3지구`·`일광지구` 를 시군구로 읽었고, 시군구 게이트가
-  // 그 가짜 gu 로 정당한 매칭을 끊었다(검사관 실측 4건).
+  // 그 가짜 gu 로 정당한 매칭을 끊었다(검사관 실측 4건). "N공구"(공사 구역)도 같은 이유로 제외한다.
   const guCands = parts.slice(1, 3);
-  gu = guCands.find((p) => /구$/.test(p) && !/지구$/.test(p))
+  gu = guCands.find((p) => /구$/.test(p) && !/(지|공)구$/.test(p))
     ?? guCands.find((p) => /[시군]$/.test(p))
     ?? null;
   for (const p of parts) {

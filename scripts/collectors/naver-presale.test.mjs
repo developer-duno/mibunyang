@@ -773,6 +773,12 @@ describe("parsePresaleAddress — 사업지구 이름을 시군구로 읽지 않
   it("일광지구 → gu 기장군 · dong 일광면(기존 판정 그대로)", () => {
     expect(parsePresaleAddress("부산광역시 기장군 일광면 일광지구 B5블록")).toEqual({ region: "부산", gu: "기장군", dong: "일광면" });
   });
+  it("시 바로 뒤 \"N공구\" 는 시군구가 아니다 → gu 평택시", () => {
+    expect(parsePresaleAddress("경기도 평택시 1공구 A블록")).toEqual({ region: "경기", gu: "평택시", dong: null });
+  });
+  it("구 뒤의 공구는 그대로 두고 구가 이긴다(연수구 송도동 6공구 → 연수구)", () => {
+    expect(parsePresaleAddress("인천광역시 연수구 송도동 6공구").gu).toBe("연수구");
+  });
   it("시 다음 일반구는 그대로 구가 이긴다(성남시 분당구 → 분당구)", () => {
     expect(parsePresaleAddress("경기도 성남시 분당구 야탑동").gu).toBe("분당구");
   });
