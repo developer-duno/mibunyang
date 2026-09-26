@@ -650,7 +650,7 @@ export function sameDistrict(region, guA, guB) {
  *
  * 세션581 이름·차수 게이트(세션579 후보 게이트 **뒤**, 2~4순위에만):
  *   - 왜: 캐시 257건 흉내에서 ah-* 후보에 2·3순위 오답 7건 — 곤지암(힐스테이트광주곤지암역 → 곤지암역 제일풍경채)·
- *     둔산·순천·제기동역·에코델타·센트리폴 3BL→1BL·첨단3지구 A6→A7. 원 유사도 기준(0.4~0.7)이 브랜드·지명 낱말만
+ *     화성비봉 B1→B2·순천·제기동역·에코델타·센트리폴 3BL→1BL·첨단3지구 A6→A7. 원 유사도 기준(0.4~0.7)이 브랜드·지명 낱말만
  *     겹쳐도 넘고, 차수·블록이 다른 옆 단지도 막지 못했다.
  *   - G-A 차수·블록 충돌: 공고·후보 이름에 `stripRoundWords`(괄호는 남기고 회차 낱말만 뗌 — `cleanName` 은 `(A7BL)` 을
  *     잃는다)를 적용해 `phaseConsistent === "conflict"` 또는 `blockConflict` 면 후보 제외(`phaseConflict`).
@@ -659,7 +659,9 @@ export function sameDistrict(region, guA, guB) {
  *     카카오 POI '강함' 기준 재사용(사장님 결정 2026-09-27).
  *   - 남는 구멍: 영문 표기 차이(`SK뷰` ↔ `SK VIEW`, `아이파크` ↔ `IPARK`)는 다른 이름으로 보여 G-B 에 막히고
  *     신규 행이 될 수 있다 — 정상 링크 대리 표본 143쌍 중 2쌍. 짧은 이름에 차수만 붙은 쌍(`OO아파트` ↔ `OO아파트 1단지`,
- *     짧은 쪽 8자 미만·정리 유사도 0.85 미만)도 부분문자열 구제를 못 받아 신규 행으로 간다.
+ *     짧은 쪽 8자 미만·정리 유사도 0.85 미만)도 부분문자열 구제를 못 받아 신규 행으로 간다. 임대 **유형** 공고인데
+ *     이름에 임대 낱말이 없고 후보 이름엔 있는 짝(`은평뉴타운`[행복주택] ↔ `은평뉴타운 행복주택`)도 이름약함으로
+ *     신규 행 — 대리 표본 143쌍 중 0건.
  *
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
@@ -1177,7 +1179,8 @@ async function main() {
     const match = matchPresaleToApt(row, apts, aptIndexes, matchStats);
     if (matchStats.blocked) {
       const b = matchStats.blocked;
-      log(PHASE, `  ⚠ 이름 게이트 차단: ${row._name} → ${b.name} (tier=${b.tier} sim=${b.sim.toFixed(2)} 이유=${b.reason})`);
+      const outcome = match ? `tier${match.tier} ${match.apartment.id}` : "매칭없음";
+      log(PHASE, `  ⚠ 이름 게이트 차단: ${row._name} → ${b.name} (tier=${b.tier} sim=${b.sim.toFixed(2)} 이유=${b.reason}) 결과=${outcome}`);
     }
 
     if (match) {

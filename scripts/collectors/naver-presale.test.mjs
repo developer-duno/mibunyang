@@ -1022,7 +1022,7 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
 });
 
 // ── 세션581 이름·차수 게이트 ────────────────────────────────────────────────
-// 캐시 257건 흉내에서 ah-* 후보에 2·3순위 오답 7건(곤지암·둔산·순천·제기동역·에코델타·센트리폴 3BL→1BL·A6→A7).
+// 캐시 257건 흉내에서 ah-* 후보에 2·3순위 오답 7건(곤지암·화성비봉 B1→B2·순천·제기동역·에코델타·센트리폴 3BL→1BL·A6→A7).
 // 예시 쌍은 전부 그 흉내(pairs17_signals.log)와 지시서 표 그대로다. 후보는 ah-*·같은 시군구.
 // ⚠️ 원 유사도가 2순위 기준(0.5) 미만인 쌍(화성비봉 0.49·곤지암제일풍경채 0.40·제기동역 0.47·순천 0.45)은
 //    2순위로는 게이트까지 오지 못하므로 3순위(좌표 500m 안, 기준 0.4) 경로로 시험한다 — 실전도 3순위였다.
@@ -1076,6 +1076,38 @@ describe("matchPresaleToApt 이름·차수 게이트 (세션581)", () => {
     expect(s.nameWeak).toBe(0);
   });
 
+  it("부분문자열 길이 경계 — 공백 제거 정확히 8자면 통과(구제), 7자면 차단", () => {
+    // 둘 다 정리 유사도 <0.85(0.842·0.824). 8자는 짧은 쪽이 길이 8 이상이라 구제, 7자는 구제 없음.
+    const pass = tier2("가나다라마바사아", "가나다라마바사아자차카"); // 8자, 긴 쪽에 통째로 포함
+    const passStats = newStats();
+    expect(matchPresaleToApt(pass.row, pass.apts, undefined, passStats)?.apartment.id).toBe("ah-2025000001");
+    expect(passStats.nameWeak).toBe(0);
+
+    const block = tier2("가나다라마바사", "가나다라마바사자차카"); // 7자, 긴 쪽에 통째로 포함되지만 구제 안 됨
+    const blockStats = newStats();
+    expect(matchPresaleToApt(block.row, block.apts, undefined, blockStats)).toBeNull();
+    expect(blockStats.nameWeak).toBe(1);
+  });
+
+  it("4순위 경로 — G-A 차수충돌·G-B 이름약함 둘 다 차단", () => {
+    // 4순위: 분양 행에 bjd·좌표 없음, 후보는 같은 시도·시군구(inDistrict), 원 유사도 >= 0.7(MATCH_THRESHOLD_REGION).
+    const rowA = gate579Row({ name: "가나다라마바사아2단지", address: MAPO });
+    const aptsA = [createApartment({ id: "ah-2025000040", name: "가나다라마바사아1단지", region: "서울", gu: "마포구" })];
+    const sA = newStats();
+    expect(matchPresaleToApt(rowA, aptsA, undefined, sA)).toBeNull();
+    expect(sA.phaseConflict).toBe(1);
+    expect(sA.blocked?.tier).toBe(4);
+    expect(sA.blocked?.reason).toBe("차수충돌");
+
+    const rowB = gate579Row({ name: "가나다라마바사아", address: MAPO });
+    const aptsB = [createApartment({ id: "ah-2025000041", name: "가나다라마사자차카", region: "서울", gu: "마포구" })];
+    const sB = newStats();
+    expect(matchPresaleToApt(rowB, aptsB, undefined, sB)).toBeNull();
+    expect(sB.nameWeak).toBe(1);
+    expect(sB.blocked?.tier).toBe(4);
+    expect(sB.blocked?.reason).toBe("이름약함");
+  });
+
   // ── 거부 G-A 차수·블록 충돌 ──
   it.each([
     ["래미안센트리폴3BL", "래미안 센트리폴(1BL)", 2],                                   // 3 ↔ 1
@@ -1116,6 +1148,23 @@ describe("matchPresaleToApt 이름·차수 게이트 (세션581)", () => {
     const s = newStats();
     matchPresaleToApt(row, apts, undefined, s);
     expect(s.blocked?.sim).toBeCloseTo(0.625, 3);
+  });
+
+  it("blocked 는 원 유사도 최고 1건(G-B 차단 후보 3개, 원 유사도가 서로 다름)", () => {
+    // 세 후보 전부 이름약함으로 막힌다(정리 유사도 <0.85, 부분문자열 구제 없음, 원 유사도는 0.75/0.625/0.5로 상이).
+    const row = gate579Row({ name: "가나다라마바사아", address: MAPO, bjd: MAPO_BJD });
+    const apts = [
+      createApartment({ id: "ah-2025000030", name: "가나다라자차카타", bjd_code: MAPO_BJD, lat: 33.0, lng: 127.0 }), // 0.50
+      createApartment({ id: "ah-2025000031", name: "가나다라마바자차", bjd_code: MAPO_BJD, lat: 33.0, lng: 127.0 }), // 0.75(최고)
+      createApartment({ id: "ah-2025000032", name: "가나다라마자차카", bjd_code: MAPO_BJD, lat: 33.0, lng: 127.0 }), // 0.625
+    ];
+    const s = newStats();
+    const r = matchPresaleToApt(row, apts, undefined, s);
+    expect(r).toBeNull();
+    expect(s.nameWeak).toBe(1);
+    expect(s.blocked?.reason).toBe("이름약함");
+    expect(s.blocked?.name).toBe("가나다라마바자차");
+    expect(s.blocked?.sim).toBeCloseTo(0.75, 3);
   });
 
   it("게이트가 유사도 더 높은 후보(차수 충돌)를 버리고 다른 정상 후보를 고른다", () => {
@@ -1159,7 +1208,7 @@ describe("matchPresaleToApt 이름·차수 게이트 (세션581)", () => {
     );
     expect(src).toMatch(/id복원=\$\{matchStats\.idHealed\} 차수충돌=\$\{matchStats\.phaseConflict\} 이름약함=\$\{matchStats\.nameWeak\}`\)/);
     expect(src).toMatch(
-      /const match = matchPresaleToApt\(row, apts, aptIndexes, matchStats\);\s*if \(matchStats\.blocked\) \{\s*const b = matchStats\.blocked;\s*log\(PHASE, `  ⚠ 이름 게이트 차단: \$\{row\._name\} → \$\{b\.name\} \(tier=\$\{b\.tier\} sim=\$\{b\.sim\.toFixed\(2\)\} 이유=\$\{b\.reason\}\)`\);/,
+      /const match = matchPresaleToApt\(row, apts, aptIndexes, matchStats\);\s*if \(matchStats\.blocked\) \{\s*const b = matchStats\.blocked;\s*const outcome = match \? `tier\$\{match\.tier\} \$\{match\.apartment\.id\}` : "매칭없음";\s*log\(PHASE, `  ⚠ 이름 게이트 차단: \$\{row\._name\} → \$\{b\.name\} \(tier=\$\{b\.tier\} sim=\$\{b\.sim\.toFixed\(2\)\} 이유=\$\{b\.reason\}\) 결과=\$\{outcome\}`\);/,
     );
   });
 });
