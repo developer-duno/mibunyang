@@ -48,7 +48,7 @@
 | 모호한 스코프 / 여러 영역 답습 | `Agent(subagent_type=Explore)` 3 병렬 | 의도 파악 우선 |
 | 박제값 (NEXT_SESSION/BACKLOG) 답습 진입 | `next-session-grep-mandate.md` 답습 의무 | 환각 차단 |
 | 외부 공식 문서 답습 | `Agent(subagent_type=oh-my-claudecode:document-specialist)` | 추측 0 / 출처 박힘 |
-| 5+ 관점 동시 검사 | `Agent(subagent_type=oh-my-claudecode:critic)` 3 병렬 + Sonnet | 다관점 + 비용 절약 |
+| 검사관(코드 적대검증·할루시네이션 감사·맹점 비판) | **검사 종류별 급** — 할루 = Sonnet · 적대 = 백엔드(`api/`)·DB(`supabase/`)·수집기(`scripts/collectors/`)·인증·점수 엔진(`src/scoring/`)을 건드렸으면 Opus, 화면 문구·표시·문서만이면 Sonnet · 맹점 = Opus. 셋을 한 명으로 합치지 않음 | 아래 「모델 사다리」 절 · 정본 글로벌 `model-selection.md` 1-1 (2026-09-26 개정, 옛 "critic 3 병렬 + Sonnet" 폐기) |
 
 ### 0-D. DB / 인프라 자율 호출 (Supabase MCP)
 
@@ -87,6 +87,14 @@
 - plan mode 활성 시 = 코드 변경 자율 발동 0건
 - **`/goal` · `ralph` · `ulw-safe` 중 2개 동시 발동 금지** — 모두 종료 정책을 가진 경쟁 loop. 한 task에 1개만 (goal-setting·ralph·ulw-safe 동시 금지는 글로벌 [auto-tool-usage.md](../../../Users/user/.claude/rules/auto-tool-usage.md) 충돌 회피 절 답습)
 
+## 모델 사다리 — 구현자·검사관 급 (2026-09-26 글로벌 개정 반영, 세션578)
+
+> 정본 = 글로벌 `~/.claude/rules/model-selection.md` 「메인 모델 운용 관습」·「권장 모델은 시작 블록에」(1-1 검사관 급). 이 절은 그 규칙이 **이 레포에 어떻게 적용되는지**만 적는다. 메인 모델은 사장님의 `/model` 로만 바뀐다.
+
+- **구현자**(메인이 Fable 이든 Opus 든 사다리는 같다): 표준·복잡(애매하면 여기) = `Agent(subagent_type:"opus-coder")`(Opus) · 정말 단순(설계 판단 0 · 파일 2개 이하 · 회귀 위험 낮음, 셋 다) = `model:"sonnet"` · 1~2줄 사소한 수정·문서·`.claude/**`·메모리 = 메인 직접. Opus 서브가 사용량 한도(429)로 막힌 작업은 **지시서에 코드가 그대로 적힌 것만** Sonnet 이 이어받고, 설계가 남은 작업은 대기(Haiku 로 안 내린다). 옛 "메인이 Opus 폴백이면 코딩 서브 전부 Sonnet"(2026-09-24) 은 폐기 — 구현자를 내리면 구현 품질이 같이 내려간다.
+- **검사관 급은 검사 종류별**: 할루시네이션 감사 = Sonnet(세션이 한 말을 파일·DB·git 과 맞춰 보는 목록형) · 코드 적대검증 = 백엔드 로직(`api/`)·DB 쿼리·마이그(`supabase/`)·예약 작업·수집기(`scripts/collectors/`)·인증·점수 엔진(`src/scoring/`)을 건드렸으면 Opus, 화면 문구·표시·문서만이면 Sonnet · 맹점·플랜 비판 = Opus · **셋을 한 명으로 합치지 않는다**(첫 관점에 끌려 나머지가 얕아진다). 세 결과 합치기(지적 판정) = 평소 메인 Opus 로 충분, 지적이 많거나 엇갈리거나 운영 반영이 큰 날은 Fable.
+- **프로젝트 에이전트 6개**(`.claude/agents/*.md`) 는 `model:` 을 명시한다 — `inherit` 는 메인을 따라가 Fable 이 될 수 있다. code-reviewer · collector-contract · migration-safety · security-reviewer · scoring-validator = `model: opus` + `effort: high`(Opus 를 직접 지정할 땐 effort 동반 — 세션 effort xhigh 에서 opus 스폰이 400 으로 죽은 사고, opus-coder 와 같은 처방) · null-safety-checker = `model: sonnet`. 스폰 시 `model:` 인자로 덮어쓸 수 있다(공식: 호출 인자 > 정의 파일 > env > 메인).
+- **시작 블록 헤더 둘째 줄**에 `# 권장 메인 모델: Fable|Opus · 이유: <한 줄> · 구현자: Opus(표준·복잡)/Sonnet(단순) · 검사관: 할루 Sonnet · 적대 Opus|Sonnet · 맹점 Opus` 를 적고, **세션 첫 보고**에 `모델: 지금 X / 권장 Y` 한 줄(다르면 "바꾸시려면 `/model …`", 같으면 "일치", 옛 블록이면 "권장 없음"). 판정 = Fable 이 값을 하는 날: 새 하위 시스템 설계·원인 불명 사고·운영 반영이 큰 배포 창과 마무리(검사관 3인)·사장님 결정 여럿 / Opus 로 충분한 날: 설계서·계획서가 있는 PR 구현 이어가기·문서·조회. 애매하면 Fable.
 ## Plan (새 기능/리팩토링 요청 시 자동 진입)
 - 단계당 수정+신규 파일 **3개 이하**
 - 단일 파일 **80줄 이내**(고위험 50줄), 단일 컴포넌트 **150줄 미만**
