@@ -25,9 +25,10 @@ import {
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
   resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP,
 } from "./_shared.mjs";
+import { isLeaseName, isLeasePresale } from "../../src/constants/leaseTypes.mjs";
 
 /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
-/** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]> }} AptIndexes */
+/** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]>; byId: Map<string, AptForMatch> }} AptIndexes */
 /** @typedef {{ build_dtl_cd?: number | string | null; supp_cd?: number | string | null; build_nm?: string; min_price?: number | null; max_price?: number | null; pyper_price?: number | null; supp_sclass?: string | null; supp_proc_step_nm?: string | null; preview_image?: string | null; house_supp_cnt?: number | null; dong_cnt?: number | null; parking_cnt?: number | null; sell_office_phone?: string | null; build_point?: string | null; mvi_date?: string | null; recruit_date?: string | null; schdl_info?: unknown; bclass_nm?: string | null; total_house_cnt?: number | null; cmpy_nm?: string | null; max_flr_cnt?: number | null; ypos?: number | string | null; xpos?: number | string | null; bubdong_code?: string | null; address?: string | null }} ComplexData */
 /** @typedef {{ dong_cnt?: number | null; parking_cnt?: number | null; inquiry_tel?: string | null; features?: string | null; move_in_date?: string | null }} DetailData */
 /** @typedef {{ preSaleComplexNumber?: number | string | null; announcementPreSaleSequence?: number | string | null; preSaleComplexName?: string | null; preSaleStageCode?: string | null; scheduleName?: string | null; dateInfo?: string | null; _region?: string | null }} ListItem */
@@ -212,7 +213,8 @@ async function fetchJwtFallback() {
   }
 }
 
-async function ensureJwt() {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function ensureJwt() {
   if (jwtToken && (Date.now() - jwtTokenTime) < JWT_LIFETIME) return jwtToken;
 
   // 1차: Python curl_cffi (TLS fingerprint 우회)
@@ -631,11 +633,23 @@ export function sameDistrict(region, guA, guB) {
  *   - 예외: 1순위(번호 일치)는 지역 무관 그대로 — 이미 박힌 오염 링크는 `cleanup-presale-links.mjs` 가 끊는다.
  *     세종은 DB gu 가 null 이라 시도만 맞으면 통과.
  *
+ * 세션579 후보 게이트(시군구 게이트를 지난 후보에만):
+ *   - 왜: 같은 시군구 안에서 ① ap-* 행(id 뒤 숫자 = 자기 네이버 단지 번호)에 같은 단지의 장기전세·행복주택 공고가
+ *     덮어씌워지고 ② 임대 공고가 분양 행에 붙어 그 단지가 손님 목록에서 사라졌다(세션579 정리 79개 중 32개 재부착 흉내).
+ *   - 무엇: 2~4순위 후보에서 ap-* 는 뺀다. 공고의 임대 여부(유형 `isLeasePresale` **또는** 공고 이름 `isLeaseName`)와
+ *     후보 **이름**의 임대 낱말(`isLeaseName`)이 다르면 뺀다 — 후보의 presale_type 은 남의 링크로 덮인 행이 있어 보지 않는다.
+ *   - 1순위는 id 주인(`ap-<공고 번호>` 행)을 번호 필드보다 먼저 본다 — ap-* 행을 만드는 곳은 이 수집기의 `ap-${no}` 한 곳뿐이라
+ *     그 행이 번호의 주인이다. 번호 필드를 남의 링크로 잃은 ap-* 도 이 길로 자기 공고에 다시 붙는다(`idHealed`).
+ *   - 남는 구멍: ah-* 행 + 임대 여부가 같은 공고 + 같은 시군구 + 비슷한 이름은 여전히 붙는다
+ *     (예: 분양 이안센트럴제기동역 → 제기동역 아이파크 3순위 0.47 · 임대 신정3지구 국민임대 → ah 신정3지구 장기전세 2순위 0.56).
+ *
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
  * @param {AptIndexes} [indexes]
- * @param {{ gateBlocked: number }} [stats] 넘기면 "이름 유사도 기준은 넘었지만 시군구 게이트로 버린 후보가
- *   하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
+ * @param {{ gateBlocked: number; apSkipped?: number; leaseMismatch?: number; idHealed?: number }} [stats] 넘기면 "이름 유사도 기준은
+ *   넘었지만 시군구 게이트로 버린 후보가 하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
+ *   `apSkipped`·`leaseMismatch` 도 같은 방식(세션579 후보 게이트로 버린 후보가 있으면 공고 1건당 1).
+ *   `idHealed` 는 1순위를 id 주인으로 찾았는데 그 행의 `naver_presale_no` 가 공고 번호와 다를 때 1.
  * @returns {{ apartment: AptForMatch; confidence: number; tier: number } | null}
  */
 export function matchPresaleToApt(presale, apartments, indexes, stats) {
@@ -647,6 +661,15 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
 
   // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색) — 지역 무관(세션578 게이트 예외)
   if (presaleNo) {
+    // 세션579: id 주인(ap-<번호>) 먼저 — 번호 필드를 잃었거나 남의 번호를 쥔 ap-* 도 자기 공고로
+    const ownerId = `ap-${presaleNo}`;
+    const owner = indexes?.byId
+      ? indexes.byId.get(ownerId)
+      : apartments.find(a => a.id === ownerId);
+    if (owner) {
+      if (owner.naver_presale_no !== presaleNo && stats) stats.idHealed = (stats.idHealed ?? 0) + 1;
+      return { apartment: owner, confidence: 1.0, tier: 1 };
+    }
     const exact = indexes?.byPresaleNo?.get(presaleNo)
       ?? apartments.find(a => a.naver_presale_no === presaleNo);
     if (exact) return { apartment: exact, confidence: 1.0, tier: 1 };
@@ -666,8 +689,20 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
     if (!ok) blocked = true;
     return ok;
   };
+  // 세션579 후보 게이트 재료: 공고의 임대 여부(유형 또는 공고 이름) — 후보는 이름만 본다
+  const presaleIsLease = isLeasePresale(presale.presale_type) || isLeaseName(buildName);
+  let apSkipped = false;
+  let leaseMismatch = false;
+  /** @param {AptForMatch} a */
+  const candidateOk = (a) => {
+    if (String(a.id ?? "").startsWith("ap-")) { apSkipped = true; return false; }
+    if (isLeaseName(a.name) !== presaleIsLease) { leaseMismatch = true; return false; }
+    return true;
+  };
   const finish = (/** @type {{ apartment: AptForMatch; confidence: number; tier: number } | null} */ r) => {
     if (blocked && stats) stats.gateBlocked++;
+    if (apSkipped && stats) stats.apSkipped = (stats.apSkipped ?? 0) + 1;
+    if (leaseMismatch && stats) stats.leaseMismatch = (stats.leaseMismatch ?? 0) + 1;
     return r;
   };
 
@@ -687,6 +722,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_BJD) continue;
       if (!inDistrict(a)) continue;
+      if (!candidateOk(a)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 2 });
@@ -706,6 +742,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_GEO) continue;
       if (!inDistrict(a)) continue;
+      if (!candidateOk(a)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 3 });
@@ -721,6 +758,7 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       const sim = stringSimilarity(buildName, a.name);
       if (sim < MATCH_THRESHOLD_REGION) continue;
       if (!inDistrict(a)) continue;
+      if (!candidateOk(a)) continue;
       if (sim > bestSim) { best = a; bestSim = sim; }
     }
     if (best) return finish({ apartment: best, confidence: bestSim, tier: 4 });
@@ -787,7 +825,8 @@ async function probeEndpoints() {
  * @param {string} cortarNo
  * @returns {Promise<ListItem[]>}
  */
-async function fetchPresaleList(cortarNo) {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function fetchPresaleList(cortarNo) {
   if (!cortarNo) return [];
 
   const results = [];
@@ -823,7 +862,8 @@ async function fetchPresaleList(cortarNo) {
  * @param {string | number | null | undefined} complexNo
  * @param {string | number | null | undefined} seq
  */
-async function fetchComplexData(complexNo, seq) {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function fetchComplexData(complexNo, seq) {
   const no = Number(complexNo), s = Number(seq);
   if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
   return await presalePost("/api/complex/detail", { build_dtl_cd: no, supp_cd: s });
@@ -833,7 +873,8 @@ async function fetchComplexData(complexNo, seq) {
  * @param {string | number | null | undefined} complexNo
  * @param {string | number | null | undefined} seq
  */
-async function fetchDetailData(complexNo, seq) {
+// 세션578: 읽기 전용 탐침(.omc/artifacts)이 같은 호출 규칙(JWT·간격·재시도)을 쓰도록 export — 동작 변화 0
+export async function fetchDetailData(complexNo, seq) {
   const no = Number(complexNo), s = Number(seq);
   if (!Number.isFinite(no) || !Number.isFinite(s)) return null;
   return await presalePost("/api/complex/schedule", { build_dtl_cd: no, supp_cd: s });
@@ -910,7 +951,10 @@ async function main() {
   const byPresaleNo = new Map();
   /** @type {Map<string, AptForMatch[]>} */
   const byBjd = new Map();
+  /** @type {Map<string, AptForMatch>} */
+  const byId = new Map();
   for (const a of apts) {
+    if (a.id) byId.set(a.id, a);
     if (a.naver_presale_no) byPresaleNo.set(a.naver_presale_no, a);
     if (a.bjd_code) {
       if (!byBjd.has(a.bjd_code)) byBjd.set(a.bjd_code, []);
@@ -919,7 +963,7 @@ async function main() {
     }
   }
   /** @type {AptIndexes} */
-  const aptIndexes = { byPresaleNo, byBjd };
+  const aptIndexes = { byPresaleNo, byBjd, byId };
 
   // Phase 0.6: 이미 확보한 전용면적 이월표 — 단지당 요청 1개(2초)를 아낀다.
   // ⚠️ 고유키(apartment_id) 커서로 전량을 훑는다. 무정렬 `.range()` 반복은 1,000행 넘는
@@ -1023,7 +1067,7 @@ async function main() {
   // --region=X 로 좁혀 돌 때 공유 cortarNo 가 실어 온 다른 지역 단지를 건너뛴 수
   let regionFiltered = 0;
   // 세션578: 이름 유사도는 넘었지만 시군구 게이트로 후보를 버린 분양 수(matchPresaleToApt stats)
-  const matchStats = { gateBlocked: 0 };
+  const matchStats = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 };
   // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
   /** @type {string[]} */
   const failedComplexes = [];
@@ -1143,7 +1187,7 @@ async function main() {
   }
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch} id복원=${matchStats.idHealed}`);
 
   // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
   // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.
