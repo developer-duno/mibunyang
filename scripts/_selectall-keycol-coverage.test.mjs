@@ -80,6 +80,8 @@ export const KNOWN_UNIQUE_KEYS = {
   trades: "id",
   trade_stats: "apartment_id",
   transport: "apartment_id",
+  // `id SERIAL PRIMARY KEY`(supabase/schema.sql·init 마이그레이션 실측, 세션578 — cleanup-unsold-history-by-ids).
+  unsold_history: "id",
 };
 
 // 주석 제거·리터럴 마스킹은 공용 모듈(세션546 M6) — audit-declared-deps.mjs 와 같은 구현을 쓴다.
