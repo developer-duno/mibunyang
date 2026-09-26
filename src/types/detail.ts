@@ -62,6 +62,8 @@ export interface PriceChartProps {
 export interface UnsoldChartProps {
   apartmentId: string;
   siblingIds?: string[];
+  /** 현재 미분양 값 — null(자료 없음·hold·비움)이면 옛 이력을 그리지 않는다(세션578). */
+  unsold?: number | null;
 }
 
 /**

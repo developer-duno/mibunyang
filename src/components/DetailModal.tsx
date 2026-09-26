@@ -769,7 +769,11 @@ export const DetailModal = memo(function DetailModal({
                 />
                 <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
                 <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
-                <UnsoldChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
+                <UnsoldChart
+                  apartmentId={apt.id as string}
+                  siblingIds={apt.siblingIds as string[] | undefined}
+                  unsold={(apt.unsold as number | null | undefined) ?? null}
+                />
 
                 {/* 두 출처 대조 (세션 507 PR-2) — 옛 "네이버 교차검증" 표를 대체한다.
                   우리 값과 네이버 값이 다른 표 두 개에 흩어져 있어 정작 비교가 안 되던 자리라,

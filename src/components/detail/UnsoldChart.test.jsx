@@ -31,14 +31,14 @@ describe("UnsoldChart", () => {
   // apartmentId가 falsy이면 null
   it("apartmentId 없음 → null", () => {
     mockUseUnsoldHistory.mockReturnValue({ data: [], loading: false, error: null, retry: vi.fn() });
-    const { container } = render(<UnsoldChart apartmentId={/** @type {any} */ (null)} siblingIds={[]} />);
+    const { container } = render(<UnsoldChart apartmentId={/** @type {any} */ (null)} siblingIds={[]} unsold={10} />);
     expect(container.innerHTML).toBe("");
   });
 
   // loading 상태
   it("loading → '불러오는 중...' 표시", () => {
     mockUseUnsoldHistory.mockReturnValue({ data: [], loading: true, error: null, retry: vi.fn() });
-    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
     expect(screen.getByText("불러오는 중...")).toBeTruthy();
   });
 
@@ -46,7 +46,7 @@ describe("UnsoldChart", () => {
   it("error → 에러 메시지 + 재시도 클릭", () => {
     const retry = vi.fn();
     mockUseUnsoldHistory.mockReturnValue({ data: [], loading: false, error: new Error("fail"), retry });
-    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
     expect(screen.getByText("차트를 불러올 수 없습니다")).toBeTruthy();
     fireEvent.click(screen.getByText("재시도"));
     expect(retry).toHaveBeenCalledOnce();
@@ -55,14 +55,14 @@ describe("UnsoldChart", () => {
   // data < 2 → null
   it("data 1건 → null", () => {
     mockUseUnsoldHistory.mockReturnValue({ data: makeData(1), loading: false, error: null, retry: vi.fn() });
-    const { container } = render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    const { container } = render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
     expect(container.innerHTML).toBe("");
   });
 
   // 정상 렌더 + secondaryData 범례
   it("data 3건 + secondaryData → 미분양 추이 + 준공후 범례", () => {
     mockUseUnsoldHistory.mockReturnValue({ data: makeData(3, true), loading: false, error: null, retry: vi.fn() });
-    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
     expect(screen.getByText("미분양 추이")).toBeTruthy();
     expect(screen.getByText("┄ 준공후")).toBeTruthy();
     expect(screen.getByTestId("line-chart")).toBeTruthy();
@@ -71,9 +71,23 @@ describe("UnsoldChart", () => {
   // ? 도움말 노출
   it("정상 렌더 시 제목 옆 ? 도움말이 보인다", () => {
     mockUseUnsoldHistory.mockReturnValue({ data: makeData(3, true), loading: false, error: null, retry: vi.fn() });
-    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
     const trigger = screen.getByRole("button", { name: "미분양 추이 풀이 보기" });
     fireEvent.click(trigger);
     expect(screen.getByText(/준공후 미분양/)).toBeTruthy();
+  });
+
+  // 세션578: 현재 미분양 값이 없으면(hold·비움) 옛 이력이 있어도 그리지 않는다
+  it("unsold=null + 이력 3건 → 그리지 않는다", () => {
+    mockUseUnsoldHistory.mockReturnValue({ data: makeData(3), loading: false, error: null, retry: vi.fn() });
+    const { container } = render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={null} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  // 0 은 "자료 있음"이라 그린다 (null 과 구분)
+  it("unsold=0 + 이력 3건 → 차트를 그린다", () => {
+    mockUseUnsoldHistory.mockReturnValue({ data: makeData(3), loading: false, error: null, retry: vi.fn() });
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={0} />);
+    expect(screen.getByTestId("line-chart")).toBeTruthy();
   });
 });
