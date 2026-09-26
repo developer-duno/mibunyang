@@ -19,7 +19,7 @@ export const BIZ_CONTENT_MIN = 10;
 export const BIZ_PHONE_REGEX = /^[\d-]{8,20}$/;
 
 export const BIZ_CONSENT_TEXT =
-  "연락을 위해 회사명·담당자·연락처·이메일·문의 내용을 저장하는 데 동의합니다 (1년 뒤 자동 삭제)";
+  "연락을 위해 회사명·담당자·연락처·이메일·문의 내용을 저장하고, 같은 내용을 접수 알림으로 운영자 텔레그램(해외 서버)에 전달하는 데 동의합니다 (저장본은 1년 뒤 자동 삭제, 알림 사본은 확인 뒤 지웁니다)";
 export const BIZ_SENT_TOAST = "문의를 보냈어요. 곧 연락드릴게요";
 export const BIZ_TOO_MANY_TOAST = "요청이 많아요. 잠시 뒤 다시 보내 주세요";
 export const BIZ_FAIL_TOAST = "문의를 보내지 못했어요. 잠시 뒤 다시 시도해 주세요";
