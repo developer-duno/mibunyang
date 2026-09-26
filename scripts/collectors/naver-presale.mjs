@@ -672,8 +672,13 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
   };
 
   // 2순위: bjd_code + 이름 유사도 >= 0.5 (Map 그룹 또는 전체 탐색) + 시군구 게이트
+  //
+  // 세션578 검사관A 🟡1: 색인(byBjd)이 있는데 그 법정동 키가 없으면 `?? apartments` 로
+  // 전체 단지가 후보가 되고, 바로 아래 `!indexes?.byBjd` 가 거짓이라 법정동 거르기도 건너뛰어
+  // "2순위 = 이름 유사도만으로 아무 단지"가 되던 결함(2026-03-29 5d258341 부터).
+  // 색인이 없을 때만(구버전 호출부 등) 전체 탐색 + 수동 법정동 필터로 폴백한다.
   if (bjdCode) {
-    const candidates = indexes?.byBjd?.get(bjdCode) ?? apartments;
+    const candidates = indexes?.byBjd ? (indexes.byBjd.get(bjdCode) ?? []) : apartments;
     /** @type {AptForMatch | null} */
     let best = null;
     let bestSim = 0;

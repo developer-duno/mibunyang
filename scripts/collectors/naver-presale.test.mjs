@@ -627,6 +627,43 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
     expect(r?.tier).toBe(2);
   });
 
+  // 세션578 검사관A 🟡1: byBjd 색인이 있는데 그 법정동 키가 없으면 `?? apartments` 로
+  // 전체 단지가 후보가 되던 결함(2026-03-29 5d258341 부터) — 색인에 없는 법정동은 2순위를
+  // 건너뛰어야 한다(이름 유사도만으로 다른 법정동 단지에 붙지 않는다).
+  it("(d-2b) byBjd 색인에 분양의 법정동 키가 없으면 2순위를 건너뛴다(전체 단지로 폴백 금지)", () => {
+    const row = gateRow({ name: "테스트아파트", address: "서울시 마포구 서교동 1", bjd: "1144099999" });
+    const apts = [createApartment({
+      id: "other-bjd", name: "테스트아파트", bjd_code: "1144012000", lat: 33.0, lng: 127.0,
+    })];
+    /** @type {Map<string, any[]>} */
+    const byBjd = new Map();
+    for (const a of apts) {
+      if (!byBjd.has(a.bjd_code)) byBjd.set(a.bjd_code, []);
+      byBjd.get(a.bjd_code)?.push(a);
+    }
+    const indexes = /** @type {any} */ ({ byPresaleNo: new Map(), byBjd });
+    const r = matchPresaleToApt(row, apts, indexes);
+    // 이 픽스처는 같은 시도·시군구라 4순위(이름 유사도)로는 매칭된다 — 그게 정답이다.
+    // 검증 대상은 "2순위로 붙지 않는다"이지 "아예 안 붙는다"가 아니다(지시서 기대값: null 또는 tier>=3).
+    expect(r?.tier).not.toBe(2);
+    expect(r?.tier).toBeGreaterThanOrEqual(3);
+  });
+
+  it("(d-2c) byBjd 색인에 분양의 법정동 키가 있으면 기존대로 2순위 매칭(색인 경로 회귀 확인)", () => {
+    const row = gateRow({ name: "테스트아파트", address: "서울시 마포구 서교동 1", bjd: "1144012000" });
+    const apts = [createApartment({ id: "same-gu-indexed", bjd_code: "1144012000", lat: 33.0, lng: 127.0 })];
+    /** @type {Map<string, any[]>} */
+    const byBjd = new Map();
+    for (const a of apts) {
+      if (!byBjd.has(a.bjd_code)) byBjd.set(a.bjd_code, []);
+      byBjd.get(a.bjd_code)?.push(a);
+    }
+    const indexes = /** @type {any} */ ({ byPresaleNo: new Map(), byBjd });
+    const r = matchPresaleToApt(row, apts, indexes);
+    expect(r?.apartment.id).toBe("same-gu-indexed");
+    expect(r?.tier).toBe(2);
+  });
+
   it("(d-3) 같은 시도·같은 시군구 — 3순위 매칭 유지", () => {
     const row = gateRow({ name: "테스트아파트", address: "서울시 마포구 서교동 1", lat: 37.5, lng: 126.9, bjd: "1144012000" });
     const apts = [createApartment({ id: "same-gu-near", bjd_code: "1141011000", lat: 37.5 + 300 / 111000, lng: 126.9 })];
