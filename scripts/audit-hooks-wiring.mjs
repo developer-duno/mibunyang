@@ -23,6 +23,15 @@
  * 범위 주의: settings.local.json 은 gitignore 대상(CI 부재)이라 검사에서 제외한다.
  * 공유돼야 하는 배선은 추적 파일인 settings.json 에 있어야 한다는 뜻이기도 하다.
  *
+ * 알려진 한계(검사 4, 세션 582) — findRelativeHookRefs 는 `.claude` 라는 글자가 훅 command
+ * 문자열 **어디에** 나오는지만 보고, 그것이 실제 경로 참조인지 사람이 읽는 문구인지는
+ * 구분하지 못한다. 예: `echo '.claude/BACKLOG.md 를 보세요'`(경로가 아니라 안내 문구)도
+ * 위험 판정에 걸린다 — 단 그 command 가 `cd "${CLAUDE_PROJECT_DIR}" || exit 0;` 로 시작하면
+ * "이미 안전하게 cd 했다"는 신호로 보고 통과(면제)시킨다. 즉 이 오탐은 **cd 접두가 없는
+ * command 에서만** 발생하며, 실제 훅은 대부분 그 접두로 시작하므로 실전 영향은 낮다.
+ * 코드로 문구/경로를 가르지 않는 이유 — 오탐 0 을 노리다 진짜 상대경로 참조(사고 재발)를
+ * 놓치는 위험이 더 크다(findHardcodedCdPaths 의 "오탐 0 우선" 설계와 같은 판단).
+ *
  * exit code: 0=clean, 1=미배선/상대경로 검출, 2=parse/IO error
  */
 import { readFile, readdir } from "node:fs/promises";
@@ -67,10 +76,14 @@ export function findRelativeHookRefs(settingsObj) {
   const hooks = settingsObj?.hooks;
   if (!hooks || typeof hooks !== "object") return [];
 
-  // .claude 앞에 올 수 있는 "상대 참조 경계" 문자 (역슬래시 이스케이프된 따옴표 포함)
-  const REL_CLAUDE_REF = /(^|[\s"'=;&|(>]|\\")\.claude(\/|$)/;
+  // .claude 앞에 올 수 있는 "상대 참조 경계" 문자 (역슬래시 이스케이프된 따옴표 포함).
+  // 세션 582 — 뒤쪽도 `/` 뿐 아니라 `\`(Windows 구분자, 예: `.claude\hooks\x.sh`)와
+  // 앞쪽에 `./`(예: `./.claude/hooks/x.sh` → `.` 뒤의 `.claude`) 도 상대 참조로 잡는다.
+  const REL_CLAUDE_REF = /(^|\.\/|[\s"'=;&|(>]|\\")\.claude(\/|\\|$)/;
+  // 세션 582 — `:-.` 기본값 대입(${VAR:-.})을 허용. `\}?` 뒤에 `(:-[^}]*)?` 를 끼워
+  // `${CLAUDE_PROJECT_DIR:-.}` 같은 폴백 표현도 "CLAUDE_PROJECT_DIR 로 cd" 로 인정한다.
   const STARTS_WITH_CD_PROJECT_DIR =
-    /^\s*cd\s+"?\$\{?CLAUDE_PROJECT_DIR\}?"?\s*(\|\||;|&&|$)/;
+    /^\s*cd\s+"?\$\{?CLAUDE_PROJECT_DIR(:-[^}"]*)?\}?"?\s*(\|\||;|&&|$)/;
 
   /** @type {Array<{event: string, command: string}>} */
   const result = [];

@@ -18,6 +18,7 @@ vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
 const {
   checkFailedRuns, checkEmptyRuns, checkStaleWorkflows, buildStaleCheckList,
   checkNullSurge, checkCategoryNullSurge, AUDIT_CATEGORY_BASELINE, EXCLUDED_AUDIT_CATEGORIES,
+  AUDIT_NULLSURGE_EXCLUDE_FIELDS,
   scopeCompetitionToAh, COMPETITION_CATEGORY, COMPETITION_FIELDS, COMPETITION_SCOPE_SUFFIX,
   fetchAhCompetitionCounts, AH_ID_PREFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
@@ -649,6 +650,70 @@ describe("checkCategoryNullSurge — ④ 카테고리 NULL 급증", () => {
     // lines[0] = 머리말, 이후가 필드 줄. 8개 입력 → 6개로 절단
     const fieldLines = (issues[0].lines ?? []).filter((l) => l.startsWith("  · "));
     expect(fieldLines).toHaveLength(6);
+  });
+});
+
+describe("checkCategoryNullSurge — AUDIT_NULLSURGE_EXCLUDE_FIELDS (세션 582, 감시 ④ 필드 제외)", () => {
+  const priceBaseline = { price: 75 };
+  // 세션 582 실측(2026-09-27 09:58Z run 36284086128): price 카테고리 전체 72.8%(5381/7392) —
+  // area 43.6%(1075/2464) · price 87.4%(2153/2464) · pp 87.4%(2153/2464).
+  const priceCategories = {
+    price: { collector: "applyhome", filled: 5381, total: 7392, rate: 72.8 },
+  };
+  const priceFields = {
+    "price.area": { category: "price", field: "area", filled: 1075, missing: 2464 - 1075 },
+    "price.price": { category: "price", field: "price", filled: 2153, missing: 2464 - 2153 },
+    "price.pp": { category: "price", field: "pp", filled: 2153, missing: 2464 - 2153 },
+  };
+
+  it("제외표에 등재된 필드(area)를 빼면 유효 rate 가 문턱 위 — 이상 0", () => {
+    // area 를 빼면 (2153+2153)/(2464+2464) = 87.4% ≥ 75 → 정상
+    const issues = checkCategoryNullSurge(priceCategories, priceBaseline, priceFields);
+    expect(issues).toHaveLength(0);
+  });
+
+  it("제외 안 되는 필드(price)가 낮아지면 유효 rate 로도 문턱 아래 — 이상 1, detail 에 유효 rate 표시", () => {
+    const fields = {
+      ...priceFields,
+      "price.price": { category: "price", field: "price", filled: 1500, missing: 2464 - 1500 },
+    };
+    const categories = {
+      price: {
+        collector: "applyhome",
+        filled: 1075 + 1500 + 2153,
+        total: 7392,
+        rate: Math.round(((1075 + 1500 + 2153) / 7392) * 1000) / 10, // 64%
+      },
+    };
+    const issues = checkCategoryNullSurge(categories, priceBaseline, fields);
+    expect(issues).toHaveLength(1);
+    // 유효 rate = (1500+2153)/(2464+2464) = 74.1% — 전체(64%)가 아니라 이 값으로 판정·표시
+    expect(issues[0].detail).toContain("74.1%");
+    expect(issues[0].detail).toContain("유효 채움률");
+    // 제외된 필드 줄에는 "(점검 제외)" 표시
+    const body = issues[0].lines?.join("\n") ?? "";
+    expect(body).toMatch(/공급면적.*\(점검 제외\)/);
+    expect(body).not.toMatch(/분양가.*\(점검 제외\)/);
+  });
+
+  it("fields 없이 부르면 옛 동작(stat.rate 로 판정) — 하위호환", () => {
+    const issues = checkCategoryNullSurge(priceCategories, priceBaseline);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toContain("72.8%");
+    expect(issues[0].detail).not.toContain("유효 채움률");
+  });
+
+  it("제외표에 없는 카테고리(core)는 기존 동작 그대로 — 무변경 회귀", () => {
+    const issues = checkCategoryNullSurge(
+      { core: { collector: "applyhome", filled: 1000, total: 2000, rate: 50 } },
+      { core: 70 },
+    );
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toBe("전체 채움률 50% (1000/2000) — 기대 최저 70% 미달");
+  });
+
+  it("AUDIT_NULLSURGE_EXCLUDE_FIELDS 는 price.area 하나만 등재 — 뮤테이션 대상", () => {
+    expect(AUDIT_NULLSURGE_EXCLUDE_FIELDS).toEqual({ price: ["area"] });
   });
 });
 

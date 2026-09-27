@@ -136,4 +136,64 @@ describe("findRelativeHookRefs", () => {
   it("hooks 없으면 빈 배열", () => {
     expect(findRelativeHookRefs({})).toEqual([]);
   });
+
+  describe("항목1 (세션 582) — cd CLAUDE_PROJECT_DIR 기본값 대입(:-.) 도 면제", () => {
+    it('cd "${CLAUDE_PROJECT_DIR}" 는 면제 (기존)', () => {
+      const command = 'cd "${CLAUDE_PROJECT_DIR}" || exit 0; mkdir -p .claude';
+      expect(findRelativeHookRefs(withHook(command))).toEqual([]);
+    });
+
+    it('cd "${CLAUDE_PROJECT_DIR:-.}" 는 면제 (신규 — 기본값 대입)', () => {
+      const command = 'cd "${CLAUDE_PROJECT_DIR:-.}" || exit 0; mkdir -p .claude';
+      expect(findRelativeHookRefs(withHook(command))).toEqual([]);
+    });
+
+    it('cd "$CLAUDE_PROJECT_DIR" 는 면제 (신규 — 중괄호 없이)', () => {
+      const command = 'cd "$CLAUDE_PROJECT_DIR" || exit 0; mkdir -p .claude';
+      expect(findRelativeHookRefs(withHook(command))).toEqual([]);
+    });
+  });
+
+  describe("항목2 (세션 582) — ./.claude 와 역슬래시 구분자도 상대 참조로 검출", () => {
+    it("./.claude/hooks/x.sh 는 상대 참조로 걸림", () => {
+      const command = "./.claude/hooks/x.sh";
+      expect(findRelativeHookRefs(withHook(command))).toEqual([
+        { event: "PreToolUse", command },
+      ]);
+    });
+
+    it(".claude\\hooks\\x.sh (Windows 역슬래시 구분자) 는 상대 참조로 걸림", () => {
+      const command = ".claude\\hooks\\x.sh";
+      expect(findRelativeHookRefs(withHook(command))).toEqual([
+        { event: "PreToolUse", command },
+      ]);
+    });
+
+    it("node ./.claude/hooks/x.mjs 는 상대 참조로 걸림", () => {
+      const command = "node ./.claude/hooks/x.mjs";
+      expect(findRelativeHookRefs(withHook(command))).toEqual([
+        { event: "PreToolUse", command },
+      ]);
+    });
+
+    it('"${CLAUDE_PROJECT_DIR}"/.claude/... 절대경로 참조는 여전히 안 걸림 (회귀)', () => {
+      expect(
+        findRelativeHookRefs(withHook('"${CLAUDE_PROJECT_DIR}"/.claude/hooks/x.sh')),
+      ).toEqual([]);
+    });
+  });
+
+  describe("항목3 (세션 582) — 문구 오탐은 알려진 한계 (코드 변경 없음)", () => {
+    it("echo '.claude/BACKLOG.md 를 보세요' 는 경로가 아닌 문구인데도 잡힌다 (의도된 오탐)", () => {
+      const command = "echo '.claude/BACKLOG.md 를 보세요'";
+      expect(findRelativeHookRefs(withHook(command))).toEqual([
+        { event: "PreToolUse", command },
+      ]);
+    });
+
+    it('cd "${CLAUDE_PROJECT_DIR}" || exit 0; 접두를 붙이면 같은 문구도 통과(면제)된다', () => {
+      const command = 'cd "${CLAUDE_PROJECT_DIR}" || exit 0; ' + "echo '.claude/BACKLOG.md 를 보세요'";
+      expect(findRelativeHookRefs(withHook(command))).toEqual([]);
+    });
+  });
 });
