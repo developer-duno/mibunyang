@@ -718,6 +718,7 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
   // 세션582: 옛 판본은 후보 id 가 "ap-6026677"(음성아이파크 — 남의 번호 6027751 을 쥔 실제 오염 행)이라
   //   그 오염을 tier 1 정답으로 못 박고 있었다. ap-* 는 이제 자기 번호만 받으므로(세션582 describe),
   //   "지역이 달라도 1순위" 라는 이 시험의 뜻은 ah-* 행으로 지킨다.
+  //   ah 행이 쥔 남의 번호는 수집기가 아니라 `cleanup-presale-links.mjs` 가 끊는다 — 이 시험은 1순위가 지역을 안 본다는 뜻만 고정.
   it("(g) 1순위 번호 일치는 지역이 달라도 매칭(현행 유지 — ah-* 행)", () => {
     const row = gateRow({ name: "서울원아이파크", address: "서울특별시 노원구 월계동 1" });
     row.naver_presale_no = "6027751";
@@ -988,6 +989,25 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
     const r = matchPresaleToApt(noRow("7777"), apts, idx(apts));
     expect(r?.apartment.id).toBe("ap-7777");
     expect(r?.tier).toBe(1);
+  });
+
+  it("25. 세션582④ — 같은 번호를 ah-1 과 ap-1111 이 함께 쥐고 주인 ap-7777 없음 → 색인·선형 둘 다 ah-1 tier 1(중복 카드 방지)", () => {
+    const apts = [
+      createApartment({ id: "ah-1", name: "딴이름", naver_presale_no: "7777" }),
+      createApartment({ id: "ap-1111", name: "딴이름2", naver_presale_no: "7777" }),
+    ];
+    const ix = idx(apts);
+    expect(ix.byPresaleNo.get("7777")?.id).toBe("ap-1111"); // 전제: 색인은 마지막 행(ap-1111)이 이긴다
+    const r = matchPresaleToApt(noRow("7777"), apts, ix);
+    expect(r?.apartment.id).toBe("ah-1");
+    expect(r?.tier).toBe(1);
+    const lin = matchPresaleToApt(noRow("7777"), apts); // 선형 경로
+    expect(lin?.apartment.id).toBe("ah-1");
+    expect(lin?.tier).toBe(1);
+    const rev = [apts[1], apts[0]]; // 선형 경로에서 ap-1111 이 먼저 걸리는 순서
+    const linRev = matchPresaleToApt(noRow("7777"), rev);
+    expect(linRev?.apartment.id).toBe("ah-1");
+    expect(linRev?.tier).toBe(1);
   });
 
   const NOWON = "서울특별시 노원구 월계동 1";

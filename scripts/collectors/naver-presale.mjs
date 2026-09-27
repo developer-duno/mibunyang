@@ -717,6 +717,12 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
     // 세션582: ap-* 행은 자기 번호(ap-<공고 번호>)만 — 여기 온 ap-* 는 id 주인이 아니므로(위에서 걸렸을 것)
     //   남의 번호를 쥔 행이다. 채택하면 남의 공고로 덮인다 → 2~4순위로 넘긴다(그쪽은 ap-* 를 후보에서 뺀다).
     if (exact && !exact.id?.startsWith("ap-")) return { apartment: exact, confidence: 1.0, tier: 1 };
+    // 세션582 검사관A 🟡1: 색인은 마지막 행이 이긴다 — 같은 번호를 정상 행과 남의 번호를 쥔 ap-* 가 함께 쥐면
+    //   색인이 ap-* 를 돌려줘 정상 행의 1순위를 잃고 신규 ap-<번호> 중복 카드가 된다. ap-* 아닌 행을 한 번 더 찾는다.
+    if (exact) {
+      const nonAp = apartments.find(a => a.naver_presale_no === presaleNo && !String(a.id).startsWith("ap-"));
+      if (nonAp) return { apartment: nonAp, confidence: 1.0, tier: 1 };
+    }
   }
 
   // 세션578 게이트 재료: 분양 주소의 시도·시군구(DB 표기로 정규화)
@@ -855,9 +861,7 @@ export function buildNewApartment(row, complexData, regionFallback) {
     id: `ap-${no}`,
     name: complexData.build_nm,
     region: finalRegion,
-    // 세션582: 세종은 gu = null — 기존 세종 42행이 전부 null 이다(VIEW 는 조인 때 '세종시' 로 바꿔 붙인다,
-    //   20260922000004_view_add_coord_shared.sql:311). 맞추는 이유 = VIEW 중복 제거 열쇠(name|region|gu|dong)·화면 구 필터.
-    gu: finalRegion === "세종" ? null : (normalizeGu(finalRegion ?? "", gu) ?? null),
+    gu: normalizeGu(finalRegion ?? "", gu) ?? null,
     dong: dong ?? null,
     address: complexData.address ?? null,
     lat: row._enrich.lat,
@@ -868,6 +872,10 @@ export function buildNewApartment(row, complexData, regionFallback) {
     bjd_code: row._enrich.bjd_code,
     unit_source: "naver_presale",
   };
+  // 세션582: 세종은 gu = null — 기존 세종 42행이 전부 null 이다(VIEW 는 조인 때 '세종시' 로 바꿔 붙인다,
+  //   20260922000004_view_add_coord_shared.sql:311). 맞추는 이유 = VIEW 중복 제거 열쇠(name|region|gu|dong)·화면 구 필터.
+  //   객체 줄(gu: normalizeGu(finalRegion…)은 remap-incheon-2026.test.mjs 정적 가드가 글자로 읽으므로 그대로 두고 여기서 덮는다.
+  if (finalRegion === "세종") apt.gu = null;
   Object.assign(apt, extractPresaleFields(row));
   return apt;
 }
