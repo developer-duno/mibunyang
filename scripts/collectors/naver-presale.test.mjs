@@ -715,14 +715,17 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
     expect(stats.gateBlocked).toBe(1);
   });
 
-  it("(g) 1순위 번호 일치는 지역이 달라도 매칭(현행 유지)", () => {
+  // 세션582: 옛 판본은 후보 id 가 "ap-6026677"(음성아이파크 — 남의 번호 6027751 을 쥔 실제 오염 행)이라
+  //   그 오염을 tier 1 정답으로 못 박고 있었다. ap-* 는 이제 자기 번호만 받으므로(세션582 describe),
+  //   "지역이 달라도 1순위" 라는 이 시험의 뜻은 ah-* 행으로 지킨다.
+  it("(g) 1순위 번호 일치는 지역이 달라도 매칭(현행 유지 — ah-* 행)", () => {
     const row = gateRow({ name: "서울원아이파크", address: "서울특별시 노원구 월계동 1" });
     row.naver_presale_no = "6027751";
     const apts = [createApartment({
-      id: "ap-6026677", name: "음성아이파크", region: "충북", gu: "음성군", naver_presale_no: "6027751",
+      id: "ah-2024000777", name: "음성아이파크", region: "충북", gu: "음성군", naver_presale_no: "6027751",
     })];
     const r = matchPresaleToApt(row, apts);
-    expect(r?.apartment.id).toBe("ap-6026677");
+    expect(r?.apartment.id).toBe("ah-2024000777");
     expect(r?.tier).toBe(1);
   });
 
@@ -960,6 +963,31 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
     const s2 = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 };
     expect(matchPresaleToApt(noRow("7000007"), same, idx(same), s2)?.tier).toBe(1);
     expect(s2.idHealed).toBe(0);
+  });
+
+  // ── 세션582 — ap-* 행은 자기 번호(ap-<공고 번호>)만 1순위로 받는다(BACKLOG A-13 🟢1) ──
+  //   세션582 실측: ap-* 1,514 중 남의 번호를 쥔 행 57, 그중 주인 ap-<번호> 행이 없는 것 0 — 지금 결과가 바뀌는 행은 0.
+  it("22. 세션582① — 공고 7777 · 필드에 7777 을 쥔 ap-1111 만 → tier 1 아님(남의 공고로 덮지 않는다)", () => {
+    const apts = [createApartment({ id: "ap-1111", name: "딴이름", naver_presale_no: "7777" })];
+    expect(matchPresaleToApt(noRow("7777"), apts, idx(apts))?.tier).not.toBe(1);
+    expect(matchPresaleToApt(noRow("7777"), apts)?.tier).not.toBe(1); // 인덱스 없는 선형 탐색 길도
+  });
+
+  it("23. 세션582② — 필드에 7777 을 쥔 ah-1 → 지금처럼 tier 1", () => {
+    const apts = [createApartment({ id: "ah-1", name: "딴이름", naver_presale_no: "7777" })];
+    const r = matchPresaleToApt(noRow("7777"), apts, idx(apts));
+    expect(r?.apartment.id).toBe("ah-1");
+    expect(r?.tier).toBe(1);
+  });
+
+  it("24. 세션582③ — ap-7777(id 주인)이 있으면 필드에 7777 을 쥔 ap-1111 이 있어도 ap-7777 tier 1", () => {
+    const apts = [
+      createApartment({ id: "ap-1111", name: "딴이름", naver_presale_no: "7777" }),
+      createApartment({ id: "ap-7777", name: "딴이름2", naver_presale_no: null }),
+    ];
+    const r = matchPresaleToApt(noRow("7777"), apts, idx(apts));
+    expect(r?.apartment.id).toBe("ap-7777");
+    expect(r?.tier).toBe(1);
   });
 
   const NOWON = "서울특별시 노원구 월계동 1";
@@ -1674,6 +1702,40 @@ describe("buildCortarQueries — 같은 cortarNo 는 한 번만 (세션545)", ()
     expect(buildCortarQueries(["서울"])).toEqual([
       { cortarNo: "1100000000", region: "서울", regions: ["서울"] },
     ]);
+  });
+
+  // 세션582 실측(2026-09-27): 네이버 분양 목록 3611000000(행안부 인구 API 코드) = 0건 · 3600000000 = 7건
+  //   (양성 대조 제주 5000000000 = 10건). naver-collect.py:83 도 "3600000000".
+  it("★ 세종은 3600000000 (세션582 — 3611000000 은 행안부 코드라 분양 목록 0건)", () => {
+    expect(buildCortarQueries(["세종"])).toEqual([
+      { cortarNo: "3600000000", region: "세종", regions: ["세종"] },
+    ]);
+  });
+});
+
+// ── 목록 밖 임대 모양 유형 경고 (세션582, BACKLOG A-13 🟢) ──────
+// 세션582 실측: DB presale_type 13종 중 LEASE_PRESALE_TYPES 밖 임대 모양 0종·0행 — "공공임대10년" 은 목록에 없는 가상의 새 유형.
+import { isUnlistedLeaseLikeType } from "./naver-presale.mjs";
+
+describe("isUnlistedLeaseLikeType — 목록 밖 임대 모양 유형 (세션582)", () => {
+  it("목록 밖 + 임대 낱말 → true", () => {
+    expect(isUnlistedLeaseLikeType("공공임대10년")).toBe(true);
+  });
+  it("목록 안(국민임대) → false — 이미 임대로 분류된다", () => {
+    expect(isUnlistedLeaseLikeType("국민임대")).toBe(false);
+  });
+  it("분양 유형(민간분양) → false", () => {
+    expect(isUnlistedLeaseLikeType("민간분양")).toBe(false);
+  });
+  it("null·빈 문자열 → false", () => {
+    expect(isUnlistedLeaseLikeType(null)).toBe(false);
+    expect(isUnlistedLeaseLikeType("")).toBe(false);
+  });
+  it("main 이 회차당 한 번만 경고한다(소스 배선)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    expect(src).toContain("warnedLeaseTypes");
+    expect(src).toMatch(/isUnlistedLeaseLikeType\(sclass\) && !warnedLeaseTypes\.has\(sclass\)/);
+    expect(src).toMatch(/warnedLeaseTypes\.add\(sclass\)/);
   });
 });
 
