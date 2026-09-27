@@ -1382,6 +1382,21 @@ describe("buildNewApartment", () => {
     expect(apt.name).toBe("테스트아파트");
     expect(apt.units).toBe(300);
   });
+
+  // 세션582: 기존 세종 42행이 전부 gu=null — 새 행도 맞춘다. 주소 표기는 네이버 실측("세종시 세종시 합강동").
+  it("세종 주소 → gu 는 null, 비세종 주소 → gu 는 그대로 채워진다 (세션582)", () => {
+    const sj = createComplexResponse({ address: "세종시 세종시 합강동", build_nm: "세종5-1양우내안애아스펜" });
+    const sjRow = toPresaleRow(sj, null, createListItem());
+    sjRow._name = sj.build_nm;
+    const sjApt = buildNewApartment(sjRow, sj, null);
+    expect(sjApt.region).toBe("세종");
+    expect(sjApt.gu).toBeNull();
+
+    const seoul = createComplexResponse();
+    const seoulRow = toPresaleRow(seoul, null, createListItem());
+    seoulRow._name = seoul.build_nm;
+    expect(buildNewApartment(seoulRow, seoul, "서울").gu).toBe("마포구");
+  });
 });
 
 // ── dedupUpdateRows (세션 495) ────────────────────────────────
@@ -1742,8 +1757,9 @@ describe("isUnlistedLeaseLikeType — 목록 밖 임대 모양 유형 (세션582
 // ── region NOT NULL 가드 (세션545 라운드2) ────────────────────
 //
 // 공유 cortarNo 항목은 `_region` 이 null 이라, 주소가 없거나 안 읽히면 신규 행의 region 이
-// null 로 나온다. `apartments.region` 은 NOT NULL 이므로 그 한 행이 배치(최대 500건)를
-// 통째로 죽인다 — 같이 실린 멀쩡한 신규 단지가 함께 유실된다.
+// null 로 나온다. `apartments.region` 은 NOT NULL 이므로 그 한 행이 배치(최대 500건) upsert 를
+// 실패시키고, `upsertBatch` 는 429 가 아닌 오류면 그 배치를 한 행씩 다시 시도한다(세션582 원문 확인) —
+// 멀쩡한 행은 살지만 500행을 하나씩 다시 보내고 오류 로그가 남는다. 그래서 미리 접는다.
 describe("신규 생성 — region null 행은 배치에 넣지 않는다 (세션545)", () => {
   it("주소를 못 읽고 폴백도 null 이면 buildNewApartment 의 region 이 null 이다 (가드가 필요한 이유)", () => {
     const row = {

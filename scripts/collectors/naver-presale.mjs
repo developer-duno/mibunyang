@@ -855,7 +855,9 @@ export function buildNewApartment(row, complexData, regionFallback) {
     id: `ap-${no}`,
     name: complexData.build_nm,
     region: finalRegion,
-    gu: normalizeGu(finalRegion ?? "", gu) ?? null,
+    // 세션582: 세종은 gu = null — 기존 세종 42행이 전부 null 이다(VIEW 는 조인 때 '세종시' 로 바꿔 붙인다,
+    //   20260922000004_view_add_coord_shared.sql:311). 맞추는 이유 = VIEW 중복 제거 열쇠(name|region|gu|dong)·화면 구 필터.
+    gu: finalRegion === "세종" ? null : (normalizeGu(finalRegion ?? "", gu) ?? null),
     dong: dong ?? null,
     address: complexData.address ?? null,
     lat: row._enrich.lat,
