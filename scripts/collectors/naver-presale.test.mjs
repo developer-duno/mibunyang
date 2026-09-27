@@ -9,8 +9,17 @@
  * - toPresaleRow: API 응답→DB 행 변환
  * - matchPresaleToApt: 4단계 매칭 로직
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterEach } from "vitest";
 import { vi } from "vitest";
+
+// tryPythonJwt 시험이 진짜 python3·네이버 호출로 매달리는 것을 막는다(세션581 기록, 세션582
+// 처방) — execFileSync 만 갈아끼우고 나머지 child_process 내보내기는 원본 그대로 유지.
+vi.mock("child_process", async (importOriginal) => {
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
+  return { ...orig, execFileSync: vi.fn() };
+});
+
+import { execFileSync } from "child_process";
 import {
   parsePresalePrice,
   sanitizeImageUrl,
@@ -288,23 +297,44 @@ describe("toPresaleRow", () => {
 // ── tryPythonJwt ─────────────────────────────────────────────
 
 describe("tryPythonJwt", () => {
-  // Python 실행 결과에 따라 JWT 또는 null 반환 확인
-  // 실제 Python 호출은 환경 의존적이므로, 반환값 형식만 검증
-  it("JWT 토큰 또는 null을 반환한다", () => {
-    const result = tryPythonJwt();
-    // Python 미설치 또는 네트워크 불가 시 null, 성공 시 eyJ... 문자열
-    if (result !== null) {
-      expect(result).toMatch(/^eyJ/);
-      expect(typeof result).toBe("string");
-    } else {
-      expect(result).toBeNull();
-    }
+  // ⚠️ execFileSync 는 위 vi.mock 으로 가짜다 — 실제 python3·네이버 호출 0(세션582).
+  const mockExecFileSync = /** @type {import('vitest').Mock} */ (execFileSync);
+
+  afterEach(() => {
+    mockExecFileSync.mockReset();
   });
 
-  // 반환 타입은 항상 string 또는 null (예외 발생 안 함)
-  it("예외를 던지지 않고 안전하게 null을 반환한다", () => {
-    // tryPythonJwt는 내부에서 모든 에러를 catch하므로 예외 발생 안 함
+  it("stdout이 eyJ로 시작하면 trim된 토큰을 반환한다", () => {
+    mockExecFileSync.mockReturnValue("eyJabc.def\n");
+    expect(tryPythonJwt()).toBe("eyJabc.def");
+    expect(mockExecFileSync).toHaveBeenCalledTimes(1);
+    // 첫 인자가 "python3" 인지 — 현재 동작 고정(세션582 지시서 항목 1)
+    expect(mockExecFileSync.mock.calls[0][0]).toBe("python3");
+  });
+
+  it("stdout이 eyJ로 시작하지 않으면 null을 반환한다", () => {
+    mockExecFileSync.mockReturnValue("oops");
+    expect(tryPythonJwt()).toBeNull();
+  });
+
+  it("ENOENT 에러(Python 미설치) 시 null을 반환하고 예외를 던지지 않는다", () => {
+    mockExecFileSync.mockImplementation(() => {
+      const err = /** @type {NodeJS.ErrnoException} */ (new Error("not found"));
+      err.code = "ENOENT";
+      throw err;
+    });
     expect(() => tryPythonJwt()).not.toThrow();
+    expect(tryPythonJwt()).toBeNull();
+  });
+
+  it("기타 에러(예: ETIMEDOUT) 시 null을 반환하고 예외를 던지지 않는다", () => {
+    mockExecFileSync.mockImplementation(() => {
+      const err = /** @type {NodeJS.ErrnoException} */ (new Error("timed out"));
+      err.code = "ETIMEDOUT";
+      throw err;
+    });
+    expect(() => tryPythonJwt()).not.toThrow();
+    expect(tryPythonJwt()).toBeNull();
   });
 });
 
