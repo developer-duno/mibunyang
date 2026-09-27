@@ -16,7 +16,8 @@
 
 set -u
 
-LOG_DIR=".claude"
+# 세션582: 작업 폴더가 하위 폴더여도 루트에 쌓이게 — 훅 프로세스에는 CLAUDE_PROJECT_DIR 이 넘어온다(공식 hooks 문서). 없으면 옛 동작.
+LOG_DIR="${CLAUDE_PROJECT_DIR:-.}/.claude"
 LOG_FILE="$LOG_DIR/.instructions-loaded.log"
 
 mkdir -p "$LOG_DIR" 2>/dev/null || exit 0
