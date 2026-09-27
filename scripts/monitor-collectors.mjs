@@ -732,6 +732,11 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
       }
       if (totalSum > 0) {
         effectiveRate = Math.round((filledSum / totalSum) * 1000) / 10;
+      } else {
+        // 세션 583 — 남은 필드의 분모가 0(제외 필드만 넘어왔거나 빈 통계)이면 유효 rate 를
+        // 못 잰다. 옛 동작(stat.rate)으로 판정하고, 제외가 판정에 안 쓰였으니 "유효 채움률"
+        // 문구와 "(점검 제외)" 표시도 내지 않는다.
+        excludedPresent.clear();
       }
     }
 

@@ -712,6 +712,38 @@ describe("checkCategoryNullSurge — AUDIT_NULLSURGE_EXCLUDE_FIELDS (세션 582,
     expect(issues[0].detail).toBe("전체 채움률 50% (1000/2000) — 기대 최저 70% 미달");
   });
 
+  // 세션 583 — 분모 0 방어. 운영 경로엔 price·pp 가 늘 같이 넘어와 안 나오지만, 제외 필드만
+  // 넘어오면 유효 rate 를 못 잰다 → 감시를 끄지 않고 옛 동작(stat.rate)으로, 문구도 옛 문구로.
+  it("제외 필드(area)만 넘어오면 분모 0 — 옛 동작(stat.rate)으로 판정, '유효'·'(점검 제외)' 표시 없음", () => {
+    const issues = checkCategoryNullSurge(priceCategories, priceBaseline, {
+      "price.area": priceFields["price.area"],
+    });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toBe("전체 채움률 72.8% (5381/7392) — 기대 최저 75% 미달");
+    const body = issues[0].lines?.join("\n") ?? "";
+    expect(body).toContain("공급면적");
+    expect(body).not.toContain("(점검 제외)");
+  });
+
+  it("남은 필드가 전부 0/0 이어도 분모 0 — NaN 없이 옛 동작, 문턱 위면 경보 0", () => {
+    const emptyFields = {
+      "price.area": priceFields["price.area"],
+      "price.price": { category: "price", field: "price", filled: 0, missing: 0 },
+      "price.pp": { category: "price", field: "pp", filled: 0, missing: 0 },
+    };
+    const below = checkCategoryNullSurge(priceCategories, priceBaseline, emptyFields);
+    expect(below).toHaveLength(1);
+    expect(below[0].detail).toBe("전체 채움률 72.8% (5381/7392) — 기대 최저 75% 미달");
+    expect(below[0].detail).not.toContain("NaN");
+    // 옛 동작이므로 stat.rate 가 문턱 위면 경보가 없어야 한다(분모 0 이 거짓 경보를 만들지 않음)
+    const above = checkCategoryNullSurge(
+      { price: { collector: "applyhome", filled: 6000, total: 7392, rate: 81.2 } },
+      priceBaseline,
+      emptyFields,
+    );
+    expect(above).toHaveLength(0);
+  });
+
   it("AUDIT_NULLSURGE_EXCLUDE_FIELDS 는 price.area 하나만 등재 — 뮤테이션 대상", () => {
     expect(AUDIT_NULLSURGE_EXCLUDE_FIELDS).toEqual({ price: ["area"] });
   });
