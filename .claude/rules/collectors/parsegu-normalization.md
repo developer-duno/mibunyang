@@ -53,7 +53,7 @@ for (const r of Array.isArray(items) ? items : [items]) {
 
 ### 4. 신규 SIDO 매핑 변수 박제 시 자매 grep 의무
 
-`SIDO_CODES` / `REGION_CORTAR` / 비슷한 시도 매핑 상수 박제 시 자매 collector grep 의무. 환각 박제값 자매 drift 발견 시 동시 fix.
+`SIDO_CODES` / `REGION_CORTAR` / 비슷한 시도 매핑 상수 박제 시 자매 collector grep 의무. 단 **"자매와 같게" 가 아니라 "그 API 로 raw 1회" 가 잣대다** — 같은 시도라도 API 마다 코드가 다르다(세션582 실측 2026-09-27: 네이버 분양 목록 `REGION_CORTAR` 세종 = **`3600000000`(7건)**, 행안부 인구 `SIDO_CODES` 세종 = `3611000000`. 세션286 이 이 절을 따라 네이버 쪽을 3611 로 "정정"해 4개월간 세종 분양 7곳 누락 — `admin-district-code-reform.md` §1 표 세종 행). 아래 grep 에서 `naver-presale.mjs`·`naver-collect.py` 의 3600 은 **정답**이니 고치지 않는다. 강원 42/전북 45 → 51/52 는 개편(진짜 옛 코드).
 
 ```bash
 grep -rn '"3600000000"\|"4200000000"\|"4500000000"' scripts/ src/

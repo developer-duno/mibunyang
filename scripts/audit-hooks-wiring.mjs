@@ -13,12 +13,26 @@
  * 검사:
  *   1. .claude/hooks/ 의 *.sh 목록 추출
  *   2. .claude/settings.json 본문(문자열)에 각 파일명이 등장하는지 확인
- *   3. 미참조 스크립트 박힘 시 exit 1
+ *   3. 훅 스크립트 본문에 머신 고정 절대경로(cd /f/... 등) 없는지 확인
+ *   4. settings.json 의 훅 command 가 작업 폴더 기준 상대경로로 .claude 를 참조하면서
+ *      cd "${CLAUDE_PROJECT_DIR}" 로 시작하지 않는지 확인 (세션 582 — 워크트리 등 하위
+ *      폴더에서 발화하면 exit 127 → PreToolUse 는 0/2 외 종료코드를 "통과"로 처리해
+ *      위험 명령 차단이 조용히 무력화된다)
+ *   미참조/절대경로/상대참조 박힘 시 exit 1
  *
  * 범위 주의: settings.local.json 은 gitignore 대상(CI 부재)이라 검사에서 제외한다.
  * 공유돼야 하는 배선은 추적 파일인 settings.json 에 있어야 한다는 뜻이기도 하다.
  *
- * exit code: 0=clean, 1=미배선 검출, 2=parse/IO error
+ * 알려진 한계(검사 4, 세션 582) — findRelativeHookRefs 는 `.claude` 라는 글자가 훅 command
+ * 문자열 **어디에** 나오는지만 보고, 그것이 실제 경로 참조인지 사람이 읽는 문구인지는
+ * 구분하지 못한다. 예: `echo '.claude/BACKLOG.md 를 보세요'`(경로가 아니라 안내 문구)도
+ * 위험 판정에 걸린다 — 단 그 command 가 `cd "${CLAUDE_PROJECT_DIR}" || exit 0;` 로 시작하면
+ * "이미 안전하게 cd 했다"는 신호로 보고 통과(면제)시킨다. 즉 이 오탐은 **cd 접두가 없는
+ * command 에서만** 발생하며, 실제 훅은 대부분 그 접두로 시작하므로 실전 영향은 낮다.
+ * 코드로 문구/경로를 가르지 않는 이유 — 오탐 0 을 노리다 진짜 상대경로 참조(사고 재발)를
+ * 놓치는 위험이 더 크다(findHardcodedCdPaths 의 "오탐 0 우선" 설계와 같은 판단).
+ *
+ * exit code: 0=clean, 1=미배선/상대경로 검출, 2=parse/IO error
  */
 import { readFile, readdir } from "node:fs/promises";
 
@@ -38,6 +52,56 @@ export function findUnwiredHooks(hookFiles, settingsText) {
     if (!settingsText.includes(name)) result.push(name);
   }
   return result.sort();
+}
+
+/**
+ * 순수 함수 — settings.json 의 훅 command 문자열 중, 작업 폴더 기준 상대경로로
+ * `.claude` 를 참조하면서도 `cd "${CLAUDE_PROJECT_DIR}"` (또는 `$CLAUDE_PROJECT_DIR`)로
+ * 시작하지 않는 것을 찾는다.
+ *
+ * 세션 582 근거 — 훅은 "그때의 작업 폴더"에서 실행된다(공식 code.claude.com/docs/en/hooks).
+ * 옛 설정처럼 상대경로(`.claude/hooks/x.sh`)로 훅 스크립트를 부르면, 하위 폴더(워크트리 등)에서
+ * 그 훅이 발화할 때 exit 127(스크립트 못 찾음)이 나고, PreToolUse 는 0·2 외 종료코드면 "막지
+ * 않고 통과"이므로 위험 명령 차단이 조용히 꺼진다. `cd "${CLAUDE_PROJECT_DIR}" || exit 0;` 로
+ * 시작하는 명령은 항상 레포 루트에서 `.claude/...` 를 찾으므로 안전.
+ *
+ * 판정 대상은 `.claude` 앞 글자가 문자열 시작·공백·따옴표·`=`·`;`·`&`·`|`·`(`·`>` 인 경우만
+ * (상대 참조). `"${CLAUDE_PROJECT_DIR}"/.claude/...` 처럼 `/` 뒤에 오는 `.claude` 는 절대경로
+ * 참조라 문제 없다.
+ *
+ * @param {Record<string, any>} settingsObj settings.json 을 JSON.parse 한 객체
+ * @returns {Array<{event: string, command: string}>} 위험한 command 목록
+ */
+export function findRelativeHookRefs(settingsObj) {
+  const hooks = settingsObj?.hooks;
+  if (!hooks || typeof hooks !== "object") return [];
+
+  // .claude 앞에 올 수 있는 "상대 참조 경계" 문자 (역슬래시 이스케이프된 따옴표 포함).
+  // 세션 582 — 뒤쪽도 `/` 뿐 아니라 `\`(Windows 구분자, 예: `.claude\hooks\x.sh`)와
+  // 앞쪽에 `./`(예: `./.claude/hooks/x.sh` → `.` 뒤의 `.claude`) 도 상대 참조로 잡는다.
+  const REL_CLAUDE_REF = /(^|\.\/|[\s"'=;&|(>]|\\")\.claude(\/|\\|$)/;
+  // 세션 582 — `:-.` 기본값 대입(${VAR:-.})을 허용. `\}?` 뒤에 `(:-[^}]*)?` 를 끼워
+  // `${CLAUDE_PROJECT_DIR:-.}` 같은 폴백 표현도 "CLAUDE_PROJECT_DIR 로 cd" 로 인정한다.
+  const STARTS_WITH_CD_PROJECT_DIR =
+    /^\s*cd\s+"?\$\{?CLAUDE_PROJECT_DIR(:-[^}"]*)?\}?"?\s*(\|\||;|&&|$)/;
+
+  /** @type {Array<{event: string, command: string}>} */
+  const result = [];
+  for (const [event, entries] of Object.entries(hooks)) {
+    if (!Array.isArray(entries)) continue;
+    for (const entry of entries) {
+      const hookList = entry?.hooks;
+      if (!Array.isArray(hookList)) continue;
+      for (const h of hookList) {
+        const command = h?.command;
+        if (typeof command !== "string") continue;
+        if (!REL_CLAUDE_REF.test(command)) continue;
+        if (STARTS_WITH_CD_PROJECT_DIR.test(command)) continue;
+        result.push({ event, command });
+      }
+    }
+  }
+  return result;
 }
 
 /**
@@ -74,7 +138,7 @@ async function main() {
   const settingsText = await readFile(SETTINGS, "utf-8");
 
   // settings.json 자체가 깨져 있으면 배선 검사 이전에 훅이 통째로 안 돈다.
-  JSON.parse(settingsText);
+  const settingsObj = JSON.parse(settingsText);
 
   const shFiles = files.filter((f) => f.endsWith(".sh")).sort();
   if (shFiles.length === 0) {
@@ -91,7 +155,11 @@ async function main() {
   const hardcoded = findHardcodedCdPaths(sources);
   const unwired = findUnwiredHooks(shFiles, settingsText);
 
-  // 두 검사 결과를 모두 출력한 뒤 한 번만 exit — 먼저 걸린 쪽이 나머지를 가리면
+  // 검사 3 — 작업 폴더 기준 상대경로로 .claude 를 참조하면서 CLAUDE_PROJECT_DIR 로
+  // cd 하지 않는 훅 (세션 582: 워크트리 등 하위 폴더에서 exit 127 → PreToolUse 무력화)
+  const relativeRefs = findRelativeHookRefs(settingsObj);
+
+  // 세 검사 결과를 모두 출력한 뒤 한 번만 exit — 먼저 걸린 쪽이 나머지를 가리면
   // CI 를 두 번 왕복해야 한다(세션 485 적대검증 지적).
   if (hardcoded.length > 0) {
     console.log(`❌ 훅 스크립트에 머신 고정 절대경로 ${hardcoded.length}건:`);
@@ -113,12 +181,23 @@ async function main() {
     console.log(``);
   }
 
-  if (hardcoded.length > 0 || unwired.length > 0) {
+  if (relativeRefs.length > 0) {
+    console.log(`❌ ${SETTINGS} 의 훅 command 에 작업 폴더 기준 상대경로 .claude 참조 ${relativeRefs.length}건:`);
+    for (const r of relativeRefs) {
+      console.log(`  - [${r.event}] ${r.command.slice(0, 80)}`);
+    }
+    console.log(
+      `  사유: 상대경로 훅은 하위 폴더에서 127 → PreToolUse 차단 무력화, "\${CLAUDE_PROJECT_DIR}"/... 로 고칠 것.`,
+    );
+    console.log(``);
+  }
+
+  if (hardcoded.length > 0 || unwired.length > 0 || relativeRefs.length > 0) {
     process.exit(1);
   }
 
   console.log(
-    `✅ 훅 스크립트 ${shFiles.length}건 (${shFiles.join(", ")}) 모두 ${SETTINGS} 에 배선됨 + 절대경로 하드코딩 0`,
+    `✅ 훅 스크립트 ${shFiles.length}건 (${shFiles.join(", ")}) 모두 ${SETTINGS} 에 배선됨 + 절대경로 하드코딩 0 + 상대경로 참조 0`,
   );
   process.exit(0);
 }

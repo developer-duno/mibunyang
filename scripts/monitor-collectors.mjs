@@ -165,6 +165,24 @@ export const AH_ID_PREFIX = "ah-";
 export const COMPETITION_SCOPE_SUFFIX = " · 청약홈 ah- 단지 모수";
 
 /**
+ * ④ 카테고리 NULL 급증 점검에서 "모수는 그대로 두고 특정 필드만" 제외하는 표.
+ * (EXCLUDED_AUDIT_CATEGORIES 는 카테고리 전체를 뺀다 — 이건 카테고리는 그대로 점검하되
+ * 그 안의 일부 필드만 문턱 계산에서 뺀다는 점이 다르다.)
+ *
+ * price.area(공급면적) — 세션 582 사장님 결정. 2026-09-27 09:58Z 감시 알림(run 36284086128)
+ * 실측: price 카테고리 72.8%(5381/7392) < 문턱 75 로 이상 판정됐는데, 세부는 area 43.6%
+ * (1075/2464, 구조적 저채움 — 578·579 세션의 잘못 붙은 분양가 정리로 생긴 정직한 빈칸)
+ * · price(분양가) 87.4% · pp(평당가) 87.4% 로 나머지 둘은 문턱 위였다. area 를 모수에서
+ * 빼면 분양가·평당가만으로 유효 rate 를 재고, 그 둘이 진짜로 고장 나면(문턱 아래로 떨어지면)
+ * 계속 잡힌다 — scopeCompetitionToAh(모수를 좁힘)와는 다른 방식으로 같은 목적(구조적 저채움
+ * 필드가 진짜 고장을 가리지 않게)을 이룬다.
+ * @type {Record<string, string[]>}
+ */
+export const AUDIT_NULLSURGE_EXCLUDE_FIELDS = {
+  price: ["area"],
+};
+
+/**
  * ④ NULL 점검에서 의도적으로 제외하는 카테고리 — 수기입력·부분수집·로컬전용.
  * AUDIT_CATEGORY_BASELINE(점검 12) + 이 배열(제외 7) = data-audit AUDIT_FIELDS
  * 19 카테고리 전체. 둘의 합집합 정합은 monitor-collectors.test.mjs 가 강제한다.
@@ -682,7 +700,6 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
   for (const [cat, minRate] of Object.entries(baseline)) {
     const stat = categories[cat];
     if (!stat || stat.total === 0) continue;
-    if (stat.rate >= minRate) continue;
 
     // 이 카테고리에 속한 필드별 채움률 — 낮은 순 정렬
     const catFields = Object.values(fields)
@@ -694,21 +711,57 @@ export function checkCategoryNullSurge(categories, baseline, fields = {}) {
       })
       .sort((a, b) => a.rate - b.rate);
 
+    // 세션 582 — AUDIT_NULLSURGE_EXCLUDE_FIELDS 에 이 카테고리의 제외 필드가 등재돼 있고
+    // catFields(= fields 로 넘어온 실제 필드 통계)에 그 필드가 있으면, 제외 필드를 뺀
+    // filled/(filled+missing) 합으로 "유효 rate" 를 다시 계산해 문턱과 비교한다.
+    // fields 가 없거나(하위호환) 제외 표가 비었으면 옛 동작(stat.rate) 그대로.
+    const excludeFields = AUDIT_NULLSURGE_EXCLUDE_FIELDS[cat] ?? [];
+    let effectiveRate = stat.rate;
+    /** @type {Set<string>} */
+    const excludedPresent = new Set();
+    if (excludeFields.length > 0 && catFields.length > 0) {
+      let filledSum = 0;
+      let totalSum = 0;
+      for (const f of catFields) {
+        if (excludeFields.includes(f.field)) {
+          excludedPresent.add(f.field);
+          continue;
+        }
+        filledSum += f.filled;
+        totalSum += f.total;
+      }
+      if (totalSum > 0) {
+        effectiveRate = Math.round((filledSum / totalSum) * 1000) / 10;
+      } else {
+        // 세션 583 — 남은 필드의 분모가 0(제외 필드만 넘어왔거나 빈 통계)이면 유효 rate 를
+        // 못 잰다. 옛 동작(stat.rate)으로 판정하고, 제외가 판정에 안 쓰였으니 "유효 채움률"
+        // 문구와 "(점검 제외)" 표시도 내지 않는다.
+        excludedPresent.clear();
+      }
+    }
+
+    if (effectiveRate >= minRate) continue;
+
     /** @type {string[]} */
     const lines = [];
     if (catFields.length > 0) {
       lines.push(`이 항목은 ${catFields.length}개 세부 데이터로 이뤄집니다. 채움률이 낮은 것:`);
       for (const f of catFields.slice(0, NULL_DETAIL_FIELD_LIMIT)) {
         const koField = KO_FIELD[f.field] ?? f.field;
-        lines.push(`  · ${koField} ${f.rate}% (${f.filled}/${f.total})`);
+        const excludedNote = excludedPresent.has(f.field) ? " (점검 제외)" : "";
+        lines.push(`  · ${koField} ${f.rate}% (${f.filled}/${f.total})${excludedNote}`);
       }
     }
 
     const koCat = KO_CATEGORY[cat] ?? cat;
+    const detail =
+      excludedPresent.size > 0
+        ? `유효 채움률 ${effectiveRate}%(제외 필드 뺀 값, 전체는 ${stat.rate}%) — 기대 최저 ${minRate}% 미달`
+        : `전체 채움률 ${stat.rate}% (${stat.filled}/${stat.total}) — 기대 최저 ${minRate}% 미달`;
     issues.push({
       kind: "nulls",
       collector: `${koCat} (${stat.collector})`,
-      detail: `전체 채움률 ${stat.rate}% (${stat.filled}/${stat.total}) — 기대 최저 ${minRate}% 미달`,
+      detail,
       lines,
     });
   }
