@@ -745,14 +745,18 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
     expect(stats.gateBlocked).toBe(1);
   });
 
-  it("(g) 1순위 번호 일치는 지역이 달라도 매칭(현행 유지)", () => {
+  // 세션582: 옛 판본은 후보 id 가 "ap-6026677"(음성아이파크 — 남의 번호 6027751 을 쥔 실제 오염 행)이라
+  //   그 오염을 tier 1 정답으로 못 박고 있었다. ap-* 는 이제 자기 번호만 받으므로(세션582 describe),
+  //   "지역이 달라도 1순위" 라는 이 시험의 뜻은 ah-* 행으로 지킨다.
+  //   ah 행이 쥔 남의 번호는 수집기가 아니라 `cleanup-presale-links.mjs` 가 끊는다 — 이 시험은 1순위가 지역을 안 본다는 뜻만 고정.
+  it("(g) 1순위 번호 일치는 지역이 달라도 매칭(현행 유지 — ah-* 행)", () => {
     const row = gateRow({ name: "서울원아이파크", address: "서울특별시 노원구 월계동 1" });
     row.naver_presale_no = "6027751";
     const apts = [createApartment({
-      id: "ap-6026677", name: "음성아이파크", region: "충북", gu: "음성군", naver_presale_no: "6027751",
+      id: "ah-2024000777", name: "음성아이파크", region: "충북", gu: "음성군", naver_presale_no: "6027751",
     })];
     const r = matchPresaleToApt(row, apts);
-    expect(r?.apartment.id).toBe("ap-6026677");
+    expect(r?.apartment.id).toBe("ah-2024000777");
     expect(r?.tier).toBe(1);
   });
 
@@ -990,6 +994,50 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
     const s2 = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0 };
     expect(matchPresaleToApt(noRow("7000007"), same, idx(same), s2)?.tier).toBe(1);
     expect(s2.idHealed).toBe(0);
+  });
+
+  // ── 세션582 — ap-* 행은 자기 번호(ap-<공고 번호>)만 1순위로 받는다(BACKLOG A-13 🟢1) ──
+  //   세션582 실측: ap-* 1,514 중 남의 번호를 쥔 행 57, 그중 주인 ap-<번호> 행이 없는 것 0 — 지금 결과가 바뀌는 행은 0.
+  it("22. 세션582① — 공고 7777 · 필드에 7777 을 쥔 ap-1111 만 → tier 1 아님(남의 공고로 덮지 않는다)", () => {
+    const apts = [createApartment({ id: "ap-1111", name: "딴이름", naver_presale_no: "7777" })];
+    expect(matchPresaleToApt(noRow("7777"), apts, idx(apts))?.tier).not.toBe(1);
+    expect(matchPresaleToApt(noRow("7777"), apts)?.tier).not.toBe(1); // 인덱스 없는 선형 탐색 길도
+  });
+
+  it("23. 세션582② — 필드에 7777 을 쥔 ah-1 → 지금처럼 tier 1", () => {
+    const apts = [createApartment({ id: "ah-1", name: "딴이름", naver_presale_no: "7777" })];
+    const r = matchPresaleToApt(noRow("7777"), apts, idx(apts));
+    expect(r?.apartment.id).toBe("ah-1");
+    expect(r?.tier).toBe(1);
+  });
+
+  it("24. 세션582③ — ap-7777(id 주인)이 있으면 필드에 7777 을 쥔 ap-1111 이 있어도 ap-7777 tier 1", () => {
+    const apts = [
+      createApartment({ id: "ap-1111", name: "딴이름", naver_presale_no: "7777" }),
+      createApartment({ id: "ap-7777", name: "딴이름2", naver_presale_no: null }),
+    ];
+    const r = matchPresaleToApt(noRow("7777"), apts, idx(apts));
+    expect(r?.apartment.id).toBe("ap-7777");
+    expect(r?.tier).toBe(1);
+  });
+
+  it("25. 세션582④ — 같은 번호를 ah-1 과 ap-1111 이 함께 쥐고 주인 ap-7777 없음 → 색인·선형 둘 다 ah-1 tier 1(중복 카드 방지)", () => {
+    const apts = [
+      createApartment({ id: "ah-1", name: "딴이름", naver_presale_no: "7777" }),
+      createApartment({ id: "ap-1111", name: "딴이름2", naver_presale_no: "7777" }),
+    ];
+    const ix = idx(apts);
+    expect(ix.byPresaleNo.get("7777")?.id).toBe("ap-1111"); // 전제: 색인은 마지막 행(ap-1111)이 이긴다
+    const r = matchPresaleToApt(noRow("7777"), apts, ix);
+    expect(r?.apartment.id).toBe("ah-1");
+    expect(r?.tier).toBe(1);
+    const lin = matchPresaleToApt(noRow("7777"), apts); // 선형 경로
+    expect(lin?.apartment.id).toBe("ah-1");
+    expect(lin?.tier).toBe(1);
+    const rev = [apts[1], apts[0]]; // 선형 경로에서 ap-1111 이 먼저 걸리는 순서
+    const linRev = matchPresaleToApt(noRow("7777"), rev);
+    expect(linRev?.apartment.id).toBe("ah-1");
+    expect(linRev?.tier).toBe(1);
   });
 
   const NOWON = "서울특별시 노원구 월계동 1";
@@ -1384,6 +1432,21 @@ describe("buildNewApartment", () => {
     expect(apt.name).toBe("테스트아파트");
     expect(apt.units).toBe(300);
   });
+
+  // 세션582: 기존 세종 42행이 전부 gu=null — 새 행도 맞춘다. 주소 표기는 네이버 실측("세종시 세종시 합강동").
+  it("세종 주소 → gu 는 null, 비세종 주소 → gu 는 그대로 채워진다 (세션582)", () => {
+    const sj = createComplexResponse({ address: "세종시 세종시 합강동", build_nm: "세종5-1양우내안애아스펜" });
+    const sjRow = toPresaleRow(sj, null, createListItem());
+    sjRow._name = sj.build_nm;
+    const sjApt = buildNewApartment(sjRow, sj, null);
+    expect(sjApt.region).toBe("세종");
+    expect(sjApt.gu).toBeNull();
+
+    const seoul = createComplexResponse();
+    const seoulRow = toPresaleRow(seoul, null, createListItem());
+    seoulRow._name = seoul.build_nm;
+    expect(buildNewApartment(seoulRow, seoul, "서울").gu).toBe("마포구");
+  });
 });
 
 // ── dedupUpdateRows (세션 495) ────────────────────────────────
@@ -1705,13 +1768,48 @@ describe("buildCortarQueries — 같은 cortarNo 는 한 번만 (세션545)", ()
       { cortarNo: "1100000000", region: "서울", regions: ["서울"] },
     ]);
   });
+
+  // 세션582 실측(2026-09-27): 네이버 분양 목록 3611000000(행안부 인구 API 코드) = 0건 · 3600000000 = 7건
+  //   (양성 대조 제주 5000000000 = 10건). naver-collect.py:83 도 "3600000000".
+  it("★ 세종은 3600000000 (세션582 — 3611000000 은 행안부 코드라 분양 목록 0건)", () => {
+    expect(buildCortarQueries(["세종"])).toEqual([
+      { cortarNo: "3600000000", region: "세종", regions: ["세종"] },
+    ]);
+  });
+});
+
+// ── 목록 밖 임대 모양 유형 경고 (세션582, BACKLOG A-13 🟢) ──────
+// 세션582 실측: DB presale_type 13종 중 LEASE_PRESALE_TYPES 밖 임대 모양 0종·0행 — "공공임대10년" 은 목록에 없는 가상의 새 유형.
+import { isUnlistedLeaseLikeType } from "./naver-presale.mjs";
+
+describe("isUnlistedLeaseLikeType — 목록 밖 임대 모양 유형 (세션582)", () => {
+  it("목록 밖 + 임대 낱말 → true", () => {
+    expect(isUnlistedLeaseLikeType("공공임대10년")).toBe(true);
+  });
+  it("목록 안(국민임대) → false — 이미 임대로 분류된다", () => {
+    expect(isUnlistedLeaseLikeType("국민임대")).toBe(false);
+  });
+  it("분양 유형(민간분양) → false", () => {
+    expect(isUnlistedLeaseLikeType("민간분양")).toBe(false);
+  });
+  it("null·빈 문자열 → false", () => {
+    expect(isUnlistedLeaseLikeType(null)).toBe(false);
+    expect(isUnlistedLeaseLikeType("")).toBe(false);
+  });
+  it("main 이 회차당 한 번만 경고한다(소스 배선)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    expect(src).toContain("warnedLeaseTypes");
+    expect(src).toMatch(/isUnlistedLeaseLikeType\(sclass\) && !warnedLeaseTypes\.has\(sclass\)/);
+    expect(src).toMatch(/warnedLeaseTypes\.add\(sclass\)/);
+  });
 });
 
 // ── region NOT NULL 가드 (세션545 라운드2) ────────────────────
 //
 // 공유 cortarNo 항목은 `_region` 이 null 이라, 주소가 없거나 안 읽히면 신규 행의 region 이
-// null 로 나온다. `apartments.region` 은 NOT NULL 이므로 그 한 행이 배치(최대 500건)를
-// 통째로 죽인다 — 같이 실린 멀쩡한 신규 단지가 함께 유실된다.
+// null 로 나온다. `apartments.region` 은 NOT NULL 이므로 그 한 행이 배치(최대 500건) upsert 를
+// 실패시키고, `upsertBatch` 는 429 가 아닌 오류면 그 배치를 한 행씩 다시 시도한다(세션582 원문 확인) —
+// 멀쩡한 행은 살지만 500행을 하나씩 다시 보내고 오류 로그가 남는다. 그래서 미리 접는다.
 describe("신규 생성 — region null 행은 배치에 넣지 않는다 (세션545)", () => {
   it("주소를 못 읽고 폴백도 null 이면 buildNewApartment 의 region 이 null 이다 (가드가 필요한 이유)", () => {
     const row = {

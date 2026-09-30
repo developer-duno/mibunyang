@@ -48,8 +48,11 @@ const MAX_RETRIES = 3;
 const RETRY_DELAYS = [5000, 10000, 20000];
 
 // 17개 시도 cortarNo (naver-collect.py와 동일, 행안부 법정동코드 표준)
-// 세션 286 자매 fix — 세종 환각 정정 (population.mjs 세션 285 답습)
-//   3600000000 → 3611000000 (세종, 이전 빈 응답 추정)
+// 세종 = 3600000000 (세션582 되돌림, 2026-09-27 실측). 세션 286 이 population.mjs(세션 285)를 답습해
+//   3611000000 으로 바꿨지만 그건 **행안부 인구 API** 코드다 — 네이버 분양 목록은 3611000000 에 0건,
+//   3600000000 에 7건(양성 대조 제주 5000000000 = 10건). 그 뒤로 세종 공고가 목록에서 통째로 빠졌다
+//   (9/24 러너 "전국 1321건" vs 지역 합 1313). naver-collect.py:83 도 "3600000000".
+//   ⚠️ population*.mjs 의 세종 3611000000 은 행안부 API 용이라 그대로 맞다 — 여기만 다르다.
 //   강원/전북은 이미 정정 박제 (5100/5200)
 // 세션 545 — 2026-07-01 전남광주통합특별시 출범: 광주 2900000000·전남 4600000000 은 0건,
 //   1200000000 하나가 46건(raw 실측 2026-09-10). **두 지역이 같은 코드**라 아래 buildCortarQueries
@@ -58,7 +61,7 @@ const RETRY_DELAYS = [5000, 10000, 20000];
 const REGION_CORTAR = {
   "서울": "1100000000", "경기": "4100000000", "인천": "2800000000",
   "부산": "2600000000", "대전": "3000000000", "대구": "2700000000",
-  "울산": "3100000000", "세종": "3611000000", "광주": "1200000000",
+  "울산": "3100000000", "세종": "3600000000", "광주": "1200000000",
   "강원": "5100000000", "충북": "4300000000", "충남": "4400000000",
   "경북": "4700000000", "경남": "4800000000", "전북": "5200000000",
   "전남": "1200000000", "제주": "5000000000",
@@ -123,7 +126,7 @@ const MATCH_THRESHOLD_REGION = 0.7;    // 4순위: 동일 region + 이름 유사
 const MATCH_DISTANCE_M = 500;          // 3순위: 좌표 반경 (미터)
 const METERS_PER_DEGREE = 111000;      // 위도 1도 ≈ 111km (근사)
 const MIN_UNITS_FOR_INSERT = 20;       // 신규 아파트 최소 세대수
-const LIST_PAGE_SIZE = 100;            // 분양 목록 페이지 크기
+const LIST_PAGE_SIZE = 100;            // 분양 목록 페이지 크기 — 네이버가 무시하고 10건/쪽으로 준다(세션578 실측: 전국 139회)
 // 전용면적 상식 범위 — `pickScaleArea` 가 계약면적 오입력·임대 행을 거르는 데 쓴다.
 // 실측(2026-08-24, 최저가 주택형 31곳 표본): p05 46.9 · p50 74.8 · p95 113.3 ㎡.
 const AREA_MIN_M2 = 20;
@@ -432,6 +435,21 @@ export function formatFailedComplexList(entries, limit = FAILED_COMPLEX_LOG_LIMI
   return `[실패 명단] ${entries.length}건: ${shown.join(" / ")}${more}`;
 }
 
+const UNLISTED_LEASE_RE = /임대|전세|행복|안심/;
+
+/**
+ * 세션582: 분양 유형(`supp_sclass`)이 임대 목록(`LEASE_PRESALE_TYPES`) **밖**인데 임대 모양 낱말을 품는가.
+ * 목록은 실측값만 명시 열거하므로(leaseTypes.mjs 머리말), 네이버가 새 임대 유형을 내면 그 단지는 분양으로
+ * 분류돼 손님 목록에 남는다 — 경고만 남겨 사람이 목록에 넣을지 정하게 한다. 분류·게이트 동작은 바꾸지 않는다.
+ * (세션582 실측: DB presale_type 13종 중 목록 밖 임대 모양 0종·0행)
+ * @param {string | null | undefined} type
+ * @returns {boolean}
+ */
+export function isUnlistedLeaseLikeType(type) {
+  if (typeof type !== "string" || !type) return false;
+  return !isLeasePresale(type) && UNLISTED_LEASE_RE.test(type);
+}
+
 /** complex + detail 응답 → DB 행 변환
  * @param {ComplexData | null | undefined} complex
  * @param {DetailData | null | undefined} detail
@@ -696,7 +714,15 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
     }
     const exact = indexes?.byPresaleNo?.get(presaleNo)
       ?? apartments.find(a => a.naver_presale_no === presaleNo);
-    if (exact) return { apartment: exact, confidence: 1.0, tier: 1 };
+    // 세션582: ap-* 행은 자기 번호(ap-<공고 번호>)만 — 여기 온 ap-* 는 id 주인이 아니므로(위에서 걸렸을 것)
+    //   남의 번호를 쥔 행이다. 채택하면 남의 공고로 덮인다 → 2~4순위로 넘긴다(그쪽은 ap-* 를 후보에서 뺀다).
+    if (exact && !exact.id?.startsWith("ap-")) return { apartment: exact, confidence: 1.0, tier: 1 };
+    // 세션582 검사관A 🟡1: 색인은 마지막 행이 이긴다 — 같은 번호를 정상 행과 남의 번호를 쥔 ap-* 가 함께 쥐면
+    //   색인이 ap-* 를 돌려줘 정상 행의 1순위를 잃고 신규 ap-<번호> 중복 카드가 된다. ap-* 아닌 행을 한 번 더 찾는다.
+    if (exact) {
+      const nonAp = apartments.find(a => a.naver_presale_no === presaleNo && !String(a.id).startsWith("ap-"));
+      if (nonAp) return { apartment: nonAp, confidence: 1.0, tier: 1 };
+    }
   }
 
   // 세션578 게이트 재료: 분양 주소의 시도·시군구(DB 표기로 정규화)
@@ -846,6 +872,10 @@ export function buildNewApartment(row, complexData, regionFallback) {
     bjd_code: row._enrich.bjd_code,
     unit_source: "naver_presale",
   };
+  // 세션582: 세종은 gu = null — 기존 세종 42행이 전부 null 이다(VIEW 는 조인 때 '세종시' 로 바꿔 붙인다,
+  //   20260922000004_view_add_coord_shared.sql:311). 맞추는 이유 = VIEW 중복 제거 열쇠(name|region|gu|dong)·화면 구 필터.
+  //   객체 줄(gu: normalizeGu(finalRegion…)은 remap-incheon-2026.test.mjs 정적 가드가 글자로 읽으므로 그대로 두고 여기서 덮는다.
+  if (finalRegion === "세종") apt.gu = null;
   Object.assign(apt, extractPresaleFields(row));
   return apt;
 }
@@ -1125,6 +1155,9 @@ async function main() {
   // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
   /** @type {string[]} */
   const failedComplexes = [];
+  // 세션582: 목록 밖 임대 모양 유형 — 같은 값은 회차당 한 번만 경고(isUnlistedLeaseLikeType)
+  /** @type {Set<string>} */
+  const warnedLeaseTypes = new Set();
 
   for (let idx = 0; idx < total; idx++) {
     if (reporter.interrupted()) break;
@@ -1159,6 +1192,11 @@ async function main() {
     // 행 변환
     const row = toPresaleRow(complexData, detailData, item);
     row._name = complexData.build_nm;
+    const sclass = complexData.supp_sclass;
+    if (typeof sclass === "string" && isUnlistedLeaseLikeType(sclass) && !warnedLeaseTypes.has(sclass)) {
+      warnedLeaseTypes.add(sclass);
+      logError(PHASE, `[임대유형 경고] 목록(LEASE_PRESALE_TYPES) 밖 임대 모양 유형 "${sclass}" — 분양으로 분류됨, 목록 추가 여부 확인 (첫 사례: ${complexData.build_nm} no=${no})`);
+    }
 
     // --region=X 로 좁혀 돌 때: 공유 cortarNo(광주·전남 = 1200000000)는 **양쪽 단지를 다**
     // 실어 온다. 시도만으로 못 가르므로 주소로 가른 지역이 요청과 다르면 건너뛴다.
@@ -1220,8 +1258,9 @@ async function main() {
         const newApt = buildNewApartment(row, complexData, item._region);
         // ⚠️ `apartments.region` 은 **NOT NULL** 이다. 공유 cortarNo 항목은 `_region` 이 null 이라
         //    주소가 없거나 안 읽히면 여기서 region 이 null 로 나온다. 그 한 행을 배치에 넣으면
-        //    `upsertBatch("apartments", …, 500)` 이 **그 배치를 통째로** 실패시켜, 같이 실린
-        //    멀쩡한 신규 단지 수백 건이 함께 유실된다. 한 행을 접는 쪽이 언제나 싸다.
+        //    `upsertBatch("apartments", …, 500)` 의 배치 upsert 가 실패하고, `_shared.mjs` 는 429 가
+        //    아닌 오류면 **그 배치를 한 행씩 다시 시도**한다(세션582 원문 확인) — 멀쩡한 행은 살지만
+        //    500행을 50ms 간격으로 하나씩 다시 보내고 오류 로그가 남는다. 미리 접는 쪽이 언제나 싸다.
         if (newApt.region == null) {
           regionUnresolved++;
           logError(PHASE, `region 미확정 — 신규 생성 건너뜀: ${newApt.name ?? "(이름없음)"} (no=${no}, 주소=${complexData.address ?? "(없음)"})`);
