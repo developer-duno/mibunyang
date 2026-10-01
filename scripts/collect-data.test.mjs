@@ -236,6 +236,43 @@ describe("parseAddress", () => {
   });
 });
 
+// 세션585 — seed parseAddress 와 같은 처방(괄호 안 시군구 · "…지구" 토큰 거부)
+describe("parseAddress — 괄호 안 시군구·지구 토큰 (세션585)", () => {
+  it("첫 토큰이 시도가 아니면 시도로 시작하는 괄호 안 주소로 판정한다", () => {
+    expect(parseAddress("광주연구개발특구 첨단3지구 A6블록(전남광주통합특별시 북구 월출동) ")).toEqual({
+      region: "광주", gu: "북구", dong: "월출동",
+    });
+  });
+
+  it("\"…지구\" 둘째 토큰은 시군구가 아니다 → gu·dong null", () => {
+    const r = parseAddress("전남광주통합특별시 첨단3지구 A7블록");
+    expect(r.gu).toBeNull();
+    expect(r.dong).toBeNull();
+    expect(VALID_REGIONS).not.toContain(r.region);
+  });
+});
+
+// parseAddress 추가 케이스 — 세션586 (PR #660 검사관 지적: 아래 3동작을 지키는 시험 부재)
+describe("parseAddress — 추가 케이스 (세션586)", () => {
+  it("T1 괄호가 여러 개면 시도로 시작하는 첫 괄호를 고른다(앞 괄호 \"(일반분양)\" 은 건너뜀)", () => {
+    expect(parseAddress("OO지구 A1블록(일반분양)(경기도 화성시 오산동)")).toEqual({
+      region: "경기", gu: "화성시", dong: "오산동",
+    });
+  });
+
+  it("T2 \"…공구\" 낱말은 시군구로 받지 않는다", () => {
+    const r = parseAddress("경기도 3공구 A1블록");
+    expect(r.gu).toBeNull();
+    expect(r.dong).toBeNull();
+  });
+
+  it("T3 \"…지구\" 로 끝나도 시군구 표(GU_LAWD_MAP)에 있는 이름은 살린다", () => {
+    expect(parseAddress("경기도 수지구 풍덕천동")).toEqual({
+      region: "경기", gu: "수지구", dong: "풍덕천동",
+    });
+  });
+});
+
 // ============================================================
 // mapItem — 청약홈 응답 → 아파트 객체 변환 (15케이스)
 // ============================================================

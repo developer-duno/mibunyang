@@ -49,9 +49,29 @@ function isValidGu(s) {
   return s && /[가-힣]/.test(s) && /(구|군|시|생활권)$/.test(s);
 }
 
+// 첫 토큰이 시도인가 — resolveRegionName(통합 시도는 둘째 토큰으로 가름) 또는 REGION_MAP 직접 일치.
+function isSidoToken(tok0, tok1) {
+  if (!tok0) return false;
+  return resolveRegionName(tok0, tok1) != null || Object.prototype.hasOwnProperty.call(REGION_MAP, tok0);
+}
+
+// region 의 시군구 표(GU_LAWD_MAP)에 그 이름(정규화 뒤)이 키로 있나 — 이름 하드코딩 없이 표로만 판정.
+function isTableGu(region, gu) {
+  if (!region || !gu || !Object.prototype.hasOwnProperty.call(GU_LAWD_MAP, region)) return false;
+  return Object.prototype.hasOwnProperty.call(GU_LAWD_MAP[region], normalizeGu(region, gu) ?? "");
+}
+
 function parseAddress(addr) {
   if (!addr) return { region: null, gu: null, dong: null };
   const parts = addr.trim().split(/\s+/);
+  // 세션585 A1: 첫 토큰이 시도가 아니면 시도로 시작하는 첫 괄호 구간으로 다시 판정한다
+  // ("광주연구개발특구 첨단3지구 A6블록(전남광주통합특별시 북구 월출동)"). seed parseAddress 와 같은 모양.
+  if (!isSidoToken(parts[0], parts[1])) {
+    for (const m of addr.matchAll(/\(([^()]*)\)/g)) {
+      const inner = m[1].trim().split(/\s+/);
+      if (isSidoToken(inner[0], inner[1])) return parseAddress(m[1]);
+    }
+  }
   const regionFull = parts[0] || "";
   // 세션545: 통합 시도("전남광주통합특별시")는 시도명만으로 못 가르므로 분할 헬퍼를 먼저 —
   // 시군구(parts[1])로 광주/전남을 나눈다. 나머지 경로는 무변경.
@@ -60,7 +80,9 @@ function parseAddress(addr) {
     ?? regionFull.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "");
   const gu = parts[1] || null;
   const dong = parts[2] || null;
-  return { region, gu: isValidGu(gu) ? gu : null, dong: isValidGu(gu) ? dong : null };
+  // 세션585 A2: "첨단3지구"·"N공구" 는 시군구가 아니다 → gu·dong 을 비운다. 단 GU_LAWD_MAP[region] 에 있으면 살린다.
+  const okGu = isValidGu(gu) && (!/(지|공)구$/.test(gu) || isTableGu(region, gu));
+  return { region, gu: okGu ? gu : null, dong: okGu ? dong : null };
 }
 
 function mapItem(item, idx, isRemndr) {

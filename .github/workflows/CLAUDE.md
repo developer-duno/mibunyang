@@ -297,6 +297,12 @@ remote: - Required status check "ci" is expected.
 현재 main 보호 상태(세션 491 되돌린 뒤): `required_linear_history` ✅ / `allow_force_pushes` ❌ /
 `allow_deletions` ❌ / **`required_status_checks` 없음(의도적)**.
 
+> ⚠️ **재발(세션582→584, 2026-09-27~10-01)**: 세션582 가 이 절을 읽지 않고 필수 검사(`ci`)를 켰다 → 9/28·29·30 03:05
+> `daily-deploy` 가 같은 GH006 으로 **사흘 실패**(화면은 9/27 03:07 데이터에 멈춤, 감시는 매일 🔴 였지만 세션이 없었다).
+> 10/01 01:3x 사장님 결정으로 검사만 다시 끔(원래 설정 사본 `.omc/artifacts/session584/protection_before_0930.json`) →
+> 10/01 03:05 성공. **10/01 05:0x 사장님 재확인 = C 유지**(D안 = 관리자 fine-grained 토큰으로 push — 보류).
+> 레포 설정(브랜치 보호·권한)을 바꾸기 전엔 그 설정 이름으로 `.github/`·`.claude/` 를 먼저 grep 한다.
+
 ### 되돌리는 법
 
 전부 cron/트리거만 바꿨으므로 해당 줄을 원복하면 끝난다. **되돌려야 하는 신호**:

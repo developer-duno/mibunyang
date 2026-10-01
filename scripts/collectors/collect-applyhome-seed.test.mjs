@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import {
   mapRow, filterCandidates, findDuplicate, dedupeWithinBatch, geocodeAddr, parseAddress,
 } from "./collect-applyhome-seed.mjs";
-import { VALID_REGIONS } from "./_shared.mjs";
+import { VALID_REGIONS, stringSimilarity } from "./_shared.mjs";
+import { normName } from "./collect-applyhome-detail.mjs";
 
 /** @param {Record<string, unknown>} overrides */
 function makeRaw(overrides = {}) {
@@ -493,5 +494,73 @@ describe("parseAddress — 통합 시도 분할 (세션545)", () => {
       }),
     );
     expect(ok?.region).toBe("광주");
+  });
+});
+
+// ── 괄호 안 시군구 · "…지구" 토큰 — 세션585 ─────────────────────
+// 운영 실측(2026-10-01): ah-2026910248 "제일풍경채 첨단3지구(A6BL)" 가 gu "첨단3지구"·
+// dong "A6블록(전남광주통합특별시" 로 적재됐다. 청약홈 공급주소가 사업지구 이름으로 시작하고
+// 진짜 주소를 괄호 안에 둔 꼴이라 둘째 토큰 "첨단3지구" 가 isValidGu(…구)를 통과했다.
+describe("parseAddress — 괄호 안 시군구·지구 토큰 (세션585)", () => {
+  const A6_ADDR = "광주연구개발특구 첨단3지구 A6블록(전남광주통합특별시 북구 월출동) ";
+
+  it("① 첫 토큰이 시도가 아니면 시도로 시작하는 괄호 안 주소로 판정한다", () => {
+    expect(parseAddress(A6_ADDR)).toEqual({ region: "광주", gu: "북구", dong: "월출동" });
+  });
+
+  it("② \"…지구\" 둘째 토큰은 시군구가 아니다 → gu·dong null (region 판정은 그대로)", () => {
+    const r = parseAddress("전남광주통합특별시 첨단3지구 A7블록");
+    expect(r.gu).toBe(null);
+    expect(r.dong).toBe(null);
+    expect(VALID_REGIONS).not.toContain(r.region);
+    expect(parseAddress("경기도 남양주시 오남읍 양지리")).toEqual({ region: "경기", gu: "남양주시", dong: "오남읍" });
+  });
+
+  it("③ mapRow 도 괄호 안 주소로 region·gu·dong 을 맞춘다", () => {
+    const row = mapRow(makeRaw({ HSSPLY_ADRES: A6_ADDR, SUBSCRPT_AREA_CODE_NM: "광주광역시" }));
+    expect(row?.region).toBe("광주");
+    expect(row?.gu).toBe("북구");
+    expect(row?.dong).toBe("월출동");
+  });
+
+  // ⚠️ 이 단언은 **현재 판정을 그대로 잠근다** — 파서를 고쳐도 같은 단지의 네이버 행(ap-6028551)과
+  //    중복으로 잡히지 않는다. findDuplicate 는 gu 를 안 보고 이름 유사도(normName)만 보는데,
+  //    normName 이 괄호를 통째로 지워 "제일풍경채첨단3지구"(10자) vs "제일풍경채첨단3지구A6BL"(14자) =
+  //    2·10/24 ≈ 0.833 < MATCH_SIM_MIN(0.85) 이라 후보에도 못 든다 → insert.
+  it("④ 같은 단지의 네이버 행(ap-6028551)과의 중복 판정 — 현재 insert (sim 0.833 < 0.85)", () => {
+    const cand = /** @type {any} */ (mapRow(makeRaw({
+      HOUSE_MANAGE_NO: "2026910248",
+      HOUSE_NM: "제일풍경채 첨단3지구(A6BL)",
+      HSSPLY_ADRES: A6_ADDR,
+      SUBSCRPT_AREA_CODE_NM: "광주광역시",
+      MVN_PREARNGE_YM: "202908",
+    })));
+    const existing = [{
+      id: "ap-6028551", name: "제일풍경채첨단3지구A6BL", region: "광주",
+      lat: 35.2442779, lng: 126.8647858,
+    }];
+    expect(stringSimilarity(normName(cand.name), normName(existing[0].name))).toBeCloseTo(0.833, 3);
+    expect(findDuplicate(cand, existing)).toEqual({ action: "insert" });
+  });
+});
+
+// ── parseAddress 추가 케이스 — 세션586 (PR #660 검사관 지적: 아래 3동작을 지키는 시험 부재) ───
+describe("parseAddress — 추가 케이스 (세션586)", () => {
+  it("T1 괄호가 여러 개면 시도로 시작하는 첫 괄호를 고른다(앞 괄호 \"(일반분양)\" 은 건너뜀)", () => {
+    expect(parseAddress("OO지구 A1블록(일반분양)(경기도 화성시 오산동)")).toEqual({
+      region: "경기", gu: "화성시", dong: "오산동",
+    });
+  });
+
+  it("T2 \"…공구\" 낱말은 시군구로 받지 않는다", () => {
+    const r = parseAddress("경기도 3공구 A1블록");
+    expect(r.gu).toBe(null);
+    expect(r.dong).toBe(null);
+  });
+
+  it("T3 \"…지구\" 로 끝나도 시군구 표(GU_LAWD_MAP)에 있는 이름은 살린다", () => {
+    expect(parseAddress("경기도 수지구 풍덕천동")).toEqual({
+      region: "경기", gu: "수지구", dong: "풍덕천동",
+    });
   });
 });
