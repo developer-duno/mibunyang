@@ -28,7 +28,7 @@
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 Core (sync + 전용률 계산, UTC 19:00) |
 | `collect-naver-listings-incremental.yml` | 네이버 후처리 Incremental (UTC 20:30 = KST 05:30) — `transport-tago` → `infra-kakao` → `schools-neis` 를 **무인자로** 순차 실행. **세션 491 문서 추가** (그동안 표에 없었다). 이 세 스텝이 같은 이름의 월간 워크플로를 대체하므로 그쪽 schedule 을 지웠다. **세션568**: 학교 단계만 `--limit 1200` — 신선한 행을 걷어낸 **뒤** 오래된 순(옛 `--limit` 은 걷어내기 전에 잘라 id 뒤쪽이 영영 처리되지 않았다). 9/23 하루에 2,654행이 몰려 10/23~24 동시 만료 대비, 평소 하루 약 100곳이라 영향 없음 |
-| `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00). **세션 491**: `compute-scores` + `refresh-data` 두 잡을 `scoring-and-refresh` 하나로 합침 — `needs` 로 어차피 순차였는데 checkout·setup-node·npm ci 를 두 번 태우고 분 올림도 두 번 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로 |
+| `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00). **세션 491**: `compute-scores` + `refresh-data` 두 잡을 `scoring-and-refresh` 하나로 합침 — `needs` 로 어차피 순차였는데 checkout·setup-node·npm ci 를 두 번 태우고 분 올림도 두 번 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로. ⚠️ 실행 조회는 `gh run list --workflow daily-deploy.yml`(파일 이름)로 — 표시 이름 "Daily Data Refresh" 로 찾으면 같은 이름의 옛 워크플로(3월) 실행이 나온다(세션586) |
 
 > 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
 
