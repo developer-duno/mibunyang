@@ -1,0 +1,116 @@
+// @ts-check
+import { describe, it, expect } from "vitest";
+import {
+  checkComplexKeyGaps,
+  checkComplexKeyRunStale,
+  runDailyGuardedChecks,
+  COMPLEX_KEY_GAP_HOURS,
+  COMPLEX_KEY_GAP_FETCH_LIMIT,
+} from "./monitor-collectors.mjs";
+
+// 감시 ⑭ — 묶음 열쇠 칸(apartments.complex_key) 채우기 배치가 하루 넘게 안 돈 신호(세션588):
+//   (a) 만든 지 오래된 행의 칸이 비어 있다  (b) 배치의 마지막 성공이 오래됐다(새 행이 없는 날에도 잡는다)
+
+const NOW = new Date("2026-10-10T00:00:00Z");
+/** @param {number} hoursAgo */
+const at = (hoursAgo) => new Date(NOW.getTime() - hoursAgo * 3600000).toISOString();
+
+describe("checkComplexKeyGaps — ⑭ (a) 묶음 열쇠 칸 빈 행", () => {
+  it("빈 행이 없으면 이상 없음", () => {
+    expect(checkComplexKeyGaps([], { now: NOW })).toEqual([]);
+  });
+
+  it(`만든 지 ${COMPLEX_KEY_GAP_HOURS}시간이 안 된 행은 세지 않는다(다음 굽기 전의 새 행은 빈칸이 정상)`, () => {
+    const rows = [{ id: "ah-1", name: "새 단지", created_at: at(COMPLEX_KEY_GAP_HOURS - 1) }];
+    expect(checkComplexKeyGaps(rows, { now: NOW })).toEqual([]);
+  });
+
+  it("오래된 빈 행이 있으면 stale 이슈 1건 — 가장 오래된 행부터 5곳까지 이름을 적는다", () => {
+    const rows = [
+      { id: "ah-new", name: "새 단지", created_at: at(2) },
+      ...[7, 6, 5, 4, 3, 2].map((d) => ({ id: `ap-${d}`, name: `단지${d}`, created_at: at(d * 24) })),
+    ];
+    const issues = checkComplexKeyGaps(rows, { now: NOW });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].collector).toBe("assign-complex-keys");
+    expect(issues[0].detail).toBe(`묶음 열쇠 칸이 빈 단지 6곳 — 만든 지 ${COMPLEX_KEY_GAP_HOURS}시간 넘음`);
+    expect(issues[0].lines?.[1]).toBe("예: 단지7(ap-7), 단지6(ap-6), 단지5(ap-5), 단지4(ap-4), 단지3(ap-3) 외 1곳");
+    expect(issues[0].at).toBe(at(7 * 24));
+  });
+
+  it("조회 상한까지 꽉 찼으면 '곳 이상'이라고 적는다", () => {
+    const rows = Array.from({ length: COMPLEX_KEY_GAP_FETCH_LIMIT }, (_, i) => ({ id: `ap-${i}`, name: "x", created_at: at(100 + i) }));
+    expect(checkComplexKeyGaps(rows, { now: NOW })[0].detail).toContain(`${COMPLEX_KEY_GAP_FETCH_LIMIT}곳 이상`);
+  });
+
+  it("created_at 이 비었거나 날짜가 아니면 세지 않는다(던지지 않는다)", () => {
+    const rows = [{ id: "ah-1", name: "a", created_at: null }, { id: "ah-2", name: "b", created_at: "날짜아님" }, { id: "ah-3", name: "c" }];
+    expect(checkComplexKeyGaps(rows, { now: NOW })).toEqual([]);
+  });
+});
+
+describe("checkComplexKeyRunStale — ⑭ (b) 채우기 배치의 마지막 성공", () => {
+  it(`마지막 성공이 ${COMPLEX_KEY_GAP_HOURS}시간 안이면 이상 없음`, () => {
+    expect(checkComplexKeyRunStale({ finished_at: at(COMPLEX_KEY_GAP_HOURS - 1) }, { now: NOW })).toEqual([]);
+    expect(checkComplexKeyRunStale({ finished_at: at(COMPLEX_KEY_GAP_HOURS) }, { now: NOW })).toEqual([]);
+  });
+
+  it("그보다 오래됐으면 stale 이슈 1건 — 몇 시간 전인지 적는다", () => {
+    const issues = checkComplexKeyRunStale({ finished_at: at(50) }, { now: NOW });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("stale");
+    expect(issues[0].collector).toBe("assign-complex-keys");
+    expect(issues[0].detail).toBe(`묶음 열쇠 채우기의 마지막 성공이 50시간 전(기준 ${COMPLEX_KEY_GAP_HOURS}시간)`);
+    expect(issues[0].at).toBe(at(50));
+  });
+
+  it("성공 기록이 아예 없으면 '성공 기록이 없음'", () => {
+    for (const none of [null, undefined, {}, { finished_at: null }, { finished_at: "날짜아님" }]) {
+      const issues = checkComplexKeyRunStale(none, { now: NOW });
+      expect(issues).toHaveLength(1);
+      expect(issues[0].detail).toBe("묶음 열쇠 채우기의 성공 기록이 없음");
+    }
+  });
+});
+
+describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 있다", () => {
+  const fresh = () => ({ finished_at: new Date().toISOString() });
+  const quiet = {
+    fetchGuPairs: async () => ({ aptPairs: [], regionRows: [] }),
+    fetchCoordRows: async () => /** @type {Array<Record<string, any>>} */ ([]),
+    fetchTradeRows: async () => /** @type {Array<Record<string, any>>} */ ([]),
+    fetchRegionRuns: async () => ({}),
+    fetchAhRows: async () => /** @type {Array<Record<string, any>>} */ ([]),
+    fetchFailureRuns: async () => /** @type {Array<Record<string, any>>} */ ([]),
+    clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
+  };
+  /** @param {any[]} issues */
+  const mine = (issues) => issues.filter((i) => i.collector === "assign-complex-keys");
+
+  it("빈 행 0 · 방금 성공이면 ⑭ 이슈 0건", async () => {
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => ({ gapRows: [], latestSuccess: fresh() }) }));
+    expect(mine(issues)).toEqual([]);
+  });
+
+  it("오래된 빈 행을 주면 그 이슈가 결과에 실린다", async () => {
+    const old = new Date(Date.now() - (COMPLEX_KEY_GAP_HOURS + 12) * 3600000).toISOString();
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => ({ gapRows: [{ id: "ah-1", name: "빈 단지", created_at: old }], latestSuccess: fresh() }) }));
+    expect(mine(issues)).toHaveLength(1);
+    expect(mine(issues)[0].detail).toContain("빈 단지 1곳");
+  });
+
+  it("빈 행이 없어도 마지막 성공이 오래됐으면 이슈가 실린다(새 행이 없는 날)", async () => {
+    const old = new Date(Date.now() - (COMPLEX_KEY_GAP_HOURS + 12) * 3600000).toISOString();
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => ({ gapRows: [], latestSuccess: { finished_at: old } }) }));
+    expect(mine(issues)).toHaveLength(1);
+    expect(mine(issues)[0].detail).toContain("마지막 성공이");
+  });
+
+  it("조회가 던지면 '⑭ 묶음 열쇠 칸 점검 실행 실패' 1건(다른 점검은 계속)", async () => {
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => { throw new Error("column apartments.complex_key does not exist"); } }));
+    const failed = issues.filter((i) => i.kind === "check-failed");
+    expect(failed).toHaveLength(1);
+    expect(failed[0].detail).toBe("⑭ 묶음 열쇠 칸 점검 실행 실패 — column apartments.complex_key does not exist");
+  });
+});
