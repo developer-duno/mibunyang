@@ -40,7 +40,7 @@ import {
   loadEnv, getSupabase, log, logError, sleep, createReporter,
   selectAll, upsertBatch, stringSimilarity, haversineMeters,
   recordApiQuota, recordCollectorRun,
-  REGION_MAP, VALID_REGIONS, normalizeGu, resolveBuilder, clampUnsoldRate, resolveRegionName,
+  REGION_MAP, VALID_REGIONS, GU_LAWD_MAP, normalizeGu, resolveBuilder, clampUnsoldRate, resolveRegionName,
 } from "./_shared.mjs";
 import { normName } from "./collect-applyhome-detail.mjs";
 import {
@@ -100,11 +100,33 @@ function isValidGu(s) {
   return !!s && /[가-힣]/.test(s) && /(구|군|시|생활권)$/.test(s);
 }
 
+/**
+ * 첫 토큰이 시도인가 — `resolveRegionName`(통합 시도는 둘째 토큰으로 가름) 또는 `REGION_MAP` 직접 일치.
+ * @param {string | undefined} tok0
+ * @param {string | undefined} tok1
+ */
+function isSidoToken(tok0, tok1) {
+  if (!tok0) return false;
+  return resolveRegionName(tok0, tok1) != null || Object.prototype.hasOwnProperty.call(REGION_MAP, tok0);
+}
+
 // ── 공급주소 → region/gu/dong (collect-data.mjs parseAddress 이식) ──
-/** @param {string | null | undefined} addr */
+/**
+ * @param {string | null | undefined} addr
+ * @returns {{ region: string | null; gu: string | null; dong: string | null }}
+ */
 export function parseAddress(addr) {
   if (!addr) return { region: null, gu: null, dong: null };
   const parts = addr.trim().split(/\s+/);
+  // 세션585 A1: 청약홈 공급주소가 사업지구 이름으로 시작하고 **진짜 주소를 괄호 안에** 두는 꼴이 있다
+  // ("광주연구개발특구 첨단3지구 A6블록(전남광주통합특별시 북구 월출동)"). 첫 토큰이 시도가 아니면
+  // 시도로 시작하는 첫 괄호 구간으로 다시 판정한다. 괄호 안 문자열엔 괄호가 없어 재귀는 한 번뿐이다.
+  if (!isSidoToken(parts[0], parts[1])) {
+    for (const m of addr.matchAll(/\(([^()]*)\)/g)) {
+      const inner = m[1].trim().split(/\s+/);
+      if (isSidoToken(inner[0], inner[1])) return parseAddress(m[1]);
+    }
+  }
   const regionFull = parts[0] || "";
   // 세션545: 통합 시도("전남광주통합특별시")는 시도명만으로 못 가르므로 분할 헬퍼를 먼저 —
   // 시군구(parts[1])로 광주/전남을 나눈다. 나머지 경로는 무변경.
@@ -113,7 +135,21 @@ export function parseAddress(addr) {
     ?? regionFull.replace(/특별시|광역시|특별자치시|특별자치도|도$/, "");
   const gu = parts[1] || null;
   const dong = parts[2] || null;
-  return { region, gu: isValidGu(gu) ? gu : null, dong: isValidGu(gu) ? dong : null };
+  // 세션585 A2: "첨단3지구"·"N공구" 는 `isValidGu`(…구)를 통과하지만 시군구가 아니다 → gu·dong 을 비운다.
+  // 단 진짜 시군구 표(GU_LAWD_MAP[region])에 있는 이름은 살린다(naver-presale parsePresaleAddress 세션578 처방과 같은 잣대).
+  const okGu = isValidGu(gu) && (!/(지|공)구$/.test(/** @type {string} */ (gu)) || isTableGu(region, gu));
+  return { region, gu: okGu ? gu : null, dong: okGu ? dong : null };
+}
+
+/**
+ * region 의 시군구 표(GU_LAWD_MAP)에 그 이름(정규화 뒤)이 키로 있나 — 이름 하드코딩 없이 표로만 판정.
+ * @param {string | null | undefined} region
+ * @param {string | null | undefined} gu
+ */
+function isTableGu(region, gu) {
+  if (!region || !gu || !Object.prototype.hasOwnProperty.call(GU_LAWD_MAP, region)) return false;
+  const table = /** @type {Record<string, string>} */ (/** @type {any} */ (GU_LAWD_MAP)[region]);
+  return Object.prototype.hasOwnProperty.call(table, normalizeGu(region, gu) ?? "");
 }
 
 // ── API row → apartments INSERT 행 (collect-data.mjs mapItem 이식 + raw probe 필드 정정) ──

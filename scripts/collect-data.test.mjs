@@ -236,6 +236,22 @@ describe("parseAddress", () => {
   });
 });
 
+// 세션585 — seed parseAddress 와 같은 처방(괄호 안 시군구 · "…지구" 토큰 거부)
+describe("parseAddress — 괄호 안 시군구·지구 토큰 (세션585)", () => {
+  it("첫 토큰이 시도가 아니면 시도로 시작하는 괄호 안 주소로 판정한다", () => {
+    expect(parseAddress("광주연구개발특구 첨단3지구 A6블록(전남광주통합특별시 북구 월출동) ")).toEqual({
+      region: "광주", gu: "북구", dong: "월출동",
+    });
+  });
+
+  it("\"…지구\" 둘째 토큰은 시군구가 아니다 → gu·dong null", () => {
+    const r = parseAddress("전남광주통합특별시 첨단3지구 A7블록");
+    expect(r.gu).toBeNull();
+    expect(r.dong).toBeNull();
+    expect(VALID_REGIONS).not.toContain(r.region);
+  });
+});
+
 // ============================================================
 // mapItem — 청약홈 응답 → 아파트 객체 변환 (15케이스)
 // ============================================================
