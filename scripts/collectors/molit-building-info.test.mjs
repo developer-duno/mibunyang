@@ -24,16 +24,18 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // _molit-api.mjs 모킹 — molitApiCall·fetchSidoAptList 제어(main() 경로 시험용, 세션589)
 const mockMolitApiCall = vi.fn();
 const mockFetchSidoAptList = vi.fn();
+/** 일시 코드 재시도 누적 카운터(재검사 🟡2) — molitApiCall 을 흉내 내므로 이것도 흉내 낸다 */
+const mockRetryCount = vi.fn(() => 0);
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList };
+  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList, kaptTransientRetryCount: mockRetryCount };
 });
 
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
 const { extractBuildingInfo, updateBuilding, fetchAptDetail, onlyEmptyFields, main } = await import("./molit-building-info.mjs");
-const { getSupabase, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { getSupabase, recordCollectorRun, recordApiQuota } = /** @type {any} */ (await import("./_shared.mjs"));
 const { KaptResultError } = await import("./_molit-api.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
@@ -319,7 +321,9 @@ describe("main() — 세션589 게이트 실전 경로", () => {
   beforeEach(() => {
     mockMolitApiCall.mockReset();
     mockFetchSidoAptList.mockReset();
+    mockRetryCount.mockImplementation(() => 0);
     recordCollectorRun.mockClear();
+    recordApiQuota.mockClear();
     exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
   });
   afterEach(() => { exitSpy.mockRestore(); });
@@ -403,5 +407,52 @@ describe("main() — 세션589 게이트 실전 경로", () => {
     const rec = recordCollectorRun.mock.calls.at(-1)[1];
     expect(rec.fail).toBe(5);
     expect(rec.errorMessage).toMatch(/^KAPT_FETCH_FAIL 연속 5건/);
+  });
+
+  // 재검사 🟡2 — 쿼터 기록(recordApiQuota 셋째 인자): 던진 호출도 1회 · 일시 재시도로 더 나간 호출도 더한다.
+  const quotaOf = () => recordApiQuota.mock.calls.at(-1)?.[2];
+  it("쿼터 셈 — 목록 호출 1건이 (결과 코드 아닌 실패로) 던지면 기록 1", async () => {
+    const { sb } = makeMainSb([target("a", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockRejectedValue(new Error("getSidoAptList4: 3회 재시도 소진 (마지막 상태: 0)"));
+    await main({ now: NOW });
+    expect(quotaOf()).toBe(1);
+  });
+
+  it("쿼터 셈 — 기본정보가 던지면(상세는 안 부름) 목록 1 + 기본정보 1 = 2", async () => {
+    const { sb } = makeMainSb([target("a", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail(new Error("getAphusBassInfoV5: 3회 재시도 소진 (마지막 상태: 503)"));
+    await main({ now: NOW });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(1);
+    expect(quotaOf()).toBe(2);
+  });
+
+  it("쿼터 셈 — 상세가 던지면 목록 1 + 기본정보 1 + 상세 1 = 3", async () => {
+    const { sb } = makeMainSb([target("a", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    mockMolitApiCall.mockImplementation(async (/** @type {string} */ _p, /** @type {string} */ _b, /** @type {string} */ ep) => {
+      if (ep === "getAphusDtlInfoV5") throw new Error("getAphusDtlInfoV5: 3회 재시도 소진 (마지막 상태: 503)");
+      return { response: { body: { item: { kaptdaCnt: "600", kaptUsedate: "20180629" } } } };
+    });
+    await main({ now: NOW });
+    expect(quotaOf()).toBe(3);
+  });
+
+  it("쿼터 셈 — 일시 재시도 누적 카운터가 회차 중 +2 면 목록 1 + 기본·상세 2 + 재시도 2 = 5(앞 회차 몫은 빼고)", async () => {
+    const { sb } = makeMainSb([target("a", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    let retries = 7;
+    mockRetryCount.mockImplementation(() => retries);
+    let first = true;
+    mockMolitApiCall.mockImplementation(async (/** @type {string} */ _p, /** @type {string} */ _b, /** @type {string} */ ep) => {
+      if (first) { retries += 2; first = false; }
+      return { response: { body: { item: ep === "getAphusBassInfoV5" ? { kaptdaCnt: "600", ktownFlrNo: "29", kaptUsedate: "20180629" } : { kaptdPcnt: "300" } } } };
+    });
+    await main({ now: NOW });
+    expect(quotaOf()).toBe(5);
   });
 });

@@ -592,54 +592,69 @@ export async function main(opts = {}) {
       const phase2Updates = [];
       const aptIndexUnsold = indexById(aptsForUnsold);
 
+      // N1(세션589 후속 F7) — 옛 동작: 이름 유사도 0.6(전국·거리 없음)으로 짝지은 단지마다 매물 수를 **무조건** 써서,
+      // 짝이 여럿이면 단지 순서상 마지막이 이겼다(라이브 1,343곳 중 400곳이 엉뚱한 단지 값 — 메인 실측).
+      // 이제 Phase 4 와 같은 게이트: 아파트마다 후보(매물 수가 있는 단지) 중 **500m + 정리한 이름 ≥0.75 +
+      // 차수·블록 충돌 없음**을 지난 가장 가까운 단지 하나의 매물 수만 쓴다. 통과한 게 없으면 아무것도 쓰지 않는다
+      // (기존 값도 지우지 않는다 — 비우기는 전이표로 따로). 좌표·이름은 Phase 1 이 읽은 행(`aptIndexBase`)에서 본다
+      // (재조회 행 `aptsForUnsold` 에는 lat·lng 가 없다).
+      /** @type {Map<string, ComplexRow[]>} */
+      const sellCandidatesByApt = new Map();
       for (const cpx of complexes) {
-        const cnt = counts[cpx.complex_no];
-        if (!cnt) continue;
-
+        if (!counts[cpx.complex_no]) continue;
         const ids = matchCache.get(cpx.complex_no);
         if (!ids) continue;
-        const matchedApts = /** @type {AptUnsoldRow[]} */ (ids.map(id => aptIndexUnsold.get(id)).filter(Boolean));
-        if (matchedApts.length === 0) continue;
-
-        for (const apt of matchedApts) {
-          /** @type {Record<string, unknown>} */
-          const row = {};
-
-          // 매물 수 업데이트
-          if (cnt.sell !== (apt.naver_sell_count ?? 0)) row.naver_sell_count = cnt.sell;
-          if (cnt.jeonse !== (apt.naver_jeonse_count ?? 0)) row.naver_jeonse_count = cnt.jeonse;
-          if (cnt.wolse !== (apt.naver_wolse_count ?? 0)) row.naver_wolse_count = cnt.wolse;
-
-          // ⛔ 매물 수를 미분양으로 쓰지 않는다 (세션559에 제거).
-          //
-          // 옛 코드는 `row.unsold = cnt.sell` 로 **오늘 네이버에 올라온 매매 매물 수**를
-          // 미분양 세대수로 기록했다. 그 결과:
-          //   · 1,989곳 중 **1,157곳(58%)** 의 `unsold` 가 `naver_sell_count` 와 완전히 같았다
-          //   · **81곳**은 미분양이 총세대수보다 많았다(세종더샵예미지 L4블록: 1세대인데 18)
-          //   · 미분양률 최대 **11,800%**(익산 제일풍경채 어바니티 = 1세대에 118)
-          // 즉 다 팔린 단지라도 집주인 여럿이 이사 가려고 매물을 내놓으면 '미분양'이 되고,
-          // 그 값이 scoreRisk 의 안전 점수(가중치 0.14)를 깎았다. 매물은 매일 갈리는
-          // '오늘의 매대'지 그 단지의 지속적 성질이 아니다.
-          //
-          // `fieldMeta.ts` 에 이미 '미분양 > 총세대수면 정보 없음으로 숨김' 방어가 있었지만
-          // 그건 **화면만** 가렸고 점수는 그대로 그 값을 썼다 — 손님 눈엔 안 보이는데 점수는 깎이는 상태.
-          //
-          // 이제 `unsold`·`unsold_rate` 는 **공식 통계만** 채운다:
-          //   청약홈(단지별 실측) > KOSIS 시군구 미분양 비례배분(collect-unsold-kosis.mjs)
-          // 매물 수 자체는 `naver_sell_count` 로 계속 저장한다 — 화면 참고값으로는 정직한 이름이다.
-
-          if (Object.keys(row).length === 0) continue;
-
-          row.updated_at = new Date().toISOString();
-
-          if (dryRun) {
-            log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`);
-            unsoldUpdated++;
-            continue;
-          }
-
-          phase2Updates.push({ id: apt.id, name: apt.name, row });
+        for (const id of ids) {
+          const list = sellCandidatesByApt.get(id);
+          if (list) list.push(cpx);
+          else sellCandidatesByApt.set(id, [cpx]);
         }
+      }
+
+      for (const [aptId, cands] of sellCandidatesByApt) {
+        const apt = aptIndexUnsold.get(aptId);
+        const base = aptIndexBase.get(aptId);
+        if (!apt || !base) continue;
+        const cpx = pickNaverComplexForListing(base, cands, { withinRange: withinMatchRange, distance: distanceM });
+        if (!cpx) continue;
+        const cnt = counts[cpx.complex_no];
+        /** @type {Record<string, unknown>} */
+        const row = {};
+
+        // 매물 수 업데이트
+        if (cnt.sell !== (apt.naver_sell_count ?? 0)) row.naver_sell_count = cnt.sell;
+        if (cnt.jeonse !== (apt.naver_jeonse_count ?? 0)) row.naver_jeonse_count = cnt.jeonse;
+        if (cnt.wolse !== (apt.naver_wolse_count ?? 0)) row.naver_wolse_count = cnt.wolse;
+
+        // ⛔ 매물 수를 미분양으로 쓰지 않는다 (세션559에 제거).
+        //
+        // 옛 코드는 `row.unsold = cnt.sell` 로 **오늘 네이버에 올라온 매매 매물 수**를
+        // 미분양 세대수로 기록했다. 그 결과:
+        //   · 1,989곳 중 **1,157곳(58%)** 의 `unsold` 가 `naver_sell_count` 와 완전히 같았다
+        //   · **81곳**은 미분양이 총세대수보다 많았다(세종더샵예미지 L4블록: 1세대인데 18)
+        //   · 미분양률 최대 **11,800%**(익산 제일풍경채 어바니티 = 1세대에 118)
+        // 즉 다 팔린 단지라도 집주인 여럿이 이사 가려고 매물을 내놓으면 '미분양'이 되고,
+        // 그 값이 scoreRisk 의 안전 점수(가중치 0.14)를 깎았다. 매물은 매일 갈리는
+        // '오늘의 매대'지 그 단지의 지속적 성질이 아니다.
+        //
+        // `fieldMeta.ts` 에 이미 '미분양 > 총세대수면 정보 없음으로 숨김' 방어가 있었지만
+        // 그건 **화면만** 가렸고 점수는 그대로 그 값을 썼다 — 손님 눈엔 안 보이는데 점수는 깎이는 상태.
+        //
+        // 이제 `unsold`·`unsold_rate` 는 **공식 통계만** 채운다:
+        //   청약홈(단지별 실측) > KOSIS 시군구 미분양 비례배분(collect-unsold-kosis.mjs)
+        // 매물 수 자체는 `naver_sell_count` 로 계속 저장한다 — 화면 참고값으로는 정직한 이름이다.
+
+        if (Object.keys(row).length === 0) continue;
+
+        row.updated_at = new Date().toISOString();
+
+        if (dryRun) {
+          log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`);
+          unsoldUpdated++;
+          continue;
+        }
+
+        phase2Updates.push({ id: apt.id, name: apt.name, row });
       }
 
       const r2 = await flushUpdates(sbMibunyang, phase2Updates, "매물수");

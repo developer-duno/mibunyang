@@ -18,7 +18,7 @@
 import { loadEnv, getSupabase, log, logError, sleep, createReporter, recordApiQuota, recordCollectorRun, selectAll } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
-  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate,
+  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate, kaptTransientRetryCount,
 } from "./_molit-api.mjs";
 import { pickKaptMatch, usedateConsistent, isMovedIn, nearSiblingKaptWindow, siblingKaptWindowText, SIBLING_KAPT_LEAD_MIN } from "./_match-gates.mjs";
 
@@ -192,6 +192,8 @@ export async function main(opts = {}) {
   const sb = getSupabase();
   const rpt = createReporter(PHASE);
   let apiCalls = 0;
+  /** 회차 시작 때의 일시 재시도 누적 호출 수 — 끝에서 차이를 쿼터 기록에 더한다(재검사 🟡2) */
+  const retryBase = kaptTransientRetryCount();
 
   const startedAt = Date.now();
   const budgetArg = process.argv.find((a) => a.startsWith("--budget-min="));
@@ -268,7 +270,7 @@ export async function main(opts = {}) {
       logError(PHASE, `${region} (${sidoCode}) 목록 조회 실패: ${msg} — 이 시도 단지는 이번 회차에서 빠진다`);
       lists.set(sidoCode, null);
       rpt.fail(1);
-      if (err instanceof KaptResultError) apiCalls++;
+      apiCalls++; // 던진 목록 호출도 1회(재검사 🟡2 — 결과 코드 아닌 실패도 쿼터를 쓴다)
       const stop = gate.failure(err);
       if (stop) { abortMessage = stop; break; }
     }
@@ -303,8 +305,8 @@ export async function main(opts = {}) {
       await sleep(REQUEST_DELAY);
 
       // 기본정보 — 세대수(관리비 / 세대수 = 세대당 관리비) + 사용승인일(K4)
+      apiCalls++; // fetchBassInfo — 부르기 전에 센다(던져도 1회, 재검사 🟡2)
       const bass = await fetchBassInfo(kaptCode);
-      apiCalls++; // fetchBassInfo
       if (!bass) { gate.success(); rpt.skip(1); continue; }
       // K4 — 사용승인일이 우리 완공월과 24개월 넘게 다르면 그 짝을 버린다(관리비 호출 전에 — 5콜 절약)
       if (!usedateConsistent(target.completion, bass.usedate)) {
@@ -317,8 +319,9 @@ export async function main(opts = {}) {
       if (!totalHouseholds) { gate.success(); rpt.skip(1); continue; }
       await sleep(REQUEST_DELAY);
 
+      // 5개 항목 각각 API 호출 — 부르기 전에 센다. 중간에 던지면(04 등 — 회차 중단) 실제보다 몇 콜 많게 잡힌다(쿼터는 넉넉한 쪽)
+      apiCalls += COST_ENDPOINTS.length;
       const costs = await fetchMaintenanceCost(kaptCode, searchDate);
-      apiCalls += COST_ENDPOINTS.length; // 5개 항목 각각 API 호출
       gate.success(); // K-apt 호출이 이 단지에서 끝까지 됐다 — 연속 실패 수를 0 으로
 
       if (costs == null) { rpt.skip(1); continue; }
@@ -374,7 +377,9 @@ export async function main(opts = {}) {
   }
 
   const result = rpt.summary();
-  log(PHASE, `API 호출: ${apiCalls}회`);
+  const retryCalls = kaptTransientRetryCount() - retryBase;
+  apiCalls += retryCalls;
+  log(PHASE, `API 호출: ${apiCalls}회(일시 재시도 ${retryCalls}회 포함)`);
 
   if (!dryRun) await recordApiQuota("collect-maintenance", "MOLIT_KEY", apiCalls);
 

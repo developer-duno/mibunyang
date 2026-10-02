@@ -42,18 +42,23 @@ export const NAVER_MIN_NAME_SIM = 0.75;
 
 /**
  * R3 — 자매 레포(naver-estate-web, 2u)가 K-apt 를 쓰는 창(KST, 분 단위, 양끝 포함).
- * `dayOfMonth` 가 있으면 매월 그 날(KST)에만 해당한다.
+ * `dayOfMonth` 가 있으면 매월 그 날(KST)에만 해당한다. `from`·`until`(KST 날짜 "YYYY-MM-DD", 양끝 포함)이
+ * 있으면 그 기간에만 해당한다(임시 창).
  * 같은 열쇠라 둘이 겹치면 합계가 K-apt 한계(약 0.9콜/초)를 넘어 약 10분간 전부 04 가 된다.
  *
  * 출처·확인일(자매 레포 일정은 우리 코드가 모르는 채 바뀐다 — 인계를 받을 때마다 이 상수를 grep 해 맞춘다):
  *   - 06:20~08:25 · 12:40~15:15 — 2u 인계 2026-10-01(메모리 `handoff_from_2u_2026-10-01_kapt_rate_limit.md`), 확인 2026-10-02
  *   - 21:00~23:30(관리비 세 번째 회차 신설) · 매월 21일 14:50~21:00(21일 매칭) — 같은 인계의 2026-10-02 추가분, 확인 2026-10-02
+ *   - 임시 15:00~20:45(2026-10-02~10-08) — 2u 세션427 회신 2026-10-02: 관리비 옛 행 재수집 일회성 스크립트(약 52,605콜),
+ *     "오늘(10-02)부터 나흘 안팎, 끝나면 다시 알림". 나흘에 여유를 두어 10-08 까지. **만료 뒤 지워도 된다**
+ *     (끝났다는 알림을 받거나 10-08 이 지나면 이 줄과 시험의 임시 창 칸을 함께 지운다).
  */
 export const SIBLING_KAPT_WINDOWS_KST = Object.freeze([
   Object.freeze({ start: "06:20", end: "08:25" }),
   Object.freeze({ start: "12:40", end: "15:15" }),
   Object.freeze({ start: "21:00", end: "23:30" }),
   Object.freeze({ start: "14:50", end: "21:00", dayOfMonth: 21 }),
+  Object.freeze({ start: "15:00", end: "20:45", from: "2026-10-02", until: "2026-10-08" }),
 ]);
 /**
  * 창 시작 몇 분 전부터 "곧 창"으로 볼지(`nearSiblingKaptWindow`). 단지 하나에 K-apt 6콜(1.5초 간격 약 9초,
@@ -153,25 +158,33 @@ export function cleanMatchName(name) {
 
 /**
  * 따로 떨어진 ASCII 로마 숫자(I~X) — `"넥스티엘 III"`·`"넥스티엘II"`.
- * 앞뒤가 영문·숫자·`'`·`·`·`-` 이면 안 읽는다(`IPARK`·`I'PARK`·`I-PARK`·`I·PARK`·`SK VIEW`·`VIP`·`Xi`),
- * 뒤에 띄어쓰기 + 영문이 오면(`I PARK`) 상표의 첫 글자로 보고 안 읽는다. 대문자만 본다.
- * 긴 것부터 적는다(같은 자리에서 `III` 보다 `I` 가 먼저 잡히지 않게).
+ * 앞뒤가 영문·숫자·`'`·`·`·`-`·`&` 이면 안 읽는다(`IPARK`·`I'PARK`·`I-PARK`·`I·PARK`·`SK VIEW`·`VIP`·`Xi`·
+ * `U&I` — 재검사 🟢5: "박달동한일U&I" 의 I 가 차수 1로 읽혔다), 뒤에 띄어쓰기 + 영문이 오면(`I PARK`) 상표의
+ * 첫 글자로 보고 안 읽는다. 대문자만 본다. 긴 것부터 적는다(같은 자리에서 `III` 보다 `I` 가 먼저 잡히지 않게).
  */
-const ASCII_ROMAN_RE = /(?<![A-Za-z0-9'’·\-])(VIII|VII|III|II|IV|VI|IX|I|V|X)(?![A-Za-z0-9'’·\-])(?!\s+[A-Za-z])/g;
+const ASCII_ROMAN_RE = /(?<![A-Za-z0-9'’·&\-])(VIII|VII|III|II|IV|VI|IX|I|V|X)(?![A-Za-z0-9'’·&\-])(?!\s+[A-Za-z])/g;
 /** @type {Record<string, string>} */
 const ASCII_ROMAN_DIGITS = { I: "1", II: "2", III: "3", IV: "4", V: "5", VI: "6", VII: "7", VIII: "8", IX: "9", X: "10" };
 
 /**
- * 차수 숫자 집합 — `PHASE_RE`(N차·N단지·NBL…) + 로마 숫자(유니코드 Ⅰ~Ⅻ · 따로 떨어진 ASCII I~X).
- * 로마 숫자를 같은 집합에 넣어야 `"…Ⅲ"` ↔ `"…1차"` 가 충돌로 보인다(검사 A3 — 따로 맞대면 한쪽에만 있는 것으로 보여 통과했다).
+ * 로마 숫자 집합 — 유니코드 Ⅰ~Ⅻ · 따로 떨어진 ASCII I~X(아라비아로 바꾼 값).
  * @param {string} name 회차 낱말을 뗀 이름
  * @returns {Set<string>}
  */
-function phaseNumbers(name) {
-  const out = extractPhases(name);
-  for (const v of romanNumbers(name)) out.add(v);
+function romanPhaseNumbers(name) {
+  const out = romanNumbers(name);
   for (const m of name.matchAll(ASCII_ROMAN_RE)) out.add(ASCII_ROMAN_DIGITS[m[1]]);
   return out;
+}
+
+/**
+ * 두 숫자 집합이 둘 다 있는데 하나도 안 겹치는가.
+ * @param {Set<string>} a
+ * @param {Set<string>} b
+ * @returns {boolean}
+ */
+function disjointBoth(a, b) {
+  return a.size > 0 && b.size > 0 && ![...a].some((v) => b.has(v));
 }
 
 /**
@@ -192,7 +205,11 @@ function unwrapRoundParen(name) {
  *
  * 블록 판정은 이미 있는 것을 쓴다(`_kakao-poi.mjs` `blockConflict` — 분양 매칭·좌표 정정과 같은 잣대).
  * 회차 낱말은 떼고(`stripRoundWords` — 괄호는 남긴다: `(A7BL)` 같은 블록 표기가 거기 있다) 본다.
- * 차수는 `PHASE_RE` 숫자에 로마 숫자를 합친 집합으로 맞댄다(넥스티엘Ⅲ ↔ 넥스티엘Ⅰ · 넥스티엘Ⅲ ↔ 넥스티엘1차).
+ * 차수는 **차수 숫자(`PHASE_RE` — N차·N단지·NBL…)끼리 · 로마 숫자끼리 따로** 맞댄다(넥스티엘Ⅲ ↔ 넥스티엘Ⅰ).
+ * 로마 숫자와 차수 숫자를 맞대는 건 **한쪽이 로마 숫자만(차수 숫자 없음), 다른 쪽이 차수 숫자만(로마 없음)**
+ * 있을 때뿐이다(넥스티엘Ⅲ ↔ 넥스티엘1차 불통과 · 넥스티엘Ⅱ ↔ 넥스티엘2차 통과 — 검사 A3).
+ * 옛 판본(세션589 보완)은 둘을 한 집합으로 합쳐, 이름에 둘 다 든 단지가 느슨해졌다(재검사 🟡1:
+ * "세종 한신더휴 리저브Ⅱ(H5블록)[한뜰마을4단지]" ↔ "새샘마을2단지" 가 로마 Ⅱ 와 2단지로 겹쳐 통과).
  * 한쪽에만 차수가 있는 것은 막지 않는다 — 막는 건 **아는 차이**뿐이다
  * (K-apt 정식 이름은 차수 표기를 빼는 일이 흔하다: "반월자이 더 파크(1차)" ↔ "…반월자이더 파크아파트").
  * @param {unknown} a
@@ -202,9 +219,14 @@ function unwrapRoundParen(name) {
 export function namesCompatible(a, b) {
   const sa = stripRoundWords(unwrapRoundParen(a));
   const sb = stripRoundWords(unwrapRoundParen(b));
-  const pa = phaseNumbers(sa);
-  const pb = phaseNumbers(sb);
-  if (pa.size > 0 && pb.size > 0 && ![...pa].some((v) => pb.has(v))) return false;
+  const pa = extractPhases(sa);
+  const pb = extractPhases(sb);
+  const ra = romanPhaseNumbers(sa);
+  const rb = romanPhaseNumbers(sb);
+  if (disjointBoth(pa, pb)) return false;
+  if (disjointBoth(ra, rb)) return false;
+  if (pa.size === 0 && rb.size === 0 && disjointBoth(ra, pb)) return false; // a 는 로마만, b 는 차수만
+  if (pb.size === 0 && ra.size === 0 && disjointBoth(rb, pa)) return false; // b 는 로마만, a 는 차수만
   if (blockConflict(sa, sb)) return false;
   return true;
 }
@@ -371,7 +393,8 @@ function minutesOf(hhmm) {
 }
 
 /**
- * 지금(KST)이 창 시작 `leadMin` 분 전 ~ 창 끝(양끝 포함) 안인가. `dayOfMonth` 가 있는 창은 그 날만.
+ * 지금(KST)이 창 시작 `leadMin` 분 전 ~ 창 끝(양끝 포함) 안인가. `dayOfMonth` 가 있는 창은 그 날만,
+ * `from`·`until` 이 있는 창은 그 KST 날짜 기간(양끝 포함)만.
  * @param {Date} now
  * @param {number} leadMin
  * @returns {boolean}
@@ -380,8 +403,11 @@ function inWindowWithLead(now, leadMin) {
   const kst = new Date(now.getTime() + KST_OFFSET_MS);
   const m = kst.getUTCHours() * 60 + kst.getUTCMinutes();
   const day = kst.getUTCDate();
+  const date = kst.toISOString().slice(0, 10); // KST 날짜 "YYYY-MM-DD" — 같은 꼴이라 글자 비교 = 날짜 비교
   return SIBLING_KAPT_WINDOWS_KST.some((w) =>
     ("dayOfMonth" in w ? w.dayOfMonth === day : true) &&
+    ("from" in w ? date >= w.from : true) &&
+    ("until" in w ? date <= w.until : true) &&
     m >= minutesOf(w.start) - leadMin && m <= minutesOf(w.end));
 }
 
@@ -412,6 +438,8 @@ export function nearSiblingKaptWindow(now, leadMin = SIBLING_KAPT_LEAD_MIN) {
  */
 export function siblingKaptWindowText() {
   return SIBLING_KAPT_WINDOWS_KST
-    .map((w) => `${"dayOfMonth" in w ? `매월 ${w.dayOfMonth}일 ` : ""}${w.start}~${w.end}`)
+    .map((w) =>
+      `${"dayOfMonth" in w ? `매월 ${w.dayOfMonth}일 ` : ""}${w.start}~${w.end}` +
+      ("from" in w && "until" in w ? `(임시 ${w.from.slice(5)}~${w.until.slice(5)})` : ""))
     .join("·");
 }
