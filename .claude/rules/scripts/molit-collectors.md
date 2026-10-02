@@ -1,6 +1,7 @@
 ---
 paths:
   - "scripts/collectors/_molit-api.mjs"
+  - "scripts/collectors/_match-gates.mjs"
   - "scripts/collectors/molit-*.mjs"
   - "scripts/collectors/collect-maintenance.mjs"
   - "scripts/collectors/collect-building-hub.mjs"
@@ -23,7 +24,19 @@ paths:
 
 - **isCLI 패턴**: `process.argv[1] && import.meta.url.endsWith(...)` — 53개 파일 (테스트 시 main() 방지, 2026-06-29 실측 `grep -l "const isCLI" scripts/**/*.mjs | grep -v test | wc -l`)
 - **NonRetryableError**: 4xx/XML 에러 즉시 throw, 429/500/503만 재시도
-- **`molitApiCall` opts override (세션 451)**: 기본 timeout/retry = 공유 상수 `MOLIT_TIMEOUT_MS=30000` × `MOLIT_MAX_RETRIES=3`. 호출처가 선택적 6번째 인자 `{ timeoutMs?, maxRetries? }` 로 좁힐 수 있음(기본=상수 → molit-units·molit-building-info 무변경). **collect-maintenance 의 `fetchTotalHouseholds` 는 `{ timeoutMs: 8000, maxRetries: 1 }`** — households 호출 30s×3(≈93초) hang 이 단지당 최악 ~135초의 진앙이라 cost endpoint(8s/무재시도) 톤에 맞춰 좁힘. 전역 상수는 3 collector 공유라 **변경 금지**(cross-collector 회귀), maintenance-local opts 로만.
+- **`molitApiCall` opts override (세션 451)**: 기본 timeout/retry = 공유 상수 `MOLIT_TIMEOUT_MS=30000` × `MOLIT_MAX_RETRIES=3`. 호출처가 선택적 6번째 인자 `{ timeoutMs?, maxRetries? }` 로 좁힐 수 있음(기본=상수 → molit-units·molit-building-info 무변경). **collect-maintenance 의 `fetchBassInfo`(세션589 전 `fetchTotalHouseholds`)·관리비 호출은 `{ timeoutMs: 8000, maxRetries: 1 }`** — households 호출 30s×3(≈93초) hang 이 단지당 최악 ~135초의 진앙이라 cost endpoint(8s/무재시도) 톤에 맞춰 좁힘. 전역 상수는 3 collector 공유라 **변경 금지**(cross-collector 회귀), maintenance-local opts 로만.
+
+### K-apt 짝 짓기 게이트 (세션589 — `_match-gates.mjs`)
+
+세 수집기(`molit-units`·`molit-building-info`·`collect-maintenance`)는 `findBestMatch`(시도 목록 전체에서 이름 0.5 —
+구 가산이 "수원시 장안구" 꼴에 한 번도 안 붙어 313km 밖 부산 단지 값까지 붙였다)를 쓰지 않고 `pickKaptMatch` 로 짝을 짓는다:
+① 완공월을 알아야 하고(모르면 매칭 안 함) ② **입주 후 단지만**(완공월 < 이번 달, `scorePrice.ts isPresale` 와 같은 경계)
+③ **같은 시군구** = 법정동코드 앞 5자리(목록 `bjdCode` ↔ `apartments.bjd_code`, 없으면 구 이름 글자 "수원장안구") — 광주·전남이
+같은 목록 "12" 를 받아도 여기서 갈린다 ④ 차수·블록·로마 숫자 충돌 없음(`_kakao-poi` `phaseConsistent`·`blockConflict`)
+⑤ 회차 낱말을 뗀 이름 유사도 ≥0.6 → 남은 후보 중 최고 점수(걸러 놓고 고르기). 기본정보를 받은 뒤 **`kaptUsedate`(사용승인일)가
+완공월과 24개월 넘게 다르면 버린다**(`usedateConsistent`). 건물 칸은 **빈칸만** 채우고(`onlyEmptyFields`), 관리비는 **값 있는 칸만**
+쓴다(`maintUpdateRow` — null 로 덮지 않음), 관리비 대상에서 입주 전 단지는 뺀다. `findBestMatch` 는 지우지 않았다(소비처 0).
+네이버 쪽(`sync-naver-complex` Phase 4 관리비·향)도 같은 파일의 `pickNaverComplexForListing`(500m + 정리 이름 ≥0.75 + 차수 → 가장 가까운 단지).
 
 ### 공유 모듈 (_shared.mjs)
 

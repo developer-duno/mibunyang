@@ -24,7 +24,7 @@ paths:
 | 매월 6일 + 월/목 08:00 후 | molit-units (로컬 러너 + 네이버 파이프라인) | 50~300 (+post-naver-collect 시 추가) |
 | **매월 10일** | **building-info (로컬 러너)** | **~8,500** |
 | 매월 11일 | housing-permits (로컬 러너, KOSIS) | ~100 |
-| 매월 15~19일 | maintenance (로컬 러너, `--limit=600`) | ~3,600/회차 |
+| 매월 15~19일 | maintenance (로컬 러너, `--limit=300 --budget-min=40`, 세션589 — 06:10 전 종료) | 최대 ~1,800/회차(K-apt 1.5초 간격이라 40분이면 약 1,600콜) |
 | **토요일** | naver-estate-web public_data | ~3,600 |
 
 **위험일**:
@@ -48,7 +48,7 @@ paths:
 | 네이버 부동산 | naver-listings.mjs | 5초 | 5회 | JWT 리셋 + [10,20,40,60,120]초 |
 | 네이버 분양 | naver-presale.mjs | 2초 | 3회 | [5,10,20]초 |
 | 네이버 개발계획 | naver-devplan.mjs | 5초 | 3회 (429 전용 [30,60,120]초) | ⚠️ **세션 쿠키 필수**(세션516): 쿠키 없는 요청은 "Rate limit exceeded" 거짓 문구로 **즉답 429** — 진짜 rate limit 아님. `ensureNaverSession()` 이 JWT+쿠키를 한 캐시로 관리 |
-| data.go.kr | molit-* | 0.4초 | 3회 (기본) | NonRetryableError / 지수 백오프. ⚠️ collect-maintenance `fetchTotalHouseholds` 는 8s/1회 override(세션 451, 위 MOLIT 모듈 절) |
+| data.go.kr | molit-* | 0.4초(`REQUEST_DELAY` — 건축HUB 공용) · **K-apt 3종(목록·기본정보·관리비)은 1.5초**(`KAPT_MIN_INTERVAL_MS`, 세션589 — 0.3초면 33번째 콜부터 약 10분간 K-apt 전체가 04) | 3회 (기본) | NonRetryableError / 지수 백오프. **결과 코드가 00·03 이 아니면 `KaptResultError` — 재시도 없이 회차 중단, `collector_runs.error_message` 머리말 `KAPT_RESULT_<코드>`**(03 = 자료 없음만 빈 결과). **2u(naver-estate-web)가 같은 열쇠로 K-apt 를 쓰는 창 KST 06:20~08:25·12:40~15:15·21:00~23:30** — molit-units 는 이 창이면 건너뛰고(`SIBLING_KAPT_WINDOW`), 관리비는 06:10 전에 끝난다. ⚠️ collect-maintenance `fetchBassInfo`·관리비 호출은 8s/1회 override(세션 451, 위 MOLIT 모듈 절) |
 | Kakao Places | infra-kakao | 세마포어 5개 | fetchWithRetry | 지수 백오프 |
 | DART | dart-builders | fetchWithRetry | 3회 | 지수 백오프 |
 | Supabase | upsertBatch | 100ms/배치 | 3회 | (attempt+1)^2초 |

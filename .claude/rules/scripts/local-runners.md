@@ -37,7 +37,7 @@ paths:
 | 10 | fertility-rate, **molit-building-info** | building-info 는 **토요일이면 건너뜀**(자매 레포 public_data 와 쿼터 충돌) |
 | 11 | housing-permits, **molit-building-info** | building-info 는 **전날이 토요일일 때만**(10일 보충) |
 | 12·13·14 | regional-economy / avg-income / medical-access | - |
-| 15~19 | **maintenance** | 매일 `--limit=600` 배치 (옛 cron `0 6 15-19` 이식 — 인자를 빼면 전 대상이 한 회차에 몰려 일일 쿼터 초과) |
+| 15~19 | **maintenance** | 매일 `--limit=300 --budget-min=40` 배치 (옛 cron `0 6 15-19` 이식 — 인자를 빼면 전 대상이 한 회차에 몰린다. 세션589: 05:30 시작 → 06:10 전 종료로 2u 06:20 K-apt 회차와 안 겹치게, 그날 첫 항목이어야 성립) |
 | 15 | **building-hub** | 1·4·7·10월만 |
 | 17 | sale-price-index | 1·4·7·10월만 |
 | 17 | **housing-price** | 세션519 신규 — 옛 cron `0 22 16 * *`(UTC)는 **KST 17일** |

@@ -40,7 +40,7 @@
 |---|---|---|
 | 1 | `_shared.mjs` `REGION_LAWD_PREFIX` | 시도 2자리. **공유 접두가 생기면 단사가 아니게 된다** — 주석에 명시 |
 | 2 | `_shared.mjs` `GU_LAWD_MAP[<지역>]` | 시군구 5자리 전량 |
-| 3 | `_molit-api.mjs` `SIDO_CODE` | 시도 목록 API. **키 수는 유지**(소비처가 region 별로 돈다 — 키를 줄이면 그 지역이 빠진다) |
+| 3 | `_molit-api.mjs` `SIDO_CODE` | 시도 목록 API. **키 수는 유지**(소비처가 region 별로 돈다 — 키를 줄이면 그 지역이 빠진다). K-apt 강원 51·전북 52(세션589 — 옛 42·45 는 목록 0건이라 두 도가 통째로 빠져 있었다) |
 | 4 | `population.mjs` `SIDO_CODES` | 행안부 10자리 |
 | 5 | `population-sex-age.mjs` `SIDO_CODES` | 위와 **쌍둥이** — 한쪽만 고치는 게 세션286 사고 |
 | 6 | `naver-presale.mjs` `REGION_CORTAR` | 네이버 bubdong_code |
