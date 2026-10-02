@@ -4,7 +4,7 @@
  *
  * 대상: cleanName, findBestMatch, molitApiCall, fetchSidoAptList, 상수
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // _shared.mjs — loadEnv/getSupabase 차단, stringSimilarity는 실제 유지
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -27,6 +27,7 @@ const {
   SIDO_CODE, MIN_SIMILARITY, REQUEST_DELAY,
   API_LIST_BASE, API_DETAIL_BASE,
   KAPT_MIN_INTERVAL_MS, KAPT_LIST_PAGE_SIZE, KaptResultError,
+  KAPT_TRANSIENT_RETRY_DELAYS_MS, KAPT_MAX_CONSECUTIVE_FAILS, createKaptFailureGate,
 } = await import("./_molit-api.mjs");
 const { sleep } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -400,14 +401,16 @@ describe("K-apt 호출 간격 (KAPT_MIN_INTERVAL_MS)", () => {
 describe("molitApiCall — 결과 코드", () => {
   beforeEach(() => { mockFetch.mockReset(); });
 
-  it("resultCode 04 → KaptResultError(코드 04 · 일시 오류) · 재시도 없이 즉시", async () => {
+  // 세션589 보완(검사 C2·A6): 옛 시험은 "재시도 없이 즉시(fetch 1회)"였다. 2u 는 04 를 간헐 오류로 보고
+  // 3·10·30초 재시도한다(kapt_api.py:150-156) — 우리는 3초·10초 뒤 두 번 다시 부르고 그래도 같으면 던진다.
+  it("resultCode 04 가 계속 오면 3초·10초 뒤 두 번 다시 부른 뒤 KaptResultError(코드 04 · 일시 오류)", async () => {
     mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "04", resultMsg: "HTTP_ERROR" }, body: {} } }));
     const err = await molitApiCall("t", API_LIST_BASE, "getSidoAptList4", {}, "k").catch((e) => e);
     expect(err).toBeInstanceOf(KaptResultError);
     expect(err.code).toBe("04");
     expect(err.transient).toBe(true);
     expect(err.message).toMatch(/^KAPT_RESULT_04/);
-    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch).toHaveBeenCalledTimes(3);
   });
 
   it("오류 봉투(OpenAPI_ServiceResponse.cmmMsgHeader) 04 → KaptResultError", async () => {
@@ -453,5 +456,165 @@ describe("molitApiCall — 결과 코드", () => {
     const body = { response: { header: { resultCode: 0 }, body: { item: { kaptCode: "X" } } } };
     mockFetch.mockResolvedValue(jsonRes(body));
     expect(await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k")).toEqual(body);
+  });
+});
+
+// ── 결과 코드 나누기 (세션589 보완 B3 · 검사 C2·A6) ───────────────────
+// 출처 = 2u backend/crawler/kapt_api.py:150-156 — 재시도 = {01,02,04,05,99}(대기 3·10·30초),
+// 10·11·12·20·21·22·30·31·32·33 은 재시도 안 함. 우리는 일시 코드만 3초·10초 뒤 두 번 다시 부른다.
+describe("molitApiCall — 일시 코드 재시도 · 코드 종류", () => {
+  beforeEach(() => { mockFetch.mockReset(); sleep.mockClear(); });
+  const rc = (/** @type {string} */ code) => jsonRes({ response: { header: { resultCode: code }, body: { item: { kaptCode: "X" } } } });
+
+  it("재시도 대기 = 3초·10초", () => {
+    expect(KAPT_TRANSIENT_RETRY_DELAYS_MS).toEqual([3000, 10000]);
+  });
+
+  for (const code of ["01", "02", "04", "05", "99"]) {
+    it(`${code} 다음 00 → 3초 쉬고 다시 불러 성공`, async () => {
+      mockFetch.mockResolvedValueOnce(rc(code)).mockResolvedValueOnce(rc("00"));
+      const json = /** @type {any} */ (await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k"));
+      expect(json.response.body.item.kaptCode).toBe("X");
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+      expect(sleep).toHaveBeenCalledWith(3000);
+    });
+  }
+
+  it("04·04·00 → 3초·10초 쉬고 세 번째에 성공", async () => {
+    mockFetch.mockResolvedValueOnce(rc("04")).mockResolvedValueOnce(rc("04")).mockResolvedValueOnce(rc("00"));
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k");
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    expect(sleep).toHaveBeenCalledWith(3000);
+    expect(sleep).toHaveBeenCalledWith(10000);
+  });
+
+  it("관리비처럼 maxRetries=1 로 좁힌 호출도 일시 코드 재시도는 한다(HTTP 재시도 횟수와 따로)", async () => {
+    mockFetch.mockResolvedValueOnce(rc("04")).mockResolvedValueOnce(rc("00"));
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k", { timeoutMs: 8000, maxRetries: 1 });
+    expect(mockFetch).toHaveBeenCalledTimes(2);
+  });
+
+  for (const code of ["10", "11"]) {
+    it(`${code}(매개변수 오류) → 재시도 없이 KaptResultError(kind=param)`, async () => {
+      mockFetch.mockResolvedValue(rc(code));
+      const err = await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch((e) => e);
+      expect(err).toBeInstanceOf(KaptResultError);
+      expect(err.kind).toBe("param");
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  for (const code of ["12", "20", "21", "22", "30", "31", "32", "33", "77"]) {
+    it(`${code} → 재시도 없이 KaptResultError(kind=fatal)`, async () => {
+      mockFetch.mockResolvedValue(rc(code));
+      const err = await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch((e) => e);
+      expect(err).toBeInstanceOf(KaptResultError);
+      expect(err.kind).toBe("fatal");
+      expect(err.transient).toBe(false);
+      expect(mockFetch).toHaveBeenCalledTimes(1);
+    });
+  }
+
+  it("03 은 재시도 없이 빈 결과", async () => {
+    mockFetch.mockResolvedValue(rc("03"));
+    const json = /** @type {any} */ (await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k"));
+    expect(json.response.body.item).toBeUndefined();
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── 한 회차의 연속 실패 판정 (세션589 보완 B3·B4 · 검사 A5·A6) ──────────
+describe("createKaptFailureGate — 단지만 실패 · 연속 5건이면 중단", () => {
+  it("연속 한도 = 5", () => { expect(KAPT_MAX_CONSECUTIVE_FAILS).toBe(5); });
+
+  it("10·11 은 그 단지만 실패 — 다섯 번째 연속에서 중단(KAPT_RESULT_10)", () => {
+    const g = createKaptFailureGate();
+    const e = new KaptResultError("10", "INVALID_REQUEST_PARAMETER_ERROR", "getAphusBassInfoV5");
+    for (let i = 0; i < 4; i++) expect(g.failure(e)).toBeNull();
+    expect(g.failure(e)).toMatch(/^KAPT_RESULT_10 .*연속 5건/);
+  });
+
+  it("성공이 끼면 연속 수가 0 으로 돌아간다", () => {
+    const g = createKaptFailureGate();
+    const e = new KaptResultError("11", null, "ep");
+    for (let i = 0; i < 4; i++) g.failure(e);
+    g.success();
+    for (let i = 0; i < 4; i++) expect(g.failure(e)).toBeNull();
+  });
+
+  it("결과 코드가 아닌 실패(재시도 소진·시간 초과·HTML·JSON 깨짐)도 연속 5건이면 KAPT_FETCH_FAIL", () => {
+    const g = createKaptFailureGate();
+    expect(g.failure(new Error("ep: 3회 재시도 소진 (마지막 상태: 429)"))).toBeNull();
+    expect(g.failure(new Error("AbortError: timeout"))).toBeNull();
+    expect(g.failure(new Error("XML 응답: <html>"))).toBeNull();
+    expect(g.failure(new SyntaxError("Unexpected token"))).toBeNull();
+    expect(g.failure(new Error("AbortError: timeout"))).toMatch(/^KAPT_FETCH_FAIL 연속 5건/);
+  });
+
+  it("일시 코드(재시도까지 소진)·그 밖의 코드는 첫 번에 중단", () => {
+    expect(createKaptFailureGate().failure(new KaptResultError("04", null, "ep"))).toMatch(/^KAPT_RESULT_04/);
+    expect(createKaptFailureGate().failure(new KaptResultError("22", null, "ep"))).toMatch(/^KAPT_RESULT_22/);
+    expect(createKaptFailureGate().failure(new KaptResultError("12", null, "ep"))).toMatch(/^KAPT_RESULT_12/);
+  });
+});
+
+// ── 실제 호출 간격 (세션589 보완 B5·B10 · 검사 A2·MA1·MA7) ──────────────
+// 가상 시계: Date.now = t, sleep(ms) 는 다음 차례에 t 를 (호출 시각 + ms) 까지 민다. fetch 가 불린 시각을 적어
+// 실제 간격을 잰다(sleep 이 불렸는지가 아니라 **나간 시각**을 본다).
+describe("K-apt 실제 호출 간격 — 가상 시계", () => {
+  /** @type {number} */
+  let t;
+  /** @type {number[]} */
+  let calls;
+  /** @type {any} */
+  let spy;
+  beforeEach(() => {
+    t = 9_500_000_000_000;
+    calls = [];
+    spy = vi.spyOn(Date, "now").mockImplementation(() => t);
+    mockFetch.mockReset();
+    sleep.mockReset();
+    sleep.mockImplementation((/** @type {number} */ ms) => {
+      const target = t + ms;
+      return new Promise((r) => setImmediate(() => { if (t < target) t = target; r(undefined); }));
+    });
+  });
+  afterEach(() => { spy.mockRestore(); sleep.mockReset(); });
+  const ok = () => { calls.push(t); return Promise.resolve(jsonRes({ response: { header: { resultCode: "00" }, body: {} } })); };
+  /** @param {number[]} xs */
+  const gaps = (xs) => xs.slice(1).map((x, i) => x - xs[i]);
+
+  it("동시에 3번 불러도 1.5초 간격으로 차례대로 나간다(줄 세우기)", async () => {
+    mockFetch.mockImplementation(ok);
+    await Promise.all([1, 2, 3].map((i) => molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: `C${i}` }, "k")));
+    expect(calls).toHaveLength(3);
+    for (const g of gaps(calls)) expect(g).toBeGreaterThanOrEqual(KAPT_MIN_INTERVAL_MS);
+  });
+
+  it("호출 사이에 다른 대기(0.4초)가 끼어도 실제 간격 ≥ 1.5초 — '마지막 호출 시각'은 기다린 뒤에 적는다(MA7)", async () => {
+    mockFetch.mockImplementation(ok);
+    for (let i = 0; i < 4; i++) {
+      await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: `S${i}` }, "k");
+      t += 400; // 수집기의 REQUEST_DELAY 같은 다른 대기
+    }
+    expect(calls).toHaveLength(4);
+    for (const g of gaps(calls)) expect(g).toBeGreaterThanOrEqual(KAPT_MIN_INTERVAL_MS);
+  });
+
+  it("HTTP 재시도도 1.5초 간격을 지킨다(MA1 — 500 뒤 1초 백오프만으로는 부족)", async () => {
+    mockFetch
+      .mockImplementationOnce(() => { calls.push(t); return Promise.resolve(errRes(500)); })
+      .mockImplementationOnce(ok);
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: "R" }, "k");
+    expect(calls).toHaveLength(2);
+    expect(calls[1] - calls[0]).toBeGreaterThanOrEqual(KAPT_MIN_INTERVAL_MS);
+  });
+
+  it("일시 코드 재시도는 3초·10초 뒤에 나간다", async () => {
+    const r04 = () => { calls.push(t); return Promise.resolve(jsonRes({ response: { header: { resultCode: "04" }, body: {} } })); };
+    mockFetch.mockImplementationOnce(r04).mockImplementationOnce(r04).mockImplementationOnce(ok);
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: "T" }, "k");
+    expect(gaps(calls)[0]).toBeGreaterThanOrEqual(3000);
+    expect(gaps(calls)[1]).toBeGreaterThanOrEqual(10000);
   });
 });

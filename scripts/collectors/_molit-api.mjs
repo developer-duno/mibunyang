@@ -48,28 +48,48 @@ export const KAPT_LIST_PAGE_SIZE = 6000;
 /** K-apt 서비스 판별 — `/1613000/Apt…Service…` (목록·기본정보·관리비). 건축HUB 등은 해당 없음. */
 const KAPT_BASE_RE = /\/1613000\/Apt[A-Za-z]*Service/;
 /**
- * data.go.kr 일시 오류 코드 — 기다리면 풀릴 수 있다(2u `kapt_api.py _TRANSIENT_REASON_CODES` 와 같은 분류).
- * 04 = 속도 제한 벌칙 중에 오는 코드(실측). 벌칙 중 계속 부르면 길어지므로 수집기는 회차를 멈춘다.
+ * 결과 코드 분류 — 출처 = 2u `backend/crawler/kapt_api.py:150-156`(재시도 = {01,02,04,05,99}, 대기 3·10·30초;
+ * 10·11·12·20·21·22·30·31·32·33 은 재시도 안 함).
+ * - 일시(transient) 01·02·04·05·99 — 기다리면 풀릴 수 있다. 04 = 속도 제한 벌칙 중에 오는 코드(2u 09-25 실측
+ *   "간헐 오류"). `molitApiCall` 이 `KAPT_TRANSIENT_RETRY_DELAYS_MS` 만큼 쉬고 다시 부르고, 그래도 같으면 던진다
+ *   → 수집기는 회차를 멈춘다(벌칙 중 계속 부르면 길어진다).
+ * - 매개변수(param) 10·11 — 그 단지 요청만의 문제일 수 있다 → 수집기는 그 단지만 실패로 세고 계속(연속 5건이면 중단).
+ * - 그 밖(fatal) 12·20·21·22·30·31·32·33·모르는 코드 — 서비스·키·한도 문제 → 수집기는 즉시 중단.
  */
 export const KAPT_TRANSIENT_CODES = Object.freeze(["01", "02", "04", "05", "99"]);
+export const KAPT_PARAM_CODES = Object.freeze(["10", "11"]);
+/** 일시 코드 재시도 대기(ms) — 2u 는 3·10·30초, 우리는 앞의 둘(그 뒤에도 같으면 회차를 멈춘다). */
+export const KAPT_TRANSIENT_RETRY_DELAYS_MS = Object.freeze([3000, 10000]);
+/** 한 회차에서 연속 실패가 이만큼이면 회차를 멈춘다(`createKaptFailureGate`). */
+export const KAPT_MAX_CONSECUTIVE_FAILS = 5;
 /** 03 = 자료 없음 — 실패가 아니라 빈 결과. */
 const KAPT_NODATA_CODE = "03";
 
 let lastKaptCallAt = -Infinity;
+/** K-apt 자리 잡기 줄 — 동시에 불러도 한 줄로 서서 1.5초씩 차례로 나간다(검사 A2). */
+/** @type {Promise<void>} */
+let kaptSlotQueue = Promise.resolve();
 
 /**
  * K-apt 호출 직전에 부른다 — 직전 K-apt 호출에서 `KAPT_MIN_INTERVAL_MS` 가 안 지났으면 나머지를 기다린다.
+ * 프로미스 사슬로 줄을 세운다: 옛 판본은 동시에 3번 부르면 셋 다 같은 "마지막 시각"을 보고 같이 나갔다
+ * (검사 A2 탐침 1511/1511/1512ms). "마지막 호출 시각"은 **기다린 뒤** 적는다(먼저 적으면 다음 호출이 짧게 기다린다 — MA7).
  * @returns {Promise<void>}
  */
-async function waitForKaptSlot() {
-  const wait = lastKaptCallAt + KAPT_MIN_INTERVAL_MS - Date.now();
-  if (wait > 0) await sleep(wait);
-  lastKaptCallAt = Date.now();
+function waitForKaptSlot() {
+  const slot = kaptSlotQueue.then(async () => {
+    const wait = lastKaptCallAt + KAPT_MIN_INTERVAL_MS - Date.now();
+    if (wait > 0) await sleep(wait);
+    lastKaptCallAt = Date.now();
+  });
+  kaptSlotQueue = slot.catch(() => {});
+  return slot;
 }
 
 /**
  * K-apt 결과 코드가 00(정상)·03(자료 없음)이 아닌 응답 — "자료 없음"이 아니라 **실패**다(세션589 R2).
  * 메시지는 `KAPT_RESULT_<코드>` 로 시작한다(수집기가 `collector_runs.error_message` 머리말로 쓴다).
+ * `kind` = "transient" | "param" | "fatal"(위 분류).
  */
 export class KaptResultError extends Error {
   /**
@@ -82,7 +102,36 @@ export class KaptResultError extends Error {
     this.name = "KaptResultError";
     this.code = code;
     this.transient = KAPT_TRANSIENT_CODES.includes(code);
+    /** @type {"transient" | "param" | "fatal"} */
+    this.kind = this.transient ? "transient" : KAPT_PARAM_CODES.includes(code) ? "param" : "fatal";
   }
+}
+
+/**
+ * 한 회차의 K-apt 실패 판정(세션589 보완 B3·B4 — 검사 A5·A6·C2). 수집기가 단지(또는 시도 목록) 하나를
+ * 처리하다 던진 오류를 `failure(err)` 로 넘기면, 회차를 멈춰야 할 때 `collector_runs.error_message` 에 쓸
+ * 문구를, 계속해도 될 때 null 을 돌려준다. K-apt 호출이 끝까지 성공하면 `success()` 로 연속 수를 0 으로.
+ * - 일시 코드(재시도까지 소진)·fatal 코드 → 즉시 중단(`KAPT_RESULT_<코드> …`)
+ * - 10·11 → 그 단지만 실패, 연속 `limit` 건이면 중단(`KAPT_RESULT_<코드> … — 연속 N건 실패로 회차 중단`)
+ * - 결과 코드가 아닌 실패(429·5xx 재시도 소진·시간 초과·HTML 화면·JSON 깨짐) → 그 단지만 실패,
+ *   연속 `limit` 건이면 중단(`KAPT_FETCH_FAIL 연속 N건 — <마지막 오류>`). 옛 관리비 수집기는 이걸 건너뜀으로
+ *   세어 장애 회차가 성공으로 남았다(검사 A5).
+ * @param {number} [limit]
+ * @returns {{ success: () => void; failure: (err: unknown) => string | null }}
+ */
+export function createKaptFailureGate(limit = KAPT_MAX_CONSECUTIVE_FAILS) {
+  let streak = 0;
+  return {
+    success() { streak = 0; },
+    failure(err) {
+      if (err instanceof KaptResultError && err.kind !== "param") return err.message;
+      streak++;
+      if (streak < limit) return null;
+      if (err instanceof KaptResultError) return `${err.message} — 연속 ${streak}건 실패로 회차 중단`;
+      const msg = err instanceof Error ? err.message : String(err);
+      return `KAPT_FETCH_FAIL 연속 ${streak}건 — ${msg.slice(0, 200)}`;
+    },
+  };
 }
 
 /**
@@ -160,6 +209,31 @@ class NonRetryableError extends Error {
  * @returns {Promise<MolitApiResponse>}
  */
 export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey, opts = {}) {
+  // 일시 결과 코드(01·02·04·05·99)는 3초·10초 쉬고 다시 부른다(세션589 보완 B3 — 2u kapt_api.py:150-156).
+  // HTTP 재시도(opts.maxRetries)와 따로 센다 — 관리비는 maxRetries=1 이어도 04 재시도는 한다.
+  // 다시 부를 때도 1.5초 간격(waitForKaptSlot)을 탄다. 그래도 같으면 던진다 → 수집기가 회차를 멈춘다.
+  for (let i = 0; ; i++) {
+    try {
+      return await molitApiCallOnce(phase, baseUrl, endpoint, params, apiKey, opts);
+    } catch (err) {
+      if (!(err instanceof KaptResultError) || !err.transient || i >= KAPT_TRANSIENT_RETRY_DELAYS_MS.length) throw err;
+      log(phase, `  K-apt 결과 코드 ${err.code}(일시) — ${KAPT_TRANSIENT_RETRY_DELAYS_MS[i] / 1000}초 뒤 다시 (${i + 1}/${KAPT_TRANSIENT_RETRY_DELAYS_MS.length})`);
+      await sleep(KAPT_TRANSIENT_RETRY_DELAYS_MS[i]);
+    }
+  }
+}
+
+/**
+ * `molitApiCall` 의 한 번 — HTTP 재시도(429·5xx·시간 초과)까지만. 결과 코드 재시도는 바깥이 한다.
+ * @param {string} phase
+ * @param {string} baseUrl
+ * @param {string} endpoint
+ * @param {Record<string, string>} params
+ * @param {string} apiKey
+ * @param {{ timeoutMs?: number; maxRetries?: number }} opts
+ * @returns {Promise<MolitApiResponse>}
+ */
+async function molitApiCallOnce(phase, baseUrl, endpoint, params, apiKey, opts) {
   const timeoutMs = opts.timeoutMs ?? MOLIT_TIMEOUT_MS;
   const maxRetries = opts.maxRetries ?? MOLIT_MAX_RETRIES;
   const qs = new URLSearchParams({ serviceKey: apiKey, type: "json", ...params });
