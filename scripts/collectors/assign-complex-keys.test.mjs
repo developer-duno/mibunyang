@@ -1,11 +1,14 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   CHANGE_BREAKER_RATIO,
   CHANGE_BREAKER_MAX_ROWS,
+  UPDATE_CONCURRENCY,
+  UPDATE_BATCH_DELAY_MS,
   WARN_MARKER_MISSING_EXCEPTION_IDS,
   planKeyUpdates,
   evaluateChangeBreaker,
@@ -70,21 +73,38 @@ describe("planKeyUpdates — 지금 칸과 다른 행만 고친다", () => {
 });
 
 describe("evaluateChangeBreaker — 한 번에 많이 바뀌면 쓰지 않는다", () => {
-  it("빈칸을 채우는 것만 있으면(새 행) 통과", () => {
-    expect(evaluateChangeBreaker({ changed: 0, hadKey: 0 }).tripped).toBe(false);
-    expect(evaluateChangeBreaker({ changed: 0, hadKey: 3256 }).tripped).toBe(false);
+  it("평소처럼 새 행 몇 개의 빈칸만 채우면 통과", () => {
+    expect(evaluateChangeBreaker({ changed: 0, hadKey: 3256, filled: 12 }).tripped).toBe(false);
+    expect(evaluateChangeBreaker({ changed: 0, hadKey: 0, filled: 0 }).tripped).toBe(false);
+  });
+
+  it("빈칸을 채우는 행이 이미 열쇠가 있던 행보다 많으면 막는다 — 첫 채우기·칸이 비워진 날은 승인한 계획 파일로만(세션589 검사관 A #4)", () => {
+    const first = evaluateChangeBreaker({ changed: 0, hadKey: 0, filled: 3256 });
+    expect(first.tripped).toBe(true);
+    expect(first.reason).toContain("빈칸을 채우는 행 3256 이 이미 열쇠가 있던 행 0 보다 많음");
+    // 첫 채우기가 도중에 끊긴 날(일부만 채워짐)도 막는다
+    expect(evaluateChangeBreaker({ changed: 0, hadKey: 1500, filled: 1756 }).tripped).toBe(true);
+    // 경계: 같으면 통과
+    expect(evaluateChangeBreaker({ changed: 0, hadKey: 1000, filled: 1000 }).tripped).toBe(false);
+  });
+
+  it("여러 조건이 함께 걸리면 이유에 전부 적는다", () => {
+    const r = evaluateChangeBreaker({ changed: 31, hadKey: 40, filled: 100 });
+    expect(r.tripped).toBe(true);
+    expect(r.reason).toContain("31/40");
+    expect(r.reason).toContain("빈칸을 채우는 행 100 이 이미 열쇠가 있던 행 40 보다 많음");
   });
 
   it(`바뀌는 행이 ${CHANGE_BREAKER_MAX_ROWS} 이하면 통과, 넘으면 막는다(큰 표의 평소 한도)`, () => {
-    expect(evaluateChangeBreaker({ changed: CHANGE_BREAKER_MAX_ROWS, hadKey: 3256 }).tripped).toBe(false);
-    const r = evaluateChangeBreaker({ changed: CHANGE_BREAKER_MAX_ROWS + 1, hadKey: 3256 });
+    expect(evaluateChangeBreaker({ changed: CHANGE_BREAKER_MAX_ROWS, hadKey: 3256, filled: 0 }).tripped).toBe(false);
+    const r = evaluateChangeBreaker({ changed: CHANGE_BREAKER_MAX_ROWS + 1, hadKey: 3256, filled: 0 });
     expect(r.tripped).toBe(true);
     expect(r.reason).toContain(`${CHANGE_BREAKER_MAX_ROWS + 1}/3256`);
   });
 
   it(`바뀌는 비율이 ${CHANGE_BREAKER_RATIO * 100}% 를 넘으면 막는다(작은 표의 한도)`, () => {
-    expect(evaluateChangeBreaker({ changed: 2, hadKey: 20 }).tripped).toBe(false);
-    expect(evaluateChangeBreaker({ changed: 3, hadKey: 20 }).tripped).toBe(true);
+    expect(evaluateChangeBreaker({ changed: 2, hadKey: 20, filled: 0 }).tripped).toBe(false);
+    expect(evaluateChangeBreaker({ changed: 3, hadKey: 20, filled: 0 }).tripped).toBe(true);
   });
 });
 
@@ -126,6 +146,12 @@ describe("comparePlanToApproved — 승인한 계획 파일과 내용까지 같�
     expect(comparePlanToApproved([{ id: "ap-1", prev: null, next: "다" }], [{ id: "ap-1", prev: "", next: "다" }]).same).toBe(false);
   });
 
+  it("계획 파일 줄에 사람이 읽을 칸(name·region·gu)이 덧붙어 있어도 대조는 id·이전·새 값 세 칸만 본다(세션589 검사관 C #3)", () => {
+    const withNames = cur.map((u) => ({ ...u, name: "가나다 자이", region: "경기", gu: "화성시" }));
+    expect(comparePlanToApproved(cur, withNames).same).toBe(true);
+    expect(comparePlanToApproved(cur, [withNames[0], { ...withNames[1], name: "다른 이름" }]).same).toBe(true);
+  });
+
   it("계획 파일에 updates 배열이 없으면 던진다", () => {
     expect(() => comparePlanToApproved(cur, undefined)).toThrow();
     expect(() => comparePlanToApproved(cur, { updates: [] })).toThrow();
@@ -155,6 +181,11 @@ describe("parseArgs — 실행 인자", () => {
     expect(() => parseArgs(["node", "x", "--out=F:/tmp/other.json", "--apply-from=F:/tmp/plan.json"])).toThrow(/같이 줄 수 없습니다/);
   });
 
+  it("--apply 와 --out 을 같이 주면 던진다 — 계획 파일은 미리보기에서만 만든다(세션589 검사관 A #5)", () => {
+    expect(() => parseArgs(["node", "x", "--apply", "--out=F:/tmp/plan.json"])).toThrow(/--apply 와 --out 은 같이 줄 수 없습니다/);
+    expect(() => parseArgs(["node", "x", "--out=F:/tmp/plan.json", "--apply"])).toThrow(/--apply 와 --out 은 같이 줄 수 없습니다/);
+  });
+
   it.each(["--expect-changed=12", "--expect-changed"])("개수만 맞추는 승인 인자는 없다 — 주면 던진다: %s", (a) => {
     expect(() => parseArgs(["node", "x", "--apply", a])).toThrow(/--apply-from/);
   });
@@ -175,14 +206,25 @@ describe("parseArgs — 실행 인자", () => {
   });
 });
 
-describe("정적 가드 — 순서와 조건", () => {
-  // 줄바꿈을 LF 로 맞춰 읽고(윈도우 작업 폴더는 CRLF), **주석 줄을 뺀 사본**에서 본다 — 글자 대조는 주석 처리된 줄에도
-  // 맞아 버리므로, 안전장치 줄 앞에 `//` 를 붙여 꺼도 초록이 된다(세션588 검사관 A3 #2). 줄 중간 주석은 건드리지 않는다.
-  const src = readFileSync(join(HERE, "assign-complex-keys.mjs"), "utf8")
+/**
+ * 주석을 걷어낸 사본을 만든다 — 글자 대조는 주석 처리된 줄에도 맞아 버리므로, 안전장치를 `//` 나 `/* … *\/` 로 꺼도
+ * 초록이 된다(세션588 검사관 A3 #2 · 세션589 검사관 A #1: 여러 줄 블록 주석 안의 줄이 남아 있었다).
+ * 블록 주석은 두 단계로 걷어낸다(레포 규칙 guards-must-be-mutation-tested — 줄머리 고정만으로는 줄 중간 주석이 남고,
+ * 고정이 없으면 문자열 안 `*\/*` 를 주석 시작으로 읽는다): ① 줄머리에서 시작하는 블록(여러 줄 포함) ② 줄 중간(`*` 뒤의 `/*` 제외).
+ * 그다음 줄머리 `//` 줄을 뺀다. 못 박은 기대 글자에 인라인 JSDoc cast 가 있으면 같은 함수로 걷어내 맞춘다.
+ * @param {string} s
+ */
+const stripComments = (s) =>
+  s
     .replace(/\r\n/g, "\n")
+    .replace(/^[ \t]*\/\*[\s\S]*?\*\//gm, "")
+    .replace(/(?<!\*)\/\*[\s\S]*?\*\//g, "")
     .split("\n")
     .filter((l) => !/^\s*(\/\/|\/\*|\*)/.test(l))
     .join("\n");
+
+describe("정적 가드 — 순서와 조건", () => {
+  const src = stripComments(readFileSync(join(HERE, "assign-complex-keys.mjs"), "utf8"));
   const iWrite = src.indexOf(".update({ complex_key: u.next })");
   const FAIL_MARKERS = ["KEY_COUNT_MISMATCH", "KEY_MIXED", "KEY_PLAN_MISMATCH", "KEY_BREAKER"];
 
@@ -220,6 +262,16 @@ describe("정적 가드 — 순서와 조건", () => {
     expect(iRead).toBeGreaterThan(0);
     expect(iShape).toBeGreaterThan(iRead);
     expect(iDb).toBeGreaterThan(iShape);
+  });
+
+  it("있는 파일을 --out 으로 덮어쓰지 않는다 — DB 를 보기 전에 던지고, 쓸 때도 새 파일로만(flag wx)(세션589 검사관 A #5)", () => {
+    const iExists = src.indexOf("  if (args.out != null && existsSync(args.out)) {");
+    const iDb = src.indexOf("const sb = getSupabase();");
+    expect(iExists).toBeGreaterThan(0);
+    expect(iExists).toBeLessThan(iDb);
+    expect(src.slice(iExists, iDb)).toContain("승인했을 수 있는 계획 파일을 덮어쓰지 않는다");
+    expect(src.match(/writeFileSync\(args\.out, /g)).toHaveLength(1);
+    expect(src).toContain(' + "\\n", { flag: "wx" });');
   });
 
   it("실패 경로 넷은 전부 failRun 을 부르고 곧바로 돌아간다(쓰기 0)", () => {
@@ -299,6 +351,39 @@ describe("정적 가드 — 순서와 조건", () => {
     ["쓰다가 실패한 행이 있으면 종료 코드 1", "  if (fail) process.exitCode = 1;"],
   ])("배선: %s", (_label, line) => {
     expect(src.split("\n").filter((l) => l === line)).toHaveLength(1);
+  });
+
+  it("주석 걷어내기가 여러 줄 블록 주석·줄 중간 주석도 걷어낸다(걷어낸 사본에 남으면 그 줄을 꺼도 초록)", () => {
+    const sample = ["a();", "  /*", "  b();", "  */", "c(/** @type {any} */ (x));", "  // d();", "e();"].join("\n");
+    const out = stripComments(sample);
+    expect(out).not.toContain("b();");
+    expect(out).not.toContain("d();");
+    expect(out).not.toContain("@type");
+    expect(out).toContain("a();");
+    expect(out).toContain("c( (x));");
+    expect(out).toContain("e();");
+    // 문자열 안 "*/*" 는 주석 시작이 아니다
+    expect(stripComments('const t = "a/b, */*";\nf();')).toContain("f();");
+  });
+
+  // main() 본문 전체의 지문(줄바꿈 LF · sha256). 줄 단위 가드는 셈 줄·루프·쉬기·상수처럼 못 박지 않은 줄을 바꿔도 초록이다
+  // (세션589 검사관 A #2 — 변이 R5·R6·R8·R9 초록). 주입형 main + 가짜 DB 동작 시험으로 바꿀 때까지의 다리다.
+  // main 을 고쳤으면: 변이 도구(mutate-assign.mjs)를 다시 돌리고 이 값을 갱신한다.
+  // 근거 = 세션589 검사관 A — 계획서 알려진 한계 ⑤, 기한 = main 을 다음에 고칠 때 또는 다) 단계 전.
+  it("main() 본문 지문이 승인한 값과 같다", () => {
+    const raw = readFileSync(join(HERE, "assign-complex-keys.mjs"), "utf8").replace(/\r\n/g, "\n");
+    const start = raw.indexOf("async function main() {\n");
+    expect(start).toBeGreaterThan(0);
+    const end = raw.indexOf("\n}\n", start);
+    const body = raw.slice(start, end + 2);
+    expect(createHash("sha256").update(body).digest("hex")).toBe("917e97d4c818b72dd1a9b444f7443690db0baf4e705d895a5bf9b7749a73cf2d");
+  });
+
+  it("한도·속도 상수는 약속한 숫자 그대로다(상수에서 읽어 맞대면 상수를 바꿔도 초록 — 세션589 검사관 A #3)", () => {
+    expect(CHANGE_BREAKER_MAX_ROWS).toBe(30);
+    expect(CHANGE_BREAKER_RATIO).toBe(0.1);
+    expect(UPDATE_CONCURRENCY).toBe(5);
+    expect(UPDATE_BATCH_DELAY_MS).toBe(100);
   });
 
   it("경고 마커는 아침 브리핑이 읽는 머리말로 시작한다", () => {

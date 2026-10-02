@@ -133,11 +133,19 @@ export function assignComplexKeys(rows, exceptions = {}) {
       label.set(k, [...all].sort().join("+"));
     }
     for (const r of tokened) tokPart.set(r.id, /** @type {string} */ (label.get(find(r.id))));
+    // 거리가 정확히 같으면 구성원의 가장 작은 id(글자 비교)가 더 작은 무리가 이긴다 — 입력 순서와 무관하게(세션589 검사관 A #8).
+    /** @type {Map<string, string>} */
+    const minId = new Map();
+    for (const [k, cms] of clusters) minId.set(k, cms.map((m) => m.id).reduce((a, b) => (b < a ? b : a)));
     for (const r of ms) {
       if (I(r.id).tokStr) continue;
       /** @type {string | null} */ let best = null;
       let bestD = Infinity;
-      for (const [k, cms] of clusters) for (const m of cms) { const d = dist(r, m); if (d != null && d < bestD) { bestD = d; best = k; } }
+      for (const [k, cms] of clusters) for (const m of cms) {
+        const d = dist(r, m);
+        if (d == null) continue;
+        if (d < bestD || (d === bestD && best != null && /** @type {string} */ (minId.get(k)) < /** @type {string} */ (minId.get(best)))) { bestD = d; best = k; }
+      }
       tokPart.set(r.id, best != null && bestD <= ATTACH_MAX_M ? /** @type {string} */ (label.get(best)) : `보류:${r.id}`);
     }
   }
@@ -191,6 +199,8 @@ export function parseComplexExceptions(json) {
   for (const e of isolate) {
     const id = /** @type {{ id?: unknown }} */ (e)?.id;
     if (typeof id !== "string" || !ID.test(id)) throw new Error(`isolate 항목의 id 가 단지 id 가 아닙니다: ${JSON.stringify(e)}`);
+    // 같은 id 를 두 번 떼면 열쇠에 `#only:` 가 겹친다(세션589 검사관 A #9) — 받지 않는다.
+    if (outIsolate.includes(id)) throw new Error(`isolate 에 같은 id 가 두 번 있습니다: ${id}`);
     outIsolate.push(id);
   }
   // 같은 id 가 always 와 isolate 양쪽에 있으면 적용 순서에 따라 결과가 갈린다 — 받지 않는다.
