@@ -29,7 +29,7 @@
  * ⚠️ 시각은 전부 인자(`now`)로 받는다 — 시험이 실제 시각에 기대지 않게(`flaky-time-check`).
  */
 import { stringSimilarity } from "./_shared.mjs";
-import { stripRoundWords, phaseConsistent, blockConflict } from "./_kakao-poi.mjs";
+import { stripRoundWords, extractPhases, blockConflict } from "./_kakao-poi.mjs";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
@@ -42,14 +42,24 @@ export const NAVER_MIN_NAME_SIM = 0.75;
 
 /**
  * R3 — 자매 레포(naver-estate-web, 2u)가 K-apt 를 쓰는 창(KST, 분 단위, 양끝 포함).
- * 출처 = 2u 인계(메모리 `handoff_from_2u_2026-10-01_kapt_rate_limit.md` · 10-02 추가분).
+ * `dayOfMonth` 가 있으면 매월 그 날(KST)에만 해당한다.
  * 같은 열쇠라 둘이 겹치면 합계가 K-apt 한계(약 0.9콜/초)를 넘어 약 10분간 전부 04 가 된다.
+ *
+ * 출처·확인일(자매 레포 일정은 우리 코드가 모르는 채 바뀐다 — 인계를 받을 때마다 이 상수를 grep 해 맞춘다):
+ *   - 06:20~08:25 · 12:40~15:15 — 2u 인계 2026-10-01(메모리 `handoff_from_2u_2026-10-01_kapt_rate_limit.md`), 확인 2026-10-02
+ *   - 21:00~23:30(관리비 세 번째 회차 신설) · 매월 21일 14:50~21:00(21일 매칭) — 같은 인계의 2026-10-02 추가분, 확인 2026-10-02
  */
 export const SIBLING_KAPT_WINDOWS_KST = Object.freeze([
   Object.freeze({ start: "06:20", end: "08:25" }),
   Object.freeze({ start: "12:40", end: "15:15" }),
   Object.freeze({ start: "21:00", end: "23:30" }),
+  Object.freeze({ start: "14:50", end: "21:00", dayOfMonth: 21 }),
 ]);
+/**
+ * 창 시작 몇 분 전부터 "곧 창"으로 볼지(`nearSiblingKaptWindow`). 단지 하나에 K-apt 6콜(1.5초 간격 약 9초,
+ * 최악 8초×6)이 걸리므로 창 직전에 시작한 단지가 창 안으로 넘어가지 않게 여유를 둔다.
+ */
+export const SIBLING_KAPT_LEAD_MIN = 5;
 
 // ── 완공월 ──────────────────────────────────────────────────
 
@@ -142,25 +152,60 @@ export function cleanMatchName(name) {
 }
 
 /**
- * 두 이름이 **같은 단지일 수 있는가** — 차수·블록·로마 숫자 중 하나라도 "둘 다 있는데 겹치지 않음"이면 거짓.
+ * 따로 떨어진 ASCII 로마 숫자(I~X) — `"넥스티엘 III"`·`"넥스티엘II"`.
+ * 앞뒤가 영문·숫자·`'`·`·`·`-` 이면 안 읽는다(`IPARK`·`I'PARK`·`I-PARK`·`I·PARK`·`SK VIEW`·`VIP`·`Xi`),
+ * 뒤에 띄어쓰기 + 영문이 오면(`I PARK`) 상표의 첫 글자로 보고 안 읽는다. 대문자만 본다.
+ * 긴 것부터 적는다(같은 자리에서 `III` 보다 `I` 가 먼저 잡히지 않게).
+ */
+const ASCII_ROMAN_RE = /(?<![A-Za-z0-9'’·\-])(VIII|VII|III|II|IV|VI|IX|I|V|X)(?![A-Za-z0-9'’·\-])(?!\s+[A-Za-z])/g;
+/** @type {Record<string, string>} */
+const ASCII_ROMAN_DIGITS = { I: "1", II: "2", III: "3", IV: "4", V: "5", VI: "6", VII: "7", VIII: "8", IX: "9", X: "10" };
+
+/**
+ * 차수 숫자 집합 — `PHASE_RE`(N차·N단지·NBL…) + 로마 숫자(유니코드 Ⅰ~Ⅻ · 따로 떨어진 ASCII I~X).
+ * 로마 숫자를 같은 집합에 넣어야 `"…Ⅲ"` ↔ `"…1차"` 가 충돌로 보인다(검사 A3 — 따로 맞대면 한쪽에만 있는 것으로 보여 통과했다).
+ * @param {string} name 회차 낱말을 뗀 이름
+ * @returns {Set<string>}
+ */
+function phaseNumbers(name) {
+  const out = extractPhases(name);
+  for (const v of romanNumbers(name)) out.add(v);
+  for (const m of name.matchAll(ASCII_ROMAN_RE)) out.add(ASCII_ROMAN_DIGITS[m[1]]);
+  return out;
+}
+
+/**
+ * 공고 회차 괄호를 회차 낱말에 붙여 떼어지게 한다 — `"무순위(1차)"` → `"무순위 1차"`.
+ * `stripRoundWords` 는 회차 낱말 **바로 뒤**의 `N차` 만 공고 회차로 떼는데, 괄호에 싸인 `(1차)` 는 못 뗀다
+ * (검사 A3: `"금강펜테리움 6차 센트럴파크 무순위(1차)"` 의 1차가 단지 차수로 남아 `"금강펜테리움1차"` 와 통과).
+ * 괄호만 풀어 주면 그 함수가 회차 낱말과 함께 뗀다. 회차 낱말 뒤가 아닌 `(1차)`(`"반월자이 더 파크(1차)"`)는
+ * 괄호가 풀려도 단지 차수로 그대로 남는다. ⚠️ `stripRoundWords` 자체는 묶음 열쇠(`_same-complex.mjs`)가 써서 건드리지 않는다.
+ * @param {unknown} name
+ * @returns {string}
+ */
+function unwrapRoundParen(name) {
+  return String(name ?? "").replace(/\(\s*(\d+\s*차)\s*\)/g, " $1");
+}
+
+/**
+ * 두 이름이 **같은 단지일 수 있는가** — 차수(로마 숫자 포함)·블록 중 하나라도 "둘 다 있는데 겹치지 않음"이면 거짓.
  *
- * 판정은 이미 있는 것을 쓴다(`_kakao-poi.mjs` `phaseConsistent` · `blockConflict` — 분양 매칭·좌표
- * 정정과 같은 잣대). 회차 낱말은 떼고(`stripRoundWords` — 괄호는 남긴다: `(A7BL)` 같은 블록 표기가
- * 거기 있다) 본다. 로마 숫자는 `PHASE_RE` 가 못 보므로 따로 본다(넥스티엘Ⅲ ↔ 넥스티엘Ⅰ).
- * 한쪽에만 차수가 있는 것(`"one-sided"`)은 막지 않는다 — 막는 건 **아는 차이**뿐이다
+ * 블록 판정은 이미 있는 것을 쓴다(`_kakao-poi.mjs` `blockConflict` — 분양 매칭·좌표 정정과 같은 잣대).
+ * 회차 낱말은 떼고(`stripRoundWords` — 괄호는 남긴다: `(A7BL)` 같은 블록 표기가 거기 있다) 본다.
+ * 차수는 `PHASE_RE` 숫자에 로마 숫자를 합친 집합으로 맞댄다(넥스티엘Ⅲ ↔ 넥스티엘Ⅰ · 넥스티엘Ⅲ ↔ 넥스티엘1차).
+ * 한쪽에만 차수가 있는 것은 막지 않는다 — 막는 건 **아는 차이**뿐이다
  * (K-apt 정식 이름은 차수 표기를 빼는 일이 흔하다: "반월자이 더 파크(1차)" ↔ "…반월자이더 파크아파트").
  * @param {unknown} a
  * @param {unknown} b
  * @returns {boolean}
  */
 export function namesCompatible(a, b) {
-  const sa = stripRoundWords(a);
-  const sb = stripRoundWords(b);
-  if (phaseConsistent(sa, sb) === "conflict") return false;
+  const sa = stripRoundWords(unwrapRoundParen(a));
+  const sb = stripRoundWords(unwrapRoundParen(b));
+  const pa = phaseNumbers(sa);
+  const pb = phaseNumbers(sb);
+  if (pa.size > 0 && pb.size > 0 && ![...pa].some((v) => pb.has(v))) return false;
   if (blockConflict(sa, sb)) return false;
-  const ra = romanNumbers(sa);
-  const rb = romanNumbers(sb);
-  if (ra.size > 0 && rb.size > 0 && ![...ra].some((v) => rb.has(v))) return false;
   return true;
 }
 
@@ -203,7 +248,8 @@ export function sameSigungu(apt, item) {
 
 /**
  * K1·K5 — K-apt 시도 목록에서 그 단지의 짝을 고른다. **걸러 놓고 고르기**: 게이트를 지난 후보 중
- * 정리한 이름 유사도가 가장 높은 것(같으면 목록 순서상 앞). 탈락하면 `match: null` + `reason`(로그용).
+ * 정리한 이름 유사도가 가장 높은 것(최고 점수가 둘 이상이면 **붙이지 않는다** — "동점 후보 N개").
+ * 탈락하면 `match: null` + `reason`(로그용).
  * @template {KaptListItem} T
  * @param {GateApt} apt
  * @param {T[]} kaptList
@@ -221,6 +267,7 @@ export function pickKaptMatch(apt, kaptList, { now }) {
   /** @type {T | null} */
   let best = null;
   let bestScore = 0;
+  let bestCount = 0; // 최고 점수를 낸 후보 수 — 둘 이상이면 동점
   let sameGu = 0;
   let compatible = 0;
   for (const item of kaptList) {
@@ -233,6 +280,9 @@ export function pickKaptMatch(apt, kaptList, { now }) {
     if (score > bestScore) {
       bestScore = score;
       best = item;
+      bestCount = 1;
+    } else if (best && score === bestScore) {
+      bestCount++;
     }
   }
   const rounded = Math.round(bestScore * 100) / 100;
@@ -241,6 +291,9 @@ export function pickKaptMatch(apt, kaptList, { now }) {
   if (!best || bestScore < KAPT_MIN_NAME_SIM) {
     return { match: null, score: rounded, reason: `이름 유사도 < ${KAPT_MIN_NAME_SIM} (최고 ${rounded})` };
   }
+  // 동점이면 붙이지 않는다(검사 A4) — 같은 구에 같은 이름 A1·A2 가 있으면 목록 순서가 짝을 정하고,
+  // 첫 후보가 사용승인일 검사(K4)에 떨어져도 둘째는 보지 않는다. 어느 쪽인지 모르면 안 붙인다.
+  if (bestCount > 1) return { match: null, score: rounded, reason: `동점 후보 ${bestCount}개` };
   return { match: best, score: rounded, reason: null };
 }
 
@@ -318,12 +371,47 @@ function minutesOf(hhmm) {
 }
 
 /**
+ * 지금(KST)이 창 시작 `leadMin` 분 전 ~ 창 끝(양끝 포함) 안인가. `dayOfMonth` 가 있는 창은 그 날만.
+ * @param {Date} now
+ * @param {number} leadMin
+ * @returns {boolean}
+ */
+function inWindowWithLead(now, leadMin) {
+  const kst = new Date(now.getTime() + KST_OFFSET_MS);
+  const m = kst.getUTCHours() * 60 + kst.getUTCMinutes();
+  const day = kst.getUTCDate();
+  return SIBLING_KAPT_WINDOWS_KST.some((w) =>
+    ("dayOfMonth" in w ? w.dayOfMonth === day : true) &&
+    m >= minutesOf(w.start) - leadMin && m <= minutesOf(w.end));
+}
+
+/**
  * R3 — 지금(KST)이 자매 레포의 K-apt 창 안인가(분 단위, 양끝 포함: 06:20·08:25 는 안, 06:19·08:26 은 밖).
  * @param {Date} now
  * @returns {boolean}
  */
 export function inSiblingKaptWindow(now) {
-  const kst = new Date(now.getTime() + KST_OFFSET_MS);
-  const m = kst.getUTCHours() * 60 + kst.getUTCMinutes();
-  return SIBLING_KAPT_WINDOWS_KST.some((w) => m >= minutesOf(w.start) && m <= minutesOf(w.end));
+  return inWindowWithLead(now, 0);
+}
+
+/**
+ * R3 보강(검사 A1·C1) — 창 안이거나 창 시작 `leadMin` 분 전 안인가. 관리비·건물정보가 **시작 때와 단지마다** 본다.
+ * 러너는 놓친 날을 같은 실행에 이어 돌고 컴퓨터가 늦게 켜진 날은 늦게 시작하므로, "시작 + N분" 예산만으로는
+ * 2u 창을 못 피한다(15일을 놓친 16일 = 관리비 두 회차가 06:10 넘어 이어 돈다).
+ * @param {Date} now
+ * @param {number} [leadMin]
+ * @returns {boolean}
+ */
+export function nearSiblingKaptWindow(now, leadMin = SIBLING_KAPT_LEAD_MIN) {
+  return inWindowWithLead(now, leadMin);
+}
+
+/**
+ * 창 목록을 사람이 읽는 글로 — 수집 기록(`SIBLING_KAPT_WINDOW …`) 머리말 뒤에 붙인다.
+ * @returns {string}
+ */
+export function siblingKaptWindowText() {
+  return SIBLING_KAPT_WINDOWS_KST
+    .map((w) => `${"dayOfMonth" in w ? `매월 ${w.dayOfMonth}일 ` : ""}${w.start}~${w.end}`)
+    .join("·");
 }

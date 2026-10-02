@@ -324,10 +324,152 @@ describe("inSiblingKaptWindow — 경계 시각(KST)", () => {
     ["2026-10-05 23:30", true],
     ["2026-10-05 23:31", false],
     ["2026-10-05 05:30", false], // 러너 05:30 회차는 창 밖
+    // 매월 21일 14:50~21:00 (2u 21일 매칭 — 인계 2026-10-02 추가분, 검사 C6)
+    ["2026-10-21 14:49", true], // 12:40~15:15 창 안(매일)
+    ["2026-10-21 15:16", true], // 매일 창은 끝났지만 21일 창 안
+    ["2026-10-21 16:00", true],
+    ["2026-10-21 20:59", true],
+    ["2026-10-21 12:39", false], // 21일이어도 14:50 전 · 매일 창 밖
+    ["2026-10-20 16:00", false], // 21일이 아니다
+    ["2026-10-22 16:00", false],
+    ["2026-11-21 18:00", true], // 다음 달 21일도
   ]);
   for (const [t, want] of cases) {
     it(`${t} → ${want ? "창 안" : "창 밖"}`, () => {
       expect(G.inSiblingKaptWindow(kstAt(t))).toBe(want);
     });
   }
+
+  it("창 상수에 21일 14:50~21:00 이 있다(출처 = 2u 인계 2026-10-02 추가분)", () => {
+    expect(G.SIBLING_KAPT_WINDOWS_KST).toContainEqual({ start: "14:50", end: "21:00", dayOfMonth: 21 });
+    expect(G.siblingKaptWindowText()).toBe("06:20~08:25·12:40~15:15·21:00~23:30·매월 21일 14:50~21:00");
+  });
+});
+
+// ── 2u 창 "곧 시작"(검사 A1·C1) — 관리비·건물정보가 단지마다 본다 ──────────
+// 창 안이거나 창 시작 5분 전 안이면 참. 한 단지에 K-apt 6콜(약 9초~최악 48초)이 걸리므로
+// 창 직전에 시작한 단지가 창 안으로 넘어가지 않게 5분 앞에서 멈춘다.
+describe("nearSiblingKaptWindow — 창 안 또는 창 시작 5분 전", () => {
+  const cases = /** @type {Array<[string, boolean]>} */ ([
+    ["2026-10-15 05:30", false],
+    ["2026-10-15 06:14", false], // 6분 전 — 계속
+    ["2026-10-15 06:15", true], // 5분 전 — 멈춤
+    ["2026-10-15 06:16", true], // 4분 전 — 멈춤
+    ["2026-10-15 06:20", true], // 창 안
+    ["2026-10-15 08:25", true],
+    ["2026-10-15 08:26", false],
+    ["2026-10-15 12:34", false],
+    ["2026-10-15 12:35", true],
+    ["2026-10-15 20:55", true],
+    ["2026-10-21 14:44", true], // 매일 창(12:40~15:15) 안
+    ["2026-10-21 15:20", true], // 21일 창 안
+    ["2026-10-20 15:20", false],
+  ]);
+  for (const [t, want] of cases) {
+    it(`${t} → ${want ? "멈춤" : "계속"}`, () => {
+      expect(G.nearSiblingKaptWindow(kstAt(t))).toBe(want);
+    });
+  }
+  it("앞당김 기본값 5분 · 인자로 바꿀 수 있다", () => {
+    expect(G.SIBLING_KAPT_LEAD_MIN).toBe(5);
+    expect(G.nearSiblingKaptWindow(kstAt("2026-10-15 06:14"), 10)).toBe(true);
+    expect(G.nearSiblingKaptWindow(kstAt("2026-10-15 06:16"), 0)).toBe(false);
+  });
+});
+
+// ── 이름 비교 보강 (검사 A3 · MA5) ────────────────────────────────────
+describe("namesCompatible — 공고 회차 괄호 · 로마 숫자 · 괄호 속 블록 (세션589 보완)", () => {
+  it("(a) 회차 낱말 바로 뒤 괄호 (N차) 는 공고 회차 — 단지 차수에서 뺀다", () => {
+    const ours = "금강펜테리움 6차 센트럴파크 무순위(1차)";
+    expect(G.namesCompatible(ours, "금강펜테리움1차")).toBe(false); // 6차 ↔ 1차 충돌(옛: (1차) 가 차수로 남아 통과)
+    expect(G.namesCompatible(ours, "금강펜테리움6차센트럴파크")).toBe(true);
+    expect(G.namesCompatible("금강펜테리움 6차 센트럴파크 무순위 (1차)", "금강펜테리움1차")).toBe(false); // 띄어 쓴 꼴
+    // 회차 낱말 뒤가 아닌 괄호 차수는 단지 차수 그대로다
+    expect(G.namesCompatible("반월자이 더 파크(1차)", "반월자이 더 파크 2차")).toBe(false);
+    expect(G.namesCompatible("반월자이 더 파크(1차)", "반월자이 더 파크 1차")).toBe(true);
+  });
+
+  it("(b) 로마 숫자는 차수 숫자와 같은 자리에서 맞댄다 — Ⅲ ↔ 1차 불통과 · Ⅱ ↔ 2차 통과", () => {
+    expect(G.namesCompatible("검단신도시롯데캐슬넥스티엘Ⅲ", "검단신도시롯데캐슬넥스티엘1차")).toBe(false);
+    expect(G.namesCompatible("검단신도시롯데캐슬넥스티엘Ⅱ", "검단신도시롯데캐슬넥스티엘2차")).toBe(true);
+    expect(G.namesCompatible("넥스티엘 III", "넥스티엘 I")).toBe(false); // 따로 떨어진 ASCII 로마 숫자
+    expect(G.namesCompatible("넥스티엘 II", "넥스티엘 2단지")).toBe(true);
+    expect(G.namesCompatible("넥스티엘III", "넥스티엘1차")).toBe(false); // 한글 바로 뒤에 붙은 꼴
+    expect(G.namesCompatible("넥스티엘 IV", "넥스티엘 4차")).toBe(true);
+  });
+
+  it("(b) 영문 단어·상표는 차수로 읽히지 않는다 (음성)", () => {
+    // 왼쪽 영문 이름에서 차수가 잘못 읽히면(VIEW → 5·1, I PARK → 1 …) 오른쪽 한글 이름의 "2차" 와 충돌(false)이 된다.
+    // 오른쪽은 일부러 영문을 빼 같은 오독이 양쪽에서 겹쳐 가려지지 않게 한다 — 전부 true(한쪽에만 차수)여야 한다.
+    expect(G.namesCompatible("수원 SK VIEW", "수원에스케이뷰 2차")).toBe(true);
+    expect(G.namesCompatible("수원 IPARK", "수원아이파크 2차")).toBe(true);
+    expect(G.namesCompatible("수원 I-PARK CITY", "수원아이파크시티 2차")).toBe(true);
+    expect(G.namesCompatible("수원 I PARK", "수원아이파크 2차")).toBe(true);
+    expect(G.namesCompatible("수원 I·PARK", "수원아이파크 2차")).toBe(true);
+    expect(G.namesCompatible("수원 I'PARK", "수원아이파크 2차")).toBe(true);
+    expect(G.namesCompatible("동탄 HILLSTATE", "동탄힐스테이트 2차")).toBe(true);
+    expect(G.namesCompatible("위례 Xi", "위례자이 2차")).toBe(true);
+    expect(G.namesCompatible("DMC SK VIEW IPARK", "디엠씨에스케이뷰아이파크 2차")).toBe(true);
+    expect(G.namesCompatible("청라 VIP 타워", "청라브이아이피타워 2차")).toBe(true);
+  });
+
+  it("(c) 괄호 속 블록 (A7BL) 은 판정에 남는다 — 다른 블록과 충돌", () => {
+    expect(G.namesCompatible("호반써밋 첨단3지구(A7BL)", "호반써밋 첨단3지구 A6BL")).toBe(false);
+    expect(G.namesCompatible("호반써밋 첨단3지구(A7BL)", "호반써밋 첨단3지구 A7BL")).toBe(true);
+  });
+
+  it("(c) pickKaptMatch 가 괄호를 지우기 **전** 이름으로 차수·블록을 본다 (MA5 — 지운 이름으로 보면 A6BL 에 붙는다)", () => {
+    const a = apt("호반써밋 첨단3지구(A7BL)", "202301", "1220011000", "광산구", "광주");
+    const a6 = { kaptCode: "K-A6", kaptName: "호반써밋 첨단3지구 A6BL", bjdCode: "1220011000", as2: "광주광산구", as3: "월계동" };
+    const a7 = { kaptCode: "K-A7", kaptName: "호반써밋 첨단3지구 A7BL", bjdCode: "1220011000", as2: "광주광산구", as3: "월계동" };
+    const r = G.pickKaptMatch(a, [a6], { now: NOW });
+    expect(r.match).toBeNull();
+    expect(r.reason).toMatch(/차수·블록 충돌/);
+    expect(G.pickKaptMatch(a, [a6, a7], { now: NOW }).match?.kaptCode).toBe("K-A7");
+  });
+
+  it("pickKaptMatch — 무순위(1차) 꼴이 형제 1차 단지에 붙지 않는다", () => {
+    const a = apt("금강펜테리움 6차 센트럴파크 무순위(1차)", "202301", "4159710100", "화성시");
+    const first = { kaptCode: "K-G1", kaptName: "금강펜테리움1차", bjdCode: "4159710100", as2: "화성동탄구", as3: "오산동" };
+    const sixth = { kaptCode: "K-G6", kaptName: "금강펜테리움6차센트럴파크", bjdCode: "4159710100", as2: "화성동탄구", as3: "오산동" };
+    expect(G.pickKaptMatch(a, [first], { now: NOW }).match).toBeNull();
+    expect(G.pickKaptMatch(a, [first, sixth], { now: NOW }).match?.kaptCode).toBe("K-G6");
+    expect(G.pickKaptMatch(a, [sixth, first], { now: NOW }).match?.kaptCode).toBe("K-G6");
+  });
+});
+
+// ── 동점이면 붙이지 않는다 (검사 A4) ──────────────────────────────────
+describe("pickKaptMatch — 최고 점수 동점은 짝 없음", () => {
+  const a = apt("한빛마을래미안", "201505", "4159710100", "화성시");
+  const a1 = { kaptCode: "K-A1", kaptName: "한빛마을래미안", bjdCode: "4159710100", as2: "화성동탄구", as3: "오산동" };
+  const a2 = { kaptCode: "K-A2", kaptName: "한빛마을래미안", bjdCode: "4159711100", as2: "화성동탄구", as3: "장지동" };
+  const low = { kaptCode: "K-LOW", kaptName: "한빛마을래미안센트럴파크타운", bjdCode: "4159710100", as2: "화성동탄구", as3: "오산동" };
+
+  it("같은 구에 같은 이름이 둘이면 어느 쪽에도 붙이지 않는다 — 이유에 후보 수", () => {
+    const r = G.pickKaptMatch(a, [a1, a2], { now: NOW });
+    expect(r.match).toBeNull();
+    expect(r.reason).toBe("동점 후보 2개");
+    expect(r.score).toBe(1);
+  });
+
+  it("후보 순서를 바꿔도 결과가 같다", () => {
+    const orders = [[a1, a2, low], [a2, a1, low], [low, a2, a1], [a2, low, a1]];
+    for (const list of orders) {
+      const r = G.pickKaptMatch(a, list, { now: NOW });
+      expect(r.match).toBeNull();
+      expect(r.reason).toBe("동점 후보 2개");
+    }
+  });
+
+  it("동점이 최고 점수가 아니면(더 높은 후보가 하나) 그 후보에 붙는다", () => {
+    const lowTwin = { ...low, kaptCode: "K-LOW2" };
+    expect(G.pickKaptMatch(a, [low, lowTwin, a1], { now: NOW }).match?.kaptCode).toBe("K-A1");
+    expect(G.pickKaptMatch(a, [a1, low, lowTwin], { now: NOW }).match?.kaptCode).toBe("K-A1");
+  });
+
+  it("하한(0.6) 아래에서의 동점은 '이름 유사도' 사유 그대로", () => {
+    const x1 = { kaptCode: "X1", kaptName: "전혀다른이름아파트", bjdCode: "4159710100", as2: "화성동탄구" };
+    const x2 = { kaptCode: "X2", kaptName: "전혀다른이름아파트", bjdCode: "4159710100", as2: "화성동탄구" };
+    expect(G.pickKaptMatch(a, [x1, x2], { now: NOW }).reason).toMatch(/이름 유사도/);
+  });
 });
