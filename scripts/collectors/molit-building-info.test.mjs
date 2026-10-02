@@ -362,4 +362,46 @@ describe("main() — 세션589 게이트 실전 경로", () => {
     expect(rec.fail).toBeGreaterThan(0);
     expect(exitSpy).toHaveBeenCalledWith(1);
   });
+
+  // ── 세션589 보완 B1·B4 ──────────────────────────────────────
+  /** @param {string} hhmm KST 2026-10-11 의 시각 */
+  const kst = (hhmm) => new Date(`2026-10-11T${hhmm}:00+09:00`);
+
+  it("B1 — 시작이 2u 창 5분 전 안(06:16)이면 K-apt 를 안 부르고 SIBLING_KAPT_WINDOW 로 남긴다", async () => {
+    const { sb, updates } = makeMainSb([target("a", "201806"), target("b", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ kaptdaCnt: "600", ktownFlrNo: "29", kaptUsedate: "20180629" });
+    await main({ now: NOW, clock: () => kst("06:16") });
+    expect(mockFetchSidoAptList).not.toHaveBeenCalled();
+    expect(mockMolitApiCall).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("molit-building", expect.objectContaining({ ok: 0, skip: 2, fail: 0, errorMessage: expect.stringMatching(/^SIBLING_KAPT_WINDOW .*남은 2곳/) }));
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("B1 — 06:14 에는 계속, 다음 단지 차례가 06:16 이면 그 자리에서 멈춘다", async () => {
+    const { sb, updates } = makeMainSb([target("a", "201806"), target("b", "201806"), target("c", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ kaptdaCnt: "600", ktownFlrNo: "29", kaptUsedate: "20180629" });
+    const times = [kst("06:10"), kst("06:14"), kst("06:16")]; // 목록 · 단지 a · 단지 b
+    let k = 0;
+    await main({ now: NOW, clock: () => times[Math.min(k++, times.length - 1)] });
+    expect(updates.map((u) => u.id)).toEqual(["a"]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("molit-building", expect.objectContaining({ ok: 1, skip: 2, errorMessage: expect.stringMatching(/^SIBLING_KAPT_WINDOW .*남은 2곳/) }));
+  });
+
+  it("B4 — 결과 코드 아닌 실패가 연속 5건이면 KAPT_FETCH_FAIL 로 멈춘다", async () => {
+    const { sb, updates } = makeMainSb(Array.from({ length: 7 }, (_, i) => target(`t${i}`, "201806")));
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail(new Error("getAphusBassInfoV5: 3회 재시도 소진 (마지막 상태: 503)"));
+    await main({ now: NOW });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(5); // 기본정보에서 던져 상세는 안 부른다 · 여섯째 단지는 안 부른다
+    expect(updates).toEqual([]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.fail).toBe(5);
+    expect(rec.errorMessage).toMatch(/^KAPT_FETCH_FAIL 연속 5건/);
+  });
 });

@@ -111,10 +111,11 @@ describe("fetchBassInfo", () => {
     expect(result).toBeNull();
   });
 
-  it("molitApiCall throw (NonRetryableError 포함) → catch에서 null 반환", async () => {
+  // 세션589 보완 B4(검사 A5): 옛 시험은 "throw → null(건너뜀)"을 정답으로 못 박았다 — 그 때문에 장애 회차가
+  // 성공으로 기록됐다. 이제 던지고, main 이 실패로 세어 연속 5건이면 회차를 멈춘다.
+  it("molitApiCall throw (재시도 소진·시간 초과·키 미등록) → 삼키지 않고 던진다", async () => {
     mockMolitApiCall.mockRejectedValueOnce(new Error("API 키 미등록"));
-    const result = await fetchBassInfo("K005");
-    expect(result).toBeNull();
+    await expect(fetchBassInfo("K005")).rejects.toThrow("API 키 미등록");
     expect(mockMolitApiCall).toHaveBeenCalledTimes(1);
   });
 
@@ -145,9 +146,11 @@ describe("fetchMaintenanceCost", () => {
   });
 
   it("결과 코드 04 → 자료 없음(null)으로 삼키지 않고 KaptResultError 를 던진다 (세션589 R2)", async () => {
-    mockFetch.mockResolvedValueOnce(makeCostResponse("heatP", 1000, "04"));
+    mockFetch.mockResolvedValue(makeCostResponse("heatP", 1000, "04"));
     await expect(fetchMaintenanceCost("K-04", "202508")).rejects.toBeInstanceOf(KaptResultError);
-    expect(mockFetch).toHaveBeenCalledTimes(1); // 나머지 4항목을 더 부르지 않는다
+    // 첫 항목에서 3초·10초 뒤 두 번 다시 부르고(보완 B3) 그래도 04 면 던진다 — 나머지 4항목은 부르지 않는다
+    expect(mockFetch).toHaveBeenCalledTimes(3);
+    for (const c of mockFetch.mock.calls) expect(c[0]).toContain("getHsmpHeatCostInfoV3");
   });
 
   it("결과 코드 03(자료 없음) → 그 항목 null · 다른 항목은 그대로", async () => {
@@ -207,19 +210,37 @@ describe("fetchMaintenanceCost", () => {
     expect(result?.water).toBe(5000);
   });
 
-  it("전부 실패 → null", async () => {
+  // 세션589 보완 B4(검사 A5): 옛 시험은 "다섯 항목 전부 실패 → null(건너뜀)"이었다 — 게이트웨이 장애가
+  // "관리비 없음"으로 사라졌다. 이제 다섯 개 전부 호출 실패면 던진다(일부만 실패면 그 항목만 null — 위 시험).
+  it("다섯 항목 전부 호출 실패 → 던진다(건너뜀으로 삼키지 않는다)", async () => {
     for (let i = 0; i < 5; i++) {
       mockFetch.mockResolvedValueOnce(makeFailResponse(500));
     }
-    const result = await fetchMaintenanceCost("K003", "202501");
-    expect(result).toBeNull();
+    await expect(fetchMaintenanceCost("K003", "202501")).rejects.toThrow("재시도 소진");
+  });
+
+  it("다섯 항목 전부 시간 초과·JSON 깨짐 → 던진다", async () => {
+    mockFetch
+      .mockRejectedValueOnce(new Error("AbortError: timeout"))
+      .mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve("{깨진") })
+      .mockRejectedValueOnce(new Error("AbortError: timeout"))
+      .mockRejectedValueOnce(new Error("AbortError: timeout"))
+      .mockRejectedValueOnce(new Error("AbortError: timeout"));
+    await expect(fetchMaintenanceCost("K003b", "202501")).rejects.toThrow("AbortError");
+  });
+
+  it("호출은 됐는데 다섯 항목 다 자료 없음(item 없음) → null(실패 아님)", async () => {
+    for (let i = 0; i < 5; i++) mockFetch.mockResolvedValueOnce({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify({ response: { body: {} } })) });
+    expect(await fetchMaintenanceCost("K003c", "202501")).toBeNull();
   });
 
   it("item null → null (anyValid=false)", async () => {
+    // 세션589 보완: 옛 가짜 응답은 json() 만 있어 원본 molitApiCall 의 text() 에서 TypeError 가 났고, 그게 삼켜져
+    // 우연히 null 이 됐다. 다섯 항목 전부 호출 실패는 이제 던지므로, 진짜 "item null" 응답을 준다.
     for (let i = 0; i < 5; i++) {
       mockFetch.mockResolvedValueOnce({
         ok: true, status: 200,
-        json: () => Promise.resolve({ response: { body: { item: null } } }),
+        text: () => Promise.resolve(JSON.stringify({ response: { body: { item: null } } })),
       });
     }
     const result = await fetchMaintenanceCost("K004", "202501");
@@ -432,11 +453,12 @@ describe("E2E 시나리오", () => {
     expect(sum).toBe(100); // 5 * 20
   });
 
-  it("세대수 null → skip (관리비 미계산)", async () => {
+  it("기본정보가 자료 없음(item 없음) → null → main 에서 skip (관리비 미계산)", async () => {
+    // 세션589 보완 B4: 옛 시험은 timeout 을 null 로 받았다 — 이제 timeout 은 던지고(실패), 빈 응답만 null 이다.
+    mockMolitApiCall.mockResolvedValueOnce({ response: { body: {} } });
+    expect(await fetchBassInfo("K999")).toBeNull();
     mockMolitApiCall.mockRejectedValueOnce(new Error("timeout"));
-    const households = (await fetchBassInfo("K999"))?.households ?? null;
-    expect(households).toBeNull();
-    // households가 null이면 main에서 rpt.skip(1) + continue
+    await expect(fetchBassInfo("K999")).rejects.toThrow("timeout");
   });
 });
 
@@ -490,8 +512,11 @@ describe("wall-clock budget 박힘 (회귀 가드)", () => {
     expect(matches?.length ?? 0).toBe(2);
   });
 
-  it("내부 loop 가 budgetHit 로 끊긴 뒤 region loop 도 종료 (외부 break)", () => {
-    expect(src).toMatch(/if \(budgetHit\) break;/);
+  // 세션589 보완 B8: 시도 목록 단계 → 짝 고르기 → 처리 단계로 나뉘어 "region loop" 가 없어졌다.
+  // 옛 시험(`if (budgetHit) break;`)은 그 구조를 지켰다 — 이제 두 단계가 **각자** 예산을 본다(위 2회 시험)는 것과
+  // 처리 단계 반복이 예산 검사를 단지마다 지나는지를 본다.
+  it("처리 단계(짝이 붙은 단지 반복)가 단지마다 예산을 본다", () => {
+    expect(src).toMatch(/for \(let i = 0; i < selected\.length; i\+\+\) \{[\s\S]{0,200}if \(budgetExceeded\(startedAt, budgetMin\)\) \{ budgetHit = true; break; \}/);
   });
 
   it("기본 예산 100분 (120분 job timeout 미만 — SIGKILL 레이스 회피)", () => {
@@ -721,5 +746,224 @@ describe("main() — 세션589 게이트 실전 경로", () => {
     expect(rec.status).toBe("failure");
     expect(rec.errorMessage).toMatch(/^KAPT_RESULT_04/);
     expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+});
+
+// ── main() — 세션589 보완(B1·B3·B4·B8·MA3·MA6) ─────────────────────────────
+describe("main() — 2u 창 · 실패 판정 · --limit 은 짝이 붙은 단지만 (세션589 보완)", () => {
+  /** 2026-10-15 05:30 KST — 창 밖 */
+  const NOW = new Date("2026-10-14T20:30:00Z");
+  /** @param {string} hhmm KST 2026-10-15 의 시각 */
+  const kst = (hhmm) => new Date(`2026-10-15T${hhmm}:00+09:00`);
+  const BJD = "4159510500";
+  /** 짝이 붙는 이름 5개 + 경기 목록 */
+  const NAMES = ["가람마을한신휴플러스", "나래울푸르지오", "다솔마을우남퍼스트빌", "라온프라이빗", "마루힐스테이트"];
+  const LIST = NAMES.map((n, i) => ({ kaptCode: `K-${i}`, kaptName: n, bjdCode: BJD, as1: "경기도", as2: "화성병점구", as3: "반월동" }));
+  /** @type {any} */
+  let exitSpy;
+  /** @type {{ ok: number; fail: number; skip: number }} */
+  let counts;
+
+  /**
+   * @param {string} id @param {string} name @param {string | null} completion @param {string | null} updatedAt
+   * @param {string} [region]
+   */
+  const row = (id, name, completion, updatedAt, region = "경기") => ({ id, name, region, gu: "화성시", units: null, updated_at: updatedAt,
+    completion, bjd_code: BJD, avg_maintenance_cost: null, maint_heat: null, maint_hotwater: null, maint_gas: null, maint_elec: null, maint_water: null });
+
+  /** @param {any[]} rows */
+  function makeSb(rows) {
+    /** @type {Array<{ id: string; row: any }>} */
+    const updates = [];
+    const sb = {
+      from: () => ({
+        select: () => ({ or: () => ({ order: () => ({ limit: () => ({
+          gt: () => Promise.resolve({ data: [], error: null }),
+          /** @param {any} res @param {any} rej */
+          then: (res, rej) => Promise.resolve({ data: rows, error: null }).then(res, rej),
+        }) }) }) }),
+        /** @param {any} r */
+        update: (r) => ({ eq: (/** @type {string} */ _c, /** @type {string} */ id) => { updates.push({ id, row: r }); return Promise.resolve({ error: null }); } }),
+      }),
+    };
+    return { sb, updates };
+  }
+
+  /**
+   * K-apt 호출 흉내. `bassFail(kaptCode, n)` 이 오류를 돌려주면 그 기본정보 호출이 던진다(n = 몇 번째 기본정보 호출인지, 1부터).
+   * @param {{ bassFail?: (kaptCode: string, n: number) => Error | null }} [o]
+   */
+  function route(o = {}) {
+    let bassN = 0;
+    mockMolitApiCall.mockImplementation(async (/** @type {string} */ _p, /** @type {string} */ _b, /** @type {string} */ ep, /** @type {any} */ params) => {
+      if (ep === "getAphusBassInfoV5") {
+        bassN++;
+        const e = o.bassFail?.(params.kaptCode, bassN);
+        if (e) throw e;
+        return { response: { body: { item: { kaptdaCnt: "100", kaptUsedate: "20180629" } } } };
+      }
+      return { response: { body: { item: { heatP: "10000000", waterHotP: "1", gasP: "1", electP: "1", waterCoolP: "1" } } } };
+    });
+  }
+  const bassCalls = () => mockMolitApiCall.mock.calls.filter((c) => c[2] === "getAphusBassInfoV5").map((c) => c[3].kaptCode);
+
+  /** @param {string[]} extra */
+  async function runMain(extra = [], opts = {}) {
+    const before = process.argv.length;
+    process.argv.push(...extra);
+    try { await main({ now: NOW, ...opts }); } finally { process.argv.splice(before); }
+  }
+
+  beforeEach(() => {
+    mockMolitApiCall.mockReset();
+    mockFetchSidoAptList.mockReset();
+    recordCollectorRun.mockClear();
+    counts = { ok: 0, fail: 0, skip: 0 };
+    createReporter.mockImplementation(() => ({
+      success: (/** @type {number} */ n) => { counts.ok += n; },
+      fail: (/** @type {number} */ n) => { counts.fail += n; },
+      skip: (/** @type {number} */ n) => { counts.skip += n; },
+      interrupted: () => false,
+      summary: () => ({ elapsed: "0.0", ...counts, total: counts.ok + counts.fail + counts.skip, status: counts.fail > 0 ? "failure" : "success" }),
+    }));
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+  });
+  afterEach(() => { exitSpy.mockRestore(); });
+
+  it("B8 — --limit=1 이면 짝이 안 붙는 (더 오래된) 단지는 자리를 안 차지하고 짝이 붙은 단지를 처리한다", async () => {
+    const { sb, updates } = makeSb([
+      row("nomatch", "전혀관계없는이름의단지", "201806", null), // 가장 오래됨(null) · 입주 후 · 짝 없음
+      row("hit", NAMES[0], "201806", "2026-01-01T00:00:00Z"),
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route();
+    await runMain(["--limit=1"]);
+    expect(updates.map((u) => u.id)).toEqual(["hit"]);
+    expect(counts.skip).toBe(1); // 짝 없음 1곳
+  });
+
+  it("MA3 — --limit=1 이면 입주 전 (더 오래된) 단지는 자르기 전에 빠져 자리를 안 차지한다", async () => {
+    const { sb, updates } = makeSb([
+      row("pre", NAMES[0], "202711", null), // 가장 오래됨 · 입주 전
+      row("hit", NAMES[1], "201806", "2026-01-01T00:00:00Z"),
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route();
+    await runMain(["--limit=1"]);
+    expect(updates.map((u) => u.id)).toEqual(["hit"]);
+    expect(bassCalls()).toEqual(["K-1"]);
+  });
+
+  it("B8 — 호출 수 상한은 그대로: --limit=2 면 짝이 붙은 2곳 × (기본정보 1 + 관리비 5) + 목록 1", async () => {
+    const { sb, updates } = makeSb([
+      row("x1", "전혀관계없는이름의단지", "201806", null),
+      row("x2", "또다른엉뚱한이름단지", "201806", null),
+      row("a", NAMES[0], "201806", "2026-01-01T00:00:00Z"),
+      row("b", NAMES[1], "201806", "2026-01-02T00:00:00Z"),
+      row("c", NAMES[2], "201806", "2026-01-03T00:00:00Z"),
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route();
+    await runMain(["--limit=2"]);
+    expect(updates.map((u) => u.id)).toEqual(["a", "b"]);
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(12);
+    expect(mockFetchSidoAptList).toHaveBeenCalledTimes(1);
+  });
+
+  it("MA6 — 시도 목록이 04 면 회차를 멈춘다(다른 시도 목록·기본정보를 부르지 않는다)", async () => {
+    const { sb, updates } = makeSb([row("a", NAMES[0], "201806", null), row("s", "서울단지", "201001", null, "서울")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockRejectedValue(new KaptResultError("04", "HTTP_ERROR", "getSidoAptList4"));
+    route();
+    await main({ now: NOW });
+    expect(mockFetchSidoAptList).toHaveBeenCalledTimes(1);
+    expect(mockMolitApiCall).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.status).toBe("failure");
+    expect(rec.errorMessage).toMatch(/^KAPT_RESULT_04/);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("B1 — 시작이 창 5분 전 안(06:16)이면 K-apt 를 부르지 않고 SIBLING_KAPT_WINDOW 로 남긴다", async () => {
+    const { sb, updates } = makeSb([row("a", NAMES[0], "201806", null), row("b", NAMES[1], "201806", null)]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route();
+    await main({ now: NOW, clock: () => kst("06:16") });
+    expect(mockFetchSidoAptList).not.toHaveBeenCalled();
+    expect(mockMolitApiCall).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.errorMessage).toMatch(/^SIBLING_KAPT_WINDOW/);
+    expect(rec.status).toBe("success");
+    expect(rec.skip).toBe(2);
+    expect(exitSpy).not.toHaveBeenCalled();
+  });
+
+  it("B1 — 06:14 에는 계속, 다음 단지 차례가 06:16 이면 그 자리에서 멈춘다(남은 단지는 skip)", async () => {
+    const { sb, updates } = makeSb([row("a", NAMES[0], "201806", null), row("b", NAMES[1], "201806", "2026-01-01T00:00:00Z"), row("c", NAMES[2], "201806", "2026-01-02T00:00:00Z")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route();
+    const times = [kst("06:10"), kst("06:14"), kst("06:16")]; // 목록 · 단지 a · 단지 b
+    let k = 0;
+    await main({ now: NOW, clock: () => times[Math.min(k++, times.length - 1)] });
+    expect(updates.map((u) => u.id)).toEqual(["a"]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.errorMessage).toMatch(/^SIBLING_KAPT_WINDOW .*남은 2곳/);
+    expect(rec.skip).toBe(2);
+  });
+
+  it("B4 — 결과 코드가 아닌 실패(시간 초과)를 실패로 세고, 연속 5건이면 KAPT_FETCH_FAIL 로 멈춘다", async () => {
+    const rows = NAMES.map((n, i) => row(`r${i}`, n, "201806", `2026-01-0${i + 1}T00:00:00Z`));
+    rows.push(row("r5", "가람마을한신휴플러스2단지", "201806", "2026-01-09T00:00:00Z"));
+    const { sb, updates } = makeSb(rows);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue([...LIST, { kaptCode: "K-5", kaptName: "가람마을한신휴플러스2단지", bjdCode: BJD, as2: "화성병점구" }]);
+    route({ bassFail: () => new Error("getAphusBassInfoV5: 1회 재시도 소진 (마지막 상태: 0)") });
+    await main({ now: NOW });
+    expect(bassCalls()).toHaveLength(5); // 여섯째는 부르지 않는다
+    expect(updates).toEqual([]);
+    expect(counts.fail).toBe(5);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.status).toBe("failure");
+    expect(rec.errorMessage).toMatch(/^KAPT_FETCH_FAIL 연속 5건/);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("B4 — 4건 실패 뒤 성공이 끼면 계속 간다(연속 수 초기화)", async () => {
+    const { sb, updates } = makeSb(NAMES.map((n, i) => row(`r${i}`, n, "201806", `2026-01-0${i + 1}T00:00:00Z`)));
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ bassFail: (_c, n) => (n <= 4 ? new Error("AbortError: timeout") : null) });
+    await main({ now: NOW });
+    expect(updates.map((u) => u.id)).toEqual(["r4"]);
+    expect(counts.fail).toBe(4);
+    expect(recordCollectorRun.mock.calls.at(-1)[1].errorMessage ?? null).toBeNull();
+  });
+
+  it("B3 — 매개변수 코드(10)는 그 단지만 실패로 세고 다음 단지는 처리한다", async () => {
+    const { sb, updates } = makeSb([row("a", NAMES[0], "201806", null), row("b", NAMES[1], "201806", "2026-01-01T00:00:00Z")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ bassFail: (c) => (c === "K-0" ? new KaptResultError("10", "INVALID_REQUEST_PARAMETER_ERROR", "getAphusBassInfoV5") : null) });
+    await main({ now: NOW });
+    expect(updates.map((u) => u.id)).toEqual(["b"]);
+    expect(counts.fail).toBe(1);
+  });
+
+  it("B3 — fatal 코드(22)는 첫 단지에서 멈춘다", async () => {
+    const { sb, updates } = makeSb([row("a", NAMES[0], "201806", null), row("b", NAMES[1], "201806", "2026-01-01T00:00:00Z")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ bassFail: () => new KaptResultError("22", "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR", "getAphusBassInfoV5") });
+    await main({ now: NOW });
+    expect(bassCalls()).toEqual(["K-0"]);
+    expect(updates).toEqual([]);
+    expect(recordCollectorRun.mock.calls.at(-1)[1].errorMessage).toMatch(/^KAPT_RESULT_22/);
   });
 });

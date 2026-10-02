@@ -22,9 +22,9 @@ import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown, today, clampUnsoldRate } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY, KAPT_LIST_PAGE_SIZE,
-  molitApiCall, fetchSidoAptList, KaptResultError,
+  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate,
 } from "./_molit-api.mjs";
-import { pickKaptMatch, usedateConsistent, inSiblingKaptWindow } from "./_match-gates.mjs";
+import { pickKaptMatch, usedateConsistent, inSiblingKaptWindow, siblingKaptWindowText } from "./_match-gates.mjs";
 
 /** @typedef {import("@supabase/supabase-js").SupabaseClient} SupabaseClient */
 /** @typedef {{ id: string; name: string; region: string; gu: string | null; address: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; unit_source: string | null; completion: string | null; bjd_code: string | null }} TargetApt */
@@ -199,7 +199,7 @@ export async function main(opts = {}) {
   //      흔들려 2u 의 12:40~15:15 K-apt 회차와 겹칠 수 있다 — 같은 열쇠라 합계가 K-apt 한계를 넘는다.
   //      대상은 그대로 남아 다음 회차(목요일·매월 6일 05:30)가 처리한다. skip 으로 흔적을 남긴다.
   if (inSiblingKaptWindow(now)) {
-    const msg = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST 06:20~08:25·12:40~15:15·21:00~23:30)이라 건너뜀 — 대상 ${targets.length}건 다음 회차로`;
+    const msg = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST ${siblingKaptWindowText()})이라 건너뜀 — 대상 ${targets.length}건 다음 회차로`;
     log(PHASE, msg);
     await recordCollectorRun(PHASE, { ok: 0, skip: targets.length, fail: 0, errorMessage: msg });
     return;
@@ -226,8 +226,9 @@ export async function main(opts = {}) {
   let apiCalls = 0;
   /** @type {UnmatchedEntry[]} 미매칭 단지 목록 — 파일로 남겨 사후 추적 가능하게 (세션 495) */
   const unmatchedList = [];
-  /** @type {KaptResultError | null} K-apt 결과 코드 실패 — 회차를 즉시 멈춘다(세션589 R2) */
-  let kaptAbort = null;
+  /** @type {string | null} 회차 중단 사유 — K-apt 결과 코드·연속 실패(세션589 R2·보완 B3·B4). error_message 로 남는다 */
+  let abortMessage = null;
+  const gate = createKaptFailureGate();
 
   regionLoop: for (const [region, group] of Object.entries(groups)) {
     if (isInterrupted()) break;  // 세션 344: graceful shutdown (외부 region loop)
@@ -238,11 +239,14 @@ export async function main(opts = {}) {
     try {
       aptList = await fetchSidoAptList(PHASE, group.sidoCode, API_KEY_SAFE);
       apiCalls += Math.ceil(aptList.length / KAPT_LIST_PAGE_SIZE) || 1;
+      gate.success();
       log(PHASE, `  API 단지 목록: ${aptList.length}건`);
     } catch (err) {
       logError(PHASE, `  API 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
       failed += group.targets.length;
-      if (err instanceof KaptResultError) { apiCalls++; kaptAbort = err; break; }
+      if (err instanceof KaptResultError) apiCalls++;
+      const stop = gate.failure(err);
+      if (stop) { abortMessage = stop; break; }
       continue;
     }
 
@@ -279,6 +283,7 @@ export async function main(opts = {}) {
         await sleep(REQUEST_DELAY);
         const detail = await fetchAptDetail(kaptCode);
         apiCalls++;
+        gate.success(); // K-apt 호출이 됐다 — 연속 실패 수를 0 으로
         if (!detail) {
           log(PHASE, `    → 상세 조회 실패`);
           unmatched++;
@@ -316,13 +321,16 @@ export async function main(opts = {}) {
       } catch (err) {
         logError(PHASE, `    → 상세 조회 에러: ${err instanceof Error ? err.message : String(err)}`);
         failed++;
-        if (err instanceof KaptResultError) { apiCalls++; kaptAbort = err; break regionLoop; }
+        if (err instanceof KaptResultError) apiCalls++;
+        // 일시·fatal 코드는 즉시, 10·11 과 결과 코드 아닌 실패는 연속 5건이면 회차를 멈춘다(세션589 보완 B3·B4)
+        const stop = gate.failure(err);
+        if (stop) { abortMessage = stop; break regionLoop; }
       }
     }
   }
 
-  if (kaptAbort) {
-    logError(PHASE, `K-apt 결과 코드 ${kaptAbort.code}${kaptAbort.transient ? "(일시 오류)" : ""} — 회차 중단(벌칙 중 계속 부르면 길어진다). 남은 대상은 다음 회차`);
+  if (abortMessage) {
+    logError(PHASE, `${abortMessage} — 회차 중단(벌칙 중 계속 부르면 길어진다). 남은 대상은 다음 회차`);
   }
 
   log(PHASE, `\n=== 완료 ===`);
@@ -336,8 +344,8 @@ export async function main(opts = {}) {
   // "이름을 못 찾음"·"세대수 못 씀" 은 둘 다 장애가 아닌 건너뜀이라 같은 칸이 맞다.
   // 합산 전에는 미매칭이 어느 칸에도 안 들어가 ok=0·skip=0 인 실행이 monitor ② 에 "성공인데
   // 처리 0건" 으로 잡히거나, 반대로 수백 건이 조용히 증발해도 기록만 보면 멀쩡해 보였다 (세션 495).
-  // K-apt 결과 코드 실패는 error_message 머리말 KAPT_RESULT_<코드> 로 남긴다(세션589 R2).
-  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed, errorMessage: kaptAbort ? kaptAbort.message : null });
+  // 회차 중단은 error_message 머리말 KAPT_RESULT_<코드> · KAPT_FETCH_FAIL 로 남긴다(세션589 R2·보완 B4).
+  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed, errorMessage: abortMessage });
   if (failed > 0) process.exit(1);   // 진짜 장애만 — 미매칭은 정상 종료
 }
 
