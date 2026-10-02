@@ -26,7 +26,9 @@ const {
   cleanName, findBestMatch, molitApiCall, fetchSidoAptList,
   SIDO_CODE, MIN_SIMILARITY, REQUEST_DELAY,
   API_LIST_BASE, API_DETAIL_BASE,
+  KAPT_MIN_INTERVAL_MS, KAPT_LIST_PAGE_SIZE, KaptResultError,
 } = await import("./_molit-api.mjs");
+const { sleep } = /** @type {any} */ (await import("./_shared.mjs"));
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
 function jsonRes(/** @type {any} */ body, /** @type {any} */ status = 200) {
@@ -258,17 +260,30 @@ describe("fetchSidoAptList", () => {
     expect(result[0].kaptCode).toBe("K0");
   });
 
-  it("다중 페이지 → 누적 반환 + 종료조건 검증", async () => {
-    const page1 = Array.from({ length: 500 }, (_, i) => ({ kaptCode: `A${i}` }));
+  // 세션589 R1: 쪽 크기 500 → 6000(경기 5,665건이 한 번에 온다 — 500씩 12콜이 K-apt 속도 제한을 앞당겼다).
+  // 옛 시험은 500/502 였다 — 쪽 크기가 바뀌어 "가득 찬 쪽" 기준이 6000 이 됐다.
+  it("다중 페이지(총 건수 > 6000) → 누적 반환 + 종료조건 검증", async () => {
+    const page1 = Array.from({ length: 6000 }, (_, i) => ({ kaptCode: `A${i}` }));
     const page2 = [{ kaptCode: "B0" }, { kaptCode: "B1" }];
 
     mockFetch
-      .mockResolvedValueOnce(jsonRes({ response: { body: { totalCount: 502, items: page1 } } }))
-      .mockResolvedValueOnce(jsonRes({ response: { body: { totalCount: 502, items: page2 } } }));
+      .mockResolvedValueOnce(jsonRes({ response: { body: { totalCount: 6002, items: page1 } } }))
+      .mockResolvedValueOnce(jsonRes({ response: { body: { totalCount: 6002, items: page2 } } }));
 
     const result = await fetchSidoAptList("test", "11", "key");
-    expect(result).toHaveLength(502);
-    expect(result[500].kaptCode).toBe("B0");
+    expect(result).toHaveLength(6002);
+    expect(result[6000].kaptCode).toBe("B0");
+    expect(mockFetch.mock.calls[1][0]).toContain("pageNo=2");
+  });
+
+  it("경기 규모(5,665건)는 numOfRows=6000 한 번으로 끝난다 (세션589 R1)", async () => {
+    const items = Array.from({ length: 5665 }, (_, i) => ({ kaptCode: `G${i}` }));
+    mockFetch.mockResolvedValueOnce(jsonRes({ response: { body: { totalCount: 5665, items } } }));
+    const result = await fetchSidoAptList("test", "41", "key");
+    expect(result).toHaveLength(5665);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+    expect(mockFetch.mock.calls[0][0]).toContain(`numOfRows=${KAPT_LIST_PAGE_SIZE}`);
+    expect(KAPT_LIST_PAGE_SIZE).toBe(6000);
   });
 
   // 엣지케이스
@@ -302,5 +317,141 @@ describe("SIDO_CODE — 전남광주통합특별시 (세션545)", () => {
   it("키는 여전히 17개 (지역이 줄어든 게 아니라 코드를 공유할 뿐)", () => {
     expect(Object.keys(SIDO_CODE)).toHaveLength(17);
     expect(new Set(Object.values(SIDO_CODE)).size).toBe(16);
+  });
+});
+
+// ── 강원·전북 시도 코드 (세션589 V7) ─────────────────────────────
+// 강원 2023-06 → 51 · 전북 2024-01 → 52. 옛 42·45 는 K-apt 목록이 0건이라 두 도가 통째로 빠져 있었다
+// (조사반 G 실측). 첫 회차에 강원 67·전북 41곳이 처음 매칭 대상이 된다 — 게이트를 지난 짝만 붙는다.
+describe("SIDO_CODE — 강원 51 · 전북 52 (세션589)", () => {
+  it("강원 '51' · 전북 '52'", () => {
+    expect(SIDO_CODE["강원"]).toBe("51");
+    expect(SIDO_CODE["전북"]).toBe("52");
+  });
+  it("옛 코드 42·45 는 어느 지역에도 안 남아 있다", () => {
+    expect(Object.values(SIDO_CODE)).not.toContain("42");
+    expect(Object.values(SIDO_CODE)).not.toContain("45");
+  });
+});
+
+// ── K-apt 호출 간격 1.5초 (세션589 R1) ───────────────────────────
+// 2u 인계(2026-10-01): 0.3초 간격이면 33번째 콜부터 약 10분간 K-apt 전체가 04. 1.5초는 400콜·10분 통과.
+// 간격은 모듈 안 "마지막 K-apt 호출 시각" 기준이라 세 서비스(목록·기본정보·관리비)가 함께 지킨다.
+describe("K-apt 호출 간격 (KAPT_MIN_INTERVAL_MS)", () => {
+  beforeEach(() => { mockFetch.mockReset(); sleep.mockClear(); });
+
+  it("1500ms 로 고정", () => { expect(KAPT_MIN_INTERVAL_MS).toBe(1500); });
+
+  it("같은 시각에 연달아 부르면 두 번째 호출 전에 1500ms 를 기다린다", async () => {
+    const spy = vi.spyOn(Date, "now").mockReturnValue(9_000_000_000_000);
+    try {
+      mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "00" }, body: {} } }));
+      await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: "A1" }, "k");
+      expect(sleep).not.toHaveBeenCalledWith(1500);
+      await molitApiCall("t", API_LIST_BASE, "getSidoAptList4", { sidoCode: "41" }, "k");
+      expect(sleep).toHaveBeenCalledWith(1500);
+    } finally { spy.mockRestore(); }
+  });
+
+  it("직전 호출에서 1000ms 지났으면 나머지 500ms 만 기다린다 · 1500ms 넘게 지났으면 안 기다린다", async () => {
+    let t = 9_100_000_000_000;
+    const spy = vi.spyOn(Date, "now").mockImplementation(() => t);
+    try {
+      mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "00" }, body: {} } }));
+      await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: "A1" }, "k");
+      t += 1000;
+      sleep.mockClear();
+      await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: "A2" }, "k");
+      expect(sleep).toHaveBeenCalledWith(500);
+      t += 2000;
+      sleep.mockClear();
+      await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode: "A3" }, "k");
+      expect(sleep).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+
+  it("관리비 서비스(AptIndvdlzManageCostServiceV3)도 같은 간격을 탄다", async () => {
+    const spy = vi.spyOn(Date, "now").mockReturnValue(9_200_000_000_000);
+    try {
+      mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "00" }, body: {} } }));
+      const COST = "https://apis.data.go.kr/1613000/AptIndvdlzManageCostServiceV3";
+      await molitApiCall("t", COST, "getHsmpHeatCostInfoV3", {}, "k");
+      await molitApiCall("t", COST, "getHsmpGasRentalFeeInfoV3", {}, "k");
+      expect(sleep).toHaveBeenCalledWith(1500);
+    } finally { spy.mockRestore(); }
+  });
+
+  it("K-apt 가 아닌 서비스(건축HUB 등)는 간격을 안 탄다", async () => {
+    const spy = vi.spyOn(Date, "now").mockReturnValue(9_300_000_000_000);
+    try {
+      mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "00" }, body: {} } }));
+      const HUB = "https://apis.data.go.kr/1613000/BldEngyHubService";
+      await molitApiCall("t", HUB, "ep", {}, "k");
+      await molitApiCall("t", HUB, "ep", {}, "k");
+      expect(sleep).not.toHaveBeenCalled();
+    } finally { spy.mockRestore(); }
+  });
+});
+
+// ── 결과 코드 검사 (세션589 R2) ──────────────────────────────────
+// 옛 동작: HTTP 200 + JSON 이면 그대로 돌려줘 04(속도 제한)가 "목록 0건·건너뛰기"로 사라졌다.
+// 코드 위치 = 정상 모양 response.header.resultCode · 오류 봉투 cmmMsgHeader.returnReasonCode(JSON/XML).
+// 코드 뜻 = 2u backend/crawler/kapt_api.py (03 = 자료 없음만 빈 결과).
+describe("molitApiCall — 결과 코드", () => {
+  beforeEach(() => { mockFetch.mockReset(); });
+
+  it("resultCode 04 → KaptResultError(코드 04 · 일시 오류) · 재시도 없이 즉시", async () => {
+    mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "04", resultMsg: "HTTP_ERROR" }, body: {} } }));
+    const err = await molitApiCall("t", API_LIST_BASE, "getSidoAptList4", {}, "k").catch((e) => e);
+    expect(err).toBeInstanceOf(KaptResultError);
+    expect(err.code).toBe("04");
+    expect(err.transient).toBe(true);
+    expect(err.message).toMatch(/^KAPT_RESULT_04/);
+    expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("오류 봉투(OpenAPI_ServiceResponse.cmmMsgHeader) 04 → KaptResultError", async () => {
+    mockFetch.mockResolvedValue(jsonRes({ OpenAPI_ServiceResponse: { cmmMsgHeader: { errMsg: "HTTP_ERROR", returnAuthMsg: "HTTP 에러", returnReasonCode: "04" } } }));
+    const err = await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch((e) => e);
+    expect(err).toBeInstanceOf(KaptResultError);
+    expect(err.code).toBe("04");
+  });
+
+  it("최상위 cmmMsgHeader 22(한도 초과) → KaptResultError(일시 오류 아님)", async () => {
+    mockFetch.mockResolvedValue(jsonRes({ cmmMsgHeader: { errMsg: "LIMITED_NUMBER_OF_SERVICE_REQUESTS_EXCEEDS_ERROR", returnReasonCode: 22 } }));
+    const err = await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch((e) => e);
+    expect(err).toBeInstanceOf(KaptResultError);
+    expect(err.code).toBe("22");
+    expect(err.transient).toBe(false);
+  });
+
+  it("XML 오류 봉투의 returnReasonCode 05 → KaptResultError", async () => {
+    mockFetch.mockResolvedValue(xmlRes("<OpenAPI_ServiceResponse><cmmMsgHeader><errMsg>SERVICE ERROR</errMsg><returnAuthMsg>SERVICETIMEOUT_ERROR</returnAuthMsg><returnReasonCode>05</returnReasonCode></cmmMsgHeader></OpenAPI_ServiceResponse>"));
+    const err = await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch((e) => e);
+    expect(err).toBeInstanceOf(KaptResultError);
+    expect(err.code).toBe("05");
+    expect(err.transient).toBe(true);
+  });
+
+  it("resultCode 03(자료 없음) → 예외 없이 빈 결과", async () => {
+    mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "03", resultMsg: "NODATA_ERROR" }, body: { item: { kaptCode: "X" } } } }));
+    const json = /** @type {any} */ (await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k"));
+    expect(json?.response?.body?.item).toBeUndefined();
+  });
+
+  it("목록에서 03 → 빈 목록(실패 아님)", async () => {
+    mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "03" }, body: { totalCount: 5, items: [{ kaptCode: "X" }] } } }));
+    expect(await fetchSidoAptList("t", "41", "k")).toEqual([]);
+  });
+
+  it("목록에서 04 → 빈 목록으로 삼키지 않고 던진다", async () => {
+    mockFetch.mockResolvedValue(jsonRes({ response: { header: { resultCode: "04" }, body: { totalCount: 0, items: [] } } }));
+    await expect(fetchSidoAptList("t", "41", "k")).rejects.toBeInstanceOf(KaptResultError);
+  });
+
+  it("resultCode 00(문자열·숫자 0) → 그대로", async () => {
+    const body = { response: { header: { resultCode: 0 }, body: { item: { kaptCode: "X" } } } };
+    mockFetch.mockResolvedValue(jsonRes(body));
+    expect(await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k")).toEqual(body);
   });
 });
