@@ -28,9 +28,11 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // molitApiCall 을 부르므로 따로 바꿔 둔다 — main() 경로 시험용, 세션589)
 const mockMolitApiCall = vi.fn();
 const mockFetchSidoAptList = vi.fn();
+/** 일시 코드 재시도 누적 카운터(재검사 🟡2) — molitApiCall 을 흉내 내므로 이것도 흉내 낸다 */
+const mockRetryCount = vi.fn(() => 0);
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList };
+  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList, kaptTransientRetryCount: mockRetryCount };
 });
 
 // MOLIT_KEY 설정 — process.exit 방지
@@ -38,7 +40,7 @@ process.env.MOLIT_KEY = "test-key";
 
 const { getTargets, fetchAptDetail, updateUnits, resolveUnits, writeUnmatchedLog, unmatchedLogPath, main } =
   await import("./molit-units.mjs");
-const { getSupabase, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { getSupabase, recordCollectorRun, recordApiQuota } = /** @type {any} */ (await import("./_shared.mjs"));
 const { KaptResultError } = await import("./_molit-api.mjs");
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
@@ -370,7 +372,9 @@ describe("main() — 세션589 게이트 실전 경로", () => {
     dir = mkdtempSync(join(tmpdir(), "molit-units-main-"));
     mockMolitApiCall.mockReset();
     mockFetchSidoAptList.mockReset();
+    mockRetryCount.mockImplementation(() => 0);
     recordCollectorRun.mockClear();
+    recordApiQuota.mockClear();
     exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
   });
   afterEach(() => { rmSync(dir, { recursive: true, force: true }); exitSpy.mockRestore(); });
@@ -466,6 +470,41 @@ describe("main() — 세션589 게이트 실전 경로", () => {
     expect(recordCollectorRun.mock.calls.at(-1)[1].errorMessage).toMatch(/^SIBLING_KAPT_WINDOW .*매월 21일 14:50~21:00/);
   });
 
+  it("R3 앞당김(재검사 🟡4) — 창 시작 5분 전 안(12:36 KST)에 시작하면 건너뛰고, 6분 전(12:34)이면 진행", async () => {
+    const { sb } = makeMainSb([target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ "K-SDT": { kaptdaCnt: 612, kaptUsedate: "20180629" } });
+    await main({ now: new Date("2026-10-12T03:36:00Z"), unmatchedLogDir: dir }); // 12:36 KST
+    expect(mockFetchSidoAptList).not.toHaveBeenCalled();
+    // 시작 때 판정(시도 차례 판정이 아니라) — 옛 기록 형식 "…이라 건너뜀 — 대상 N건 다음 회차로" 그대로
+    expect(recordCollectorRun.mock.calls.at(-1)[1]).toMatchObject({ ok: 0, skip: 1, fail: 0, errorMessage: expect.stringMatching(/^SIBLING_KAPT_WINDOW 2u K-apt 창.*건너뜀 — 대상 1건 다음 회차로$/) });
+
+    await main({ now: new Date("2026-10-12T03:34:00Z"), unmatchedLogDir: dir }); // 12:34 KST
+    expect(mockFetchSidoAptList).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun.mock.calls.at(-1)[1]).toMatchObject({ ok: 1, errorMessage: null });
+  });
+
+  it("R3 앞당김 — 시도 목록마다 다시 본다: 둘째 시도 차례에 창 5분 전이면 멈추고 남은 대상을 skip 으로", async () => {
+    const { sb, updates } = makeMainSb([
+      target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시"),
+      { ...target("s1", "서울단지", "201001", "1111010100", "종로구"), region: "서울" },
+      { ...target("s2", "서울단지2", "201001", "1111010100", "종로구"), region: "서울" },
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ "K-SDT": { kaptdaCnt: 612, kaptUsedate: "20180629" } });
+    const times = ["2026-10-12T03:30:00Z", "2026-10-12T03:30:00Z", "2026-10-12T03:36:00Z"]; // 12:30 · 12:30 · 12:36 KST
+    let i = 0;
+    const clock = () => new Date(times[Math.min(i++, times.length - 1)]);
+    await main({ now: NOW, clock, unmatchedLogDir: dir });
+    expect(mockFetchSidoAptList).toHaveBeenCalledTimes(1); // 경기만
+    expect(updates.map((u) => u.id)).toEqual(["a"]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec).toMatchObject({ ok: 1, skip: 2, fail: 0 });
+    expect(rec.errorMessage).toMatch(/^SIBLING_KAPT_WINDOW 2u K-apt 창.*남은 2곳/);
+  });
+
   /** @param {(n: number) => Error | null} failAt n = 몇 번째 기본정보 호출(1부터) */
   function routeFail(failAt) {
     let n = 0;
@@ -489,6 +528,40 @@ describe("main() — 세션589 게이트 실전 경로", () => {
     const rec = recordCollectorRun.mock.calls.at(-1)[1];
     expect(rec.fail).toBe(1);
     expect(rec.errorMessage).toBeNull();
+  });
+
+  // 재검사 🟡2 — 쿼터 기록(recordApiQuota 셋째 인자)은 던진 호출도 1회로 세고, 일시 재시도로 더 나간 호출을 더한다.
+  const quotaOf = () => recordApiQuota.mock.calls.at(-1)?.[2];
+  it("쿼터 셈 — 목록 호출 1건이 (결과 코드 아닌 실패로) 던지면 기록 1", async () => {
+    const { sb } = makeMainSb([target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockRejectedValue(new Error("getSidoAptList4: 3회 재시도 소진 (마지막 상태: 0)"));
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(quotaOf()).toBe(1);
+  });
+
+  it("쿼터 셈 — 기본정보가 던지면 목록 1 + 기본정보 1 = 2", async () => {
+    const { sb } = makeMainSb([target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ "K-SDT": new Error("getAphusBassInfoV5: 3회 재시도 소진 (마지막 상태: 429)") });
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(quotaOf()).toBe(2);
+  });
+
+  it("쿼터 셈 — 기본정보가 04 두 번 재시도 뒤 성공(누적 카운터 +2)이면 목록 1 + 기본정보 1 + 재시도 2 = 4", async () => {
+    const { sb } = makeMainSb([target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    let retries = 10; // 회차 시작 전 누적값(앞 회차 몫) — 차이만 더해야 한다
+    mockRetryCount.mockImplementation(() => retries);
+    mockMolitApiCall.mockImplementation(async () => {
+      retries += 2;
+      return { response: { header: { resultCode: "00" }, body: { item: { kaptdaCnt: 612, kaptUsedate: "20180629" } } } };
+    });
+    await main({ now: NOW, unmatchedLogDir: dir });
+    mockRetryCount.mockImplementation(() => 0);
+    expect(quotaOf()).toBe(4);
   });
 
   it("B4 — 결과 코드 아닌 실패가 연속 5건이면 KAPT_FETCH_FAIL 로 멈춘다(여섯째는 안 부른다)", async () => {

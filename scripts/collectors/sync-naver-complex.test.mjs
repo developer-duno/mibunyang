@@ -1280,4 +1280,65 @@ describe("세션589 짝 짓기 게이트 — Phase 1(N2)·Phase 4(N1·V6) 실전
       expect("primary_direction" in row).toBe(false);
     }
   });
+
+  // ── Phase 2 매물 수(F7 — 세션589 후속) ─────────────────────────────
+  // 옛 Phase 2: 이름 0.6(전국·거리 없음) 짝마다 매물 수를 **무조건** 써서 짝이 여럿이면 마지막 단지가 이겼다
+  // (라이브 1,343곳 중 400곳이 엉뚱한 단지 값 — 메인 실측). 이제 Phase 4 와 같은 N1 게이트.
+  /** 매매 N · 전세 M 매물. @param {string} complexNo @param {number} sell @param {number} [jeonse] */
+  const sells = (complexNo, sell, jeonse = 0) => [
+    ...Array.from({ length: sell }, (_, i) => ({ article_no: `${complexNo}-S${i}`, complex_no: complexNo, area1_m2: null, area2_m2: null,
+      direction: null, building_name: null, trade_type_name: "매매", floor_info: null, numeric_maintenance_cost: null })),
+    ...Array.from({ length: jeonse }, (_, i) => ({ article_no: `${complexNo}-J${i}`, complex_no: complexNo, area1_m2: null, area2_m2: null,
+      direction: null, building_name: null, trade_type_name: "전세", floor_info: null, numeric_maintenance_cost: null })),
+  ];
+  const sellWrites = (/** @type {Array<{ id: string; row: Record<string, unknown> }>} */ calls, /** @type {string} */ id) =>
+    calls.filter((u) => u.id === id && ("naver_sell_count" in u.row || "naver_jeonse_count" in u.row || "naver_wolse_count" in u.row));
+
+  it("Phase 2 ① 16km 밖 동명 단지의 매물 수는 붙지 않는다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-16km", "평촌롯데캐슬", 0.144)], // ≈ 16km
+      apartments: [apt("apt-r", "평촌롯데캐슬", "201906")],
+      articles: sells("CX-16km", 9, 4),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    expect(sellWrites(updateCalls, "apt-r")).toEqual([]);
+  });
+
+  it("Phase 2 ② 500m 안·이름 통과 단지의 매물 수는 붙는다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-own", "평촌롯데캐슬", 0.001)],
+      apartments: [apt("apt-r", "평촌롯데캐슬", "201906")],
+      articles: sells("CX-own", 9, 4),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    const w = sellWrites(updateCalls, "apt-r");
+    expect(w).toHaveLength(1);
+    expect(w[0].row).toMatchObject({ naver_sell_count: 9, naver_jeonse_count: 4 });
+  });
+
+  it("Phase 2 ③ 통과 단지가 둘이면 가까운 쪽 — 마지막 단지가 아니다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-A-near", "트리풀시티레이크포레", 0.001), cpx("CX-Z-far", "트리풀시티레이크포레", 0.003)],
+      apartments: [apt("apt-t", "트리풀시티 레이크포레(갑천3BL)", "202207")],
+      articles: [...sells("CX-A-near", 3), ...sells("CX-Z-far", 11)],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    const w = sellWrites(updateCalls, "apt-t");
+    expect(w).toHaveLength(1);
+    expect(w[0].row.naver_sell_count).toBe(3);
+  });
+
+  it("Phase 2 ④ 통과 없음(형제 블록·500m 밖)이면 매물 수 쓰기 0 — 기존 값 그대로", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-1", "검단신도시롯데캐슬넥스티엘Ⅰ", 0.001), cpx("CX-far", "검단신도시롯데캐슬넥스티엘Ⅲ", 0.006)],
+      apartments: [{ ...apt("apt-3", "검단신도시롯데캐슬넥스티엘Ⅲ", "202301"), naver_sell_count: 7, naver_jeonse_count: 2 }],
+      articles: [...sells("CX-1", 20, 5), ...sells("CX-far", 30)],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    expect(sellWrites(updateCalls, "apt-3")).toEqual([]);
+  });
 });

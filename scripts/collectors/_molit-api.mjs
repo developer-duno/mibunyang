@@ -219,8 +219,22 @@ export async function molitApiCall(phase, baseUrl, endpoint, params, apiKey, opt
       if (!(err instanceof KaptResultError) || !err.transient || i >= KAPT_TRANSIENT_RETRY_DELAYS_MS.length) throw err;
       log(phase, `  K-apt 결과 코드 ${err.code}(일시) — ${KAPT_TRANSIENT_RETRY_DELAYS_MS[i] / 1000}초 뒤 다시 (${i + 1}/${KAPT_TRANSIENT_RETRY_DELAYS_MS.length})`);
       await sleep(KAPT_TRANSIENT_RETRY_DELAYS_MS[i]);
+      transientRetryCalls++; // 이 재시도 한 번 = 쿼터를 쓰는 호출 한 번 더(재검사 🟡2)
     }
   }
+}
+
+/** 일시 결과 코드 재시도로 더 나간 호출 수(프로세스 누적). */
+let transientRetryCalls = 0;
+
+/**
+ * 일시 결과 코드(01·02·04·05·99) 재시도로 **더 나간** 호출 수 — 프로세스 시작부터 누적(재검사 🟡2).
+ * 수집기의 `apiCalls` 는 논리 호출(목록·기본정보·관리비 항목)만 세므로, 회차 시작 때 이 값을 적어 두고
+ * 회차 끝 쿼터 기록(`recordApiQuota`)에 그 차이를 더한다. ⚠️ HTTP 재시도(429·5xx·시간 초과)는 세지 않는다(옛 동작 그대로).
+ * @returns {number}
+ */
+export function kaptTransientRetryCount() {
+  return transientRetryCalls;
 }
 
 /**

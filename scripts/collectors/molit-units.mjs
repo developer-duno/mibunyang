@@ -22,9 +22,9 @@ import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown, today, clampUnsoldRate } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY, KAPT_LIST_PAGE_SIZE,
-  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate,
+  molitApiCall, fetchSidoAptList, createKaptFailureGate, kaptTransientRetryCount,
 } from "./_molit-api.mjs";
-import { pickKaptMatch, usedateConsistent, inSiblingKaptWindow, siblingKaptWindowText } from "./_match-gates.mjs";
+import { pickKaptMatch, usedateConsistent, nearSiblingKaptWindow, siblingKaptWindowText, SIBLING_KAPT_LEAD_MIN } from "./_match-gates.mjs";
 
 /** @typedef {import("@supabase/supabase-js").SupabaseClient} SupabaseClient */
 /** @typedef {{ id: string; name: string; region: string; gu: string | null; address: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; unit_source: string | null; completion: string | null; bjd_code: string | null }} TargetApt */
@@ -174,12 +174,14 @@ export function writeUnmatchedLog(entries, dir = DEFAULT_UNMATCHED_LOG_DIR, date
 
 // ── 메인 ─────────────────────────────────────────────────────
 /**
- * `opts.now` — 2u 창 판정·입주 여부 판정 시각(시험 주입용, 기본 지금).
+ * `opts.now` — 입주 여부 판정 시각(시험 주입용, 기본 지금).
+ * `opts.clock` — 2u 창 판정에 쓰는 "지금"(시작 때와 시도 목록마다 다시 부른다 · 시험 주입용). 없으면 `opts.now` 고정, 그것도 없으면 실제 시각.
  * `opts.unmatchedLogDir` — 미매칭 목록 파일 폴더(시험 주입용).
- * @param {{ now?: Date; unmatchedLogDir?: string }} [opts]
+ * @param {{ now?: Date; clock?: () => Date; unmatchedLogDir?: string }} [opts]
  */
 export async function main(opts = {}) {
   const now = opts.now ?? new Date();
+  const clock = opts.clock ?? (opts.now ? () => /** @type {Date} */ (opts.now) : () => new Date());
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
@@ -195,11 +197,12 @@ export async function main(opts = {}) {
     return;
   }
 
-  // 1-b. 2u 창이면 이번 회차를 건너뛴다(세션589 R3). 월·목 네이버 러너 4단계는 실행 시각이 10~15시로
-  //      흔들려 2u 의 12:40~15:15 K-apt 회차와 겹칠 수 있다 — 같은 열쇠라 합계가 K-apt 한계를 넘는다.
-  //      대상은 그대로 남아 다음 회차(목요일·매월 6일 05:30)가 처리한다. skip 으로 흔적을 남긴다.
-  if (inSiblingKaptWindow(now)) {
-    const msg = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST ${siblingKaptWindowText()})이라 건너뜀 — 대상 ${targets.length}건 다음 회차로`;
+  // 1-b. 2u 창이거나 창 시작 5분 전이면 이번 회차를 건너뛴다(세션589 R3 · 재검사 🟡4 — 관리비·건물정보와 같은
+  //      `nearSiblingKaptWindow`). 월·목 네이버 러너 4단계는 실행 시각이 10~15시로 흔들려 2u 의 12:40~15:15
+  //      K-apt 회차와 겹칠 수 있다 — 같은 열쇠라 합계가 K-apt 한계를 넘는다. 12:36~12:39 에 시작하면 창 안으로
+  //      넘어가므로 5분 앞에서 본다. 대상은 그대로 남아 다음 회차(목요일·매월 6일 05:30)가 처리한다.
+  if (nearSiblingKaptWindow(clock())) {
+    const msg = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST ${siblingKaptWindowText()}) 또는 시작 ${SIBLING_KAPT_LEAD_MIN}분 전이라 건너뜀 — 대상 ${targets.length}건 다음 회차로`;
     log(PHASE, msg);
     await recordCollectorRun(PHASE, { ok: 0, skip: targets.length, fail: 0, errorMessage: msg });
     return;
@@ -228,10 +231,23 @@ export async function main(opts = {}) {
   const unmatchedList = [];
   /** @type {string | null} 회차 중단 사유 — K-apt 결과 코드·연속 실패(세션589 R2·보완 B3·B4). error_message 로 남는다 */
   let abortMessage = null;
+  /** @type {string | null} 2u 창 때문에 시도 목록 차례에 멈춘 사유(SIBLING_KAPT_WINDOW …) — 재검사 🟡4 */
+  let windowStop = null;
   const gate = createKaptFailureGate();
+  /** 회차 시작 때의 일시 재시도 누적 호출 수 — 끝에서 차이를 쿼터 기록에 더한다(재검사 🟡2) */
+  const retryBase = kaptTransientRetryCount();
 
-  regionLoop: for (const [region, group] of Object.entries(groups)) {
+  const groupList = Object.entries(groups);
+  regionLoop: for (let gi = 0; gi < groupList.length; gi++) {
+    const [region, group] = groupList[gi];
     if (isInterrupted()) break;  // 세션 344: graceful shutdown (외부 region loop)
+    // 시도 목록마다 2u 창 앞당김을 다시 본다(재검사 🟡4) — 앞 시도가 길어 창 5분 전으로 넘어가면 남은 시도는 다음 회차
+    if (nearSiblingKaptWindow(clock())) {
+      const left = groupList.slice(gi).reduce((n, [, g]) => n + g.targets.length, 0);
+      windowStop = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST ${siblingKaptWindowText()}) 또는 시작 ${SIBLING_KAPT_LEAD_MIN}분 전이라 멈춤 — 남은 ${left}곳 다음 회차`;
+      skipped += left;
+      break;
+    }
     log(PHASE, `\n--- ${region} (${group.sidoCode}) ${group.targets.length}건 ---`);
 
     /** @type {Array<Record<string, unknown>>} */
@@ -244,7 +260,7 @@ export async function main(opts = {}) {
     } catch (err) {
       logError(PHASE, `  API 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
       failed += group.targets.length;
-      if (err instanceof KaptResultError) apiCalls++;
+      apiCalls++; // 던진 목록 호출도 1회(재검사 🟡2 — 결과 코드 아닌 실패도 쿼터를 쓴다)
       const stop = gate.failure(err);
       if (stop) { abortMessage = stop; break; }
       continue;
@@ -281,8 +297,8 @@ export async function main(opts = {}) {
       // 단지 상세 조회 → 세대수
       try {
         await sleep(REQUEST_DELAY);
+        apiCalls++; // 부르기 전에 센다 — 던져도 1회(재검사 🟡2)
         const detail = await fetchAptDetail(kaptCode);
-        apiCalls++;
         gate.success(); // K-apt 호출이 됐다 — 연속 실패 수를 0 으로
         if (!detail) {
           log(PHASE, `    → 상세 조회 실패`);
@@ -321,7 +337,6 @@ export async function main(opts = {}) {
       } catch (err) {
         logError(PHASE, `    → 상세 조회 에러: ${err instanceof Error ? err.message : String(err)}`);
         failed++;
-        if (err instanceof KaptResultError) apiCalls++;
         // 일시·fatal 코드는 즉시, 10·11 과 결과 코드 아닌 실패는 연속 5건이면 회차를 멈춘다(세션589 보완 B3·B4)
         const stop = gate.failure(err);
         if (stop) { abortMessage = stop; break regionLoop; }
@@ -329,12 +344,15 @@ export async function main(opts = {}) {
     }
   }
 
+  if (windowStop) log(PHASE, windowStop);
   if (abortMessage) {
     logError(PHASE, `${abortMessage} — 회차 중단(벌칙 중 계속 부르면 길어진다). 남은 대상은 다음 회차`);
   }
 
+  const retryCalls = kaptTransientRetryCount() - retryBase;
+  apiCalls += retryCalls;
   log(PHASE, `\n=== 완료 ===`);
-  log(PHASE, `보정: ${corrected}건, 미매칭: ${unmatched}건, 장애: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
+  log(PHASE, `보정: ${corrected}건, 미매칭: ${unmatched}건, 장애: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회(일시 재시도 ${retryCalls}회 포함)`);
 
   const unmatchedLog = writeUnmatchedLog(unmatchedList, opts.unmatchedLogDir);
   if (unmatchedLog) log(PHASE, `미매칭 ${unmatchedList.length}건 목록 저장: ${unmatchedLog}`);
@@ -345,7 +363,8 @@ export async function main(opts = {}) {
   // 합산 전에는 미매칭이 어느 칸에도 안 들어가 ok=0·skip=0 인 실행이 monitor ② 에 "성공인데
   // 처리 0건" 으로 잡히거나, 반대로 수백 건이 조용히 증발해도 기록만 보면 멀쩡해 보였다 (세션 495).
   // 회차 중단은 error_message 머리말 KAPT_RESULT_<코드> · KAPT_FETCH_FAIL 로 남긴다(세션589 R2·보완 B4).
-  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed, errorMessage: abortMessage });
+  // 2u 창 때문에 시도 차례에 멈추면 SIBLING_KAPT_WINDOW 로 남긴다(감시 ⑮ 가 읽는다 — 재검사 🟡4).
+  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed, errorMessage: abortMessage ?? windowStop });
   if (failed > 0) process.exit(1);   // 진짜 장애만 — 미매칭은 정상 종료
 }
 

@@ -23,7 +23,7 @@
 import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown } from "./_shared.mjs";
 import {
   SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY, KAPT_LIST_PAGE_SIZE,
-  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate,
+  molitApiCall, fetchSidoAptList, createKaptFailureGate, kaptTransientRetryCount,
 } from "./_molit-api.mjs";
 import { pickKaptMatch, usedateConsistent, nearSiblingKaptWindow, siblingKaptWindowText, SIBLING_KAPT_LEAD_MIN } from "./_match-gates.mjs";
 
@@ -44,19 +44,23 @@ if (!API_KEY) {
 
 // ── 단지 기본+상세 조회 (V4: 두 엔드포인트 병합) ─────────────
 /**
+ * `onCall` — K-apt 호출 **직전마다** 부른다(쿼터 셈 — 기본정보에서 던지면 1, 상세에서 던지면 2. 재검사 🟡2).
  * @param {string} kaptCode
+ * @param {() => void} [onCall]
  * @returns {Promise<BuildingDetail | null>}
  */
-export async function fetchAptDetail(kaptCode) {
+export async function fetchAptDetail(kaptCode, onCall = () => {}) {
   // 기본 정보 (세대수, 최고층 등)
-  const bassJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode }, API_KEY || ""));
+  onCall();
+  const bassJson =/** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusBassInfoV5", { kaptCode }, API_KEY || ""));
   const bassBody = bassJson?.response?.body;
   const bass = bassBody?.item ?? bassBody?.items?.item ?? null;
 
   await sleep(REQUEST_DELAY);
 
   // 상세 정보 (주차, 에너지, 구조 등)
-  const dtlJson = /** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV5", { kaptCode }, API_KEY || ""));
+  onCall();
+  const dtlJson =/** @type {{ response?: { body?: { item?: BuildingDetail; items?: { item?: BuildingDetail } } } }} */ (await molitApiCall(PHASE, API_DETAIL_BASE, "getAphusDtlInfoV5", { kaptCode }, API_KEY || ""));
   const dtlBody = dtlJson?.response?.body;
   const dtl = dtlBody?.item ?? dtlBody?.items?.item ?? null;
 
@@ -219,6 +223,8 @@ export async function main(opts = {}) {
   /** @type {string | null} 2u 창 때문에 멈춘 사유(SIBLING_KAPT_WINDOW …) — 보완 B1 */
   let windowStop = null;
   const gate = createKaptFailureGate();
+  /** 회차 시작 때의 일시 재시도 누적 호출 수 — 끝에서 차이를 쿼터 기록에 더한다(재검사 🟡2) */
+  const retryBase = kaptTransientRetryCount();
   /** 처리했거나 통째로 건너뛴 대상 수 — 창 때문에 멈추면 나머지(targets.length − handled)를 skip 으로 남긴다 */
   let handled = 0;
   const stopForWindow = () => {
@@ -251,7 +257,7 @@ export async function main(opts = {}) {
       logError(PHASE, `  목록 조회 실패: ${msg}`);
       failed += regionTargets.length;
       handled += regionTargets.length;
-      if (err instanceof KaptResultError) apiCalls++;
+      apiCalls++; // 던진 목록 호출도 1회(재검사 🟡2 — 결과 코드 아닌 실패도 쿼터를 쓴다)
       const stop = gate.failure(err);
       if (stop) { abortMessage = stop; break; }
       continue;
@@ -284,8 +290,8 @@ export async function main(opts = {}) {
 
       try {
         await sleep(REQUEST_DELAY);
-        const detail = await fetchAptDetail(kaptCode);
-        apiCalls += 2; // Bass + Dtl 2개 엔드포인트
+        // Bass + Dtl 2개 엔드포인트 — 부를 때마다 센다(던져도 그때까지 부른 만큼, 재검사 🟡2)
+        const detail = await fetchAptDetail(kaptCode, () => { apiCalls++; });
         gate.success(); // K-apt 호출이 이 단지에서 끝까지 됐다 — 연속 실패 수를 0 으로
         if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
 
@@ -307,7 +313,6 @@ export async function main(opts = {}) {
         const msg = err instanceof Error ? err.message : String(err);
         logError(PHASE, `    ${target.name}: ${msg}`);
         failed++;
-        if (err instanceof KaptResultError) apiCalls++;
         // 일시·fatal 코드는 즉시, 10·11 과 결과 코드 아닌 실패는 연속 5건이면 회차를 멈춘다(세션589 보완 B3·B4)
         const stop = gate.failure(err);
         if (stop) { abortMessage = stop; break regionLoop; }
@@ -320,8 +325,10 @@ export async function main(opts = {}) {
     logError(PHASE, `${abortMessage} — 회차 중단(벌칙 중 계속 부르면 길어진다). 남은 대상은 다음 회차`);
   }
 
+  const retryCalls = kaptTransientRetryCount() - retryBase;
+  apiCalls += retryCalls;
   log(PHASE, `\n=== 완료 ===`);
-  log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}, API: ${apiCalls}회`);
+  log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}, API: ${apiCalls}회(일시 재시도 ${retryCalls}회 포함)`);
 
   if (!dryRun) await recordApiQuota("molit-building-info", "MOLIT_KEY", apiCalls);
   // 회차 중단은 error_message 머리말 KAPT_RESULT_<코드> · KAPT_FETCH_FAIL 로(세션589 R2·보완 B4),

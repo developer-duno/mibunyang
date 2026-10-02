@@ -48,7 +48,7 @@ vi.stubGlobal("fetch", mockFetch);
 process.env.MOLIT_KEY = "test-key";
 
 const { fetchBassInfo, fetchMaintenanceCost, budgetExceeded, sortByUpdatedAtAsc, maintUpdateRow, main } = await import("./collect-maintenance.mjs");
-const { getSupabase, createReporter, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { getSupabase, createReporter, recordCollectorRun, recordApiQuota } = /** @type {any} */ (await import("./_shared.mjs"));
 const { KaptResultError } = realMolit;
 
 // ── 팩토리 ───────────────────────────────────────────────────
@@ -954,6 +954,41 @@ describe("main() — 2u 창 · 실패 판정 · --limit 은 짝이 붙은 단지
     await main({ now: NOW });
     expect(updates.map((u) => u.id)).toEqual(["b"]);
     expect(counts.fail).toBe(1);
+  });
+
+  // 재검사 🟡2 — 쿼터 기록(recordApiQuota 셋째 인자): 던진 기본정보 호출도 1회 · 일시 재시도로 더 나간 호출도 더한다.
+  const quotaOf = () => recordApiQuota.mock.calls.at(-1)?.[2];
+  it("쿼터 셈 — 기본정보가 (결과 코드 아닌 실패로) 던지면 목록 1 + 기본정보 1 = 2", async () => {
+    recordApiQuota.mockClear();
+    const { sb } = makeSb([row("a", NAMES[0], "201806", null)]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ bassFail: () => new Error("getAphusBassInfoV5: 1회 재시도 소진 (마지막 상태: 0)") });
+    await main({ now: NOW });
+    expect(quotaOf()).toBe(2);
+  });
+
+  it("쿼터 셈 — 기본정보 04·04·00(진짜 molitApiCall 재시도) 이면 목록 1 + 기본정보 1 + 재시도 2 + 관리비 5 = 9", async () => {
+    recordApiQuota.mockClear();
+    const { sb, updates } = makeSb([row("a", NAMES[0], "201806", null)]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    mockMolitApiCall.mockImplementation(realMolit.molitApiCall);
+    const res = (/** @type {any} */ body) => ({ ok: true, status: 200, text: () => Promise.resolve(JSON.stringify(body)) });
+    let bassN = 0;
+    mockFetch.mockReset();
+    mockFetch.mockImplementation(async (/** @type {string} */ url) => {
+      if (url.includes("getAphusBassInfoV5")) {
+        bassN++;
+        if (bassN <= 2) return res({ response: { header: { resultCode: "04" }, body: {} } });
+        return res({ response: { header: { resultCode: "00" }, body: { item: { kaptdaCnt: "100", kaptUsedate: "20180629" } } } });
+      }
+      return res({ response: { header: { resultCode: "00" }, body: { item: { heatP: "10000000", waterHotP: "1", gasP: "1", electP: "1", waterCoolP: "1" } } } });
+    });
+    await main({ now: NOW });
+    expect(updates.map((u) => u.id)).toEqual(["a"]);
+    expect(mockFetch).toHaveBeenCalledTimes(8); // 기본정보 3 + 관리비 5 (목록은 흉내)
+    expect(quotaOf()).toBe(9);
   });
 
   it("B3 — fatal 코드(22)는 첫 단지에서 멈춘다", async () => {

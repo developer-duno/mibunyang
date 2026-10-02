@@ -27,7 +27,7 @@ const {
   SIDO_CODE, MIN_SIMILARITY, REQUEST_DELAY,
   API_LIST_BASE, API_DETAIL_BASE,
   KAPT_MIN_INTERVAL_MS, KAPT_LIST_PAGE_SIZE, KaptResultError,
-  KAPT_TRANSIENT_RETRY_DELAYS_MS, KAPT_MAX_CONSECUTIVE_FAILS, createKaptFailureGate,
+  KAPT_TRANSIENT_RETRY_DELAYS_MS, KAPT_MAX_CONSECUTIVE_FAILS, createKaptFailureGate, kaptTransientRetryCount,
 } = await import("./_molit-api.mjs");
 const { sleep } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -520,6 +520,31 @@ describe("molitApiCall — 일시 코드 재시도 · 코드 종류", () => {
     const json = /** @type {any} */ (await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k"));
     expect(json.response.body.item).toBeUndefined();
     expect(mockFetch).toHaveBeenCalledTimes(1);
+  });
+
+  // 재검사 🟡2 — 일시 코드 재시도로 더 나간 호출은 수집기의 논리 호출 수에 안 잡힌다. 모듈 누적 카운터로 센다
+  // (수집기는 회차 시작 값과의 차이를 쿼터 기록에 더한다). 논리 호출 1 + 재시도 2 = 3 = fetch 횟수.
+  it("04·04·00 이면 재시도 누적 카운터가 2 늘어난다(논리 1 + 재시도 2 = 실제 호출 3)", async () => {
+    const base = kaptTransientRetryCount();
+    mockFetch.mockResolvedValueOnce(rc("04")).mockResolvedValueOnce(rc("04")).mockResolvedValueOnce(rc("00"));
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k");
+    expect(kaptTransientRetryCount() - base).toBe(2);
+    expect(1 + (kaptTransientRetryCount() - base)).toBe(mockFetch.mock.calls.length);
+  });
+
+  it("04 가 끝까지 와서 던져도 재시도 2회는 센다 · 10(재시도 없음)·00 은 0", async () => {
+    let base = kaptTransientRetryCount();
+    mockFetch.mockResolvedValue(rc("04"));
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch(() => {});
+    expect(kaptTransientRetryCount() - base).toBe(2);
+    base = kaptTransientRetryCount();
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue(rc("10"));
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k").catch(() => {});
+    mockFetch.mockReset();
+    mockFetch.mockResolvedValue(rc("00"));
+    await molitApiCall("t", API_DETAIL_BASE, "getAphusBassInfoV5", {}, "k");
+    expect(kaptTransientRetryCount() - base).toBe(0);
   });
 });
 

@@ -318,7 +318,7 @@ describe("inSiblingKaptWindow — 경계 시각(KST)", () => {
     ["2026-10-05 12:39", false],
     ["2026-10-05 12:40", true],
     ["2026-10-05 15:15", true],
-    ["2026-10-05 15:16", false],
+    ["2026-10-12 15:16", false], // 10-05 15:16 은 임시 창(10-02~10-08 15:00~20:45) 안이라 임시 창 밖 날짜로 본다
     ["2026-10-05 20:59", false],
     ["2026-10-05 21:00", true],
     ["2026-10-05 23:30", true],
@@ -342,7 +342,35 @@ describe("inSiblingKaptWindow — 경계 시각(KST)", () => {
 
   it("창 상수에 21일 14:50~21:00 이 있다(출처 = 2u 인계 2026-10-02 추가분)", () => {
     expect(G.SIBLING_KAPT_WINDOWS_KST).toContainEqual({ start: "14:50", end: "21:00", dayOfMonth: 21 });
-    expect(G.siblingKaptWindowText()).toBe("06:20~08:25·12:40~15:15·21:00~23:30·매월 21일 14:50~21:00");
+    expect(G.siblingKaptWindowText()).toBe("06:20~08:25·12:40~15:15·21:00~23:30·매월 21일 14:50~21:00·15:00~20:45(임시 10-02~10-08)");
+  });
+});
+
+// ── 2u 임시 창 (날짜 한정 — 2u 세션427 회신 2026-10-02: 관리비 옛 행 재수집 일회성, 매일 15:00~20:45 나흘 안팎) ──
+describe("inSiblingKaptWindow — 임시 창 15:00~20:45 (KST 2026-10-02~10-08, 양끝 포함)", () => {
+  const cases = /** @type {Array<[string, boolean]>} */ ([
+    ["2026-10-05 15:30", true],
+    ["2026-10-05 20:45", true],
+    ["2026-10-05 20:46", false], // 21:00 창 전
+    ["2026-10-02 15:16", true], // 첫날
+    ["2026-10-08 20:00", true], // 마지막 날
+    ["2026-10-01 15:30", false], // 시작 전날
+    ["2026-10-09 15:30", false], // 끝난 다음 날
+    ["2026-10-09 20:00", false],
+  ]);
+  for (const [t, want] of cases) {
+    it(`${t} → ${want ? "창 안" : "창 밖"}`, () => {
+      expect(G.inSiblingKaptWindow(kstAt(t))).toBe(want);
+    });
+  }
+  it("near — 20:46 은 계속, 20:55(21:00 창 5분 전)부터 멈춤 · 10-09 15:00 은 계속", () => {
+    expect(G.nearSiblingKaptWindow(kstAt("2026-10-05 20:46"))).toBe(false);
+    expect(G.nearSiblingKaptWindow(kstAt("2026-10-05 20:55"))).toBe(true);
+    expect(G.nearSiblingKaptWindow(kstAt("2026-10-09 15:30"))).toBe(false);
+    expect(G.nearSiblingKaptWindow(kstAt("2026-10-05 15:30"))).toBe(true);
+  });
+  it("상수 — from/until 은 KST 날짜", () => {
+    expect(G.SIBLING_KAPT_WINDOWS_KST).toContainEqual({ start: "15:00", end: "20:45", from: "2026-10-02", until: "2026-10-08" });
   });
 });
 
@@ -396,6 +424,25 @@ describe("namesCompatible — 공고 회차 괄호 · 로마 숫자 · 괄호 �
     expect(G.namesCompatible("넥스티엘 II", "넥스티엘 2단지")).toBe(true);
     expect(G.namesCompatible("넥스티엘III", "넥스티엘1차")).toBe(false); // 한글 바로 뒤에 붙은 꼴
     expect(G.namesCompatible("넥스티엘 IV", "넥스티엘 4차")).toBe(true);
+  });
+
+  it("(b) 차수 숫자끼리·로마 숫자끼리 따로 맞대고, 교차는 한쪽이 로마만·다른 쪽이 차수만일 때만 (재검사 🟡1)", () => {
+    // 왼쪽은 차수 숫자 {5(H5블록), 4(4단지)} + 로마 {2}, 오른쪽은 차수 숫자 {2}.
+    // 한 집합으로 합치면 2 가 겹쳐 통과했다 — 차수 숫자끼리 맞대면 {5,4} ↔ {2} 충돌.
+    expect(G.namesCompatible("세종 한신더휴 리저브Ⅱ(H5블록)[한뜰마을4단지]", "새샘마을2단지")).toBe(false);
+    expect(G.namesCompatible("새샘마을2단지", "세종 한신더휴 리저브Ⅱ(H5블록)[한뜰마을4단지]")).toBe(false); // 순서 무관
+    // 로마끼리 겹치면 차수 숫자가 한쪽에만 있어도 통과
+    expect(G.namesCompatible("리저브Ⅱ 4단지", "리저브Ⅱ")).toBe(true);
+    // 로마끼리 안 겹치면 불통과(차수 숫자가 같아도)
+    expect(G.namesCompatible("리저브Ⅱ 4단지", "리저브Ⅲ 4단지")).toBe(false);
+    // 한쪽이 로마+차수, 다른 쪽이 차수만 → 차수끼리만 본다(교차 안 함)
+    expect(G.namesCompatible("리저브Ⅱ 4단지", "리저브 4단지")).toBe(true);
+    expect(G.namesCompatible("리저브Ⅱ 4단지", "리저브 2단지")).toBe(false);
+  });
+
+  it("(b) & 뒤 ASCII I 는 차수가 아니다 — 박달동한일U&I (재검사 🟢5)", () => {
+    expect(G.namesCompatible("박달동한일U&I", "박달동한일유앤아이 2차")).toBe(true);
+    expect(G.namesCompatible("박달동한일I&U", "박달동한일아이앤유 2차")).toBe(true); // & 앞
   });
 
   it("(b) 영문 단어·상표는 차수로 읽히지 않는다 (음성)", () => {
