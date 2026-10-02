@@ -1139,3 +1139,145 @@ describe("전용률 유입 게이트 + 미분양률 클램프 — 실전 경로(
     expect(row.naver_sell_count).toBe(5);
   });
 });
+
+// ── 세션589 N1·N2·V6 — 실전 경로(main()) 회귀 가드 ─────────────────────
+// 옛 Phase 4: 이름 유사도 0.6(전국·거리 없음) 짝마다 관리비·향을 **무조건** 덮어썼다(짝이 여럿이면 번호 순 마지막).
+// 옛 Phase 1: 500m 만 보고 형제 블록(넥스티엘Ⅲ←Ⅰ)·다른 차수(레이크송도5차←4차) 값으로 빈칸을 채웠다.
+describe("세션589 짝 짓기 게이트 — Phase 1(N2)·Phase 4(N1·V6) 실전 경로", () => {
+  /** 2026-10-05 08:00 KST — 이번 달 2026-10 */
+  const NOW = new Date("2026-10-04T23:00:00Z");
+  beforeEach(() => {
+    recordCollectorRun.mockClear();
+    getMibuyangSupabase.mockReset();
+  });
+
+  /** @param {{ complexes: any[]; apartments: any[]; articles?: any[] }} data */
+  function makeSb({ complexes, apartments, articles = [] }) {
+    /** @type {Array<{ id: string; row: Record<string, unknown> }>} */
+    const updateCalls = [];
+    /** @type {string | null} */
+    let table = null;
+    /** @type {Record<string, unknown> | null} */
+    let pendingUpdate = null;
+    /** @param {string | null} t */
+    const rowsFor = (t) => (t === "complexes" ? complexes : t === "apartments" ? apartments : t === "articles" ? articles : []);
+    const chain = {
+      /** @param {string} t */
+      from(t) { table = t; pendingUpdate = null; return chain; },
+      select() { return chain; },
+      /** @param {string} col @param {unknown} v */
+      eq(col, v) {
+        if (pendingUpdate != null) {
+          updateCalls.push({ id: /** @type {string} */ (v), row: pendingUpdate });
+          pendingUpdate = null;
+          return Promise.resolve({ error: null });
+        }
+        return chain;
+      },
+      not() { return chain; },
+      order() { return chain; },
+      limit() { return Promise.resolve({ data: rowsFor(table), error: null }); },
+      range() { return Promise.resolve({ data: [], error: { message: "complex_links 없음(테스트 폴백 유도)" } }); },
+      gt() { return Promise.resolve({ data: [], error: null }); },
+      lt() { return Promise.resolve({ data: [], error: null }); },
+      /** @param {Record<string, unknown>} row */
+      update(row) { pendingUpdate = row; return chain; },
+    };
+    return { sb: chain, updateCalls };
+  }
+
+  /** 위도 0.001도 ≈ 111m. @param {string} no @param {string} name @param {number} dLat @param {Record<string, unknown>} [f] */
+  const cpx = (no, name, dLat, f = {}) => /** @type {any} */ ({
+    complex_no: no, complex_name: name, latitude: 37.5 + dLat, longitude: 127.0,
+    floor_area_ratio: null, building_coverage_ratio: null, high_floor: null,
+    total_parking_count: null, total_household_count: null, has_pool: null,
+    use_approve_ymd: null, heat_fuel_type: null, corridor_type: null, real_estate_type_name: "아파트", ...f,
+  });
+  /** @param {string} id @param {string} name @param {string | null} completion */
+  const apt = (id, name, completion) => /** @type {any} */ ({
+    id, name, lat: 37.5, lng: 127.0, completion,
+    floor_area_ratio: null, building_coverage_ratio: null, max_floor: null,
+    parking_ratio: null, has_pool: null, heating: null, exclusive_ratio: null,
+    quake_design: null, view: null, sunlight: null, heat_fuel: null, corridor_type: null,
+    units: null, unsold: null, unsold_rate: null,
+    naver_sell_count: null, naver_jeonse_count: null, naver_wolse_count: null,
+  });
+  /** 관리비·향 매물 3건. @param {string} complexNo @param {number} cost @param {string} dir */
+  const listing = (complexNo, cost, dir) => Array.from({ length: 3 }, (_, i) => ({
+    article_no: `${complexNo}-M${i}`, complex_no: complexNo, area1_m2: null, area2_m2: null,
+    direction: dir, building_name: null, trade_type_name: null, floor_info: null, numeric_maintenance_cost: cost,
+  }));
+  const merged = (/** @type {Array<{ id: string; row: Record<string, unknown> }>} */ calls, /** @type {string} */ id) =>
+    Object.assign({}, .../** @type {any[]} */ (calls.filter((u) => u.id === id).map((u) => u.row)));
+
+  it("형제 블록 넥스티엘Ⅲ ← Ⅰ: 같은 자리여도 건물 칸(N2)·관리비·향(N1)을 안 쓴다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-1", "검단신도시롯데캐슬넥스티엘Ⅰ", 0.001, { floor_area_ratio: 250 })],
+      apartments: [apt("apt-3", "검단신도시롯데캐슬넥스티엘Ⅲ", "202301")],
+      articles: listing("CX-1", 24, "남향"),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    const row = merged(updateCalls, "apt-3");
+    expect(row.floor_area_ratio).toBeUndefined();
+    expect(row.avg_maintenance_cost).toBeUndefined();
+    expect(row.primary_direction).toBeUndefined();
+  });
+
+  it("다른 차수 레이크송도5차 ← 4차: 관리비·향을 안 쓴다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-4", "힐스테이트레이크송도4차", 0.001)],
+      apartments: [apt("apt-5", "힐스테이트 레이크 송도 5차", "202301")],
+      articles: listing("CX-4", 22, "남동향"),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    expect(merged(updateCalls, "apt-5").avg_maintenance_cost).toBeUndefined();
+    expect(merged(updateCalls, "apt-5").primary_direction).toBeUndefined();
+  });
+
+  it("자기 단지가 500m 안 둘이면 가장 가까운 단지 값 하나만 — 번호 순 마지막이 아니다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-A-near", "트리풀시티레이크포레", 0.001), cpx("CX-Z-far", "트리풀시티레이크포레", 0.003)],
+      apartments: [apt("apt-t", "트리풀시티 레이크포레(갑천3BL)", "202207")],
+      articles: [...listing("CX-A-near", 30, "남향"), ...listing("CX-Z-far", 99, "북향")],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    const p4 = updateCalls.filter((u) => u.id === "apt-t" && "avg_maintenance_cost" in u.row);
+    expect(p4).toHaveLength(1);
+    expect(p4[0].row.avg_maintenance_cost).toBe(30);
+    expect(p4[0].row.primary_direction).toBe("남향");
+  });
+
+  it("V6 — 입주 전 단지는 자기 단지라도 관리비는 안 쓰고 향만 쓴다", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [cpx("CX-P", "김포북변우미린파크리브", 0.0003, { real_estate_type_name: "아파트분양권" })],
+      apartments: [apt("apt-p", "김포북변우미린파크리브", "202712")],
+      articles: listing("CX-P", 10, "남향"),
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    const row = merged(updateCalls, "apt-p");
+    expect(row.avg_maintenance_cost).toBeUndefined();
+    expect(row.primary_direction).toBe("남향");
+  });
+
+  it("500m 밖·이름 0.75 미달이면 아무것도 쓰지 않는다(기존 값을 지우는 쓰기도 없다)", async () => {
+    const { sb, updateCalls } = makeSb({
+      complexes: [
+        cpx("CX-far", "더샵오포센트리체", 0.006), // ≈ 667m
+        cpx("CX-sim", "동탄역예미지시그너스(주상복합)", 0.0005), // 정리 이름 0.64
+      ],
+      apartments: [apt("apt-o", "더샵오포센트리체", "202412"), apt("apt-y", "화성동탄2지구 C7블록 예미지시그너스", "202411")],
+      articles: [...listing("CX-far", 25, "남향"), ...listing("CX-sim", 33, "남향")],
+    });
+    getMibuyangSupabase.mockReturnValue(/** @type {any} */ (sb));
+    await main({ now: NOW });
+    for (const id of ["apt-o", "apt-y"]) {
+      const row = merged(updateCalls, id);
+      expect("avg_maintenance_cost" in row).toBe(false);
+      expect("primary_direction" in row).toBe(false);
+    }
+  });
+});

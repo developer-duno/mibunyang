@@ -26,7 +26,7 @@
  *   6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
  *   10일 fertility·building-info(토요일이면 11일) / 11일 housing-permits /
  *   12일 regional-economy / 13일 avg-income / 14일 medical-access /
- *   15~19일 maintenance(--limit=600 배치) / 15일 building-hub(1·4·7·10월만) /
+ *   15~19일 maintenance(--limit=300 --budget-min=40 배치, 세션589) / 15일 building-hub(1·4·7·10월만) /
  *   17일 sale-price(1·4·7·10월만) / 18일 jeonse
  * 세션 517 추가: 20일 naver-devplan(--kinds=road,rail,station,jigu) — 옛 cron 이 아니라 신규 편입.
  *   네이버 개발계획 API 도 한국 IP 가 필요해 같은 러너에 실었다(data.go.kr 쿼터는 0 소모).
@@ -212,17 +212,21 @@ export const DAY_TABLE = [
   // 세션 515: 옛 collect-maintenance.yml cron '0 6 15-19 * *' 이식. 5일 연속 = 미채움을
   // --limit=600(단지당 ~6회 호출 = 회차당 ~3,600회) 배치로 나눠 채우는 의도된 설계라
   // 일수·인자를 그대로 옮긴다 — 인자를 빼면 전 대상이 한 회차에 몰려 일일 쿼터를 넘긴다.
-  { day: 15, script: "collect-maintenance.mjs", args: ["--limit=600"] },
+  // 세션589 R3: --limit=600 → 300 + --budget-min=40. K-apt 간격이 1.5초가 되어 단지당 ~6콜 ≈ 9초 —
+  // 05:30 시작이면 06:10 전에 스스로 끝나 2u 의 06:20 K-apt 회차와 겹치지 않는다(같은 열쇠 — 겹치면 약 10분간 전부 04).
+  // 예산은 시작 시각 기준이라 이 항목이 **그날 첫 항목**이어야 성립한다(시험이 지킨다). 놓친 날 보충으로 늦게 돌면
+  // 06:10 이 아니라 시작+40분에 끝난다.
+  { day: 15, script: "collect-maintenance.mjs", args: ["--limit=300", "--budget-min=40"] },
   { day: 15, script: "collect-building-hub.mjs", months: [1, 4, 7, 10] },
-  { day: 16, script: "collect-maintenance.mjs", args: ["--limit=600"] },
-  { day: 17, script: "collect-maintenance.mjs", args: ["--limit=600"] },
+  { day: 16, script: "collect-maintenance.mjs", args: ["--limit=300", "--budget-min=40"] },
+  { day: 17, script: "collect-maintenance.mjs", args: ["--limit=300", "--budget-min=40"] },
   { day: 17, script: "collect-sale-price-index.mjs", months: [1, 4, 7, 10] },
   // 세션519: www.data.go.kr 도 해외 IP 를 막는다 — GH 는 7/16·8/16 연속 `fetch failed`(HTTP 코드
   // 없음)인데 같은 URL 이 로컬 한국 IP 에선 166ms 200 OK. 옛 cron `0 22 16 * *`(UTC)는 **KST 17일**.
   { day: 17, script: "collect-housing-price.mjs" },
-  { day: 18, script: "collect-maintenance.mjs", args: ["--limit=600"] },
+  { day: 18, script: "collect-maintenance.mjs", args: ["--limit=300", "--budget-min=40"] },
   { day: 18, script: "collect-jeonse-price-index.mjs" },
-  { day: 19, script: "collect-maintenance.mjs", args: ["--limit=600"] },
+  { day: 19, script: "collect-maintenance.mjs", args: ["--limit=300", "--budget-min=40"] },
   // 세션 517: naver-devplan 크론 편입. 20일 = 15~19일 maintenance 배치 직후 빈 슬롯이고,
   // 네이버 소스라 data.go.kr 일일 쿼터를 0 쓴다(다른 항목과 쿼터 충돌 없음).
   // --kinds 를 넘기면 V-WORLD 축(전량 ~7.5h·중간 체크포인트 없음)은 자동 스킵된다 —
