@@ -2,9 +2,9 @@
 /**
  * collect-maintenance.mjs 테스트 — 관리비 수집기 검증
  *
- * 대상: fetchTotalHouseholds, fetchMaintenanceCost, 관리비 계산 로직, E2E 시나리오
+ * 대상: fetchBassInfo, fetchMaintenanceCost, main() 게이트 경로, 관리비 계산 로직, E2E 시나리오
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -26,103 +26,149 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
       summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0, status: "success" })),
     })),
     recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
   };
 });
 
-// _molit-api.mjs 모킹 — molitApiCall 제어
+// _molit-api.mjs 모킹 — molitApiCall·fetchSidoAptList 제어
 const mockMolitApiCall = vi.fn();
+const mockFetchSidoAptList = vi.fn();
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, molitApiCall: mockMolitApiCall };
+  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList };
 });
+/** 원본 molitApiCall — fetchMaintenanceCost 시험은 이것을 거쳐 진짜 결과 코드 검사·재시도 경로를 지난다 */
+const realMolit = /** @type {any} */ (await vi.importActual("./_molit-api.mjs"));
 
-// fetch 전역 모킹 — fetchMaintenanceCost가 직접 fetch 사용
+// fetch 전역 모킹 — 원본 molitApiCall 이 이 fetch 를 부른다
 const mockFetch = vi.fn();
 vi.stubGlobal("fetch", mockFetch);
 
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { fetchTotalHouseholds, fetchMaintenanceCost, budgetExceeded, sortByUpdatedAtAsc } = await import("./collect-maintenance.mjs");
+const { fetchBassInfo, fetchMaintenanceCost, budgetExceeded, sortByUpdatedAtAsc, maintUpdateRow, main } = await import("./collect-maintenance.mjs");
+const { getSupabase, createReporter, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { KaptResultError } = realMolit;
 
 // ── 팩토리 ───────────────────────────────────────────────────
-/** molitApiCall 응답 팩토리 (fetchTotalHouseholds용)
- * @param {any} kaptdaCnt @param {boolean} [useItems] */
-function makeHouseholdsResponse(kaptdaCnt, useItems = false) {
-  const item = kaptdaCnt != null ? { kaptdaCnt: String(kaptdaCnt) } : null;
+/** molitApiCall 응답 팩토리 (fetchBassInfo용)
+ * @param {any} kaptdaCnt @param {boolean} [useItems] @param {string} [usedate] */
+function makeHouseholdsResponse(kaptdaCnt, useItems = false, usedate = undefined) {
+  const item = kaptdaCnt != null ? { kaptdaCnt: String(kaptdaCnt), ...(usedate ? { kaptUsedate: usedate } : {}) } : null;
   if (useItems) {
     return { response: { body: { items: { item } } } };
   }
   return { response: { body: { item } } };
 }
 
-/** fetch 응답 팩토리 (fetchMaintenanceCost용)
- * @param {any} field @param {any} value */
-function makeCostResponse(field, value) {
+/** fetch 응답 팩토리 (fetchMaintenanceCost용 — 원본 molitApiCall 이 text() 로 읽는다)
+ * @param {any} field @param {any} value @param {string} [resultCode] */
+function makeCostResponse(field, value, resultCode = undefined) {
+  const body = {
+    response: { ...(resultCode ? { header: { resultCode } } : {}), body: { item: { [field]: String(value) } } },
+  };
   return {
     ok: true,
     status: 200,
-    json: () => Promise.resolve({
-      response: { body: { item: { [field]: String(value) } } },
-    }),
+    json: () => Promise.resolve(body),
+    text: () => Promise.resolve(JSON.stringify(body)),
   };
 }
 
 function makeFailResponse(status = 500) {
-  return { ok: false, status, json: () => Promise.resolve({}) };
+  return { ok: false, status, json: () => Promise.resolve({}), text: () => Promise.resolve("") };
 }
 
-// ── fetchTotalHouseholds ────────────────────────────────────
-describe("fetchTotalHouseholds", () => {
+// ── fetchBassInfo (세션589: fetchTotalHouseholds → 세대수 + 사용승인일) ──────
+describe("fetchBassInfo", () => {
   beforeEach(() => {
     mockMolitApiCall.mockReset();
   });
 
-  it("정상 응답 (body.item) → 세대수 반환", async () => {
-    mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(500));
-    const result = await fetchTotalHouseholds("K001");
-    expect(result).toBe(500);
+  it("정상 응답 (body.item) → 세대수 + 사용승인일", async () => {
+    mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(500, false, "20180629"));
+    const result = await fetchBassInfo("K001");
+    expect(result).toEqual({ households: 500, usedate: "20180629" });
   });
 
   it("정상 응답 (body.items.item) → 세대수 반환", async () => {
     mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(300, true));
-    const result = await fetchTotalHouseholds("K002");
-    expect(result).toBe(300);
+    const result = await fetchBassInfo("K002");
+    expect(result?.households).toBe(300);
+    expect(result?.usedate).toBeNull();
   });
 
-  it("kaptdaCnt=0 → null (무효)", async () => {
+  it("kaptdaCnt=0 → 세대수 null (무효)", async () => {
     mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(0));
-    const result = await fetchTotalHouseholds("K003");
-    expect(result).toBeNull();
+    const result = await fetchBassInfo("K003");
+    expect(result?.households).toBeNull();
   });
 
   it("body null → null", async () => {
     mockMolitApiCall.mockResolvedValueOnce({ response: { body: null } });
-    const result = await fetchTotalHouseholds("K004");
+    const result = await fetchBassInfo("K004");
     expect(result).toBeNull();
   });
 
   it("molitApiCall throw (NonRetryableError 포함) → catch에서 null 반환", async () => {
     mockMolitApiCall.mockRejectedValueOnce(new Error("API 키 미등록"));
-    const result = await fetchTotalHouseholds("K005");
+    const result = await fetchBassInfo("K005");
     expect(result).toBeNull();
     expect(mockMolitApiCall).toHaveBeenCalledTimes(1);
+  });
+
+  it("K-apt 결과 코드 04 는 삼키지 않고 던진다 (세션589 R2 — 회차를 멈춰야 한다)", async () => {
+    mockMolitApiCall.mockRejectedValueOnce(new KaptResultError("04", "HTTP_ERROR", "getAphusBassInfoV5"));
+    await expect(fetchBassInfo("K006")).rejects.toBeInstanceOf(KaptResultError);
   });
 
   // 세션 451: households 호출도 8s/1retry 로 좁혀 hang 누적 차단 (cost endpoint 톤 일치).
   // 공유 상수(_molit-api MOLIT_TIMEOUT_MS=30000/MOLIT_MAX_RETRIES=3) 전역 변경 없이 maintenance-local opts 만.
   it("molitApiCall 에 8s timeout + 1 retry opts 를 전달 (hang 누적 차단)", async () => {
     mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(500));
-    await fetchTotalHouseholds("K010");
+    await fetchBassInfo("K010");
     const opts = mockMolitApiCall.mock.calls[0][5];
     expect(opts).toEqual({ timeoutMs: 8000, maxRetries: 1 });
   });
 });
 
 // ── fetchMaintenanceCost (W3 5 항목 분리 — object 구조) ────────
+// 세션589: 직접 fetch → molitApiCall 경유(K-apt 1.5초 간격·결과 코드 검사). 시험은 **원본** molitApiCall 을
+// 그대로 태워(mockImplementation) 그 아래의 fetch 만 바꾼다 — 실패 응답·throw 가 옛날처럼 그 항목 null 로
+// 가는지와, 04 가 "자료 없음"으로 삼켜지지 않는지를 실제 경로로 본다.
 describe("fetchMaintenanceCost", () => {
   beforeEach(() => {
     mockFetch.mockReset();
+    mockMolitApiCall.mockReset();
+    mockMolitApiCall.mockImplementation(realMolit.molitApiCall);
+  });
+
+  it("결과 코드 04 → 자료 없음(null)으로 삼키지 않고 KaptResultError 를 던진다 (세션589 R2)", async () => {
+    mockFetch.mockResolvedValueOnce(makeCostResponse("heatP", 1000, "04"));
+    await expect(fetchMaintenanceCost("K-04", "202508")).rejects.toBeInstanceOf(KaptResultError);
+    expect(mockFetch).toHaveBeenCalledTimes(1); // 나머지 4항목을 더 부르지 않는다
+  });
+
+  it("결과 코드 03(자료 없음) → 그 항목 null · 다른 항목은 그대로", async () => {
+    mockFetch
+      .mockResolvedValueOnce(makeCostResponse("heatP", 1000, "03"))
+      .mockResolvedValueOnce(makeCostResponse("waterHotP", 2000, "00"))
+      .mockResolvedValueOnce(makeCostResponse("gasP", 3000))
+      .mockResolvedValueOnce(makeCostResponse("electP", 4000))
+      .mockResolvedValueOnce(makeCostResponse("waterCoolP", 5000));
+    const result = await fetchMaintenanceCost("K-03", "202508");
+    expect(result?.heat).toBeNull();
+    expect(result?.hotwater).toBe(2000);
+  });
+
+  it("관리비 호출이 K-apt 간격·8초·1회 옵션으로 molitApiCall 을 탄다", async () => {
+    for (const f of ["heatP", "waterHotP", "gasP", "electP", "waterCoolP"]) mockFetch.mockResolvedValueOnce(makeCostResponse(f, 1));
+    await fetchMaintenanceCost("K-o", "202508");
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(5);
+    expect(mockMolitApiCall.mock.calls[0][1]).toBe("https://apis.data.go.kr/1613000/AptIndvdlzManageCostServiceV3");
+    expect(mockMolitApiCall.mock.calls[0][3]).toEqual({ pageNo: "1", numOfRows: "1", kaptCode: "K-o", searchDate: "202508" });
+    expect(mockMolitApiCall.mock.calls[0][5]).toEqual({ timeoutMs: 8000, maxRetries: 1 });
   });
 
   // COST_ENDPOINTS 순서: 난방(heatP), 급탕(waterHotP), 가스(gasP), 전기(electP), 수도(waterCoolP)
@@ -327,13 +373,14 @@ describe("관리비 합산 로직 (sumItems + MAINT_CAP)", () => {
 describe("E2E 시나리오", () => {
   beforeEach(() => {
     mockMolitApiCall.mockReset();
+    mockMolitApiCall.mockImplementation(realMolit.molitApiCall); // 관리비 호출은 원본 경로(세션589)
     mockFetch.mockReset();
   });
 
-  it("fetchTotalHouseholds + fetchMaintenanceCost → 5 항목 + 합산 세대당 산출", async () => {
+  it("fetchBassInfo + fetchMaintenanceCost → 5 항목 + 합산 세대당 산출", async () => {
     // 1. 세대수 조회 성공 (1000세대)
     mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(1000));
-    const households = await fetchTotalHouseholds("K001");
+    const households = (await fetchBassInfo("K001"))?.households ?? null;
     expect(households).toBe(1000);
 
     // 2. 관리비 5항목 raw 각 2,000,000원
@@ -363,7 +410,7 @@ describe("E2E 시나리오", () => {
     // 1000세대 + 항목별 200,000,000원 → 항목별 20만원 → ITEM_CAP=100 클램프 → 100만원
     // 합산 500 (5*100) MAINT_CAP 정합
     mockMolitApiCall.mockResolvedValueOnce(makeHouseholdsResponse(1000));
-    const households = await fetchTotalHouseholds("K100");
+    const households = (await fetchBassInfo("K100"))?.households ?? null;
 
     const fields = ["heatP", "waterHotP", "gasP", "electP", "waterCoolP"];
     for (let i = 0; i < 5; i++) {
@@ -387,7 +434,7 @@ describe("E2E 시나리오", () => {
 
   it("세대수 null → skip (관리비 미계산)", async () => {
     mockMolitApiCall.mockRejectedValueOnce(new Error("timeout"));
-    const households = await fetchTotalHouseholds("K999");
+    const households = (await fetchBassInfo("K999"))?.households ?? null;
     expect(households).toBeNull();
     // households가 null이면 main에서 rpt.skip(1) + continue
   });
@@ -543,5 +590,136 @@ describe("대상 조회 배선 — selectAll keyCol", () => {
 
   it("조회에는 .order 를 남기지 않는다 — 정렬 키와 커서 키가 어긋나면 행이 잘린다", () => {
     expect(src).not.toMatch(/q\.order\("updated_at"/);
+  });
+});
+
+// ── K6 관리비는 값이 있는 칸만 쓴다 (세션589) ─────────────────────
+// 옛 동작: 6칸을 무조건 써서 이번 달 항목이 비면 지난번 값을 null 로 지웠다.
+describe("maintUpdateRow — null 로 덮지 않는다", () => {
+  it("값이 있는 항목만 싣는다", () => {
+    const row = maintUpdateRow(30, { heat: 10, hotwater: null, gas: 5, elec: null, water: 15 });
+    expect(row.avg_maintenance_cost).toBe(30);
+    expect(row.maint_heat).toBe(10);
+    expect(row.maint_gas).toBe(5);
+    expect(row.maint_water).toBe(15);
+    expect("maint_hotwater" in row).toBe(false);
+    expect("maint_elec" in row).toBe(false);
+    expect(typeof row.updated_at).toBe("string");
+  });
+});
+
+// ── main() 실전 경로 — V6·게이트·K4·K6·R2 (세션589 T5) ─────────────────
+describe("main() — 세션589 게이트 실전 경로", () => {
+  /** 2026-10-15 05:30 KST */
+  const NOW = new Date("2026-10-14T20:30:00Z");
+  /** @type {any} */
+  let exitSpy;
+  /** @type {{ ok: number; fail: number; skip: number }} */
+  let counts;
+  const LIST = [
+    { kaptCode: "K-SDT", kaptName: "신동탄 롯데캐슬아파트", bjdCode: "4159510500", as1: "경기도", as2: "화성병점구", as3: "반월동" },
+  ];
+  /** @param {string} id @param {string|null} completion */
+  const target = (id, completion) => ({ id, name: "신동탄롯데캐슬", region: "경기", gu: "화성시", units: null, updated_at: null,
+    completion, bjd_code: "4159510500", avg_maintenance_cost: null, maint_heat: null, maint_hotwater: null, maint_gas: null, maint_elec: null, maint_water: null });
+
+  /** @param {any[]} rows */
+  function makeMainSb(rows) {
+    /** @type {Array<{ id: string; row: any }>} */
+    const updates = [];
+    const sb = {
+      from: () => ({
+        select: () => ({ or: () => ({ order: () => ({ limit: () => ({
+          gt: () => Promise.resolve({ data: [], error: null }),
+          /** @param {any} res @param {any} rej */
+          then: (res, rej) => Promise.resolve({ data: rows, error: null }).then(res, rej),
+        }) }) }) }),
+        /** @param {any} row */
+        update: (row) => ({ eq: (/** @type {string} */ _c, /** @type {string} */ id) => { updates.push({ id, row }); return Promise.resolve({ error: null }); } }),
+      }),
+    };
+    return { sb, updates };
+  }
+
+  /**
+   * @param {{ usedate?: string; costs?: Record<string, number | null>; costError?: Error }} o
+   */
+  function route(o) {
+    const COST_FIELD = { getHsmpHeatCostInfoV3: "heatP", getHsmpHotWaterCostInfoV3: "waterHotP", getHsmpGasRentalFeeInfoV3: "gasP", getHsmpElectricityCostInfoV3: "electP", getHsmpWaterCostInfoV3: "waterCoolP" };
+    mockMolitApiCall.mockImplementation(async (/** @type {string} */ _p, /** @type {string} */ _b, /** @type {string} */ ep) => {
+      if (ep === "getAphusBassInfoV5") return { response: { body: { item: { kaptdaCnt: "100", kaptUsedate: o.usedate ?? "20180629" } } } };
+      if (o.costError) throw o.costError;
+      const f = /** @type {Record<string, string>} */ (COST_FIELD)[ep];
+      const v = o.costs?.[f];
+      return { response: { body: { item: v == null ? null : { [f]: String(v) } } } };
+    });
+  }
+
+  beforeEach(() => {
+    mockMolitApiCall.mockReset();
+    mockFetchSidoAptList.mockReset();
+    recordCollectorRun.mockClear();
+    counts = { ok: 0, fail: 0, skip: 0 };
+    createReporter.mockImplementation(() => ({
+      success: (/** @type {number} */ n) => { counts.ok += n; },
+      fail: (/** @type {number} */ n) => { counts.fail += n; },
+      skip: (/** @type {number} */ n) => { counts.skip += n; },
+      interrupted: () => false,
+      summary: () => ({ elapsed: "0.0", ...counts, total: counts.ok + counts.fail + counts.skip, status: counts.fail > 0 ? "failure" : "success" }),
+    }));
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+  });
+  afterEach(() => { exitSpy.mockRestore(); });
+
+  it("V6 — 입주 전·완공월 모름 단지는 대상에서 빠져 K-apt 를 부르지 않는다", async () => {
+    const { sb, updates } = makeMainSb([target("pre", "202711"), target("nocomp", null), target("thismonth", "202610")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ costs: { heatP: 1_000_000 } });
+    await main({ now: NOW });
+    expect(mockFetchSidoAptList).not.toHaveBeenCalled();
+    expect(mockMolitApiCall).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+  });
+
+  it("입주 후 단지는 맞는 짝으로 쓰고, 이번 달 비어 있는 항목은 null 로 덮지 않는다(K6)", async () => {
+    const { sb, updates } = makeMainSb([target("t1", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ costs: { heatP: 10_000_000, waterHotP: null, gasP: 5_000_000, electP: null, waterCoolP: 2_000_000 } });
+    await main({ now: NOW });
+    expect(updates).toHaveLength(1);
+    const row = updates[0].row;
+    expect(row.maint_heat).toBe(10);
+    expect(row.maint_gas).toBe(5);
+    expect(row.maint_water).toBe(2);
+    expect("maint_hotwater" in row).toBe(false);
+    expect("maint_elec" in row).toBe(false);
+    expect(row.avg_maintenance_cost).toBe(17);
+  });
+
+  it("K4 — 사용승인일이 25개월 다르면 관리비를 부르지도 쓰지도 않는다", async () => {
+    const { sb, updates } = makeMainSb([target("t1", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ usedate: "20200701", costs: { heatP: 10_000_000 } });
+    await main({ now: NOW });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(1); // 기본정보만
+    expect(updates).toEqual([]);
+    expect(counts.skip).toBe(1);
+  });
+
+  it("R2 — 관리비 호출이 04 면 '자료 없음'으로 넘기지 않고 회차를 멈춘다(KAPT_RESULT_04)", async () => {
+    const { sb, updates } = makeMainSb([target("a", "201806"), target("b", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    route({ costError: new KaptResultError("04", "HTTP_ERROR", "getHsmpHeatCostInfoV3") });
+    await main({ now: NOW });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(2); // a 의 기본정보 + 첫 관리비 → 멈춤(b 는 안 부름)
+    expect(updates).toEqual([]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.status).toBe("failure");
+    expect(rec.errorMessage).toMatch(/^KAPT_RESULT_04/);
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

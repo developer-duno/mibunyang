@@ -4,7 +4,7 @@
  *
  * 대상: extractBuildingInfo, updateBuilding, fetchAptDetail, E2E 시나리오
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // _shared.mjs 모킹 — 외부 호출 차단
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -17,20 +17,24 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     log: vi.fn(),
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
   };
 });
 
-// _molit-api.mjs 모킹 — molitApiCall 제어
+// _molit-api.mjs 모킹 — molitApiCall·fetchSidoAptList 제어(main() 경로 시험용, 세션589)
 const mockMolitApiCall = vi.fn();
+const mockFetchSidoAptList = vi.fn();
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, molitApiCall: mockMolitApiCall };
+  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList };
 });
 
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { extractBuildingInfo, updateBuilding, fetchAptDetail } = await import("./molit-building-info.mjs");
+const { extractBuildingInfo, updateBuilding, fetchAptDetail, onlyEmptyFields, main } = await import("./molit-building-info.mjs");
+const { getSupabase, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { KaptResultError } = await import("./_molit-api.mjs");
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /**
@@ -250,5 +254,112 @@ describe("E2E 시나리오", () => {
     const detail = await fetchAptDetail("K999");
     expect(detail).toBeNull();
     // detail이 null이면 extractBuildingInfo를 호출하지 않음 (main에서 continue)
+  });
+});
+
+// ── K6 빈칸만 채움 (세션589) ────────────────────────────────────
+// 옛 동작: 최고층만 비어도 주차·난방·복도유형까지 K-apt 값으로 덮었다(조사반 G R1-G2).
+describe("onlyEmptyFields — 값이 이미 있는 칸은 안 덮는다", () => {
+  const info = { parking_ratio: 1.5, max_floor: 30, heating: "지역난방", corridor_type: "계단식" };
+
+  it("빈칸(null·0·빈 문자열)만 남기고 값 있는 칸은 null 로 뺀다", () => {
+    expect(onlyEmptyFields(info, { parking_ratio: 1.2, max_floor: null, heating: "개별난방", corridor_type: "" }))
+      .toEqual({ parking_ratio: null, max_floor: 30, heating: null, corridor_type: "계단식" });
+    expect(onlyEmptyFields(info, { parking_ratio: 0, max_floor: 0, heating: null, corridor_type: null })).toEqual(info);
+  });
+
+  it("전부 차 있으면 쓸 것이 없다 → updateBuilding 이 DB 를 안 부른다", async () => {
+    const sb = makeMockSb();
+    const ok = await updateBuilding(sb, "a", onlyEmptyFields(info, { parking_ratio: 1, max_floor: 20, heating: "개별난방", corridor_type: "복도식" }), false);
+    expect(ok).toBe(false);
+    expect(sb.from).not.toHaveBeenCalled();
+  });
+});
+
+// ── main() 실전 경로 — 게이트·사용승인일·빈칸만·결과 코드 (세션589 T4) ─────────
+describe("main() — 세션589 게이트 실전 경로", () => {
+  /** 2026-10-11(일) 05:30 KST */
+  const NOW = new Date("2026-10-10T20:30:00Z");
+  /** @type {any} */
+  let exitSpy;
+  const LIST = [
+    { kaptCode: "K-SDT", kaptName: "신동탄 롯데캐슬아파트", bjdCode: "4159510500", as1: "경기도", as2: "화성병점구", as3: "반월동" },
+    { kaptCode: "K-DT2", kaptName: "동탄2 롯데캐슬", bjdCode: "4159711100", as1: "경기도", as2: "화성동탄구", as3: "장지동" },
+  ];
+  /** @param {string} id @param {string|null} completion @param {Record<string, unknown>} [f] */
+  const target = (id, completion, f = {}) => ({ id, name: "신동탄롯데캐슬", region: "경기", gu: "화성시", address: null,
+    parking_ratio: null, max_floor: null, heating: null, corridor_type: null, completion, bjd_code: "4159510500", ...f });
+
+  /** @param {any[]} rows */
+  function makeMainSb(rows) {
+    /** @type {Array<{ id: string; row: any }>} */
+    const updates = [];
+    const sb = {
+      from: () => ({
+        select: () => ({ or: () => ({ order: () => ({ limit: () => ({
+          gt: () => Promise.resolve({ data: [], error: null }),
+          /** @param {any} res @param {any} rej */
+          then: (res, rej) => Promise.resolve({ data: rows, error: null }).then(res, rej),
+        }) }) }) }),
+        /** @param {any} row */
+        update: (row) => ({ eq: (/** @type {string} */ _c, /** @type {string} */ id) => { updates.push({ id, row }); return Promise.resolve({ error: null }); } }),
+      }),
+    };
+    return { sb, updates };
+  }
+
+  /** @param {any} bass @param {any} [dtl] */
+  function routeDetail(bass, dtl = { kaptdPcnt: "300", kaptdPcntu: "900" }) {
+    mockMolitApiCall.mockImplementation(async (/** @type {string} */ _p, /** @type {string} */ _b, /** @type {string} */ ep) => {
+      if (bass instanceof Error) throw bass;
+      return { response: { body: { item: ep === "getAphusBassInfoV5" ? bass : dtl } } };
+    });
+  }
+
+  beforeEach(() => {
+    mockMolitApiCall.mockReset();
+    mockFetchSidoAptList.mockReset();
+    recordCollectorRun.mockClear();
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+  });
+  afterEach(() => { exitSpy.mockRestore(); });
+
+  it("맞는 단지(K-SDT)로 빈칸만 채운다 — 값 있는 주차·난방은 K-apt 값이 달라도 안 덮는다", async () => {
+    const { sb, updates } = makeMainSb([target("t1", "201806", { parking_ratio: 1.1, heating: "개별난방" })]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ kaptdaCnt: "600", ktownFlrNo: "29", codeHeatNm: "지역난방", codeHallNm: "계단식", kaptUsedate: "20180629" });
+    await main({ now: NOW });
+    expect(mockMolitApiCall.mock.calls[0][3]).toEqual({ kaptCode: "K-SDT" });
+    expect(updates).toHaveLength(1);
+    const row = updates[0].row;
+    expect(row.max_floor).toBe(29);
+    expect(row.corridor_type).toBe("계단식");
+    expect(row.parking_ratio).toBeUndefined(); // 1.1 그대로(K-apt 2.0 으로 안 덮음)
+    expect(row.heating).toBeUndefined(); // 개별난방 그대로
+  });
+
+  it("입주 전·완공월 모름은 부르지도 않는다 · 사용승인일 25개월 차이는 쓰지 않는다", async () => {
+    const { sb, updates } = makeMainSb([target("pre", "202711"), target("nocomp", null), target("far", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ kaptdaCnt: "600", ktownFlrNo: "29", kaptUsedate: "20200701" });
+    await main({ now: NOW });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(2); // far 1곳만 (기본+상세)
+    expect(updates).toEqual([]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("molit-building", expect.objectContaining({ ok: 0, skip: 3, fail: 0 }));
+  });
+
+  it("R2 — 04 면 회차를 멈추고 KAPT_RESULT_04 로 실패 기록", async () => {
+    const { sb } = makeMainSb([target("a", "201806"), target("b", "201806")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail(new KaptResultError("04", "HTTP_ERROR", "getAphusBassInfoV5"));
+    await main({ now: NOW });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(1);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.errorMessage).toMatch(/^KAPT_RESULT_04/);
+    expect(rec.fail).toBeGreaterThan(0);
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
