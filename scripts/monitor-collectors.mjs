@@ -1302,6 +1302,106 @@ async function fetchRecentFailureRuns(hours = LOCAL_FAILURE_WINDOW_HOURS) {
   return data ?? [];
 }
 
+/** ⑭ 만든 지 이 시간이 지났는데 묶음 열쇠 칸이 비어 있으면 채우기 배치가 안 돈 것으로 본다(매일 03시 굽기 + 여유). */
+export const COMPLEX_KEY_GAP_HOURS = 36;
+/** ⑭ 조회 상한 — 명단은 앞의 몇 건만 보여 주므로 전부 읽지 않는다. */
+export const COMPLEX_KEY_GAP_FETCH_LIMIT = 200;
+
+/**
+ * ⑭ 묶음 열쇠 칸(`apartments.complex_key`) 빈 행 — "한 단지 = 한 장"(설계서 2026-10-01-one-complex-one-card.md §4-7 (6)).
+ *
+ * 칸은 `scripts/collectors/assign-complex-keys.mjs` 가 매일 굽기(daily-deploy) 앞 단계에서 채운다. 그 단계는
+ * 실패해도 굽기를 막지 않게 돼 있어서(continue-on-error), 안 돌거나 실패해도 워크플로는 초록이다.
+ * 실패 **기록**이 남은 경우는 ⑬ 이 알리고, 이 점검은 "아예 안 돌았다"까지 잡는다:
+ * 만든 지 `COMPLEX_KEY_GAP_HOURS` 가 지난 행의 칸이 비어 있으면 그 배치가 하루 넘게 일을 안 한 것이다.
+ * 새로 들어온 행(다음 굽기 전)은 빈칸이 정상이라 세지 않는다.
+ *
+ * @param {Array<{ id?: string|null, name?: string|null, created_at?: string|null }>} rows complex_key 가 빈 행(created_at 오름차순)
+ * @param {{ now?: Date, gapHours?: number, fetchLimit?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkComplexKeyGaps(rows, opts = {}) {
+  const now = opts.now ?? new Date();
+  const gapHours = opts.gapHours ?? COMPLEX_KEY_GAP_HOURS;
+  const fetchLimit = opts.fetchLimit ?? COMPLEX_KEY_GAP_FETCH_LIMIT;
+  const old = rows
+    .filter((r) => {
+      const t = r?.created_at ? new Date(r.created_at).getTime() : NaN;
+      return Number.isFinite(t) && now.getTime() - t > gapHours * 3600000;
+    })
+    .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+  if (old.length === 0) return [];
+  const shown = old.slice(0, 5).map((r) => `${r.name ?? ""}(${r.id ?? "?"})`);
+  const rest = old.length - shown.length;
+  return [
+    {
+      kind: "stale",
+      collector: "assign-complex-keys",
+      detail: `묶음 열쇠 칸이 빈 단지 ${old.length}${rows.length >= fetchLimit ? "곳 이상" : "곳"} — 만든 지 ${gapHours}시간 넘음`,
+      lines: [
+        "열쇠 채우기(assign-complex-keys)가 매일 굽기 앞에서 돌지 않았거나 실패했습니다.",
+        `예: ${shown.join(", ")}${rest > 0 ? ` 외 ${rest}곳` : ""}`,
+        "daily-deploy 실행 로그의 'Assign complex keys' 단계를 확인하고, 필요하면 손으로 1회 돌리세요(미리보기 먼저).",
+      ],
+      at: String(old[0].created_at),
+    },
+  ];
+}
+
+/**
+ * ⑭ 채우기 배치의 마지막 성공이 오래됐는가. 새 행이 없는 날에는 빈칸이 안 생겨 `checkComplexKeyGaps` 만으로는
+ * "배치가 안 돈다"가 보이지 않는다 — 그날 새 블록 공고 때문에 기존 행 열쇠가 바뀌어야 했다면 그대로 낡는다.
+ * 그래서 `collector_runs` 의 가장 최근 success 행이 `COMPLEX_KEY_GAP_HOURS` 보다 오래됐거나 없으면 알린다.
+ *
+ * @param {{ finished_at?: string|null } | null | undefined} latestSuccess 가장 최근 success 행(없으면 null)
+ * @param {{ now?: Date, gapHours?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkComplexKeyRunStale(latestSuccess, opts = {}) {
+  const now = opts.now ?? new Date();
+  const gapHours = opts.gapHours ?? COMPLEX_KEY_GAP_HOURS;
+  const t = latestSuccess?.finished_at ? new Date(latestSuccess.finished_at).getTime() : NaN;
+  if (Number.isFinite(t) && now.getTime() - t <= gapHours * 3600000) return [];
+  const hours = Number.isFinite(t) ? Math.floor((now.getTime() - t) / 3600000) : null;
+  return [
+    {
+      kind: "stale",
+      collector: "assign-complex-keys",
+      detail: hours == null ? "묶음 열쇠 채우기의 성공 기록이 없음" : `묶음 열쇠 채우기의 마지막 성공이 ${hours}시간 전(기준 ${gapHours}시간)`,
+      lines: [
+        "열쇠 채우기(assign-complex-keys)는 매일 굽기 앞에서 돌아야 합니다 — 안 돌면 새 블록 공고가 들어온 단지의 묶음이 낡습니다.",
+        "daily-deploy 실행 로그의 'Assign complex keys' 단계를 확인하고, 필요하면 손으로 1회 돌리세요(미리보기 먼저).",
+      ],
+      at: latestSuccess?.finished_at ?? "기록 없음",
+    },
+  ];
+}
+
+/**
+ * ⑭ 재료 — 묶음 열쇠 칸이 빈 행(오래된 순)과 채우기 배치의 가장 최근 success 행.
+ * 칸이 아직 없으면(마이그레이션 전) 조회가 실패하고 runFailOpenCheck 가 알린다.
+ * @returns {Promise<{ gapRows: Array<Record<string, any>>, latestSuccess: Record<string, any> | null }>}
+ */
+async function fetchComplexKeyHealth() {
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from("apartments")
+    .select("id,name,created_at")
+    .is("complex_key", null)
+    .order("created_at", { ascending: true })
+    .limit(COMPLEX_KEY_GAP_FETCH_LIMIT);
+  if (error) throw new Error(`apartments(묶음 열쇠 빈 행) 조회 실패: ${error.message}`);
+  const { data: runs, error: runError } = await sb
+    .from("collector_runs")
+    .select("finished_at")
+    .eq("collector", "assign-complex-keys")
+    .eq("status", "success")
+    .order("finished_at", { ascending: false })
+    .limit(1);
+  if (runError) throw new Error(`collector_runs(assign-complex-keys) 조회 실패: ${runError.message}`);
+  return { gapRows: data ?? [], latestSuccess: runs?.[0] ?? null };
+}
+
 /**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
@@ -2366,7 +2466,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 여섯(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬, 옛 main 순서 그대로 + ⑬ 세션570)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 일곱(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588)을 돌려 이슈를 합친다.
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -2375,6 +2475,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchRegionRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
  *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
+ *   fetchKeyHealth?: () => ReturnType<typeof fetchComplexKeyHealth>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -2386,6 +2487,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchRegionRuns = deps.fetchRegionRuns ?? fetchRegionUnresolvedRuns;
   const fetchAhRows = deps.fetchAhRows ?? fetchApplyhomeUnsoldRows;
   const fetchFailureRuns = deps.fetchFailureRuns ?? (() => fetchRecentFailureRuns());
+  const fetchKeyHealth = deps.fetchKeyHealth ?? fetchComplexKeyHealth;
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -2454,6 +2556,14 @@ export async function runDailyGuardedChecks(deps = {}) {
     const failIssues = checkLocalFailures(failRows);
     console.log(`[monitor] ⑬ 로컬 수집기 실패 점검: 최근 ${LOCAL_FAILURE_WINDOW_HOURS}시간 failure ${failRows.length}행 → 이상 ${failIssues.length}건`);
     return failIssues;
+  }));
+
+  // ⑭ 묶음 열쇠 칸 — 채우기 배치(assign-complex-keys)가 하루 넘게 안 돈 신호(세션588): 오래된 빈 행 + 마지막 성공 시각.
+  issues = issues.concat(await runFailOpenCheck("⑭ 묶음 열쇠 칸 점검", async () => {
+    const { gapRows, latestSuccess } = await fetchKeyHealth();
+    const gapIssues = checkComplexKeyGaps(gapRows).concat(checkComplexKeyRunStale(latestSuccess));
+    console.log(`[monitor] ⑭ 묶음 열쇠 칸 점검: 빈 행 ${gapRows.length}건 · 마지막 성공 ${latestSuccess?.finished_at ?? "없음"} → 이상 ${gapIssues.length}건`);
+    return gapIssues;
   }));
 
   return issues;
