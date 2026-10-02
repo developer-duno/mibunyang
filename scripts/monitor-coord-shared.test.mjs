@@ -234,7 +234,11 @@ describe("checkCoordCandidateDrift — 같은 좌표 후보 중 '기준 명단 �
 
   it("⚠️ 기준 후보 명단은 실측값이다", () => {
     // 2026-09-24 세션568 라이브 실측: groupSharedCoords 후보 217개 중 coord_shared 표시 8개를 뺀 209개.
-    expect(COORD_CANDIDATE_BASELINE_IDS).toHaveLength(209);
+    // 2026-10-02 세션589: 감시가 알린 2곳(같은 단지의 분양·임대 행 — DB 실측)을 더해 211개.
+    expect(COORD_CANDIDATE_BASELINE_IDS).toHaveLength(211);
+    expect(COORD_CANDIDATE_BASELINE_IDS).toEqual(
+      expect.arrayContaining(["ap-6027481", "ap-6028455"]),
+    );
     expect(COORD_CANDIDATE_BASELINE_IDS).toEqual([...COORD_CANDIDATE_BASELINE_IDS].sort());
   });
 });

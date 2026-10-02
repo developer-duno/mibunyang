@@ -12,9 +12,10 @@
  *   node scripts/collectors/sync-naver-complex.mjs --dry-run    (미리보기만)
  */
 import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, stringSimilarity, createSemaphore, recordCollectorRun, selectAll, isPlausibleExclRatio, canUseComplexForExclRatio } from "./_shared.mjs";
+import { namesCompatible, pickNaverComplexForListing, isMovedIn } from "./_match-gates.mjs";
 
 /** @typedef {{ complex_no: string; complex_name: string | null; floor_area_ratio: number | null; total_parking_count: number | null; total_household_count: number | null; high_floor: number | null; has_pool: boolean | null; use_approve_ymd: string | null; latitude: number | null; longitude: number | null; heat_fuel_type: string | null; corridor_type: string | null; building_coverage_ratio: number | null; real_estate_type_name: string | null }} ComplexRow */
-/** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null }} AptBaseRow */
+/** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; floor_area_ratio: number | null; parking_ratio: number | null; max_floor: number | null; has_pool: boolean | null; heating: string | null; exclusive_ratio: number | null; quake_design: unknown; view: string | null; sunlight: string | null; heat_fuel: string | null; corridor_type: string | null; building_coverage_ratio: number | null; completion?: string | null }} AptBaseRow */
 /** @typedef {{ id: string; name: string; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; naver_jeonse_count: number | null; naver_wolse_count: number | null }} AptUnsoldRow */
 /** @typedef {{ id: string; name: string; lat: number | null; lng: number | null; naver_nearby_median: number | null; naver_nearby_avg: number | null; naver_jeonse_rate: number | null; naver_build_year: number | null; naver_avg_floor: number | null; naver_nearby_count: number | null; naver_fetched_at: string | null }} AptNaverRow */
 /** @typedef {{ article_no: string; complex_no: string; area1_m2: number | null; area2_m2: number | null; direction: string | null; building_name: string | null }} ArticleAreaRow */
@@ -248,7 +249,12 @@ export async function flushUpdates(sb, updates, label) {
   return { ok, fail };
 }
 
-export async function main() {
+/**
+ * `opts.now` — Phase 4 의 입주 여부 판정 시각(시험 주입용, 기본 지금 — 세션589 V6).
+ * @param {{ now?: Date }} [opts]
+ */
+export async function main(opts = {}) {
+  const now = opts.now ?? new Date();
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
@@ -328,7 +334,7 @@ export async function main() {
   /** @type {AptBaseRow[]} */
   const apartments = /** @type {AptBaseRow[]} */ (
     await selectAll(
-      (s) => s.from("apartments").select("id, name, lat, lng, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio"),
+      (s) => s.from("apartments").select("id, name, lat, lng, floor_area_ratio, parking_ratio, max_floor, has_pool, heating, exclusive_ratio, quake_design, view, sunlight, heat_fuel, corridor_type, building_coverage_ratio, completion"),
       sbMibunyang,
       "id",
     )
@@ -397,6 +403,9 @@ export async function main() {
       // 나오므로 필드별로 나눠 걸지 않고 apt 진입 직후 한 번에 건다(matchApartments 자체는
       // 22개 필드에 영향을 주므로 건드리지 않음 — 채움 라인 쪽만 좁힌다).
       if (!withinMatchRange(apt, cpx)) { skipped++; continue; }
+      // N2(세션589) — 500m 안이어도 형제 블록·다른 차수(넥스티엘Ⅲ←Ⅰ · 레이크송도5차←4차)는 남의 단지다.
+      // 차수·블록·로마 숫자가 "둘 다 있는데 겹치지 않으면" 건너뛴다(_match-gates namesCompatible).
+      if (!namesCompatible(apt.name, cpx.complex_name)) { skipped++; continue; }
 
       /** @type {Record<string, unknown>} */
       const row = {};
@@ -823,30 +832,45 @@ export async function main() {
       let phase4Updated = 0;
       /** @type {AptUpdate[]} */
       const phase4Updates = [];
-      // complexes → apartments 매칭 (Phase 1 매칭 캐시 + 인덱스 재사용)
+      // N1(세션589) — 옛 동작: 이름 유사도 0.6(전국·거리 없음)으로 짝지은 단지마다 **무조건** 덮어써서,
+      // 짝이 여럿이면 단지 번호 순 마지막이 이겼다(16km 밖 다른 롯데캐슬 매물의 관리비·향 사고).
+      // 이제 아파트마다 후보(매칭 캐시 역인덱스) 중 **500m + 정리한 이름 ≥0.75 + 차수·블록 충돌 없음**을
+      // 지난 가장 가까운 단지 하나만 쓴다. 통과한 게 없으면 아무것도 쓰지 않는다(기존 값도 지우지 않는다 —
+      // 정리는 전이표로 따로). 쓸 값(관리비·향)이 있는 단지만 후보로 본다.
+      /** @type {Map<string, ComplexRow[]>} */
+      const candidatesByApt = new Map();
       for (const cpx of complexes) {
         const agg = complexAgg[cpx.complex_no];
-        if (!agg) continue;
+        if (!agg || (agg.costs.length === 0 && Object.keys(agg.dirs).length === 0)) continue;
         const ids = matchCache.get(cpx.complex_no);
         if (!ids) continue;
-        const matchedApts = /** @type {AptBaseRow[]} */ (ids.map(id => aptIndexBase.get(id)).filter(Boolean));
-        if (matchedApts.length === 0) continue;
-
-        for (const apt of matchedApts) {
-          /** @type {Record<string, unknown>} */
-          const row = {};
-          if (agg.costs.length > 0) {
-            row.avg_maintenance_cost = Math.round(agg.costs.reduce((a, b) => a + b, 0) / agg.costs.length);
-          }
-          const dirEntries = Object.entries(agg.dirs);
-          if (dirEntries.length > 0) {
-            dirEntries.sort((a, b) => b[1] - a[1]);
-            row.primary_direction = dirEntries[0][0];
-          }
-          if (Object.keys(row).length === 0) continue;
-          if (dryRun) { log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`); phase4Updated++; continue; }
-          phase4Updates.push({ id: apt.id, name: apt.name, row });
+        for (const id of ids) {
+          const list = candidatesByApt.get(id);
+          if (list) list.push(cpx);
+          else candidatesByApt.set(id, [cpx]);
         }
+      }
+
+      for (const [aptId, cands] of candidatesByApt) {
+        const apt = aptIndexBase.get(aptId);
+        if (!apt) continue;
+        const cpx = pickNaverComplexForListing(apt, cands, { withinRange: withinMatchRange, distance: distanceM });
+        if (!cpx) continue;
+        const agg = complexAgg[cpx.complex_no];
+        /** @type {Record<string, unknown>} */
+        const row = {};
+        // V6(사장님 결정) — 관리비는 입주 후 단지만(분양권 매물의 중개사 추정값도 안 씀). 향은 자기 단지면 입주 전에도.
+        if (agg.costs.length > 0 && isMovedIn(apt.completion, now)) {
+          row.avg_maintenance_cost = Math.round(agg.costs.reduce((a, b) => a + b, 0) / agg.costs.length);
+        }
+        const dirEntries = Object.entries(agg.dirs);
+        if (dirEntries.length > 0) {
+          dirEntries.sort((a, b) => b[1] - a[1]);
+          row.primary_direction = dirEntries[0][0];
+        }
+        if (Object.keys(row).length === 0) continue;
+        if (dryRun) { log(PHASE, `  [DRY-RUN] ${apt.name}: ${JSON.stringify(row)}`); phase4Updated++; continue; }
+        phase4Updates.push({ id: apt.id, name: apt.name, row });
       }
 
       const r4 = await flushUpdates(sbMibunyang, phase4Updates, "Phase4");

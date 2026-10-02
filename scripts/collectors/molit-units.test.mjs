@@ -20,21 +20,26 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     log: vi.fn(),
     logError: vi.fn(),
     recordApiQuota: vi.fn(),
+    recordCollectorRun: vi.fn(),
   };
 });
 
-// _molit-api.mjs 모킹 — molitApiCall 제어
+// _molit-api.mjs 모킹 — molitApiCall·fetchSidoAptList 제어 (fetchSidoAptList 는 모듈 안에서 원본
+// molitApiCall 을 부르므로 따로 바꿔 둔다 — main() 경로 시험용, 세션589)
 const mockMolitApiCall = vi.fn();
+const mockFetchSidoAptList = vi.fn();
 vi.mock("./_molit-api.mjs", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
-  return { ...orig, molitApiCall: mockMolitApiCall };
+  return { ...orig, molitApiCall: mockMolitApiCall, fetchSidoAptList: mockFetchSidoAptList };
 });
 
 // MOLIT_KEY 설정 — process.exit 방지
 process.env.MOLIT_KEY = "test-key";
 
-const { getTargets, fetchAptDetail, updateUnits, resolveUnits, writeUnmatchedLog, unmatchedLogPath } =
+const { getTargets, fetchAptDetail, updateUnits, resolveUnits, writeUnmatchedLog, unmatchedLogPath, main } =
   await import("./molit-units.mjs");
+const { getSupabase, recordCollectorRun } = /** @type {any} */ (await import("./_shared.mjs"));
+const { KaptResultError } = await import("./_molit-api.mjs");
 
 // ── 헬퍼 ─────────────────────────────────────────────────────
 /**
@@ -267,7 +272,8 @@ describe("main 이 unmatched 를 collector_runs 의 skip 에 합산한다 (세�
   });
 
   it("미매칭 목록을 파일로 남기는 호출이 배선돼 있다", () => {
-    expect(src).toMatch(/const\s+unmatchedLog\s*=\s*writeUnmatchedLog\(\s*unmatchedList\s*\)/);
+    // 세션589: main(opts) 가 시험용 폴더를 둘째 인자로 넘긴다(opts.unmatchedLogDir — 평소 undefined = 기본 폴더).
+    expect(src).toMatch(/const\s+unmatchedLog\s*=\s*writeUnmatchedLog\(\s*unmatchedList\s*(?:,\s*opts\.unmatchedLogDir\s*)?\)/);
   });
 });
 
@@ -310,5 +316,192 @@ describe("E2E 시나리오", () => {
     const kaptdaCnt = parseInt(/** @type {string} */ (detail?.kaptdaCnt || "0"), 10);
     // main()에서 isNaN(kaptdaCnt) || kaptdaCnt <= 1 이면 skipped
     expect(isNaN(kaptdaCnt) || kaptdaCnt <= 1).toBe(true);
+  });
+});
+
+// ── main() 실전 경로 — 짝 짓기 게이트·사용승인일·결과 코드·2u 창 (세션589 T3) ─────────
+// 옛 동작: findBestMatch(시도 전체에서 이름 0.5) 짝이면 무조건 units·unit_source=molit 를 썼다.
+// 이제: pickKaptMatch(입주 후·같은 시군구·차수·이름 0.6) → 기본정보 사용승인일 ±24개월 → 씀.
+// 04 같은 결과 코드는 "상세 조회 실패"로 넘기지 않고 회차를 멈춘다. 2u 창이면 아예 안 부른다.
+describe("main() — 세션589 게이트 실전 경로", () => {
+  /** 2026-10-05(월) 05:30 KST — 2u 창 밖 */
+  const NOW = new Date("2026-10-04T20:30:00Z");
+  /** @type {string} */
+  let dir;
+  /** @type {any} */
+  let exitSpy;
+
+  const LIST = [
+    { kaptCode: "K-SDT", kaptName: "신동탄 롯데캐슬아파트", bjdCode: "4159510500", as1: "경기도", as2: "화성병점구", as3: "반월동" },
+    { kaptCode: "K-DT2", kaptName: "동탄2 롯데캐슬", bjdCode: "4159711100", as1: "경기도", as2: "화성동탄구", as3: "장지동" },
+    { kaptCode: "A10027643", kaptName: "광명철산도덕파크타운", bjdCode: "4121010200", as1: "경기도", as2: "광명시", as3: "철산동" },
+  ];
+  /** @param {string} id @param {string} name @param {string|null} completion @param {string|null} bjd @param {string} gu */
+  const target = (id, name, completion, bjd, gu) => ({ id, name, region: "경기", gu, address: null, units: 1, unsold: null, unsold_rate: null, unit_source: null, completion, bjd_code: bjd });
+
+  /** @param {any[]} rows */
+  function makeMainSb(rows) {
+    /** @type {Array<{ id: string; row: any }>} */
+    const updates = [];
+    const sb = {
+      from: () => ({
+        select: () => ({ or: () => ({ order: () => ({ limit: () => ({
+          gt: () => Promise.resolve({ data: [], error: null }),
+          /** @param {any} res @param {any} rej */
+          then: (res, rej) => Promise.resolve({ data: rows, error: null }).then(res, rej),
+        }) }) }) }),
+        /** @param {any} row */
+        update: (row) => ({ eq: (/** @type {string} */ _c, /** @type {string} */ id) => { updates.push({ id, row }); return Promise.resolve({ error: null }); } }),
+      }),
+    };
+    return { sb, updates };
+  }
+
+  /** @param {Record<string, any>} details kaptCode → 기본정보 item (Error 면 던짐) */
+  function routeDetail(details) {
+    mockMolitApiCall.mockImplementation(async (/** @type {string} */ _p, /** @type {string} */ _b, /** @type {string} */ _ep, /** @type {any} */ params) => {
+      const d = details[params.kaptCode];
+      if (d instanceof Error) throw d;
+      return { response: { header: { resultCode: "00" }, body: { item: d } } };
+    });
+  }
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "molit-units-main-"));
+    mockMolitApiCall.mockReset();
+    mockFetchSidoAptList.mockReset();
+    recordCollectorRun.mockClear();
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+  });
+  afterEach(() => { rmSync(dir, { recursive: true, force: true }); exitSpy.mockRestore(); });
+
+  it("입주 후·같은 시군구 짝만 쓰고(신동탄롯데캐슬 → 맞는 단지) 입주 전·이름 미달·완공월 모름은 안 쓴다", async () => {
+    const { sb, updates } = makeMainSb([
+      target("ap-6001392", "신동탄롯데캐슬", "201806", "4159510500", "화성시"),
+      target("pre", "신동탄롯데캐슬", "202711", "4159510500", "화성시"), // 입주 전
+      target("ap-6028119", "광명소하파크타워", "202510", "4121010400", "광명시"), // 이름 0.56
+      target("nocomp", "신동탄롯데캐슬", null, "4159510500", "화성시"), // 완공월 모름(K5)
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ "K-SDT": { kaptdaCnt: 612, kaptUsedate: "20180629" } });
+
+    await main({ now: NOW, unmatchedLogDir: dir });
+
+    expect(updates.map((u) => u.id)).toEqual(["ap-6001392"]);
+    expect(updates[0].row.units).toBe(612);
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(1); // 기본정보는 짝이 있는 1곳만
+    expect(mockMolitApiCall.mock.calls[0][3]).toEqual({ kaptCode: "K-SDT" }); // 옛 짝 K-DT2 가 아니다
+    const saved = JSON.parse(readFileSync(unmatchedLogPath(dir), "utf8"));
+    const reasons = Object.fromEntries(saved.entries.map((/** @type {any} */ e) => [e.id, e.reason]));
+    expect(reasons.pre).toMatch(/입주 전/);
+    expect(reasons["ap-6028119"]).toMatch(/이름 유사도/);
+    expect(reasons.nocomp).toMatch(/완공월 모름/);
+    expect(recordCollectorRun).toHaveBeenCalledWith("molit-units", expect.objectContaining({ ok: 1, skip: 3, fail: 0 }));
+  });
+
+  it("K4 — 사용승인일이 완공월과 24개월 넘게 다르면 쓰지 않는다(25개월 거부 · 24개월 통과)", async () => {
+    const { sb, updates } = makeMainSb([
+      target("far", "신동탄롯데캐슬", "201806", "4159510500", "화성시"),
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ "K-SDT": { kaptdaCnt: 612, kaptUsedate: "20200701" } }); // +25개월
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(updates).toEqual([]);
+    const saved = JSON.parse(readFileSync(unmatchedLogPath(dir), "utf8"));
+    expect(saved.entries[0].reason).toMatch(/사용승인일 불일치/);
+
+    routeDetail({ "K-SDT": { kaptdaCnt: 612, kaptUsedate: "20200615" } }); // +24개월
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(updates.map((u) => u.id)).toEqual(["far"]);
+  });
+
+  it("R2 — 기본정보가 04 면 회차를 멈추고 KAPT_RESULT_04 로 실패 기록(다음 단지를 부르지 않는다)", async () => {
+    const { sb, updates } = makeMainSb([
+      target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시"),
+      target("b", "신동탄롯데캐슬", "201806", "4159510500", "화성시"),
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeDetail({ "K-SDT": new KaptResultError("04", "HTTP_ERROR", "getAphusBassInfoV5") });
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(1);
+    expect(updates).toEqual([]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.fail).toBeGreaterThan(0);
+    expect(rec.errorMessage).toMatch(/^KAPT_RESULT_04/);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+  });
+
+  it("R2 — 목록이 04 면 다른 시도도 부르지 않는다", async () => {
+    const { sb } = makeMainSb([
+      target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시"),
+      { ...target("s", "서울단지", "201001", "1111010100", "종로구"), region: "서울" },
+    ]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockRejectedValue(new KaptResultError("04", null, "getSidoAptList4"));
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(mockFetchSidoAptList).toHaveBeenCalledTimes(1);
+    expect(recordCollectorRun.mock.calls.at(-1)[1].errorMessage).toMatch(/^KAPT_RESULT_04/);
+  });
+
+  it("R3 — 2u 창(13:00 KST)이면 K-apt 를 부르지 않고 skip 으로 흔적을 남긴다", async () => {
+    const { sb, updates } = makeMainSb([target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    await main({ now: new Date("2026-10-05T04:00:00Z"), unmatchedLogDir: dir });
+    expect(mockFetchSidoAptList).not.toHaveBeenCalled();
+    expect(mockMolitApiCall).not.toHaveBeenCalled();
+    expect(updates).toEqual([]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("molit-units", expect.objectContaining({ ok: 0, skip: 1, fail: 0, errorMessage: expect.stringMatching(/^SIBLING_KAPT_WINDOW/) }));
+  });
+
+  it("R3 — 매월 21일 16:00 KST(2u 21일 매칭 창)도 건너뛴다(세션589 보완 B9)", async () => {
+    const { sb } = makeMainSb([target("a", "신동탄롯데캐슬", "201806", "4159510500", "화성시")]);
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    await main({ now: new Date("2026-10-21T07:00:00Z"), unmatchedLogDir: dir });
+    expect(mockFetchSidoAptList).not.toHaveBeenCalled();
+    expect(recordCollectorRun.mock.calls.at(-1)[1].errorMessage).toMatch(/^SIBLING_KAPT_WINDOW .*매월 21일 14:50~21:00/);
+  });
+
+  /** @param {(n: number) => Error | null} failAt n = 몇 번째 기본정보 호출(1부터) */
+  function routeFail(failAt) {
+    let n = 0;
+    mockMolitApiCall.mockImplementation(async () => {
+      n++;
+      const e = failAt(n);
+      if (e) throw e;
+      return { response: { header: { resultCode: "00" }, body: { item: { kaptdaCnt: 612, kaptUsedate: "20180629" } } } };
+    });
+  }
+  /** @param {number} k */
+  const rows = (k) => Array.from({ length: k }, (_, i) => target(`t${i}`, "신동탄롯데캐슬", "201806", "4159510500", "화성시"));
+
+  it("B3 — 매개변수 코드(10)는 그 단지만 실패, 다음 단지는 쓴다", async () => {
+    const { sb, updates } = makeMainSb(rows(2));
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeFail((n) => (n === 1 ? new KaptResultError("10", null, "getAphusBassInfoV5") : null));
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(updates.map((u) => u.id)).toEqual(["t1"]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.fail).toBe(1);
+    expect(rec.errorMessage).toBeNull();
+  });
+
+  it("B4 — 결과 코드 아닌 실패가 연속 5건이면 KAPT_FETCH_FAIL 로 멈춘다(여섯째는 안 부른다)", async () => {
+    const { sb, updates } = makeMainSb(rows(7));
+    getSupabase.mockReturnValue(sb);
+    mockFetchSidoAptList.mockResolvedValue(LIST);
+    routeFail(() => new Error("getAphusBassInfoV5: 3회 재시도 소진 (마지막 상태: 429)"));
+    await main({ now: NOW, unmatchedLogDir: dir });
+    expect(mockMolitApiCall).toHaveBeenCalledTimes(5);
+    expect(updates).toEqual([]);
+    const rec = recordCollectorRun.mock.calls.at(-1)[1];
+    expect(rec.fail).toBe(5);
+    expect(rec.errorMessage).toMatch(/^KAPT_FETCH_FAIL 연속 5건/);
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });

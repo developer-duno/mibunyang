@@ -266,7 +266,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1047,6 +1047,55 @@ export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLV
 }
 
 /**
+ * ⑮ 대상 — 2u(자매 레포) K-apt 창 때문에 회차를 건너뛰거나 멈추는 수집기(세션589 보완 B2 — 검사 C3).
+ * `collector` = 각 파일의 `PHASE` 상수 그대로(`recordCollectorRun` 첫 인자 — 파일명과 다르다).
+ * `consecutive` = 최근 몇 회가 **모두** 창 때문이면 알리나. molit-units 는 월·목·6일에 돌아 한 번 건너뛰면 다음
+ * 회차가 메우므로 2회, 관리비(15~19일)·건물정보(10일)는 한 번 멈추면 그 달 몫이 밀리므로 1회.
+ */
+export const KAPT_WINDOW_COLLECTORS = Object.freeze([
+  Object.freeze({ collector: "molit-units", consecutive: 2 }),
+  Object.freeze({ collector: "molit-building", consecutive: 1 }),
+  Object.freeze({ collector: "maintenance", consecutive: 1 }),
+]);
+
+/** ⑮ 수집기가 `collector_runs.error_message` 맨 앞에 남기는 머리말(`_match-gates.mjs` 창 판정 결과). */
+export const KAPT_WINDOW_MARKER = "SIBLING_KAPT_WINDOW";
+
+/**
+ * ⑮ 2u K-apt 창 때문에 건너뛴·멈춘 회차를 알린다. 그런 회차는 status=success · skip=N 으로 남아 ②(성공인데 0건)·
+ * ⑤(신선도)가 모두 침묵했다 — 월·목 4단계가 늘 창 안에 떨어지면 세대수 보정이 조용히 0 이 된다(검사 C3).
+ * 판정은 최근 `consecutive` 회의 error_message 가 **모두** 머리말로 시작하는가. `at` = 가장 최근 실행 시각이라
+ * 같은 실행은 한 번만 알리고(항상 dedup), 다음 회차가 또 건너뛰면 새로 알린다.
+ * @param {Record<string, Array<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>>} runsByCollector
+ *   collector 별 최근 행(finished_at DESC). [0] 이 최신.
+ * @param {ReadonlyArray<{ collector: string, consecutive: number }>} [targets]
+ * @returns {Issue[]}
+ */
+export function checkKaptWindowSkips(runsByCollector, targets = KAPT_WINDOW_COLLECTORS) {
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const { collector, consecutive } of targets) {
+    const recent = (runsByCollector[collector] ?? []).slice(0, consecutive);
+    if (recent.length < consecutive) continue;
+    if (!recent.every((r) => String(r.error_message ?? "").startsWith(KAPT_WINDOW_MARKER))) continue;
+    const latest = recent[0];
+    issues.push({
+      kind: "kapt-window",
+      collector,
+      detail: consecutive > 1
+        ? `${collector} · 최근 ${consecutive}회가 모두 2u K-apt 창 때문에 건너뜀 — 그동안 이 수집기가 한 일이 없습니다`
+        : `${collector} · 최근 회차가 2u K-apt 창 때문에 중간에 멈춤 — 남은 단지는 다음 회차로 밀렸습니다`,
+      lines: [
+        String(latest.error_message ?? "").slice(0, 200),
+        ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}`] : []),
+      ],
+      at: latest.finished_at ?? undefined,
+    });
+  }
+  return issues;
+}
+
+/**
  * ⑫(a) 만료 경보 여유(일) — KOSIS 수집기는 매월 9일 1회라, 만료 뒤 다음 회차까지 applyhome 으로 남는 게
  * 정상이다. 그 한 주기(최대 31일) + 여유를 넘겨도 applyhome 이면 경보.
  */
@@ -1498,6 +1547,8 @@ export const COORD_SHARED_BASELINE_IDS = [
  *
  * 2026-09-24 세션568 실측: 라이브 `groupSharedCoords` 후보 217개 중 `coord_shared=true`
  * 로 이미 표시된 8개(=COORD_SHARED_BASELINE_IDS)를 뺀 **209개**.
+ * 2026-10-02 세션589: 감시가 새 후보로 알린 2곳(ap-6027481·ap-6028455 — 같은 단지의 분양·임대
+ * 행이 한 좌표를 쓰는 것, DB 실측으로 확인)을 더해 **211개**.
  */
 export const COORD_CANDIDATE_BASELINE_IDS = [
   "ah-2021910013", "ah-2021910105", "ah-2021910122", "ah-2021910125", "ah-2021910149",
@@ -1541,7 +1592,8 @@ export const COORD_CANDIDATE_BASELINE_IDS = [
   "ah-2025910171", "ah-2025910179", "ah-2025910185", "ah-2025910263", "ah-2025910279",
   "ah-2025910280", "ah-2025930006", "ah-2025930018", "ah-2025930019", "ah-2025930027",
   "ah-2025930028", "ah-2025930031", "ah-2025930042", "ah-2026910003", "ah-2026910004",
-  "ah-2026930001", "ah-2026930029", "ap-6026674", "ap-6028058",
+  "ah-2026930001", "ah-2026930029", "ap-6026674", "ap-6027481", "ap-6028058",
+  "ap-6028455",
 ].sort();
 
 /**
@@ -1559,7 +1611,8 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
  */
 // ⑫ 도 사람이 고쳐야 풀린다(세션569). ⑬ local-failure 는 at=finished_at(행마다 고유)이라 같은 실패 행을
 // 창(26시간)이 겹친 이튿날 한 번 더 알리지 않게 dedup 한다(세션570) — 새 실패 행은 새 키라 그대로 울린다.
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure"]);
+// ⑮ kapt-window 도 at=최근 실행 finished_at — 같은 실행은 한 번만, 다음 회차가 또 건너뛰면 새로 울린다(세션589).
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window"]);
 
 /**
  * @param {Issue} issue
@@ -2466,7 +2519,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 일곱(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 여덟(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮ 세션589)을 돌려 이슈를 합친다.
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -2476,11 +2529,14 @@ export async function runFailOpenCheck(label, run) {
  *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
  *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
  *   fetchKeyHealth?: () => ReturnType<typeof fetchComplexKeyHealth>,
+ *   fetchKaptWindowRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
  */
 export async function runDailyGuardedChecks(deps = {}) {
+  // ⑮ 는 ⑪ 과 같은 조회(수집기 이름별 최근 행)를 쓴다 — 이름 목록만 다르다(세션589 보완 B2).
+  const fetchKaptWindowRuns = deps.fetchKaptWindowRuns ?? fetchRegionUnresolvedRuns;
   const fetchGuPairs = deps.fetchGuPairs ?? (() => fetchGuPairStats());
   const fetchCoordRows = deps.fetchCoordRows ?? (() => fetchCoordSharedRows());
   const fetchTradeRows = deps.fetchTradeRows ?? (() => fetchTradeMonthRows());
@@ -2564,6 +2620,15 @@ export async function runDailyGuardedChecks(deps = {}) {
     const gapIssues = checkComplexKeyGaps(gapRows).concat(checkComplexKeyRunStale(latestSuccess));
     console.log(`[monitor] ⑭ 묶음 열쇠 칸 점검: 빈 행 ${gapRows.length}건 · 마지막 성공 ${latestSuccess?.finished_at ?? "없음"} → 이상 ${gapIssues.length}건`);
     return gapIssues;
+  }));
+
+  // ⑮ 2u K-apt 창 건너뜀 — 창 때문에 건너뛴·멈춘 회차는 success·skip 이라 ②⑤ 가 침묵했다(세션589 보완 B2).
+  issues = issues.concat(await runFailOpenCheck("⑮ 2u 창 건너뜀 점검", async () => {
+    const names = KAPT_WINDOW_COLLECTORS.map((c) => c.collector);
+    const windowRuns = await fetchKaptWindowRuns(names);
+    const windowIssues = checkKaptWindowSkips(windowRuns);
+    console.log(`[monitor] ⑮ 2u 창 건너뜀 점검: 수집기 ${Object.keys(windowRuns).length}/${names.length}개 최근 실행 → 이상 ${windowIssues.length}건`);
+    return windowIssues;
   }));
 
   return issues;
@@ -3254,7 +3319,7 @@ async function main() {
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());

@@ -21,12 +21,13 @@ import { dirname, resolve } from "path";
 import { fileURLToPath } from "url";
 import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown, today, clampUnsoldRate } from "./_shared.mjs";
 import {
-  SIDO_CODE, API_DETAIL_BASE, MIN_SIMILARITY, REQUEST_DELAY,
-  molitApiCall, fetchSidoAptList, findBestMatch,
+  SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY, KAPT_LIST_PAGE_SIZE,
+  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate,
 } from "./_molit-api.mjs";
+import { pickKaptMatch, usedateConsistent, inSiblingKaptWindow, siblingKaptWindowText } from "./_match-gates.mjs";
 
 /** @typedef {import("@supabase/supabase-js").SupabaseClient} SupabaseClient */
-/** @typedef {{ id: string; name: string; region: string; gu: string | null; address: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; unit_source: string | null }} TargetApt */
+/** @typedef {{ id: string; name: string; region: string; gu: string | null; address: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; unit_source: string | null; completion: string | null; bjd_code: string | null }} TargetApt */
 /** @typedef {{ id: string; name: string; region: string; gu: string | null; reason: string }} UnmatchedEntry */
 
 loadEnv();
@@ -49,7 +50,7 @@ export async function getTargets(sb) {
   // selectAll: 고유키(id) 커서 페이지네이션
   const data = await selectAll(
     (s) => s.from("apartments")
-      .select("id, name, region, gu, address, units, unsold, unsold_rate, unit_source")
+      .select("id, name, region, gu, address, units, unsold, unsold_rate, unit_source, completion, bjd_code")
       .or("units.lte.1,unsold_rate.gte.100"),
     sb,
     "id"
@@ -172,7 +173,13 @@ export function writeUnmatchedLog(entries, dir = DEFAULT_UNMATCHED_LOG_DIR, date
 }
 
 // ── 메인 ─────────────────────────────────────────────────────
-async function main() {
+/**
+ * `opts.now` — 2u 창 판정·입주 여부 판정 시각(시험 주입용, 기본 지금).
+ * `opts.unmatchedLogDir` — 미매칭 목록 파일 폴더(시험 주입용).
+ * @param {{ now?: Date; unmatchedLogDir?: string }} [opts]
+ */
+export async function main(opts = {}) {
+  const now = opts.now ?? new Date();
   const dryRun = process.argv.includes("--dry-run");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
@@ -185,6 +192,16 @@ async function main() {
 
   if (!targets.length) {
     log(PHASE, "보정 대상 없음, 종료");
+    return;
+  }
+
+  // 1-b. 2u 창이면 이번 회차를 건너뛴다(세션589 R3). 월·목 네이버 러너 4단계는 실행 시각이 10~15시로
+  //      흔들려 2u 의 12:40~15:15 K-apt 회차와 겹칠 수 있다 — 같은 열쇠라 합계가 K-apt 한계를 넘는다.
+  //      대상은 그대로 남아 다음 회차(목요일·매월 6일 05:30)가 처리한다. skip 으로 흔적을 남긴다.
+  if (inSiblingKaptWindow(now)) {
+    const msg = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST ${siblingKaptWindowText()})이라 건너뜀 — 대상 ${targets.length}건 다음 회차로`;
+    log(PHASE, msg);
+    await recordCollectorRun(PHASE, { ok: 0, skip: targets.length, fail: 0, errorMessage: msg });
     return;
   }
 
@@ -209,8 +226,11 @@ async function main() {
   let apiCalls = 0;
   /** @type {UnmatchedEntry[]} 미매칭 단지 목록 — 파일로 남겨 사후 추적 가능하게 (세션 495) */
   const unmatchedList = [];
+  /** @type {string | null} 회차 중단 사유 — K-apt 결과 코드·연속 실패(세션589 R2·보완 B3·B4). error_message 로 남는다 */
+  let abortMessage = null;
+  const gate = createKaptFailureGate();
 
-  for (const [region, group] of Object.entries(groups)) {
+  regionLoop: for (const [region, group] of Object.entries(groups)) {
     if (isInterrupted()) break;  // 세션 344: graceful shutdown (외부 region loop)
     log(PHASE, `\n--- ${region} (${group.sidoCode}) ${group.targets.length}건 ---`);
 
@@ -218,11 +238,15 @@ async function main() {
     let aptList;
     try {
       aptList = await fetchSidoAptList(PHASE, group.sidoCode, API_KEY_SAFE);
-      apiCalls += Math.ceil(aptList.length / 500) || 1;
+      apiCalls += Math.ceil(aptList.length / KAPT_LIST_PAGE_SIZE) || 1;
+      gate.success();
       log(PHASE, `  API 단지 목록: ${aptList.length}건`);
     } catch (err) {
       logError(PHASE, `  API 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
       failed += group.targets.length;
+      if (err instanceof KaptResultError) apiCalls++;
+      const stop = gate.failure(err);
+      if (stop) { abortMessage = stop; break; }
       continue;
     }
 
@@ -238,28 +262,28 @@ async function main() {
       if (isInterrupted()) break;  // 세션 344: graceful shutdown (내부 target loop)
       log(PHASE, `  [${target.id}] ${target.name}`);
 
-      // 이름 매칭
-      const match = findBestMatch(target.name, target.gu, aptList, {
-        guField: "address", guBonus: 0.15, attachScore: true,
-      });
+      // 짝 짓기 게이트(세션589 K1·K2·K3·K5) — 완공월·입주 후·같은 시군구·차수·이름 0.6
+      const pick = pickKaptMatch(target, aptList, { now });
+      const match = pick.match;
       if (!match) {
-        log(PHASE, `    → 매칭 실패 (유사도 < ${MIN_SIMILARITY})`);
+        log(PHASE, `    → 매칭 안 함: ${pick.reason}`);
         unmatched++;
         unmatchedList.push({
           id: target.id, name: target.name, region: target.region, gu: target.gu,
-          reason: `이름 매칭 실패 (유사도 < ${MIN_SIMILARITY})`,
+          reason: `짝 짓기 게이트: ${pick.reason}`,
         });
         continue;
       }
 
       const kaptCode = /** @type {string} */ (match.kaptCode);
-      log(PHASE, `    → 매칭: ${match.kaptName || match.as3} (code=${kaptCode}, 유사도=${match.matchScore})`);
+      log(PHASE, `    → 매칭: ${match.kaptName || match.as3} (code=${kaptCode}, 유사도=${pick.score})`);
 
       // 단지 상세 조회 → 세대수
       try {
         await sleep(REQUEST_DELAY);
         const detail = await fetchAptDetail(kaptCode);
         apiCalls++;
+        gate.success(); // K-apt 호출이 됐다 — 연속 실패 수를 0 으로
         if (!detail) {
           log(PHASE, `    → 상세 조회 실패`);
           unmatched++;
@@ -267,6 +291,15 @@ async function main() {
             id: target.id, name: target.name, region: target.region, gu: target.gu,
             reason: `상세 조회 실패 (kaptCode=${kaptCode})`,
           });
+          continue;
+        }
+
+        // K4 — 사용승인일이 우리 완공월과 24개월 넘게 다르면 그 짝을 버린다(이름만 닮은 다른 단지)
+        if (!usedateConsistent(target.completion, detail.kaptUsedate)) {
+          const why = `사용승인일 불일치 (kaptUsedate=${detail.kaptUsedate ?? "없음"}, completion=${target.completion}, kaptCode=${kaptCode})`;
+          log(PHASE, `    → ${why} — 쓰지 않음`);
+          unmatched++;
+          unmatchedList.push({ id: target.id, name: target.name, region: target.region, gu: target.gu, reason: why });
           continue;
         }
 
@@ -288,14 +321,22 @@ async function main() {
       } catch (err) {
         logError(PHASE, `    → 상세 조회 에러: ${err instanceof Error ? err.message : String(err)}`);
         failed++;
+        if (err instanceof KaptResultError) apiCalls++;
+        // 일시·fatal 코드는 즉시, 10·11 과 결과 코드 아닌 실패는 연속 5건이면 회차를 멈춘다(세션589 보완 B3·B4)
+        const stop = gate.failure(err);
+        if (stop) { abortMessage = stop; break regionLoop; }
       }
     }
+  }
+
+  if (abortMessage) {
+    logError(PHASE, `${abortMessage} — 회차 중단(벌칙 중 계속 부르면 길어진다). 남은 대상은 다음 회차`);
   }
 
   log(PHASE, `\n=== 완료 ===`);
   log(PHASE, `보정: ${corrected}건, 미매칭: ${unmatched}건, 장애: ${failed}건, 건너뛰기: ${skipped}건, API: ${apiCalls}회`);
 
-  const unmatchedLog = writeUnmatchedLog(unmatchedList);
+  const unmatchedLog = writeUnmatchedLog(unmatchedList, opts.unmatchedLogDir);
   if (unmatchedLog) log(PHASE, `미매칭 ${unmatchedList.length}건 목록 저장: ${unmatchedLog}`);
 
   if (!dryRun) await recordApiQuota("molit-units", "MOLIT_KEY", apiCalls);
@@ -303,7 +344,8 @@ async function main() {
   // "이름을 못 찾음"·"세대수 못 씀" 은 둘 다 장애가 아닌 건너뜀이라 같은 칸이 맞다.
   // 합산 전에는 미매칭이 어느 칸에도 안 들어가 ok=0·skip=0 인 실행이 monitor ② 에 "성공인데
   // 처리 0건" 으로 잡히거나, 반대로 수백 건이 조용히 증발해도 기록만 보면 멀쩡해 보였다 (세션 495).
-  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed });
+  // 회차 중단은 error_message 머리말 KAPT_RESULT_<코드> · KAPT_FETCH_FAIL 로 남긴다(세션589 R2·보완 B4).
+  await recordCollectorRun(PHASE, { ok: corrected, skip: skipped + unmatched, fail: failed, errorMessage: abortMessage });
   if (failed > 0) process.exit(1);   // 진짜 장애만 — 미매칭은 정상 종료
 }
 

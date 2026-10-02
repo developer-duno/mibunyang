@@ -14,19 +14,21 @@
  * 사용법:
  *   node scripts/collectors/molit-building-info.mjs              (Supabase UPDATE)
  *   node scripts/collectors/molit-building-info.mjs --dry-run    (미리보기만)
- *   node scripts/collectors/molit-building-info.mjs --force      (이미 데이터 있는 것도 재수집)
+ *   node scripts/collectors/molit-building-info.mjs --force      (이미 데이터 있는 단지도 대상 — 단 세션589 K6 부터
+ *                                                                빈칸만 채운다: 값이 있는 칸은 덮지 않는다)
  *
  * 필요 환경변수:
  *   MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
 import { loadEnv, getSupabase, log, logError, sleep, recordApiQuota, recordCollectorRun, selectAll, setupGracefulShutdown } from "./_shared.mjs";
 import {
-  SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY,
-  molitApiCall, fetchSidoAptList, findBestMatch,
+  SIDO_CODE, API_DETAIL_BASE, REQUEST_DELAY, KAPT_LIST_PAGE_SIZE,
+  molitApiCall, fetchSidoAptList, KaptResultError, createKaptFailureGate,
 } from "./_molit-api.mjs";
+import { pickKaptMatch, usedateConsistent, nearSiblingKaptWindow, siblingKaptWindowText, SIBLING_KAPT_LEAD_MIN } from "./_match-gates.mjs";
 
 /**
- * @typedef {{ id: string; name: string; region: string | null; gu: string | null; address: string | null; parking_ratio: number | null; max_floor: number | null }} BuildingAptTarget
+ * @typedef {{ id: string; name: string; region: string | null; gu: string | null; address: string | null; parking_ratio: number | null; max_floor: number | null; heating: string | null; corridor_type: string | null; completion: string | null; bjd_code: string | null }} BuildingAptTarget
  * @typedef {Record<string, unknown>} BuildingDetail
  * @typedef {{ parking_ratio: number | null; max_floor: number | null; heating: string | null; corridor_type: string | null }} BuildingInfo
  */
@@ -147,8 +149,37 @@ export async function updateBuilding(sb, aptId, info, dryRun) {
   return true;
 }
 
+/**
+ * K6(세션589) — **빈칸만 채운다.** 이미 값이 있는 칸은 K-apt 값이 달라도 null 로 바꿔 쓰기에서 뺀다.
+ *
+ * 옛 동작: 대상(주차 또는 최고층이 비거나 0)이면 값 있는 칸을 **전부** 썼다 — 최고층만 비어도 주차·
+ * 난방·복도유형까지 덮었다(조사반 G R1-G2). 빈칸 = null · 0(주차·최고층의 0-sentinel, 세션538) · 빈 문자열.
+ * @param {BuildingInfo} info
+ * @param {{ parking_ratio?: number | null; max_floor?: number | null; heating?: string | null; corridor_type?: string | null }} current
+ * @returns {BuildingInfo}
+ */
+export function onlyEmptyFields(info, current) {
+  /** @param {unknown} v */
+  const emptyNum = (v) => v == null || Number(v) === 0;
+  /** @param {unknown} v */
+  const emptyStr = (v) => v == null || String(v).trim() === "";
+  return {
+    parking_ratio: emptyNum(current.parking_ratio) ? info.parking_ratio : null,
+    max_floor: emptyNum(current.max_floor) ? info.max_floor : null,
+    heating: emptyStr(current.heating) ? info.heating : null,
+    corridor_type: emptyStr(current.corridor_type) ? info.corridor_type : null,
+  };
+}
+
 // ── 메인 ─────────────────────────────────────────────────────
-async function main() {
+/**
+ * `opts.now` — 입주 여부 판정 시각(시험 주입용, 기본 지금).
+ * `opts.clock` — 2u 창 판정에 쓰는 "지금"(목록·단지마다 다시 부른다 · 시험 주입용). 없으면 `opts.now` 고정, 그것도 없으면 실제 시각.
+ * @param {{ now?: Date; clock?: () => Date }} [opts]
+ */
+export async function main(opts = {}) {
+  const now = opts.now ?? new Date();
+  const clock = opts.clock ?? (opts.now ? () => /** @type {Date} */ (opts.now) : () => new Date());
   const dryRun = process.argv.includes("--dry-run");
   const force = process.argv.includes("--force");
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
@@ -159,7 +190,7 @@ async function main() {
   // 1. 대상 아파트 조회 (건물 상세 미수집, selectAll: 1000행 제한 자동 페이지네이션)
   const data = /** @type {BuildingAptTarget[] | null} */ (await selectAll((s) => {
     let q = s.from("apartments")
-      .select("id, name, region, gu, address, parking_ratio, max_floor");
+      .select("id, name, region, gu, address, parking_ratio, max_floor, heating, corridor_type, completion, bjd_code");
     if (!force) {
       // 0-sentinel 대상도 재수집(세션538) — 반올림 0(위 extractBuildingInfo 참조)이 이미
       // 박힌 행은 `.is.null` 만으론 다시 안 잡혀 영구 화석이 된다. 실측: 지금 이 조건으로
@@ -183,30 +214,53 @@ async function main() {
   }
 
   let updated = 0, skipped = 0, failed = 0, apiCalls = 0;
+  /** @type {string | null} 회차 중단 사유 — K-apt 결과 코드·연속 실패(세션589 R2·보완 B3·B4). error_message 로 남는다 */
+  let abortMessage = null;
+  /** @type {string | null} 2u 창 때문에 멈춘 사유(SIBLING_KAPT_WINDOW …) — 보완 B1 */
+  let windowStop = null;
+  const gate = createKaptFailureGate();
+  /** 처리했거나 통째로 건너뛴 대상 수 — 창 때문에 멈추면 나머지(targets.length − handled)를 skip 으로 남긴다 */
+  let handled = 0;
+  const stopForWindow = () => {
+    if (!nearSiblingKaptWindow(clock())) return false;
+    const left = targets.length - handled;
+    windowStop = `SIBLING_KAPT_WINDOW 2u K-apt 창(KST ${siblingKaptWindowText()}) 또는 시작 ${SIBLING_KAPT_LEAD_MIN}분 전이라 멈춤 — 남은 ${left}곳 다음 회차`;
+    skipped += left;
+    return true;
+  };
 
   // 3. 지역별 API 호출 → 매칭 → 상세 조회
-  for (const [region, regionTargets] of Object.entries(regionGroups)) {
+  //    2u 창 검사는 시작 때(첫 목록 전)와 목록·단지마다(세션589 보완 B1 — 검사 A1·C1: 이 수집기에는 창 검사가 없었다.
+  //    10일 회차는 housing-permits 뒤에 시작하고, 러너는 놓친 날을 같은 실행에 이어 돈다).
+  regionLoop: for (const [region, regionTargets] of Object.entries(regionGroups)) {
     if (isInterrupted()) break;  // 세션 321: graceful shutdown (외부 region loop)
+    if (stopForWindow()) break;
     const sidoCode = SIDO_CODE[region];
-    if (!sidoCode) { log(PHASE, `  ${region}: 시도코드 매핑 없음, 건너뜀`); skipped += regionTargets.length; continue; }
+    if (!sidoCode) { log(PHASE, `  ${region}: 시도코드 매핑 없음, 건너뜀`); skipped += regionTargets.length; handled += regionTargets.length; continue; }
 
     log(PHASE, `\n${region} (${sidoCode}): ${regionTargets.length}건`);
 
     let aptList;
     try {
       aptList = await fetchSidoAptList(PHASE, sidoCode, API_KEY || "");
-      apiCalls += Math.ceil(aptList.length / 500) || 1; // 페이지네이션 횟수
+      apiCalls += Math.ceil(aptList.length / KAPT_LIST_PAGE_SIZE) || 1; // 페이지네이션 횟수
+      gate.success();
       await sleep(REQUEST_DELAY);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logError(PHASE, `  목록 조회 실패: ${msg}`);
       failed += regionTargets.length;
+      handled += regionTargets.length;
+      if (err instanceof KaptResultError) apiCalls++;
+      const stop = gate.failure(err);
+      if (stop) { abortMessage = stop; break; }
       continue;
     }
 
     if (!aptList.length) {
       log(PHASE, `  API 목록 0건`);
       skipped += regionTargets.length;
+      handled += regionTargets.length;
       continue;
     }
 
@@ -214,10 +268,13 @@ async function main() {
 
     for (const target of regionTargets) {
       if (isInterrupted()) break;  // 세션 321: graceful shutdown
-      const match = findBestMatch(target.name, target.gu, aptList, {
-        guField: "address", guBonus: 0.15, attachScore: false,
-      });
+      if (stopForWindow()) break regionLoop;
+      handled++;
+      // 짝 짓기 게이트(세션589 K1·K2·K3·K5) — 완공월·입주 후·같은 시군구·차수·이름 0.6 · 동점이면 안 붙임
+      const pick = pickKaptMatch(target, aptList, { now });
+      const match = pick.match;
       if (!match) {
+        log(PHASE, `    ${target.name}: 매칭 안 함 — ${pick.reason}`);
         skipped++;
         continue;
       }
@@ -229,9 +286,18 @@ async function main() {
         await sleep(REQUEST_DELAY);
         const detail = await fetchAptDetail(kaptCode);
         apiCalls += 2; // Bass + Dtl 2개 엔드포인트
+        gate.success(); // K-apt 호출이 이 단지에서 끝까지 됐다 — 연속 실패 수를 0 으로
         if (!detail) { log(PHASE, `    ${target.name}: 상세 조회 실패`); failed++; continue; }
 
-        const info = extractBuildingInfo(detail);
+        // K4 — 사용승인일이 우리 완공월과 24개월 넘게 다르면 그 짝을 버린다(이름만 닮은 다른 단지)
+        if (!usedateConsistent(target.completion, detail.kaptUsedate)) {
+          log(PHASE, `    ${target.name}: 사용승인일 불일치 (kaptUsedate=${detail.kaptUsedate ?? "없음"}, completion=${target.completion}, kaptCode=${kaptCode}) — 쓰지 않음`);
+          skipped++;
+          continue;
+        }
+
+        // K6 — 빈칸만 채운다(이미 값이 있는 칸은 K-apt 값이 달라도 안 덮는다)
+        const info = onlyEmptyFields(extractBuildingInfo(detail), target);
         log(PHASE, `    ${target.name}: parking=${info.parking_ratio}, floor=${info.max_floor}, heating=${info.heating}, corridor=${info.corridor_type}`);
 
         const ok = await updateBuilding(sb, target.id, info, dryRun);
@@ -241,15 +307,26 @@ async function main() {
         const msg = err instanceof Error ? err.message : String(err);
         logError(PHASE, `    ${target.name}: ${msg}`);
         failed++;
+        if (err instanceof KaptResultError) apiCalls++;
+        // 일시·fatal 코드는 즉시, 10·11 과 결과 코드 아닌 실패는 연속 5건이면 회차를 멈춘다(세션589 보완 B3·B4)
+        const stop = gate.failure(err);
+        if (stop) { abortMessage = stop; break regionLoop; }
       }
     }
+  }
+
+  if (windowStop) log(PHASE, windowStop);
+  if (abortMessage) {
+    logError(PHASE, `${abortMessage} — 회차 중단(벌칙 중 계속 부르면 길어진다). 남은 대상은 다음 회차`);
   }
 
   log(PHASE, `\n=== 완료 ===`);
   log(PHASE, `갱신: ${updated}, 건너뜀: ${skipped}, 실패: ${failed}, API: ${apiCalls}회`);
 
   if (!dryRun) await recordApiQuota("molit-building-info", "MOLIT_KEY", apiCalls);
-  await recordCollectorRun(PHASE, { ok: updated, skip: skipped, fail: failed });
+  // 회차 중단은 error_message 머리말 KAPT_RESULT_<코드> · KAPT_FETCH_FAIL 로(세션589 R2·보완 B4),
+  // 2u 창 때문에 멈춘 회차는 SIBLING_KAPT_WINDOW 로 남긴다(감시 ⑮ 가 읽는다 — 보완 B2).
+  await recordCollectorRun(PHASE, { ok: updated, skip: skipped, fail: failed, errorMessage: abortMessage ?? windowStop });
   if (failed > 0) process.exit(1);
 }
 

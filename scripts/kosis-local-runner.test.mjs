@@ -168,16 +168,25 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
     ]);
   });
 
-  it("16~19일도 관리비가 due 다 (5일 연속 --limit=600 배치 = 옛 cron '0 6 15-19' 설계)", () => {
+  it("16~19일도 관리비가 due 다 (5일 연속 배치 = 옛 cron '0 6 15-19' 설계)", () => {
     for (const d of [16, 17, 18, 19]) {
       expect(collectorsDueOn(at(2026, 8, d)), `${d}일`).toContain("collect-maintenance.mjs");
     }
   });
 
-  it("관리비 5회차 전부 --limit=600 을 넘긴다 (인자가 빠지면 전 대상이 한 회차에 몰려 일일 쿼터 초과)", () => {
+  // 세션589 R3: --limit=600 → 300 + --budget-min=40. K-apt 간격이 1.5초가 되어 단지당 ~6콜 = 약 9초,
+  // 300곳도 40분 안에 다 못 돈다 — 05:30 시작이면 06:10 전에 스스로 끝나 2u 06:20 K-apt 회차와 안 겹친다.
+  it("관리비 5회차 전부 --limit=300 --budget-min=40 을 넘긴다 (인자가 빠지면 전 대상이 몰리고 2u 06:20 창을 침범)", () => {
     const rows = DAY_TABLE.filter((e) => e.script === "collect-maintenance.mjs");
     expect(rows.map((e) => e.day)).toEqual([15, 16, 17, 18, 19]);
-    for (const r of rows) expect(r.args).toEqual(["--limit=600"]);
+    for (const r of rows) expect(r.args).toEqual(["--limit=300", "--budget-min=40"]);
+  });
+
+  it("관리비가 그날 첫 항목이다 — 05:30 + 40분 예산 = 06:10 종료가 성립하는 전제", () => {
+    for (const d of [15, 16, 17, 18, 19]) {
+      const first = DAY_TABLE.find((e) => e.day === d);
+      expect(first?.script, `${d}일`).toBe("collect-maintenance.mjs");
+    }
   });
 
   it("main 배선이 entry.args 를 spawn 인자에 싣는다 (표의 args 가드만으론 배선 삭제가 초록 — 뮤테이션 실증)", () => {
@@ -200,7 +209,7 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
       "매월 11일 (전날이 토요일일 때만): molit-building-info.mjs",
     );
     expect(byDay(15, "collect-maintenance.mjs")).toBe(
-      "매월 15일: collect-maintenance.mjs --limit=600",
+      "매월 15일: collect-maintenance.mjs --limit=300 --budget-min=40",
     );
     expect(byDay(15, "collect-building-hub.mjs")).toBe(
       "매월 15일 (1·4·7·10월만): collect-building-hub.mjs",
@@ -436,7 +445,7 @@ describe("datesToProcess — 놓친 날 보충", () => {
   });
 
   it("여러 날 밀려도 **한 번에 하나만** 메운다 — 쿼터 폭발 방지", () => {
-    // 15~19일 maintenance 는 회차당 약 3,600 회. 5일치를 몰아 돌리면 일일 10,000 한도를 넘긴다.
+    // 15~19일 maintenance 는 회차당 최대 약 1,800 회(세션589 전엔 3,600). 여러 날을 몰아 돌리면 한도·2u 창을 넘긴다.
     expect(datesToProcess("2026-08-15", d(2026, 8, 21))).toEqual(["2026-08-16", "2026-08-21"]);
   });
 

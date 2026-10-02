@@ -10,7 +10,7 @@
 | on-demand 규칙 | 언제 필요한가 | 파일 |
 |---|---|---|
 | units 보정 파이프라인 | molit-units·naver-presale·seeding 수정 | `.claude/rules/scripts/units-correction.md` |
-| MOLIT 수집기 모듈 | `_molit-api`·molit-*·maintenance·building-hub 수정 | `.claude/rules/scripts/molit-collectors.md` |
+| MOLIT 수집기 모듈 | `_molit-api`·`_match-gates`·molit-*·maintenance·building-hub 수정 — K-apt 1.5초 간격·결과 코드·짝 짓기 게이트(세션589) | `.claude/rules/scripts/molit-collectors.md` |
 | 로컬 자동화(KOSIS/MOLIT·childcare·네이버) | 로컬 러너·스케줄러 등록·시간 분리 확인 | `.claude/rules/scripts/local-runners.md` |
 | data.go.kr 쿼터 + API Rate Limit | 새 API 호출 추가·쿼터 계산 | `.claude/rules/scripts/api-quota-and-ratelimit.md` |
 | 교통 수집(transport-tago) | transport-tago.mjs 수정 | `.claude/rules/scripts/transport-collector.md` |

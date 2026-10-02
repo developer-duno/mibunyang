@@ -87,6 +87,7 @@ describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 �
     fetchRegionRuns: async () => ({}),
     fetchAhRows: async () => /** @type {Array<Record<string, any>>} */ ([]),
     fetchFailureRuns: async () => /** @type {Array<Record<string, any>>} */ ([]),
+    fetchKaptWindowRuns: async () => ({}), // ⑮(세션589) — 운영 조회로 새지 않게
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
   /** @param {any[]} issues */
