@@ -33,6 +33,18 @@ jobs:
           cache: npm
       - run: npm ci --legacy-peer-deps
 
+      # 묶음 열쇠 칸(apartments.complex_key)을 다시 계산한다 — "한 단지 = 한 장" 가) 단계(세션588).
+      # 점수 계산보다 앞에 둔다: 다) 단계에서 VIEW 가 이 칸으로 카드를 묶으므로, 점수와 목록이 새 열쇠 위에서 만들어져야 한다.
+      # 실패해도(continue-on-error) · 매달려도(timeout-minutes) 굽기는 어제 열쇠로 계속한다 —
+      # 실패는 collector_runs(감시 ⑬)와 감시 ⑭(빈 칸·마지막 성공이 하루 넘음)가 알린다.
+      - name: Assign complex keys (apartments.complex_key)
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/collectors/assign-complex-keys.mjs --apply
+
       - name: Compute apartment scores (cats_cache)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
