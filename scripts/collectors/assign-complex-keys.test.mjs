@@ -82,9 +82,14 @@ describe("evaluateChangeBreaker — 한 번에 많이 바뀌면 쓰지 않는다
     const first = evaluateChangeBreaker({ changed: 0, hadKey: 0, filled: 3256 });
     expect(first.tripped).toBe(true);
     expect(first.reason).toContain("빈칸을 채우는 행 3256 이 이미 열쇠가 있던 행 0 보다 많음");
-    // 첫 채우기가 도중에 끊긴 날(일부만 채워짐)도 막는다
+    // 첫 채우기가 절반을 못 채우고 끊긴 날은 막는다(절반 넘게 채운 뒤 끊기면 남은 행은 다음 실행이 같은 규칙으로 채운다)
     expect(evaluateChangeBreaker({ changed: 0, hadKey: 1500, filled: 1756 }).tripped).toBe(true);
     // 경계: 같으면 통과
+    expect(evaluateChangeBreaker({ changed: 0, hadKey: 1000, filled: 1000 }).tripped).toBe(false);
+  });
+
+  it("채움 차단기 경계는 '기존보다 1행이라도 많으면' 이다 — 1001 은 발동, 1000 은 통과(느슨한 비율로 바꾸면 빨강)", () => {
+    expect(evaluateChangeBreaker({ changed: 0, hadKey: 1000, filled: 1001 }).tripped).toBe(true);
     expect(evaluateChangeBreaker({ changed: 0, hadKey: 1000, filled: 1000 }).tripped).toBe(false);
   });
 
@@ -366,17 +371,22 @@ describe("정적 가드 — 순서와 조건", () => {
     expect(stripComments('const t = "a/b, */*";\nf();')).toContain("f();");
   });
 
-  // main() 본문 전체의 지문(줄바꿈 LF · sha256). 줄 단위 가드는 셈 줄·루프·쉬기·상수처럼 못 박지 않은 줄을 바꿔도 초록이다
-  // (세션589 검사관 A #2 — 변이 R5·R6·R8·R9 초록). 주입형 main + 가짜 DB 동작 시험으로 바꿀 때까지의 다리다.
-  // main 을 고쳤으면: 변이 도구(mutate-assign.mjs)를 다시 돌리고 이 값을 갱신한다.
+  // main() 부터 파일 끝까지의 지문(줄바꿈 LF · sha256 — 꼬리의 isCLI·main().catch 포함). 줄 단위 가드는 셈 줄·루프·쉬기·상수처럼
+  // 못 박지 않은 줄을 바꿔도 초록이다(세션589 검사관 A #2 — 변이 R5·R6·R8·R9 초록 · 재검사 X4: CLI 진입을 꺼도 초록).
+  // 주입형 main + 가짜 DB 동작 시험으로 바꿀 때까지의 다리다.
+  // main 이나 꼬리(isCLI·catch)를 고쳤으면: 변이 도구(mutate-assign.mjs)를 다시 돌리고 이 값을 갱신한다.
   // 근거 = 세션589 검사관 A — 계획서 알려진 한계 ⑤, 기한 = main 을 다음에 고칠 때 또는 다) 단계 전.
-  it("main() 본문 지문이 승인한 값과 같다", () => {
+  it("main() 부터 파일 끝(isCLI·catch)까지의 지문이 승인한 값과 같다", () => {
     const raw = readFileSync(join(HERE, "assign-complex-keys.mjs"), "utf8").replace(/\r\n/g, "\n");
     const start = raw.indexOf("async function main() {\n");
     expect(start).toBeGreaterThan(0);
-    const end = raw.indexOf("\n}\n", start);
-    const body = raw.slice(start, end + 2);
-    expect(createHash("sha256").update(body).digest("hex")).toBe("917e97d4c818b72dd1a9b444f7443690db0baf4e705d895a5bf9b7749a73cf2d");
+    const body = raw.slice(start);
+    expect(body).toContain("if (isCLI) {\n  main().catch(");
+    expect(createHash("sha256").update(body).digest("hex")).toBe("08be258b96dfd0235e519ac5815dbca09f361961e35d4f2204299a804d59faeb");
+  });
+
+  it("기록 이름(PHASE)은 'assign-complex-keys' 그대로다 — 감시 ⑭(monitor-collectors.mjs fetchComplexKeyHealth)가 이 이름으로 성공 기록을 찾는다", () => {
+    expect(src.split("\n").filter((l) => l === 'const PHASE = "assign-complex-keys";')).toHaveLength(1);
   });
 
   it("한도·속도 상수는 약속한 숫자 그대로다(상수에서 읽어 맞대면 상수를 바꿔도 초록 — 세션589 검사관 A #3)", () => {

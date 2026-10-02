@@ -233,6 +233,20 @@ describe("assignComplexKeys — 묶음 맥락 규칙(작은 예)", () => {
       expect(assignComplexKeys(order).get("ap-3")).toBe("가나다자이#2BL##L0#경기#화성시");
     }
   });
+
+  it("동률 — 구성원이 여럿인 무리도 '구성원 중 가장 작은 id' 로 정한다(24개 순열 전부 같은 답)", () => {
+    const at = { lat: 37.0, lng: 127.0 };
+    const a1 = { ...base, ...at, id: "ah-1", name: "가나다 자이(1BL)" };
+    const a5 = { ...base, ...at, id: "ah-5", name: "가나다 자이(1BL)" };
+    const b3 = { ...base, ...at, id: "ah-3", name: "가나다 자이(2BL)" };
+    const bare = { ...base, ...at, id: "ap-7", name: "가나다자이" };
+    /** @template T @param {T[]} xs @returns {T[][]} */
+    const perms = (xs) => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p])));
+    const all = perms([a1, a5, b3, bare]);
+    expect(all).toHaveLength(24);
+    // 무리 A = {ah-1, ah-5}(1BL) 의 최소 id ah-1 < 무리 B = {ah-3}(2BL) — 최대 id(ah-5)나 입력 순서 첫 구성원으로 정하면 B 가 이긴다
+    for (const order of all) expect(assignComplexKeys(order).get("ap-7")).toBe("가나다자이#1BL##L0#경기#화성시");
+  });
 });
 
 describe("assignComplexKeys — 입력 순서와 무관하다(표본 121행을 섞어도 열쇠가 같다)", () => {

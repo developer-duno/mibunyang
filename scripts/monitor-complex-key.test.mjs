@@ -127,6 +127,11 @@ describe("fetchComplexKeyHealth — ⑭ 의 실제 조회 줄(위 시험은 조�
   const start = raw.indexOf("async function fetchComplexKeyHealth() {\n");
   const body = start < 0 ? "" : raw.slice(start, raw.indexOf("\n}\n", start) + 2);
 
+  it("기준 시간 36시간 · 조회 상한 200 — 숫자 그대로(지문 함수 밖 상수라 따로 못 박는다 · 재검사 Z1)", () => {
+    expect(COMPLEX_KEY_GAP_HOURS).toBe(36);
+    expect(COMPLEX_KEY_GAP_FETCH_LIMIT).toBe(200);
+  });
+
   it("본문 지문이 승인한 값과 같다", () => {
     expect(start).toBeGreaterThan(0);
     expect(createHash("sha256").update(body).digest("hex")).toBe("5b523174b36a3e4de5d60430a18a698b57bf8f190968cf4c2f1a5e2a78e2516a");
