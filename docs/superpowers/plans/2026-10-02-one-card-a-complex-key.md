@@ -21,10 +21,10 @@
 - **토큰 없는 행을 블록 무리에 붙이는 한계** = 300m (`ATTACH_MAX_M`).
 - **DB 쓰기**: `complex_key` 칸만. 동시 요청 5개 · 묶음 사이 100ms(`compute-scores.mjs` 와 같은 값 — 공유 DB 에 한꺼번에 쏘지 않는다).
 - **안전장치 순서**: 조회 → 행 수 대조(받은 행 = 표의 행 수) → 열쇠 계산 → 섞인 묶음 확인(임대·분양 / 시도) → 계획(순수 함수) → 미리보기 출력 → 승인 파일 대조 또는 차단기 → 쓰기.
-  - 차단기(매일 자동 실행 `--apply`) = 이미 열쇠가 있던 행이 **30행 또는 10%** 넘게 바뀌면 아무것도 안 쓴다. **개수만 맞추는 우회 인자는 없다**(`--expect-changed` 를 주면 던진다) — 한도를 넘는 반영은 아래 승인 파일로만.
-  - 사람이 승인한 반영(첫 채우기·규칙을 바꾼 날) = `--apply-from=<승인한 계획 파일>` — 다시 계산한 계획이 그 파일과 **id·이전 값·새 값까지 전부 같을 때만** 쓴다. `--out` 과 같이 줄 수 없다(같은 경로면 승인 파일을 덮어쓴 뒤 그것과 맞대게 된다). 승인 파일은 DB 를 보기 전에 읽는다.
+  - 차단기(매일 자동 실행 `--apply`) = 이미 열쇠가 있던 행이 **30행 또는 10%** 넘게 바뀌거나, **빈칸을 채우는 행이 이미 열쇠가 있던 행보다 많으면**(첫 채우기·칸이 비워진 상태 — 세션589 검사관 A #4) 아무것도 안 쓴다. **개수만 맞추는 우회 인자는 없다**(`--expect-changed` 를 주면 던진다) — 한도를 넘는 반영은 아래 승인 파일로만.
+  - 사람이 승인한 반영(첫 채우기·규칙을 바꾼 날) = `--apply-from=<승인한 계획 파일>` — 다시 계산한 계획이 그 파일과 **id·이전 값·새 값까지 전부 같을 때만** 쓴다. `--out` 과 같이 줄 수 없다(같은 경로면 승인 파일을 덮어쓴 뒤 그것과 맞대게 된다). 승인 파일은 DB 를 보기 전에 읽는다. `--out` 은 미리보기에서만 — `--apply` 와도 같이 못 주고, 경로에 파일이 이미 있으면 DB 를 보기 전에 던진다(승인했을 수 있는 파일을 덮지 않는다 — 계획 파일은 늘 새 이름으로, 세션589).
   - 쓸 때도 **이전 값이 그대로인 행만** 고친다(`.eq("complex_key", 이전 값)` · 빈칸이면 `.is("complex_key", null)`) — 조회 뒤 남이 바꾼 행은 0행이 돌아와 실패로 센다.
-  - 쓰기 실행(`--apply`·`--apply-from`)이 실패하면 — 안전장치에 걸렸든, 예외로 죽었든, 쓰다가 일부 행이 실패했든(`KEY_WRITE`) — `collector_runs` 에 실패 기록 1행(머리말 `KEY_…`)을 남기고 종료 코드 1. 미리보기는 기록을 남기지 않는다. 예외 하나: 중단 신호(SIGTERM — 단계 시간 제한)로 멈추면 partial 기록 + 종료 코드 0 이고, 다음 실행이 남은 행을 이어서 채운다.
+  - 쓰기 실행(`--apply`·`--apply-from`)이 실패하면 — 안전장치에 걸렸든, 예외로 죽었든, 쓰다가 일부 행이 실패했든(`KEY_WRITE`) — `collector_runs` 에 실패 기록 1행(머리말 `KEY_…`)을 남기고 종료 코드 1. 미리보기는 기록을 남기지 않는다. 예외 하나: 중단 신호(수동 취소 등)를 받으면 partial 기록 + 종료 코드 0 이고, 다음 실행이 남은 행을 이어서 채운다. 단계 시간 한도에 걸리면 기록 없이 죽을 수 있다(레포 규칙 `collector-timeout-rootcause-analysis.md`: 한도 도달 = 유예 0) — 그런 날과 일부 행만 실패한 날(10% 미만 — 감시 ⑬ 이 조용하다)은 감시 ⑭ 가 잡는다(세션589 정정).
   - 인자는 `--apply` · `--apply-from=<파일>` · `--out=<파일>` 셋만 받는다(허용 목록). 다른 인자는 던진다 — 특히 `--dry-run` 을 흘려보내면 `recordCollectorRun` 이 기록을 건너뛰어(`_shared.mjs`), 실제로 쓰고도 흔적이 안 남는다. 미리보기는 인자 없이.
 - **미리보기가 기본**: `--apply`·`--apply-from` 없이는 아무것도 쓰지 않는다.
 - **운영 폴더 금지**: `F:\mibunyang` 본 폴더는 예약 실행이 도는 운영 코드다. 편집·시험은 워크트리에서만. Bash 는 호출마다 `cd <워크트리> && …` 로 시작한다. `git stash` · `git checkout -- <파일>` 금지(되돌리기는 `cp` 사본).
@@ -578,24 +578,25 @@ cd <워크트리> && git add -- supabase/CLAUDE.md scripts/CLAUDE.md .claude/BAC
 
 ## 운영 단계 (메인 세션 — 작업반 일이 아니다)
 
-순서가 곧 안전장치다. **PR 을 먼저 합치면** 그날 새벽 굽기의 새 단계가 승인 없이 첫 채우기를 해 버리고(차단기는 "빈칸 → 값"을 세지 않는다), 칸이 없으면 매일 실패 기록과 감시 알림이 온다.
+순서가 곧 안전장치다. **PR 을 먼저 합치면** 그날 새벽 굽기의 새 단계가 실패한다 — 칸이 없으면 조회 오류로, 칸이 있고 비어 있으면 차단기(`KEY_BREAKER` — 채움이 기존 열쇠보다 많음, 세션589 추가)로 — 그리고 매일 실패 기록과 감시 알림이 온다. (세션589 전 판은 이 경우 승인 없이 전 행을 채웠다.)
 
 1. **구현 PR 만들기(합치지 않는다)** — 작업반 Task 1~6 → 메인이 Task 마다 커밋 → 검사관 3명(할루 Sonnet · 코드 적대 Opus[수집기·DB·감시] · 맹점 Opus, 지시서에 이 계획서와 설계서 경로) → PR 올림. CI 초록 확인.
 2. **마이그레이션 적용**(사장님 승인 뒤, psql — 절차 = 메모리 `reference_perm_baseline_ops.md` · `feedback_sql_real_db_rollback_test.md` · `supabase/CLAUDE.md` "마이그레이션 적용" 절. psql 이 안 되면 Dashboard SQL Editor):
-   - 리허설은 **한 파일로 한 번에**(손으로 한 줄씩 치지 않는다 — `ADD COLUMN` 은 가장 강한 잠금을 `ROLLBACK` 까지 쥐어서, 그동안 사이트 API·2u 의 조회가 줄을 선다): 스크래치에 `rehearsal.sql` = `BEGIN; SET LOCAL statement_timeout = '10s'; \i <마이그레이션 절대경로>` + 확인 쿼리(파일 머리말) + `SELECT count(*) FROM apartments_flat;` + `ROLLBACK;` 을 만들어 `psql -v ON_ERROR_STOP=1 -f rehearsal.sql` 로. 기대 = 확인 쿼리 1행 · VIEW 행 수가 적용 전과 같음 · 몇 초 안에 끝남.
-   - 본 적용(`psql -v ON_ERROR_STOP=1 -f <마이그레이션>`) → 확인 쿼리 1행 → **supabase-js 로 그 칸을 한 번 조회**(`supabase/CLAUDE.md` "칸 추가 뒤 확인" — PostgREST 가 새 칸을 아는지. 탐침은 `select("id,complex_key").limit(1)` 에 `error` 를 찍고, 있는 표·없는 칸 대조군을 같이) → `node scripts/perm-baseline.mjs` 미리보기로 권한 지문 변화 0 확인.
-   - 시각: **다음 두 시간대를 피한다** — 매일 KST 03:00~06:30(굽기 03:0x · 어린이집 04:30 · 로컬 러너 05:30 이 이 안에 있다)과 월·목 08~14시(네이버 러너). 매월 6일(10/06 화)은 05:30 러너에 molit-units 가 들어 있다.
+   - 리허설은 **한 파일로 한 번에**(손으로 한 줄씩 치지 않는다 — `ADD COLUMN` 은 가장 강한 잠금을 `ROLLBACK` 까지 쥐어서, 그동안 사이트 API·2u 의 조회가 줄을 선다): 스크래치에 `rehearsal.sql` = `BEGIN; SET LOCAL statement_timeout = '10s'; \i <마이그레이션 절대경로>` + 확인 쿼리(파일 머리말) + `SELECT count(*) FROM apartments_flat;` + `ROLLBACK;` 을 만들어 `psql -X -v ON_ERROR_STOP=1 -f rehearsal.sql` 로. 기대 = 확인 쿼리 1행 · VIEW 행 수가 적용 전과 같음 · 몇 초 안에 끝남.
+   - 본 적용(`psql -X -v ON_ERROR_STOP=1 --single-transaction -f <마이그레이션>` — `supabase/CLAUDE.md` "적용" 줄 그대로. 한 트랜잭션이라야 `SET lock_timeout` 이 ALTER 에 걸리고, COMMENT 에서 죽어도 반쪽 적용이 안 남는다 — 세션589 검사관 C #2) → 확인 쿼리 1행 → **supabase-js 로 그 칸을 한 번 조회**(`supabase/CLAUDE.md` "칸 추가 뒤 확인" — PostgREST 가 새 칸을 아는지. 탐침은 `select("id,complex_key").limit(1)` 에 `error` 를 찍고, 있는 표·없는 칸 대조군을 같이) → `node scripts/perm-baseline.mjs` 미리보기로 권한 지문 변화 0 확인 → 2u 세션에 "`apartments` 에 칸 하나 추가" 인계 한 줄(`supabase/CLAUDE.md` 마이그레이션 체크리스트 2번 — 2u 는 칸을 하나씩 매핑해 읽으므로 영향 0, 검사관 C 가 `mb_models.py` 로 확인).
+   - 시각: **다음 두 시간대를 피한다** — 매일 KST 03:00~06:30(굽기 03:0x · 어린이집 04:30 · 로컬 러너 05:30 이 이 안에 있다)과 월·목 08~14시(네이버 러너). 매월 6일(10/06 화)은 05:30 러너에 molit-units 가 들어 있다. ⚠️ `supabase/CLAUDE.md` 체크리스트 5번은 "ALTER 는 KST 02~03시"다 — 이 칸 추가는 즉시 끝나는 변경(기본값 없는 NULL 칸)이고 `lock_timeout 5s` 가 걸려 있어, 낮에 적용할지를 사장님께 여쭙고 정한다(세션589).
 3. **미리보기 → 전이표**(구현 워크트리의 코드로, 조회만). 워크트리에는 비밀값 파일이 없으므로 본 폴더의 것을 **실행 인자로** 읽힌다(파일을 복사하지 않는다 — `loadEnv` 는 이미 있는 환경 값을 덮지 않는다, `_shared.mjs:29`):
    `cd <워크트리> && node --env-file=F:/mibunyang/.env.local scripts/collectors/assign-complex-keys.mjs --out=F:/mibunyang/.omc/artifacts/<세션>/complex-key-plan.json > F:/mibunyang/.omc/artifacts/<세션>/complex-key-dryrun.log 2>&1; echo "exit=$?"`
    - 연결이 안 되면 `SUPABASE_URL + SUPABASE_SERVICE_KEY 필요` 로 멈춘다(아무것도 안 쓴다) — 그때는 실행 방법을 사장님께 여쭌다.
    - 기대(행 수가 10/02 와 같은 3,256 이면): `단지 3256행 → 묶음 2360개 | 빈칸→값 3256 · 값→다른 값 0 · 그대로 0`. 행이 늘었으면 늘어난 행 명단으로 묶음 수 차이를 설명한다.
-   - 전이표: 빈칸 → 값 N행 · 값 → 다른 값 0 · 손님 화면에 닿는 수 **0**(이 칸을 읽는 곳이 아직 없다) · 되돌리기 = `UPDATE apartments SET complex_key = NULL;`(또는 되돌리기 마이그레이션) — **단, PR 을 합친 뒤(운영 단계 5 이후)에는 굽기의 `Assign complex keys` 단계를 먼저 빼야 한다.** 칸만 비우면 다음 03:0x 굽기가 전 행을 승인 없이 다시 채운다(빈칸 → 값은 차단기가 세지 않는다). 화면이 이 칸을 읽기 시작한 뒤(다) 단계)라면 그날 모든 카드가 갈라졌다가 되살아나므로, 그때의 되돌리기는 다) 계획서에서 따로 정한다. 부수 효과 = 전 행의 `updated_at` 이 그 시각으로 바뀐다(트리거 `trg_apartments_updated` — 카드 행은 매일 점수 계산이 이미 같은 일을 한다).
-   - 검사관(1의 적대·맹점 검사관)에게 계획 파일의 묶음 명단까지 보게 한다(`data-changing-run-approval.md` §5 — 반영 **전에**).
+   - 전이표: 빈칸 → 값 N행 · 값 → 다른 값 0 · 손님 화면에 닿는 수 **0**(이 칸을 읽는 곳이 아직 없다) · 되돌리기 = `UPDATE apartments SET complex_key = NULL;`(또는 되돌리기 마이그레이션) — **단, PR 을 합친 뒤(운영 단계 5 이후)에는 굽기의 `Assign complex keys` 단계를 먼저 빼야 한다.** 칸만 비우면 다음 03:0x 굽기는 차단기(`KEY_BREAKER` — 채움이 기존 열쇠보다 많음)에 걸려 쓰지 않고 매일 실패 알림을 낸다(세션589 — 그 전 판은 승인 없이 다시 채웠다). 굽기 단계를 뺄 때는 `scripts/audit-orphan-collectors.mjs` ALLOWLIST 에 한 줄을 넣는다(안 넣으면 CI 가 고아 수집기로 빨강). VIEW 를 다른 이유로 다시 만든 뒤라면 안쪽 `SELECT *` 가 새 칸을 품어 `DROP COLUMN` 이 실패한다(VIEW 를 먼저 되돌린다). 화면이 이 칸을 읽기 시작한 뒤(다) 단계)라면 그날 모든 카드가 갈라졌다가 되살아나므로, 그때의 되돌리기는 다) 계획서에서 따로 정한다. 부수 효과 = 전 행의 `updated_at` 이 그 시각으로 바뀐다(트리거 `trg_apartments_updated` — 카드 행은 매일 점수 계산이 이미 같은 일을 한다). 카드가 아닌 행(3,256 − 2,639 ≈ 600행)은 처음 한꺼번에 바뀐다 — 닿는 곳 셋을 전이표에 적는다: 관리비 수집기의 회차 순서(`updated_at` 오름차순으로 대상을 고른다) · 2u API 응답의 `updated_at` · 관리자 수집기 상태 화면(세션589 검사관 C #9).
+   - 검사관(1의 적대·맹점 검사관)에게 계획 파일의 묶음 명단까지 보게 한다(`data-changing-run-approval.md` §5 — 반영 **전에**). 계획 파일의 `updates` 줄마다 이름·시도·구가 실려 있어 그 파일만으로 명단을 읽을 수 있다(세션589).
+   - 반영 전에 되돌릴 사본 1회: `(id, complex_key, updated_at)` 전 행을 파일로(`data-changing-run-approval.md` §3 — 계획 파일은 의도이지 DB 상태가 아니다).
 4. **첫 채우기**(사장님 전이표 승인 뒤) — **승인한 그 계획 파일로**:
    `cd <워크트리> && node --env-file=F:/mibunyang/.env.local scripts/collectors/assign-complex-keys.mjs --apply-from=F:/mibunyang/.omc/artifacts/<세션>/complex-key-plan.json > F:/mibunyang/.omc/artifacts/<세션>/complex-key-apply.log 2>&1; echo "exit=$?"`
    약 3,256건 ÷ 5 × 0.1초 + 요청 시간 ≈ 2~4분. 그 사이 행이 생기거나 바뀌었으면 `KEY_PLAN_MISMATCH` 로 아무것도 안 쓰고 끝난다 → 미리보기부터 다시.
    - 확인(세어서): 빈 칸 0행 · `collector_runs` 에 `assign-complex-keys` success ok = 그 행 수 · **2회차 미리보기가 "빈칸→값 0 · 값→다른 값 0"** · DB 의 `(id, complex_key)` 가 계획 파일의 `(id, next)` 와 전부 같음(집합 대조).
-5. **PR 합침**(fetch → 보고 → 사장님 허락) → 본 폴더 `git pull --ff-only`(월·목 08~14시 · 04:30~06:30 밖).
+5. **PR 합침** — 합침 직전 미리보기 1회(`값→다른 값 0` · 빈칸 = 그 사이 들어온 새 행뿐인지). 첫 채우기 뒤 **36시간 안, KST 09:00 뒤 ~ 03:00 앞**에 합친다(36시간을 넘겨 09:00 전에 합치면 감시 ⑭ 가 "마지막 성공 N시간 전"을 한 번 울린다 — 세션589 검사관 A #12 · C #8). (fetch → 보고 → 사장님 허락) → 본 폴더 `git pull --ff-only`(월·목 08~14시 · 04:30~06:30 밖).
 6. **다음 굽기 확인**(다음 날 03:10 뒤): daily-deploy 로그의 `Assign complex keys` 단계가 성공 · `collector_runs` 새 1행(ok = 그날 고친 수, skip = 그대로인 수) · 빈 칸 = 그 뒤 들어온 새 행뿐 · 감시 로그 `⑭ 묶음 열쇠 칸 점검: … 이상 0건`. 월·목 러너와 월요일 seed 로 새 행이 들어온 **다음 날**도 한 번 더 본다(새 행이 채워졌는지 · "바뀜" 명단이 새 블록 공고로 설명되는지).
 7. 며칠 문제 없으면 **나) 미분양 묶음 배분 계획서**를 쓴다(그 전에 설계서 §6-9 를 사장님께 여쭌다).
 
@@ -603,6 +604,7 @@ cd <워크트리> && git add -- supabase/CLAUDE.md scripts/CLAUDE.md .claude/BAC
 
 - 나) `collect-unsold-kosis.mjs`: `assignComplexKeys(rows, exceptions)` 로 묶음을 만들고, 묶음마다 `pickBundleUnits(members)` 로 분모를 잡아 한 행으로 접어 `planUnsoldUpdates` 에 넣는다 — 칸을 읽지 않는다(설계서 §4-7 (4)③ · (5)).
 - 다) VIEW: `PARTITION BY COALESCE(complex_key, id)` · 대표/재료 행 고르기는 `pickRepresentativeId` / `pickMaterialId` 와 **같은 순서**를 SQL 로 옮기고 같은 표본으로 맞댄다(설계서 §4-7 (2)(3)(9)(10)).
+- ⚠️ **세션589 검사관이 다) 계획서로 넘긴 것**(가) 에서는 화면이 칸을 안 읽어 미뤘다 — 다) 전에 닫는다): ① 바뀜 수·합류 수(새 행이 기존 묶음에 들어온 것)를 `collector_runs` 에 따로 남기고 합류 행도 로그에 찍는다 — "어제 왜 카드가 바뀌었나"를 되짚을 이력(C #4) ② 예외 명단 견고화 — `isolate` 는 id 하나만 뗀다(같은 단지의 새 회차 행은 다시 틀린 묶음에 들어간다) · `always` 닻 행의 이름이 바뀌면 엉뚱한 묶음이 합쳐진다 · 예외에 든 행의 유형이 뒤집히면 `KEY_MIXED` 로 배치 전체가 멈춘다(C #6) ③ `KEY_` 실패는 실패 비율과 무관하게 알리기(A #7 — 지금은 10% 미만이면 ⑬ 침묵, ⑭ 가 36시간 뒤) ④ `pickRepresentativeId`·`pickMaterialId` 는 빈 묶음이면 던지고, id 비교가 글자순이다(`ap-10000000` < `ap-6027962`)(A #10) ⑤ `always` 짝의 순서(`[a,b]`)를 바꾸면 묶음은 같아도 열쇠 글자가 바뀐다 — 차단기 30행에 걸릴 수 있다(A #9) ⑥ 주입형 `main` + 가짜 DB 동작 시험(알려진 한계 ⑤ — 그때까지는 `main()` 본문 지문 가드가 다리다) ⑦ 열쇠 재료는 칸 6개(`name`·`region`·`gu`·`lat`·`lng`·`presale_type`)다 — 구 개편 remap·좌표 정정·유형 정정이 열쇠를 바꾼다(C #5 — 규칙 `admin-district-code-reform.md` §2-13 · `data-changing-run-approval.md` §1 에 한 줄씩 넣었다).
 
 ## Self-Review (계획서를 쓴 뒤 메인이 한 점검)
 
