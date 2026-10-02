@@ -97,7 +97,7 @@ const ACTION_GUIDE = {
   nulls: "[조치] 해당 수집기의 최근 run 로그와 소스 API 변경 여부를 확인하세요 (필드 누락·스키마 변경 의심).",
   "region-unresolved": "[조치] KOSIS 원문의 C1_NM 표기가 바뀌었는지 확인 — 통합 시도(전남광주 등)면 시군구로 가를 수 없어 값이 빠진다. 표기를 _shared.mjs REGION_MAP/resolveRegionName 에 반영하고 해당 수집기를 1회 재실행하세요 (룰: .claude/rules/collectors/admin-district-code-reform.md).",
   "applyhome-unsold": "[조치] (a) 만료인데 청약홈 값: kosis-unsold 로그의 [C6 만료] 줄로 왜 안 덮였는지(매칭 실패·50% 보류·임대) 확인 / (b) 공고일 없음: 청약홈 원문 공고일을 backfill-unsold-source.mjs --plan= 으로 채움 / (c) 완판인데 값 남음: 그 값이 어느 회차 것인지 확인 (규칙 = collect-unsold-kosis.mjs shouldSkipKosisFill 머리말 C6).",
-  "check-failed": "[조치] Actions 로그에서 그 번호(⑦~⑬) 줄의 오류를 보고 칸 이름 변경·칸 삭제·표 권한 변경을 확인하세요 — 고친 뒤 monitor 를 수동 1회 실행해 이 알림이 사라지는지 봅니다(scripts/monitor-collectors.mjs runDailyGuardedChecks).",
+  "check-failed": "[조치] Actions 로그에서 그 번호(⑦~⑭) 줄의 오류를 보고 칸 이름 변경·칸 삭제·표 권한 변경을 확인하세요 — 고친 뒤 monitor 를 수동 1회 실행해 이 알림이 사라지는지 봅니다(scripts/monitor-collectors.mjs runDailyGuardedChecks).",
   "local-failure": "[조치] 그 수집기를 돌린 로컬 러너 로그(naver-collect.log · kosis-local.log · childcare-local.log)와 collector_runs.error_message 를 보세요 — STEP_FAILED 는 네이버 파이프라인의 끊긴 단계, 차단기 문구는 수집기가 일부러 멈춘 것입니다. 고친 뒤 그 수집기를 1회 다시 돌립니다(scripts/monitor-collectors.mjs checkLocalFailures).",
   outage: "[조치] raw API 1회 호출(curl)로 500/503/타임아웃 확인 후 외부 공식 공지(점검/장애) grep — 의심 확정 시 BACKLOG.md 1줄 박힘 (룰: .claude/rules/workflows/external-api-outage-policy.md).",
 };

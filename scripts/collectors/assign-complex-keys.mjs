@@ -12,11 +12,14 @@
  * 하나 들어오면 **이미 있던 형제 행의 열쇠도 바뀐다.** 그래서 행을 넣는 수집기가 그 행만 채우는 방식으로는
  * 안 되고, 전 행을 다시 계산하는 이 배치가 매일 굽기(daily-deploy) 앞에서 돈다.
  *
- * ## 안전장치 (전부 "쓰지 않고 실패로 끝난다" — 쓰기 실행이면 collector_runs 에 failure 1행, 감시 ⑬ 이 알린다)
+ * ## 안전장치 (전부 "쓰지 않고 실패로 끝난다" — 쓰기 실행이면 collector_runs 에 failure 1행. 감시 ⑬ 이 실패 기록을 본다.
+ *    일부 행만 실패한 날(실패 10% 미만)은 ⑬ 이 조용하다 — 하루뿐이면 다음 날 실행이 남은 행을 스스로 메우고, 성공이 이틀
+ *    가까이(36시간) 없으면 감시 ⑭ 가 알린다. 시간 한도에 걸려 기록 없이 죽은 날도 같다)
  * - 받은 행 수 ≠ 표의 행 수(부분 조회로 계산하면 묶음 맥락이 통째로 틀어진다) → `KEY_COUNT_MISMATCH`
  * - 한 묶음에 임대·분양이나 시도가 섞임(예외 명단을 잘못 적은 경우) → `KEY_MIXED`
  * - 매일 자동 실행(`--apply`): 이미 열쇠가 있던 행이 `CHANGE_BREAKER_MAX_ROWS` 행 넘게 또는
- *   `CHANGE_BREAKER_RATIO` 넘게 바뀜 → `KEY_BREAKER`. 한도를 넘는 반영은 사람이 승인한 계획 파일로만 한다.
+ *   `CHANGE_BREAKER_RATIO` 넘게 바뀜, 또는 빈칸을 채우는 행이 이미 열쇠가 있던 행보다 많음(첫 채우기·칸이 비워진 날)
+ *   → `KEY_BREAKER`. 한도를 넘는 반영은 사람이 승인한 계획 파일로만 한다.
  * - 사람이 승인한 반영(`--apply-from=<계획 파일>` — 첫 채우기·규칙을 바꾼 날): 다시 계산한 계획이 승인한 계획
  *   파일과 **id·이전 값·새 값까지 전부 같을 때만** 쓴다 → 다르면 `KEY_PLAN_MISMATCH`.
  *   (개수만 맞추는 승인은 내용이 달라져도 통과한다 — 그래서 개수 인자는 두지 않았다.)
@@ -25,18 +28,20 @@
  *
  * ## 사용법
  *   node scripts/collectors/assign-complex-keys.mjs                              # 미리보기
- *   node scripts/collectors/assign-complex-keys.mjs --out=<절대경로.json>          # 미리보기 + 계획 파일(전이표 재료)
+ *   node scripts/collectors/assign-complex-keys.mjs --out=<절대경로.json>          # 미리보기 + 계획 파일(전이표 재료 — 줄마다 이름·시도·구)
  *   node scripts/collectors/assign-complex-keys.mjs --apply-from=<절대경로.json>   # 승인한 계획 파일과 같을 때만 반영
  *   node scripts/collectors/assign-complex-keys.mjs --apply                      # 바뀐 행만 UPDATE(매일 굽기 앞 단계)
- * `--out` 과 `--apply-from` 은 같이 줄 수 없다(같은 경로면 승인 파일을 지금 계획으로 덮어쓴 뒤 그것과 맞대게 된다).
+ * `--out` 은 미리보기에서만 준다 — `--apply-from` 과도(같은 경로면 승인 파일을 지금 계획으로 덮어쓴 뒤 그것과 맞대게 된다)
+ * `--apply` 와도 같이 줄 수 없다. `--out` 경로에 파일이 이미 있으면 DB 를 보기 전에 던진다(승인했을 수 있는 파일을 덮지 않는다 — 새 이름으로).
  * 위 셋 말고 다른 인자는 받지 않는다(`--dry-run` 포함 — 주면 던진다. 미리보기는 인자 없이).
- * 쓰다가 일부 행이 실패하면 기록의 머리말은 `KEY_WRITE`, 중단 신호(SIGTERM)로 멈추면 partial(다음 실행이 이어서 채운다).
+ * 쓰다가 일부 행이 실패하면 기록의 머리말은 `KEY_WRITE`. 중단 신호를 받으면 partial 기록(수동 취소 등 — 다음 실행이 이어서 채운다).
+ * 단계 시간 한도에 걸리면 기록 없이 죽을 수 있다(레포 규칙 `collector-timeout-rootcause-analysis.md`: 한도 도달 = 유예 0).
  *
  * ⚠️ 선행: `supabase/migrations/20261002000000_apartments_complex_key.sql` 적용.
  */
 import { loadEnv, log, logError, getSupabase, selectAll, recordCollectorRun, createReporter, sleep } from "./_shared.mjs";
 import { assignComplexKeys, parseComplexExceptions, missingExceptionIds, findMixedBundles } from "./_same-complex.mjs";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -86,21 +91,29 @@ export function planKeyUpdates(rows, keys) {
 /**
  * 차단기 판정(매일 자동 실행용). DB 접근 없는 순수 함수.
  * 바뀌는 행이 `CHANGE_BREAKER_MAX_ROWS` 를 넘거나 비율이 `CHANGE_BREAKER_RATIO` 를 넘으면 막는다.
- * 빈칸을 채우는 것(새 행)은 세지 않는다.
- * @param {{ changed: number, hadKey: number }} counts
+ * 빈칸을 채우는 행(새 행)은 그 두 한도에 세지 않지만, **채우는 행이 이미 열쇠가 있던 행보다 많으면** 막는다 —
+ * 첫 채우기이거나 칸이 비워진 상태라 승인한 계획 파일(`--apply-from`)로만 반영한다(세션589 검사관 A #4).
+ * @param {{ changed: number, hadKey: number, filled: number }} counts
  * @returns {{ tripped: boolean, ratio: number, reason: string | null }}
  */
-export function evaluateChangeBreaker({ changed, hadKey }) {
+export function evaluateChangeBreaker({ changed, hadKey, filled }) {
   const ratio = hadKey > 0 ? changed / hadKey : 0;
   const overRows = changed > CHANGE_BREAKER_MAX_ROWS;
   const overRatio = ratio > CHANGE_BREAKER_RATIO;
-  const tripped = overRows || overRatio;
+  const overFill = filled > hadKey;
+  const tripped = overRows || overRatio || overFill;
+  /** @type {string[]} */
+  const reasons = [];
+  if (overRows || overRatio) {
+    reasons.push(`열쇠가 바뀌는 행 ${changed}/${hadKey} = ${(ratio * 100).toFixed(1)}% — 한도(${CHANGE_BREAKER_MAX_ROWS}행 또는 ${CHANGE_BREAKER_RATIO * 100}%) 초과`);
+  }
+  if (overFill) {
+    reasons.push(`빈칸을 채우는 행 ${filled} 이 이미 열쇠가 있던 행 ${hadKey} 보다 많음 — 첫 채우기이거나 칸이 비워진 상태(승인한 계획 파일로만 반영)`);
+  }
   return {
     tripped,
     ratio,
-    reason: tripped
-      ? `열쇠가 바뀌는 행 ${changed}/${hadKey} = ${(ratio * 100).toFixed(1)}% — 한도(${CHANGE_BREAKER_MAX_ROWS}행 또는 ${CHANGE_BREAKER_RATIO * 100}%) 초과`
-      : null,
+    reason: tripped ? reasons.join(" · ") : null,
   };
 }
 
@@ -160,6 +173,9 @@ export function parseArgs(argv) {
   if (applyFrom != null && out != null) {
     throw new Error("--apply-from 과 --out 은 같이 줄 수 없습니다 — 승인한 계획 파일을 지금 계획으로 덮어쓴 뒤 그것과 맞대게 됩니다");
   }
+  if (applyFlag && out != null) {
+    throw new Error("--apply 와 --out 은 같이 줄 수 없습니다 — 계획 파일은 미리보기에서만 만듭니다");
+  }
   return { apply: applyFlag || applyFrom != null, applyFrom, out };
 }
 
@@ -187,6 +203,10 @@ async function main() {
   if (applyFrom != null) {
     approvedUpdates = /** @type {{ updates?: unknown }} */ (JSON.parse(readFileSync(applyFrom, "utf8")))?.updates;
     if (!Array.isArray(approvedUpdates)) throw new Error(`승인한 계획 파일에 updates 배열이 없습니다: ${applyFrom}`);
+  }
+  // 계획 파일은 새 이름으로만 만든다 — 있는 파일이면 DB 를 보기 전에 멈춘다(쓸 때도 flag wx).
+  if (args.out != null && existsSync(args.out)) {
+    throw new Error(`--out 파일이 이미 있습니다: ${args.out} — 승인했을 수 있는 계획 파일을 덮어쓰지 않는다 — 새 이름으로 다시 주세요`);
   }
 
   const sb = getSupabase();
@@ -216,7 +236,13 @@ async function main() {
   if (missing.length > 0) log(PHASE, `예외 명단의 id 중 표에 없는 것 ${missing.length}건: ${missing.join(", ")}`);
 
   if (args.out != null) {
-    writeFileSync(args.out, JSON.stringify({ takenAt: new Date().toISOString(), rows: rows.length, bundles, filled: plan.filled, changed: plan.changed, unchanged: plan.unchanged, missingExceptionIds: missing, updates: plan.updates }, null, 1) + "\n");
+    // 줄마다 이름·시도·구를 덧붙인다 — 검사관은 DB 를 못 보므로 묶음 명단을 이 파일만으로 읽어야 한다(대조는 id·이전·새 값 세 칸만).
+    const rowById = new Map(rows.map((r) => [r.id, r]));
+    const readable = plan.updates.map((u) => {
+      const r = rowById.get(u.id);
+      return { ...u, name: r?.name ?? null, region: r?.region ?? null, gu: r?.gu ?? null };
+    });
+    writeFileSync(args.out, JSON.stringify({ takenAt: new Date().toISOString(), rows: rows.length, bundles, filled: plan.filled, changed: plan.changed, unchanged: plan.unchanged, missingExceptionIds: missing, updates: readable }, null, 1) + "\n", { flag: "wx" });
     log(PHASE, `계획 파일 저장: ${args.out}`);
   }
 

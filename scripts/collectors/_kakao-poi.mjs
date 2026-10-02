@@ -110,6 +110,7 @@ const PAREN_ROUND_WORDS = new RegExp(String.raw`\(\s*(?:${ROUND_WORDS.source})\s
  * 오인해 멀쩡한 쌍을 충돌로 버린다. 그래서 괄호는 두고 회차 낱말(+바로 뒤 N차)만 뗀다.
  * 괄호 안이 회차 낱말뿐인 묶음(`(사후)`·`(무순위 1차)`)은 묶음째 떼고 그 뒤 N차(공고 회차)도 뗀다.
  * `cleanName` 과 결과가 다른 게 정상이다(그쪽은 검색용·유사도용, 이쪽은 차수·블록 판정용).
+ * ⚠️ 같은 단지 묶음 열쇠(`_same-complex.mjs`)도 이 함수로 회차 낱말을 뗀다 — 떼는 낱말을 바꾸면 카드 묶음이 바뀐다. 바꾼 날은 `assign-complex-keys.mjs` 미리보기의 "바뀜" 명단을 본다.
  * @param {unknown} name
  * @returns {string}
  */

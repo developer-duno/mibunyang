@@ -17,9 +17,23 @@ import {
 } from "./_same-complex.mjs";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-/** @type {{ rows: Array<{ id: string, name: string, region: string, gu: string | null, lat: number | null, lng: number | null, presale_type: string | null, naver_presale_no: string | null, presale_min_price: number | null, units: number | null, unit_source: string | null }>, expectedKeys: Record<string, string> }} */
+/** @type {{ exceptions: unknown, rows: Array<{ id: string, name: string, region: string, gu: string | null, lat: number | null, lng: number | null, presale_type: string | null, naver_presale_no: string | null, presale_min_price: number | null, units: number | null, unit_source: string | null }>, expectedKeys: Record<string, string> }} */
 const fx = JSON.parse(readFileSync(join(HERE, "_same-complex.fixture.json"), "utf8"));
 const EXCEPTIONS_PATH = join(HERE, "..", "..", "docs", "audits", "same-complex-exceptions.json");
+// 동작 시험은 표본 안의 **얼린 사본**으로 본다 — 운영 명단을 고칠 때마다 시험이 깨지지 않게(세션589 검사관 C #1).
+const FROZEN_EX = parseComplexExceptions(fx.exceptions);
+
+/**
+ * 시드 고정 섞기(같은 시드 = 같은 순열). 결정성 시험용.
+ * @template T @param {readonly T[]} arr @param {number} seed @returns {T[]}
+ */
+function seededShuffle(arr, seed) {
+  const a = [...arr];
+  let s = seed >>> 0;
+  const next = () => { s = (Math.imul(s, 1664525) + 1013904223) >>> 0; return s / 4294967296; };
+  for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(next() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; }
+  return a;
+}
 
 describe("normalizeComplexName — 이름을 뼈대·블록 토큰·임대 낱말로 가른다", () => {
   it("띄어쓰기만 다른 청약홈·네이버 이름은 같은 뼈대", () => {
@@ -203,17 +217,65 @@ describe("assignComplexKeys — 묶음 맥락 규칙(작은 예)", () => {
   it("빈 목록이면 빈 결과", () => {
     expect(assignComplexKeys([]).size).toBe(0);
   });
+
+  it("토큰 없는 행이 두 무리와 거리가 같으면 입력 순서와 무관하게 '가장 작은 id 를 가진 무리'에 붙는다(세션589 검사관 A #8)", () => {
+    const at = { lat: 37.0, lng: 127.0 };
+    const b1 = { ...base, ...at, id: "ah-1", name: "가나다 자이(1BL)" };
+    const b2 = { ...base, ...at, id: "ah-2", name: "가나다 자이(2BL)" };
+    const bare = { ...base, ...at, id: "ap-3", name: "가나다자이" };
+    for (const order of [[b1, b2, bare], [b2, b1, bare], [bare, b2, b1]]) {
+      expect(assignComplexKeys(order).get("ap-3")).toBe("가나다자이#1BL##L0#경기#화성시");
+    }
+    // 라벨 글자순이 아니라 id 로 정한다 — 2BL 무리의 id 가 더 작으면 2BL 에 붙는다
+    const c1 = { ...b1, id: "ah-9" };
+    const c2 = { ...b2, id: "ah-1" };
+    for (const order of [[c1, c2, bare], [c2, c1, bare]]) {
+      expect(assignComplexKeys(order).get("ap-3")).toBe("가나다자이#2BL##L0#경기#화성시");
+    }
+  });
+
+  it("동률 — 구성원이 여럿인 무리도 '구성원 중 가장 작은 id' 로 정한다(24개 순열 전부 같은 답)", () => {
+    const at = { lat: 37.0, lng: 127.0 };
+    const a1 = { ...base, ...at, id: "ah-1", name: "가나다 자이(1BL)" };
+    const a5 = { ...base, ...at, id: "ah-5", name: "가나다 자이(1BL)" };
+    const b3 = { ...base, ...at, id: "ah-3", name: "가나다 자이(2BL)" };
+    const bare = { ...base, ...at, id: "ap-7", name: "가나다자이" };
+    /** @template T @param {T[]} xs @returns {T[][]} */
+    const perms = (xs) => (xs.length <= 1 ? [xs] : xs.flatMap((x, i) => perms([...xs.slice(0, i), ...xs.slice(i + 1)]).map((p) => [x, ...p])));
+    const all = perms([a1, a5, b3, bare]);
+    expect(all).toHaveLength(24);
+    // 무리 A = {ah-1, ah-5}(1BL) 의 최소 id ah-1 < 무리 B = {ah-3}(2BL) — 최대 id(ah-5)나 입력 순서 첫 구성원으로 정하면 B 가 이긴다
+    for (const order of all) expect(assignComplexKeys(order).get("ap-7")).toBe("가나다자이#1BL##L0#경기#화성시");
+  });
 });
 
-describe("예외 명단 — always(묶음) · isolate(떼어 냄)", () => {
-  const ex = parseComplexExceptions(JSON.parse(readFileSync(EXCEPTIONS_PATH, "utf8")));
+describe("assignComplexKeys — 입력 순서와 무관하다(표본 121행을 섞어도 열쇠가 같다)", () => {
+  it.each([["예외 없음", undefined], ["얼린 예외 사본", "frozen"]])("%s", (_label, mode) => {
+    const ex = mode === "frozen" ? FROZEN_EX : undefined;
+    const ref = assignComplexKeys(fx.rows, ex);
+    for (const seed of [1, 7, 42, 589, 2026, 31337, 99991, 123456789]) {
+      const k = assignComplexKeys(seededShuffle(fx.rows, seed), ex);
+      const diff = fx.rows.filter((r) => k.get(r.id) !== ref.get(r.id)).map((r) => `${seed} ${r.id}`);
+      expect(diff).toEqual([]);
+    }
+  });
+});
 
-  it("승인 파일의 모양: 묶음 7쌍 · 떼어 냄 3행", () => {
+describe("예외 명단 — 운영 파일은 모양만 본다", () => {
+  it("운영 예외 명단(docs/audits/same-complex-exceptions.json)은 모양 검사를 통과한다 — 내용은 못 박지 않는다(고치는 날 시험이 깨지지 않게)", () => {
+    expect(() => parseComplexExceptions(JSON.parse(readFileSync(EXCEPTIONS_PATH, "utf8")))).not.toThrow();
+  });
+});
+
+describe("예외 명단 — always(묶음) · isolate(떼어 냄) (표본 안의 얼린 사본으로)", () => {
+  const ex = FROZEN_EX;
+
+  it("얼린 사본의 모양: 묶음 7쌍 · 떼어 냄 3행", () => {
     expect(ex.always).toHaveLength(7);
     expect(ex.isolate).toEqual(["ap-6025160", "ap-6004117", "ap-6014027"]);
   });
 
-  it("승인 파일의 id 는 전부 표본에 있다", () => {
+  it("얼린 사본의 id 는 전부 표본에 있다", () => {
     expect(missingExceptionIds(ex, new Set(fx.rows.map((r) => r.id)))).toEqual([]);
   });
 
@@ -255,12 +317,16 @@ describe("예외 명단 — always(묶음) · isolate(떼어 냄)", () => {
   ])("모양이 틀린 명단은 던진다: %s", (_label, bad) => {
     expect(() => parseComplexExceptions(bad)).toThrow();
   });
+
+  it("isolate 에 같은 id 가 두 번 있으면 던진다 — 열쇠가 '#only:…#only:…' 로 겹친다(세션589 검사관 A #9)", () => {
+    expect(() => parseComplexExceptions({ always: [], isolate: [{ id: "ap-3" }, { id: "ap-4" }, { id: "ap-3" }] })).toThrow(/isolate 에 같은 id 가 두 번.*ap-3/);
+  });
 });
 
 describe("findMixedBundles — 예외 명단이 임대·분양이나 시도를 섞으면 찾아낸다", () => {
-  const ex = parseComplexExceptions(JSON.parse(readFileSync(EXCEPTIONS_PATH, "utf8")));
+  const ex = FROZEN_EX;
 
-  it("표본 + 승인 파일로는 섞인 묶음이 없다", () => {
+  it("표본 + 얼린 예외 사본으로는 섞인 묶음이 없다", () => {
     expect(findMixedBundles(fx.rows, assignComplexKeys(fx.rows, ex))).toEqual([]);
   });
 

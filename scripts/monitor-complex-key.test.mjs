@@ -1,5 +1,9 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { fileURLToPath } from "node:url";
+import { dirname, join } from "node:path";
 import {
   checkComplexKeyGaps,
   checkComplexKeyRunStale,
@@ -112,5 +116,36 @@ describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 �
     const failed = issues.filter((i) => i.kind === "check-failed");
     expect(failed).toHaveLength(1);
     expect(failed[0].detail).toBe("⑭ 묶음 열쇠 칸 점검 실행 실패 — column apartments.complex_key does not exist");
+  });
+});
+
+describe("fetchComplexKeyHealth — ⑭ 의 실제 조회 줄(위 시험은 조회를 주입해 이 줄을 안 지난다)", () => {
+  // 세션589 검사관 A #6: 성공 조건(S1)·빈칸 조건(S3)·오래된 순 정렬(S4)을 빼도 초록이었다.
+  // 함수 본문 전체를 지문(줄바꿈 LF · sha256)으로 못 박고, 무엇이 중요한지는 아래 글자 단언으로 남긴다.
+  // 이 함수를 고쳤으면 변이 도구(mutate-monitor.mjs)를 다시 돌리고 지문을 갱신한다.
+  const raw = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8").replace(/\r\n/g, "\n");
+  const start = raw.indexOf("async function fetchComplexKeyHealth() {\n");
+  const body = start < 0 ? "" : raw.slice(start, raw.indexOf("\n}\n", start) + 2);
+
+  it("기준 시간 36시간 · 조회 상한 200 — 숫자 그대로(지문 함수 밖 상수라 따로 못 박는다 · 재검사 Z1)", () => {
+    expect(COMPLEX_KEY_GAP_HOURS).toBe(36);
+    expect(COMPLEX_KEY_GAP_FETCH_LIMIT).toBe(200);
+  });
+
+  it("본문 지문이 승인한 값과 같다", () => {
+    expect(start).toBeGreaterThan(0);
+    expect(createHash("sha256").update(body).digest("hex")).toBe("5b523174b36a3e4de5d60430a18a698b57bf8f190968cf4c2f1a5e2a78e2516a");
+  });
+
+  it("빈 칸 조회: 칸이 빈 행만 · 오래된 순 · 상한까지", () => {
+    expect(body).toContain(
+      ['    .is("complex_key", null)', '    .order("created_at", { ascending: true })', "    .limit(COMPLEX_KEY_GAP_FETCH_LIMIT);"].join("\n"),
+    );
+  });
+
+  it("마지막 성공 조회: 이 배치의 success 기록만 · 최신 1건", () => {
+    expect(body).toContain(
+      ['    .eq("collector", "assign-complex-keys")', '    .eq("status", "success")', '    .order("finished_at", { ascending: false })', "    .limit(1);"].join("\n"),
+    );
   });
 });

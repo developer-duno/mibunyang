@@ -58,6 +58,7 @@ export function isLeasePresale(presaleType) {
 
 /**
  * 이름으로 판정하는 임대 낱말 5개(세션577 실측 4개 + 세션579 청년안심주택). 넓은 '임대' 금지 — '토지임대부'(분양)가 걸린다.
+ * ⚠️ 같은 단지 묶음 열쇠(`scripts/collectors/_same-complex.mjs`)가 이 낱말과 `isLeaseUnit` 결과를 열쇠에 넣는다 — 낱말·유형 목록을 바꾸면 그 단지들의 카드 묶음이 바뀐다. 바꾼 날은 `assign-complex-keys.mjs` 미리보기의 "바뀜" 명단을 본다.
  * @type {RegExp}
  */
 export const LEASE_NAME_PATTERN = /국민임대|행복주택|장기전세|재개발임대|청년안심주택/;
