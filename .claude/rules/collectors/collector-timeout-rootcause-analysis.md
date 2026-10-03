@@ -82,5 +82,6 @@ console.log('apartments created in last 30 days:', count);
 - ❌ "createReporter 사용 = graceful 적용" 단정. `if (rpt.interrupted()) break;` 명시 박힘 grep 의무
 - ❌ "PR merge = 실전 동작 확인" 단정. workflow_dispatch dry-run 또는 자연 cron 1회 실증 의무
 - ❌ "외부 API 분산 N%" 박힘 단일 표본 단정. N≥10 표본 통계 (평균/σ/Z-score) 답습 의무
+- ❌ 예산(`--budget-min`) **안쪽** 반복에 DB 쓰기를 더하고 예산 근거를 그대로 둠 — 쓰기 왕복만큼 회차가 길어져 예산에 닿으면 뒤 지역은 **원래 표까지** 같이 빠진다. 더했으면 첫 정기 회차 소요를 직전 회차와 맞대 예산 근거를 다시 잰다(세션589 검사관 C3 — `collect-trades` 의 `trade_deals` 열쇠별 저장, 근거 "73.8분×1.8=133분" 에 여유 17분뿐)
 
 > 답습 자산·세션338 상세·차단 검증 이력 → [rules-history/collectors/collector-timeout-rootcause-analysis.md](../../rules-history/collectors/collector-timeout-rootcause-analysis.md)

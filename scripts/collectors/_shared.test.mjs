@@ -14,6 +14,7 @@ import {
   EXCL_RATIO_APT_LIKE_TYPES, isPlausibleExclRatioFor,
   JEONNAM_GWANGJU_SGG_OLD_TO_NEW, GWANGJU_GU_NAMES, resolveRegionName,
   RETIRED_GU, HWASEONG_BARE_GU, createRegionResolutionTracker,
+  GU_LAWD_CODES, HWASEONG_LAWD_CODES,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -409,6 +410,32 @@ describe("getLawdCd", () => {
   });
   it("미등록 군 → prefix 폴백", () => {
     expect(getLawdCd("경북", "미래군")).toBe("47000");
+  });
+});
+
+// 세션589: 실거래 수집기만 화성 4코드를 돈다. GU_LAWD_MAP 값(41591)은 다른 소비처 때문에 불변.
+describe("GU_LAWD_CODES · HWASEONG_LAWD_CODES (세션589)", () => {
+  it("화성시 → 4코드, 순서 고정(만세·효행·병점·동탄)", () => {
+    expect(GU_LAWD_CODES("경기", "화성시")).toEqual(["41591", "41593", "41595", "41597"]);
+    expect(HWASEONG_LAWD_CODES).toEqual(["41591", "41593", "41595", "41597"]);
+  });
+  it("돌려받은 배열을 바꿔도 상수는 그대로(사본)", () => {
+    const a = GU_LAWD_CODES("경기", "화성시");
+    a.pop();
+    expect(GU_LAWD_CODES("경기", "화성시")).toHaveLength(4);
+  });
+  it("그 밖 = [getLawdCd()] — 강남구·세종·미지 구 폴백", () => {
+    expect(GU_LAWD_CODES("서울", "강남구")).toEqual(["11680"]);
+    expect(GU_LAWD_CODES("세종", null)).toEqual(["36110"]);
+    expect(GU_LAWD_CODES("서울", "없는구")).toEqual([getLawdCd("서울", "없는구")]);
+    expect(GU_LAWD_CODES("미지시도", "미지구")).toEqual([]);
+  });
+  it("화성시 한 코드 조회(getLawdCd)·GU_LAWD_MAP 값은 여전히 41591", () => {
+    expect(getLawdCd("경기", "화성시")).toBe("41591");
+    expect(GU_LAWD_MAP["경기"]["화성시"]).toBe("41591");
+  });
+  it("다른 시도의 '화성시' 는 4코드가 아니다(경기 한정)", () => {
+    expect(GU_LAWD_CODES("서울", "화성시")).toHaveLength(1);
   });
 });
 

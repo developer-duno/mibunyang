@@ -98,7 +98,11 @@ const ACTION_GUIDE = {
   "region-unresolved": "[조치] KOSIS 원문의 C1_NM 표기가 바뀌었는지 확인 — 통합 시도(전남광주 등)면 시군구로 가를 수 없어 값이 빠진다. 표기를 _shared.mjs REGION_MAP/resolveRegionName 에 반영하고 해당 수집기를 1회 재실행하세요 (룰: .claude/rules/collectors/admin-district-code-reform.md).",
   "applyhome-unsold": "[조치] (a) 만료인데 청약홈 값: kosis-unsold 로그의 [C6 만료] 줄로 왜 안 덮였는지(매칭 실패·50% 보류·임대) 확인 / (b) 공고일 없음: 청약홈 원문 공고일을 backfill-unsold-source.mjs --plan= 으로 채움 / (c) 완판인데 값 남음: 그 값이 어느 회차 것인지 확인 (규칙 = collect-unsold-kosis.mjs shouldSkipKosisFill 머리말 C6).",
   "kapt-window": "[조치] 그 회차의 러너 시작 시각(kosis-local.log · naver-collect.log)이 2u K-apt 창(scripts/collectors/_match-gates.mjs SIBLING_KAPT_WINDOWS_KST)과 겹쳤는지 보세요 — 놓친 날 보충·늦게 켜진 날이면 창 밖 시각에 그 수집기를 1회 다시 돌리고, 정기 시각이 늘 겹치면 러너 시각을 옮깁니다(scripts/monitor-collectors.mjs checkKaptWindowSkips).",
-  "check-failed": "[조치] Actions 로그에서 그 번호(⑦~⑮) 줄의 오류를 보고 칸 이름 변경·칸 삭제·표 권한 변경을 확인하세요 — 고친 뒤 monitor 를 수동 1회 실행해 이 알림이 사라지는지 봅니다(scripts/monitor-collectors.mjs runDailyGuardedChecks).",
+  "trade-deals-dup": "[조치] 같은 열쇠(코드|월|종류)에 실거래 회차(batch)가 둘 이상 남았습니다 — 위 줄의 완성/미완성을 보세요. 읽는 쪽은 가장 새 완성 batch 만 봅니다. 완성 batch 가 없으면 그 달을 --months 로 다시 수집하고, 회차가 겹쳤거나 죽었는지 collect-trades 로그의 'trade_deals' 줄로 확인합니다(scripts/collectors/_trade-deals.mjs saveDealsForKey).",
+  "trade-deals-hwaseong": "[조치] 그 화성 코드로 실거래 API 를 1회 직접 불러 0건인지 보세요 — 0건이면 코드표(_shared.mjs HWASEONG_LAWD_CODES) 문제, >0 이면 수집기 결함입니다(.claude/rules/collectors/admin-district-code-reform.md §1).",
+  "trade-deals-ratio": "[조치] collect-trades 로그의 'trade_deals:' 요약 줄(넣음·0건 열쇠·쓰기 실패 열쇠)과 trades 저장 줄을 맞대 보세요 — 한쪽 쓰기가 빠진 달이면 그 달을 --months 로 다시 수집합니다(scripts/monitor-collectors.mjs checkTradeDealsHealth).",
+  "trade-deals-norun": "[조치] 그 시각 앞뒤의 로컬 러너 로그(kosis-local.log)와 PC 재시작 기록을 보세요 — 실거래 수집 회차가 끝 기록 없이 죽었으면 trades 는 저장되지 않았으니 창 밖 시각에 collect-trades 를 1회 다시 돌립니다(scripts/monitor-collectors.mjs tradeDealsRunState).",
+  "check-failed": "[조치] Actions 로그에서 그 번호(⑦~⑯) 줄의 오류를 보고 칸 이름 변경·칸 삭제·표 권한 변경을 확인하세요 — 고친 뒤 monitor 를 수동 1회 실행해 이 알림이 사라지는지 봅니다(scripts/monitor-collectors.mjs runDailyGuardedChecks).",
   "local-failure": "[조치] 그 수집기를 돌린 로컬 러너 로그(naver-collect.log · kosis-local.log · childcare-local.log)와 collector_runs.error_message 를 보세요 — STEP_FAILED 는 네이버 파이프라인의 끊긴 단계, 차단기 문구는 수집기가 일부러 멈춘 것입니다. 고친 뒤 그 수집기를 1회 다시 돌립니다(scripts/monitor-collectors.mjs checkLocalFailures).",
   outage: "[조치] raw API 1회 호출(curl)로 500/503/타임아웃 확인 후 외부 공식 공지(점검/장애) grep — 의심 확정 시 BACKLOG.md 1줄 박힘 (룰: .claude/rules/workflows/external-api-outage-policy.md).",
 };
@@ -106,7 +110,7 @@ const ACTION_GUIDE = {
 /**
  * 수집기 이상 1건을 텔레그램 메시지 텍스트로 만든다.
  * @param {{
- *   kind: "fail" | "empty" | "stale" | "nulls" | "outage" | "region-unresolved" | "applyhome-unsold" | "check-failed" | "local-failure" | "kapt-window",
+ *   kind: "fail" | "empty" | "stale" | "nulls" | "outage" | "region-unresolved" | "applyhome-unsold" | "check-failed" | "local-failure" | "kapt-window" | "trade-deals-dup" | "trade-deals-hwaseong" | "trade-deals-ratio" | "trade-deals-norun",
  *   collector: string,
  *   detail: string,
  *   conclusion?: "failure" | "cancelled" | "timed_out",
@@ -117,11 +121,11 @@ const ACTION_GUIDE = {
  * @returns {string}
  */
 export function formatIssue(issue) {
-  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️" }[issue.kind];
+  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️", "trade-deals-dup": "🧾", "trade-deals-hwaseong": "🧾", "trade-deals-ratio": "🧾", "trade-deals-norun": "🧾" }[issue.kind];
   const conclusionKey = issue.conclusion;
   const title = issue.kind === "fail"
     ? `수집기 ${(conclusionKey ? /** @type {any} */ (CONCLUSION_LABEL)[conclusionKey] : undefined) ?? "이상"}`
-    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증", outage: "외부 API 장기 중단", "region-unresolved": "시도 이름 못 맞춤", "applyhome-unsold": "청약홈 미분양 값 점검", "check-failed": "감시 점검 실행 실패", "local-failure": "로컬 수집기 실패", "kapt-window": "2u K-apt 창 때문에 건너뜀" }[issue.kind];
+    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증", outage: "외부 API 장기 중단", "region-unresolved": "시도 이름 못 맞춤", "applyhome-unsold": "청약홈 미분양 값 점검", "check-failed": "감시 점검 실행 실패", "local-failure": "로컬 수집기 실패", "kapt-window": "2u K-apt 창 때문에 건너뜀", "trade-deals-dup": "실거래 원문 표 중복 회차", "trade-deals-hwaseong": "화성 실거래 코드 0행", "trade-deals-ratio": "실거래 원문 표 행 수 어긋남", "trade-deals-norun": "실거래 수집 회차 기록 없음" }[issue.kind];
   const out = [`${emoji} <b>${title}</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)];
   // 상세 줄 — 점검 함수가 미리 만든 사람 말 문장들
   for (const line of issue.lines ?? []) out.push(escapeHtml(line));
@@ -151,7 +155,7 @@ export function formatIssue(issue) {
  */
 export function formatIssueForConsole(issue) {
   if (issue.collector !== "db-permissions") return formatIssue(issue);
-  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️" }[issue.kind];
+  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️", "trade-deals-dup": "🧾", "trade-deals-hwaseong": "🧾", "trade-deals-ratio": "🧾", "trade-deals-norun": "🧾" }[issue.kind];
   return [`${emoji} <b>DB 권한 점검</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)].join("\n");
 }
 
@@ -217,7 +221,7 @@ export function fitBlock(block, maxLen) {
  * 이슈 1건 자체가 한 통(헤더 포함)보다 크면 `fitBlock` 으로 줄 단위로 잘라 생략 줄을
  * 붙인다 — 그래서 모든 통은 항상 한도 이하이고, 첫 통은 항상 헤더 + 첫 이슈를 함께 담는다
  * (헤더만 담긴 통은 생기지 않는다).
- * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
+ * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
  * @returns {string[]} 전송할 메시지 배열 (이슈 0건이면 빈 배열)
  */
 export function buildMessages(issues) {
