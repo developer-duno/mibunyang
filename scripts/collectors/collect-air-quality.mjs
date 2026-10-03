@@ -133,6 +133,40 @@ export function matchNearestStation(apt, stations) {
   };
 }
 
+/**
+ * `infra` 에 쓸 대기질 6칸 패치 생성 (세션559 의도 재적용, 세션565)
+ *
+ * `air_updated_at` 은 **측정값(pm10·pm25·o3)이 하나라도 있을 때만** 찍는다 — 자매 레포가
+ * 세션280에 세운 규칙을 그대로 승계한 것이다(자매 `env_air.py`: "측정값 있을 때만 updated_at
+ * 갱신"). 에어코리아는 점검·통신장애 때 측정값을 `"-"` 로 주고 이 수집기는 그걸 null 로
+ * 바꾸는데(`fetchSidoData`), 전부 null 인데도 시각을 찍으면 자매 화면 `FreshnessTag`
+ * (`MbEnvironmentSection.tsx:108`)가 "방금 갱신됨"으로 보여 준다 — 숫자는 빈칸인데. 그 거짓말을 막는다.
+ *
+ * 측정소 이름·거리는 측정값 유무와 무관하게 늘 쓴다(어느 측정소를 봤는지는 사실이므로).
+ * 등급(`air_grade`)은 측정값과 함께 움직인다 — 측정값이 없으면 등급도 옛 값을 남기지 않는다.
+ *
+ * @param {{ station: string; stationDist: number | null; pm10: number | null; pm25: number | null; o3: number | null; grade: string | null }} aq
+ * @param {() => string} [nowIso] 테스트 주입용 시각 생성기
+ * @returns {Record<string, unknown>}
+ */
+export function buildInfraPatch(aq, nowIso = () => new Date().toISOString()) {
+  /** @type {Record<string, unknown>} */
+  const patch = {
+    air_station_name: aq.station,
+    air_station_dist: aq.stationDist,
+  };
+  // `!= null` — undefined(필드 누락)도 "측정값 없음"으로 본다.
+  const hasMeasure = aq.pm10 != null || aq.pm25 != null || aq.o3 != null;
+  if (hasMeasure) {
+    patch.air_pm10 = aq.pm10;
+    patch.air_pm25 = aq.pm25;
+    patch.air_o3 = aq.o3;
+    patch.air_grade = aq.grade;
+    patch.air_updated_at = nowIso();
+  }
+  return patch;
+}
+
 async function main() {
   if (!API_KEY) { log(PHASE, "AIRKOREA_KEY 미설정 — 대기질 수집 스킵"); return; }
 
@@ -192,16 +226,36 @@ async function main() {
       const merged = mergeKeepingAnnual(/** @type {Record<string, unknown> | null} */ (apt.air_quality), aq);
       const { error: uErr } = await sb.from("apartments").update({ air_quality: merged }).eq("id", apt.id);
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); continue; }
-      // `infra.air_station_name`·`air_station_dist` 도 함께 맞춘다 — **자매 레포가 읽는 자리**다
-      // (`naver-estate-web` `MbEnvironmentSection.tsx:132·137`). 이 수집기가 `apartments.air_quality`
-      // JSON 만 쓰던 동안 그 두 컬럼은 옛 값(km 숫자)이 m 로 표시되고 있었다(세션556).
-      // ⚠️ `infra` 는 5개 수집기가 컬럼을 나눠 쓰는 행이라 **소유한 두 칸만** 갱신한다(행 덮어쓰기 금지).
-      const { error: iErr } = await sb
+      // `infra` 대기질 6칸을 전부 맞춘다 — **자매 레포가 읽는 자리**다
+      // (`naver-estate-web` `MbEnvironmentSection.tsx:106~137` · `MbCompareRadarChart.tsx:41`).
+      //
+      // ## 수치 4칸을 여기서 쓰는 이유 (세션559 의도, 세션565 재적용)
+      // 예전엔 자매 `env_air.py` 가 수치를 채웠다. 그쪽은 **단지마다 API 1콜**이라 하루 100곳씩
+      // 돌아가며 채우고(전 단지 한 바퀴 ≈30일), 2026-09-22 실측으로 3,068곳 중 **2,560곳(83%)만**
+      // 수치가 있었다. 이 수집기는 **매주 화요일**(로컬 러너 `kosis-local-runner.mjs` dow:2,
+      // 약 05:30 KST) 시도별 조회 약 18콜로 전국 측정소를 한 번에 받아 **로컬에서** 거리를 재므로
+      // (`matchNearestStation`) 전 단지를 매주 갱신하면서도 호출은 주 18콜 안팎이다(자매 방식
+      // 주 700콜의 약 1/40). 측정소 이름·거리 두 칸은 원래부터 이 수집기가 매주 전량 덮어쓰고
+      // 있었다 — 두 수집기가 같은 칸을 번갈아 쓰던 셈이다. 그래서 수치까지 여기서 책임지고,
+      // 자매 `env_air.py` 는 이 변경의 라이브 반영을 확인한 뒤 폐지한다(별도 PR).
+      // TM 좌표변환이 없으므로 자매 PR #556 이 고친 종류의 사고(전국이 제주 관측소로 몰림)가
+      // 구조적으로 불가능하다.
+      //
+      // ⚠️ `air_updated_at` 은 **측정값이 하나라도 있을 때만** 찍는다(자매 세션280 규칙 승계,
+      //   `buildInfraPatch` 참조). 전부 null 인데 시각을 찍으면 화면은 "방금 갱신됨"인데
+      //   숫자는 빈칸인 거짓말이 된다.
+      // ⚠️ `infra` 는 5개 수집기가 컬럼을 나눠 쓰는 행이라 **소유한 칸만** 갱신한다(행 덮어쓰기 금지).
+      const { data: iRows, error: iErr } = await sb
         .from("infra")
-        .update({ air_station_name: aq.station, air_station_dist: aq.stationDist })
-        .eq("apartment_id", apt.id);
-      if (iErr) { logError(PHASE, `${apt.name} infra: ${iErr.message}`); rpt.fail(1); }
-      else rpt.success(1);
+        .update(buildInfraPatch(aq))
+        .eq("apartment_id", apt.id)
+        .select("apartment_id");
+      if (iErr) { logError(PHASE, `${apt.name} infra: ${iErr.message}`); rpt.fail(1); continue; }
+      // 행이 없으면 update 는 조용히 0건을 돌려준다(#552 의 "돌아온 결과에서 센다" 원칙과 같은
+      // 결). 행을 만들어 주던 자매 `env_air.py` 가 폐지되면, 새 단지가 조용히 빈 채로 남는 걸
+      // 막으려면 여기서 드러나야 한다.
+      if (!iRows || iRows.length === 0) { logError(PHASE, `${apt.name}: infra 행 없음 — 대기질 미반영`); rpt.fail(1); continue; }
+      rpt.success(1);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logError(PHASE, `${apt.name}: ${msg}`);
