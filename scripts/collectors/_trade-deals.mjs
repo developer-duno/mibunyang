@@ -351,3 +351,99 @@ export async function saveDealsForKey(sb, key, rows, batchId, opts = {}) {
   res.deleted = d1.count ?? 0;
   return res;
 }
+
+// ── 읽는 쪽 (시세 비교 범위 좁히기 나, 세션590) ─────────────────────────────
+
+/**
+ * 열쇠(sgg_cd · deal_month · trade_type)마다 **가장 새 완성 batch** 의 행만 남긴다. DB 접근 없는 순수 함수.
+ *
+ * - 완성 = 그 batch 의 행 수 === `batch_rows`(수집기가 넣으려던 수 — 위 머리 주석 교체 방식)
+ * - 가장 새 = batch 행들의 `recorded_at` 최댓값이 가장 늦은 것(같으면 batch_id 글자 큰 쪽 — 결과가 흔들리지 않게)
+ * - 완성 batch 가 하나도 없는 열쇠는 통째로 뺀다(`droppedKeys` — 호출자가 로그). 반쪽 batch 를 읽으면 건수가 틀어진다.
+ * ⚠️ 행 수를 세려면 그 열쇠의 행이 **전부** 들어와 있어야 한다 — 열쇠에 deal_month 가 들어 있으므로
+ *    `deal_month >= X` 로 거른 조회는 열쇠를 자르지 않는다. 다른 칸(지역·동)으로 거른 조회에는 쓰지 않는다.
+ * @template {{ sgg_cd: string; deal_month: string; trade_type: string; batch_id: string; batch_rows: number | null; recorded_at?: string | number | null }} R
+ * @param {readonly R[]} rows
+ * @returns {{ rows: R[]; droppedKeys: string[] }}
+ */
+export function keepNewestCompleteBatches(rows) {
+  /** @type {Map<string, Map<string, { n: number; expect: number | null; t: number }>>} */
+  const byKey = new Map();
+  for (const r of rows) {
+    const k = dealKey(r.sgg_cd, r.deal_month, r.trade_type);
+    let batches = byKey.get(k);
+    if (!batches) { batches = new Map(); byKey.set(k, batches); }
+    const raw = r.recorded_at == null ? NaN : new Date(r.recorded_at).getTime();
+    const t = Number.isNaN(raw) ? -Infinity : raw;
+    const b = batches.get(r.batch_id);
+    if (!b) batches.set(r.batch_id, { n: 1, expect: r.batch_rows == null ? null : Number(r.batch_rows), t });
+    else { b.n++; if (t > b.t) b.t = t; }
+  }
+  /** @type {Map<string, string>} */
+  const chosen = new Map();
+  /** @type {string[]} */
+  const droppedKeys = [];
+  for (const [k, batches] of byKey) {
+    /** @type {{ id: string; t: number } | null} */
+    let best = null;
+    for (const [id, b] of batches) {
+      if (b.expect == null || b.n !== b.expect) continue;
+      if (!best || b.t > best.t || (b.t === best.t && id > best.id)) best = { id, t: b.t };
+    }
+    if (best) chosen.set(k, best.id);
+    else droppedKeys.push(k);
+  }
+  const kept = rows.filter((r) => chosen.get(dealKey(r.sgg_cd, r.deal_month, r.trade_type)) === r.batch_id);
+  return { rows: kept, droppedKeys: droppedKeys.sort() };
+}
+
+/** 읽기 도우미가 늘 함께 받는 칸(완성 batch 판정 재료 + 커서). */
+const WINDOW_BASE_COLS = ["id", "sgg_cd", "deal_month", "trade_type", "batch_id", "batch_rows", "recorded_at"];
+
+/**
+ * `trade_deals` 에서 `deal_month >= fromMonth` 의 **완성 batch** 행만 받는다(시세 비교 범위 좁히기 나 — 묶기·통계 공용).
+ *
+ * - 고유 키 커서(id 오름차순, 1,000행) — 정렬 없는 OFFSET 은 큰 표에서 행을 잃는다(`unordered-pagination-loses-rows.md`)
+ * - `cols` 에 위 기본 칸을 늘 덧붙인다
+ * - 받은 뒤 `keepNewestCompleteBatches`. 조회 실패는 **던진다** — 조용한 [] 는 "거래 0건"처럼 보인다(호출자가 기록)
+ * - batch_id·recorded_at 글자는 같은 값끼리 한 문자열로 모은다(100만 행이 각자 사본을 들고 있지 않게)
+ * @param {any} sb supabase 클라이언트
+ * @param {{ fromMonth: string; cols: string; pageSize?: number }} opts
+ * @returns {Promise<{ rows: Array<Record<string, any>>; droppedKeys: string[]; total: number }>}
+ */
+export async function fetchTradeDealsWindow(sb, { fromMonth, cols, pageSize = 1000 }) {
+  if (!/^\d{6}$/.test(String(fromMonth))) throw new Error(`fetchTradeDealsWindow: fromMonth 는 YYYYMM 이어야 합니다: ${fromMonth}`);
+  const want = new Set(String(cols).split(",").map((s) => s.trim()).filter(Boolean));
+  for (const c of WINDOW_BASE_COLS) want.add(c);
+  const select = [...want].join(",");
+  /** @type {Map<string, string>} */
+  const intern = new Map();
+  const same = (/** @type {any} */ v) => {
+    if (typeof v !== "string") return v;
+    const hit = intern.get(v);
+    if (hit !== undefined) return hit;
+    intern.set(v, v);
+    return v;
+  };
+  /** @type {Array<Record<string, any>>} */
+  const all = [];
+  /** @type {any} */
+  let cursor = null;
+  while (true) {
+    let q = sb.from("trade_deals").select(select).gte("deal_month", fromMonth).order("id", { ascending: true }).limit(pageSize);
+    if (cursor != null) q = q.gt("id", cursor);
+    const { data, error } = await q;
+    if (error) throw new Error(`trade_deals 조회 실패: ${error.message ?? error.code ?? "?"}`);
+    if (!data || data.length === 0) break;
+    for (const r of data) {
+      r.batch_id = same(r.batch_id);
+      r.recorded_at = same(r.recorded_at);
+      all.push(r);
+    }
+    cursor = data[data.length - 1].id;
+    if (cursor == null) throw new Error("trade_deals 조회: 커서(id)가 비었습니다");
+    if (data.length < pageSize) break;
+  }
+  const { rows, droppedKeys } = keepNewestCompleteBatches(/** @type {any} */ (all));
+  return { rows, droppedKeys, total: all.length };
+}
