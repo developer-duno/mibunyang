@@ -242,6 +242,9 @@ naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 ⚠️ **이 DB 의 anon key 는 공개돼 있다 (세션566, 2026-09-23 실측).** 자매 2u.pe.kr 로그인 화면 JS 에
 실려 있다(2u 로그인이 이 DB 의 Supabase Auth 를 쓴다). 그래서 **anon·authenticated 대상 정책은 전부
 인터넷에 열린 것**으로 본다 — 새 표에 anon 쓰기 정책을 두지 말고, 쓰기는 API(service key) 경유로.
+**새 표 마이그는 RLS 만으로 두지 않는다**: Supabase 는 public 새 표에 anon·authenticated 전권한을 기본으로 준다 →
+`site_feedback`(`20260925000000`)·`trade_deals`(`20261003000000`) 꼴로 표·시퀀스 권한을 PUBLIC·anon·authenticated·service_role 에서
+회수한 뒤 service_role 에 필요한 것만 다시 GRANT + 자체검사 DO 블록. 적용 뒤 권한 지문 기준선 재승인(`scripts/perm-baseline.mjs --make-expect` → `--accept --expect-file`).
 같은 날 보안 고문 경고 3건을 닫았다: `consults`·`subscribers` anon INSERT `true` 정책 삭제(우리 API 는
 두 표 모두 service key 로 넣는다) · `pg_trgm` → `extensions` 스키마(자매 검색 색인
 `idx_apartments_name_trgm` 은 그대로 동작 — 자매는 ILIKE 만 쓴다). 마이그 = `20260923000000~03`.
