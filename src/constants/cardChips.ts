@@ -154,7 +154,15 @@ const PRESALE_ACTIVE_STAGES = new Set(["분양중", "청약중", "분양계획"]
 /** 입주 상태 칩 — 준공일이 지났는지 + 미분양이 남았는지로 갈린다.
  *  `moveInText` 는 이미 사람이 읽을 꼴로 만들어 넘긴다(`fmtMoveIn` — 잘린 값은 네이버
  *  원문으로 대체된다, 세션530). 여기서 다시 포맷하면 그 대체가 무효가 된다. */
-function completionChip(moveInText: string, moveInDone: boolean, completionPast: boolean): CardChip {
+function completionChip(
+  moveInText: string,
+  moveInDone: boolean,
+  completionPast: boolean,
+  unsoldUnknown: boolean
+): CardChip {
+  // 미분양 수를 모르면 "완료"도 "미입주"도 단정하지 않는다 — 날짜 사실만 보여준다
+  // (백로그 A-10 2차 E1, 세션573 조사 — unsold null 을 0 으로 보아 입주완료로 둔갑하던 결함).
+  if (completionPast && unsoldUnknown) return { id: "moveInUnknown", text: moveInText, tone: "plain", layer: "status" };
   if (moveInDone) return { id: "moveInDone", text: `입주완료 ${moveInText}`, tone: "green", layer: "status" };
   // 미입주도 **상태**다 — 색만 주황이다.
   // 약점으로 두면 상한 2칸을 미분양·시공사 같은 더 급한 위험에 내주고 접히는데,
@@ -199,10 +207,20 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   const completionPast = completion ? completion < nowYm : false;
   // 준공 + 미분양 0 = 입주완료. 판정은 unsold(수)로 — unsoldRate(%)는 100% 초과 폭발값이 null 로
   // 무력화돼 있을 수 있어, 미분양 단지가 "입주완료"로 둔갑하던 회귀 방지(세션 445, classify.ts:33 일치).
-  const moveInDone = completionPast && Number(a.unsold ?? 0) === 0;
+  // unsold 가 null(모름)이면 0 으로 보지 않는다 — 모르는 것을 "입주완료"로 단정하지 않는다
+  // (백로그 A-10 2차 E1, 세션573 조사).
+  const unsoldUnknown = a.unsold == null;
+  const moveInDone = completionPast && !unsoldUnknown && Number(a.unsold) === 0;
   // 잘린 값(`"2029 미"`)은 네이버 원문(`"2029 미정"`)으로 대체해 보여준다 (세션530).
   if (completion)
-    out.push(completionChip(fmtMoveIn(completion, a.presaleMoveIn as string | undefined), moveInDone, completionPast));
+    out.push(
+      completionChip(
+        fmtMoveIn(completion, a.presaleMoveIn as string | undefined),
+        moveInDone,
+        completionPast,
+        unsoldUnknown
+      )
+    );
 
   /* ── core: 손님이 늘 확인하는 값 (상한 밖 상시 노출) ──
      손님 질문 4단계의 ①이 "얼마인가"라서 가격 판정은 언제나 보여야 한다(재설계 D3). */

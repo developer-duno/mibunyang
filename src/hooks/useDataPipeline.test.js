@@ -534,6 +534,22 @@ describe("useDataPipeline", () => {
       expect(counts).toHaveProperty("moveInCounts");
       expect(counts).toHaveProperty("tierCounts");
     });
+
+    // 준공 지난 단지가 unsold 를 모르면(null) classifyMoveIn 이 null 을 돌려준다 — moveInCounts 는
+    // "입주예정"/"미입주"/"입주완료" 3키만 가지므로, 그 단지는 어느 칸에도 안 세여야 한다
+    // (백로그 A-10 2차 E1, 세션573 — "기타" 키가 생기거나 오류가 나면 회귀).
+    it("준공 지남 + unsold=null(미상) 단지는 moveInCounts 어느 칸에도 안 세진다", () => {
+      const known = makeApt({ id: "ah-known", completion: "202001", unsold: 0 });
+      const unknown = makeApt({ id: "ah-unknown", completion: "202001", unsold: null });
+      const { result } = renderPipeline({ apartments: [known, unknown] });
+      const counts = result.current.filterOptionCounts;
+      expect(counts).not.toBeNull();
+      const moveInCounts = counts?.moveInCounts ?? {};
+      const total = Object.values(moveInCounts).reduce((a, b) => a + Number(b), 0);
+      expect(total).toBe(1); // known(입주완료) 1건만 — unknown 은 어느 키에도 안 들어간다
+      expect(Object.keys(moveInCounts).sort()).toEqual(["미입주", "입주완료", "입주예정"].sort());
+      expect(moveInCounts["입주완료"]).toBe(1);
+    });
   });
 
   /* ── scoredMap / compItems ── */

@@ -50,14 +50,15 @@ describe("classifyMoveIn — 입주 상태 분류", () => {
     expect(classifyMoveIn(makeApt({ completion: "" }))).toBeNull();
   });
 
-  // 경계값: unsold null → 0 취급 → 입주완료
-  it("과거 completion + unsold null → '입주완료'", () => {
-    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: null }))).toBe("입주완료");
+  // 경계값 정정(백로그 A-10 2차 E1, 세션573): unsold null 을 0 취급하면 미분양 단지가
+  //   "입주완료"로 둔갑한다(라이브 24곳 실사고) — 모르는 것은 단정하지 않고 null 을 돌려준다.
+  it("과거 completion + unsold null(모름) → null (입주완료 단정 안 함)", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: null }))).toBeNull();
   });
 
-  // 경계값: unsold undefined → 0 취급 → 입주완료
-  it("과거 completion + unsold undefined → '입주완료'", () => {
-    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: undefined }))).toBe("입주완료");
+  // 위와 같은 미상 처리 — undefined(필드 자체 없음)도 0 으로 보지 않는다
+  it("과거 completion + unsold undefined → null (입주완료 단정 안 함)", () => {
+    expect(classifyMoveIn(makeApt({ completion: "202001", unsold: undefined }))).toBeNull();
   });
 
   // 경계값: completion === NOW_YM (이번 달) → 입주예정
