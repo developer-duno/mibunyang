@@ -19,8 +19,8 @@
 | unsold_history | 미분양 추이 (시계열) | 청약홈 |
 | trades | 실거래가 (매매/전세) | collect-trades |
 | trade_deals | 실거래 원문 한 건 = 한 행(매매·전세·분양권 · aptSeq·지번·법정동코드·거래일·도로명·해제일 보존). **미분양 소유 · 공개 읽기 없음**(Service write 만) · (sgg_cd, deal_month, trade_type) 열쇠별 batch_id **교체 방식**(0건 응답은 안 지움, 읽을 땐 열쇠마다 **가장 새 완성 batch** = 행 수가 `batch_rows` 와 같은 것) · 2u 영향 0(2u 는 trades 만 읽는다) · 감시 ⑯ · 세션589 | collect-trades(같은 회차·같은 응답으로 trades 와 함께) |
-| apartment_trade_links | 우리 단지 ↔ 실거래 열쇠(`trade_deals.apt_seq` 또는 분양권 열쇠 `sgg_cd\|umd_nm\|jibun\|정리이름`) · status active/hold/rejected · **미분양 소유 · 공개 읽기 없음**(Service write 만) · 월 2회 배치(collect-trade-stats.yml 안, trade-stats 바로 앞) · 사람 판정 = `docs/audits/trade-link-decisions.json` · 감시 ⑰ · 세션590 | assign-trade-links |
-| trade_stats | 거래 통계 캐시 · 새 칸 12개(`cmp_*`·`complex_*`·`dong_fact` — 시세 비교 범위·건수, 세션590) 는 다) 점수 PR 전까지 **미사용·VIEW 미노출** | trade-stats |
+| apartment_trade_links | 우리 단지 ↔ 실거래 열쇠(`trade_deals.apt_seq` 또는 분양권 열쇠 `sgg_cd\|umd_nm\|jibun\|정리이름`) · status active/hold/rejected · **미분양 소유 · 공개 읽기 없음**(Service write 만) · 월 2회 배치(collect-trade-stats.yml 안, trade-stats 바로 앞) · method jibun+name/name/manual/bundle(같은 묶음 전파) · 사람 판정 = `docs/audits/trade-link-decisions.json` · 감시 ⑰(무성공 20일·형제 명단·hold 45일 명단) · 세션590 | assign-trade-links |
+| trade_stats | 거래 통계 캐시 · 새 칸 13개(`cmp_*`·`complex_*`(표 종류 `complex_src` 포함)·`dong_fact` — 시세 비교 범위·건수, 세션590) 는 다) 점수 PR 전까지 **미사용·VIEW 미노출** | trade-stats |
 | infra | 인프라 (병원/마트/어린이집/응급의료/경찰) | infra-kakao, childcare, emergency, police |
 | schools | 학교 정보 | schools-neis |
 | transport | 교통 정보 | transport-tago |

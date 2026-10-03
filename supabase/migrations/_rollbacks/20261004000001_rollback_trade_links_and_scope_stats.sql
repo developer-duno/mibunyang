@@ -22,6 +22,7 @@ ALTER TABLE trade_stats DROP COLUMN IF EXISTS complex_jeonse_n;
 ALTER TABLE trade_stats DROP COLUMN IF EXISTS complex_sale_n;
 ALTER TABLE trade_stats DROP COLUMN IF EXISTS complex_table;
 ALTER TABLE trade_stats DROP COLUMN IF EXISTS complex_jeonse_table;
+ALTER TABLE trade_stats DROP COLUMN IF EXISTS complex_src;
 ALTER TABLE trade_stats DROP COLUMN IF EXISTS dong_fact;
 
 NOTIFY pgrst, 'reload schema';

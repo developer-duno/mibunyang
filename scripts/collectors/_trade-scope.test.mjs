@@ -149,6 +149,13 @@ describe("경계값", () => {
     expect(r.cols.dong_fact?.n).toBe(6);
   });
 
+  it("complex_src(F8) — 입주 전 T2 면 cmp_src=sale(동네 매매)인데 표는 분양권이라 complex_src=presale · 연결 없으면 null", () => {
+    const r = run({ pre: many(1, { trade_type: "presale", price: 60000 }), dong: many(3, { build_year: 2027 }) }, { completion: "202812" });
+    expect([r.cols.cmp_scope, r.cols.cmp_src, r.cols.complex_src, r.cols.complex_table.length]).toEqual(["dong_peer", "sale", "presale", 1]);
+    expect(run({ seq: many(3, {}) }).cols.complex_src).toBe("sale");
+    expect(run({ dong: many(3, {}) }).cols.complex_src).toBe(null);
+  });
+
   it("면적별 표 — 소수 둘째 반올림 묶음 · 면적 오름차순 · 마지막 달", () => {
     const t = areaTable([D({ area: 84.994, price: 3, deal_month: "202605" }), D({ area: 84.99, price: 1, deal_month: "202608" }), D({ area: 59.9, price: 2 })]);
     expect(t).toEqual([

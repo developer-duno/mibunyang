@@ -473,3 +473,74 @@ describe("Promise.all 조회 실패 로깅 — articles 뿐 아니라 5곳 전�
     expect(src).toMatch(/fetchCancelledTrades\(sbMibunyang, cutoff6mYM\)[\s\S]{0,150}?\.catch\([\s\S]{0,200}?logError\("load", `cancelledTrades 조회 실패/);
   });
 });
+
+// ── 세션590 새 칸 배선(보완 F3·F4·F11) ─────────────────────────────────────
+const { scopeSkipReasonOf, scopeWarnMarker, scopeForApt, skipStatRow, splitUpsertRows, upsertTradeStats, SCOPE_COLS, OLD_STAT_KEYS } = await import("./trade-stats.mjs");
+
+describe("새 칸 배선 — 건너뜀 이유 · 경고 마커(F4)", () => {
+  it("조회 실패 · 거래 0행(deals_0) · 연결 조회 실패 · 연결 0 이면 건너뛴다 — 정상이면 null", () => {
+    expect(scopeSkipReasonOf(null, [{}])).toBe("trade_deals 조회 실패");
+    expect(scopeSkipReasonOf({ rows: [] }, [{}])).toBe("deals_0");
+    expect(scopeSkipReasonOf({ rows: [{}] }, null)).toBe("연결 표 조회 실패");
+    expect(scopeSkipReasonOf({ rows: [{}] }, [])).toBe("연결 표 active 0줄");
+    expect(scopeSkipReasonOf({ rows: [{}] }, [{}])).toBe(null);
+  });
+  it("마커 — 건너뜀이면 scope_skipped · 완성 batch 없는 열쇠가 있으면 scope_dropped_keys=N · 둘 다 없으면 null", () => {
+    expect(scopeWarnMarker("deals_0", 3)).toBe("WARN_STEPS: scope_skipped");
+    expect(scopeWarnMarker(null, 3)).toBe("WARN_STEPS: scope_dropped_keys=3");
+    expect(scopeWarnMarker(null, 0)).toBe(null);
+  });
+});
+
+describe("새 칸 배선 — 건너뛰는 회차 · 건너뜀 AND(F11)", () => {
+  it("건너뛰는 회차엔 새 칸을 계산하지 않는다(계산 함수 0회) · 정상 회차엔 1회", () => {
+    let calls = 0;
+    const compute = () => { calls++; return { cols: {}, diag: null }; };
+    expect(scopeForApt("연결 표 active 0줄", compute)).toBe(null);
+    expect(calls).toBe(0);
+    expect(scopeForApt(null, compute)).toEqual({ cols: {}, diag: null });
+    expect(calls).toBe(1);
+  });
+  it("옛 여섯 값이 전부 null 이고 새 칸도 비었을 때만 건너뜀(AND) — 하나라도 있으면 남긴다", () => {
+    const allNull = { a: null, b: null, c: null, d: null, e: null, f: null };
+    const emptyCols = { cmp_scope: "none", dong_fact: null, complex_table: [], complex_jeonse_table: [], complex_jeonse_rate: null };
+    expect(skipStatRow(allNull, /** @type {any} */ (emptyCols))).toBe(true);
+    expect(skipStatRow(allNull, null)).toBe(true);
+    expect(skipStatRow({ ...allNull, c: 12.3 }, /** @type {any} */ (emptyCols))).toBe(false);
+    expect(skipStatRow(allNull, /** @type {any} */ ({ ...emptyCols, cmp_scope: "dong_peer" }))).toBe(false);
+  });
+});
+
+describe("새 칸 배선 — 옛 칸이 전부 빈 행은 옛 칸 키 없이 따로 upsert(F3)", () => {
+  const oldRow = { apartment_id: "A", _medianSource: "trades", nearby_median: 50000, jeonse_rate: null, pir: 7, psr: null, recent_trades_6m: 3, cancel_ratio_6m: null, price_by_area: [], updated_at: "t", cmp_scope: "complex", dong_fact: null };
+  const scopeOnlyRow = { apartment_id: "B", _medianSource: null, nearby_median: null, jeonse_rate: null, pir: null, psr: null, recent_trades_6m: null, cancel_ratio_6m: null, price_by_area: [], rent_by_area: [], updated_at: "t", cmp_scope: "dong_peer", cmp_fair_price: 40000, dong_fact: { n: 3 } };
+  it("splitUpsertRows — 옛 칸 있는 행은 그대로(_medianSource 만 뺌) · 옛 칸 전부 null 행은 apartment_id·새 칸·updated_at 만", () => {
+    const { full, scopeOnly } = splitUpsertRows([oldRow, scopeOnlyRow]);
+    expect(full.map((r) => r.apartment_id)).toEqual(["A"]);
+    expect("_medianSource" in full[0]).toBe(false);
+    expect(Object.keys(scopeOnly[0]).sort()).toEqual(["apartment_id", "cmp_fair_price", "cmp_scope", "dong_fact", "updated_at"]);
+    for (const k of OLD_STAT_KEYS) expect(k in scopeOnly[0]).toBe(false);
+    expect(SCOPE_COLS.length).toBe(13);
+  });
+  it("G5 OLD_STAT_KEYS = 건너뜀 판정(skipStatRow 에 넘기는 옛 여섯 값)의 결과 칸과 같은 집합 — 여섯 중 하나만 값이 있어도 옛 줄기(full)로 간다", () => {
+    const SIX = ["nearby_median", "jeonse_rate", "pir", "psr", "recent_trades_6m", "cancel_ratio_6m"];
+    expect([...OLD_STAT_KEYS].sort()).toEqual([...SIX].sort());
+    for (const k of SIX) {
+      const { full, scopeOnly } = splitUpsertRows([{ ...scopeOnlyRow, [k]: 1 }]);
+      expect([k, full.length, scopeOnly.length]).toEqual([k, 1, 0]);
+    }
+  });
+  it("upsertTradeStats — 두 줄기를 다른 배치로 보낸다(한 배치 안 키 집합이 같다)", async () => {
+    /** @type {Array<Array<Record<string, any>>>} */
+    const batches = [];
+    const sb = { from: () => ({ upsert: (/** @type {any[]} */ b) => { batches.push(b); return Promise.resolve({ error: null }); } }) };
+    const n = await upsertTradeStats(sb, [oldRow, scopeOnlyRow, { ...scopeOnlyRow, apartment_id: "C" }]);
+    expect(n).toBe(3);
+    expect(batches.map((b) => b.map((r) => r.apartment_id))).toEqual([["A"], ["B", "C"]]);
+    for (const b of batches) {
+      const keys = b.map((r) => Object.keys(r).sort().join(","));
+      expect(new Set(keys).size).toBe(1);
+    }
+    expect("nearby_median" in batches[1][0]).toBe(false);
+  });
+});

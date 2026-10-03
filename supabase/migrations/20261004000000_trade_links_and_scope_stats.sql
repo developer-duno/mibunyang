@@ -1,4 +1,4 @@
--- 우리 단지 ↔ 실거래 열쇠 연결 표 + trade_stats 새 칸 12개 — "시세 비교 범위 좁히기" 나) (세션590)
+-- 우리 단지 ↔ 실거래 열쇠 연결 표 + trade_stats 새 칸 13개 — "시세 비교 범위 좁히기" 나) (세션590)
 --
 -- 왜 필요한가:
 -- 지금 시세 비교(trade_stats.nearby_median·jeonse_rate·psr)는 **구 전체** 거래로 한다. 가) 에서 거래 원문을
@@ -31,7 +31,7 @@ CREATE TABLE IF NOT EXISTS apartment_trade_links (
   apartment_id TEXT NOT NULL REFERENCES apartments(id) ON DELETE CASCADE,
   link_kind TEXT NOT NULL CHECK (link_kind IN ('apt_seq', 'presale')),
   link_key TEXT NOT NULL,                 -- apt_seq 값 또는 분양권 열쇠 'sgg_cd|umd_nm|jibun|정리이름'
-  method TEXT NOT NULL CHECK (method IN ('jibun+name', 'name', 'manual')),
+  method TEXT NOT NULL CHECK (method IN ('jibun+name', 'name', 'manual', 'bundle')),
   similarity NUMERIC(4,3),                -- 정리한 이름 유사도(판정 근거)
   build_year_gap SMALLINT,                -- |우리 완공연도 − 거래 최빈 건축년도| (둘 다 있을 때)
   trade_apt_name TEXT,                    -- 눈 검수용 — 거래 쪽 최빈 단지명
@@ -50,9 +50,13 @@ COMMENT ON TABLE apartment_trade_links IS
 COMMENT ON COLUMN apartment_trade_links.link_key IS
   'link_kind = apt_seq 이면 국토부 aptSeq, presale 이면 sgg_cd|umd_nm|jibun|정리이름(분양권 원문엔 aptSeq 가 없다)';
 COMMENT ON COLUMN apartment_trade_links.method IS
-  'jibun+name = 법정동 10자리 + 지번 일치 후 이름·차수·연도 검사 / name = 같은 법정동 안 이름(유사도 0.85 또는 부분문자열) / manual = 사람 판정 파일';
+  'jibun+name = 법정동 10자리 + 지번 일치 후 이름·차수·연도 검사 / name = 같은 법정동 안 이름(유사도 0.85 또는 부분문자열) / manual = 사람 판정 파일 / bundle = 같은 complex_key 묶음의 다른 행이 가진 active 열쇠를 전파(계획서 B7 — 판정 근거는 원 줄)';
 COMMENT ON COLUMN apartment_trade_links.status IS
-  'active = 통계에 씀 / hold = 사람 판정 대기(다른 묶음과 공유 sibling · 차수 다른 후보 phase) / rejected = 사람이 거절(다시 제안하지 않는다)';
+  'active = 통계에 씀 / hold = 사람 판정 대기(사유는 hold_reason) / rejected = 사람이 거절(다시 제안하지 않는다)';
+COMMENT ON COLUMN apartment_trade_links.hold_reason IS
+  'sibling = 이 열쇠가 다른 complex_key 묶음(임대 제외)의 단지에도 붙음 / phase = 차수 다른 후보 둘(서로 번호가 안 겹침) · 우리 이름에 차수·블록 번호가 없는데 차수 있는 후보만 있음 · 우리 차수 없음 + 무차수 후보가 다른 link_kind 에만 있어 이 kind 의 차수 후보를 버리지 않고 보류(_trade-links.mjs planLinks F1-c · G6)';
+COMMENT ON COLUMN apartment_trade_links.updated_at IS
+  '마지막으로 이 줄을 넣거나 고친 시각(assign-trade-links.mjs 가 넣기·고치기 때 그 시각으로 쓴다) — 감시 ⑰(c) hold 오래됨은 이 시각 기준(없으면 created_at)';
 
 CREATE INDEX IF NOT EXISTS idx_trade_links_key ON apartment_trade_links(link_kind, link_key);
 CREATE INDEX IF NOT EXISTS idx_trade_links_status ON apartment_trade_links(status);
@@ -79,7 +83,7 @@ BEGIN
   );
 END $$;
 
--- trade_stats 새 칸 12개(설계서 §4-3). 옛 칸은 무변경 — 2u 는 칸을 명시해 읽으므로 추가는 무해.
+-- trade_stats 새 칸 13개(설계서 §4-3 12개 + complex_src — 계획서 B6). 옛 칸은 무변경 — 2u 는 칸을 명시해 읽으므로 추가는 무해.
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS cmp_scope TEXT CHECK (cmp_scope IN ('complex', 'dong_peer', 'none'));
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS cmp_fair_price INTEGER;
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS cmp_n SMALLINT;
@@ -92,6 +96,7 @@ ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS complex_sale_n SMALLINT;
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS complex_table JSONB;
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS complex_jeonse_table JSONB;
 ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS dong_fact JSONB;
+ALTER TABLE trade_stats ADD COLUMN IF NOT EXISTS complex_src TEXT CHECK (complex_src IN ('sale', 'presale'));
 
 COMMENT ON COLUMN trade_stats.cmp_scope IS
   '적정가(판정)의 범위 — complex = 이 단지 거래(연결 표 active) / dong_peer = 같은 법정동·같은 평수(전용 차 10㎡ 미만)·또래(준공 차 10년 이하) 매매 / none = 둘 다 3건 미만(적정가 없음). 다) 전까지 미사용';
@@ -101,13 +106,14 @@ COMMENT ON COLUMN trade_stats.cmp_n IS '적정가에 쓴 거래 건수(문턱 3)
 COMMENT ON COLUMN trade_stats.cmp_months IS '비교 기간(개월) — 12';
 COMMENT ON COLUMN trade_stats.cmp_area_mode IS
   'same_area = 전용면적 차 10㎡ 미만 거래 중앙값 / per_m2 = 같은 단지 면적 차 20㎡ 이하 거래의 ㎡당 중앙값 × 우리 면적';
-COMMENT ON COLUMN trade_stats.cmp_src IS '판정에 쓴 거래 종류 — sale(매매, 입주 후) / presale(분양권, 입주 전)';
+COMMENT ON COLUMN trade_stats.cmp_src IS '적정가 판정에 쓴 거래 종류 — complex(T1) 면 그 단지 거래 종류(입주 후 sale · 입주 전 presale), dong_peer(T2) 면 동네 매매라 늘 sale, none 이면 NULL. 면적별 표의 종류는 complex_src';
+COMMENT ON COLUMN trade_stats.complex_src IS '면적별 표(complex_table)의 거래 종류 — 입주 후 sale · 입주 전 presale · 완공월 모름이면 거래가 있는 쪽(둘 다면 sale). 연결이 없으면 NULL(계획서 B6)';
 COMMENT ON COLUMN trade_stats.complex_jeonse_rate IS
   '같은 단지 전세가율(%) = 같은 평수 전세(갱신 제외) 중앙값 ÷ 같은 평수 매매 중앙값. 전세·매매 둘 다 3건 이상일 때만, 아니면 NULL';
 COMMENT ON COLUMN trade_stats.complex_jeonse_n IS '같은 단지 전세가율의 전세 건수(값이 NULL 이어도 건수는 적는다)';
 COMMENT ON COLUMN trade_stats.complex_sale_n IS '같은 단지 전세가율의 매매 건수(값이 NULL 이어도 건수는 적는다)';
 COMMENT ON COLUMN trade_stats.complex_table IS
-  '같은 단지 면적별 표 [{area, n, min, median, max, last_month}] — 매매 또는 분양권(cmp_src 종류), 면적 오름차순. 연결 없으면 []';
+  '같은 단지 면적별 표 [{area, n, min, median, max, last_month}] — 매매 또는 분양권(complex_src 종류), 면적 오름차순. T1 이 안 돼도 연결이 있으면 채운다(사실 표시용 · 판정은 cmp_scope). 연결 없으면 []';
 COMMENT ON COLUMN trade_stats.complex_jeonse_table IS '같은 단지 면적별 전세 표(갱신 제외) — complex_table 과 같은 꼴';
 COMMENT ON COLUMN trade_stats.dong_fact IS
   '같은 법정동·같은 평수 매매 사실(나이 제한 없음) {n, min, median, max, build_year_min, build_year_max, age_gap_years, peer_n, peer_median}. age_gap_years 양수 = 그 집들이 이 단지보다 오래됨. 1건도 없으면 NULL';
@@ -164,14 +170,14 @@ BEGIN
   IF NOT pg_catalog.has_sequence_privilege('service_role', seq, 'USAGE') THEN
     RAISE EXCEPTION 'apartment_trade_links self-check: service_role lacks USAGE on sequence %', seq;
   END IF;
-  -- ⑤ trade_stats 새 칸 12개가 다 있다
+  -- ⑤ trade_stats 새 칸 13개가 다 있다
   SELECT count(*) INTO n FROM information_schema.columns
    WHERE table_schema = 'public' AND table_name = 'trade_stats'
      AND column_name IN ('cmp_scope', 'cmp_fair_price', 'cmp_n', 'cmp_months', 'cmp_area_mode', 'cmp_src',
                          'complex_jeonse_rate', 'complex_jeonse_n', 'complex_sale_n',
-                         'complex_table', 'complex_jeonse_table', 'dong_fact');
-  IF n <> 12 THEN
-    RAISE EXCEPTION 'trade_stats self-check: new columns % / 12', n;
+                         'complex_table', 'complex_jeonse_table', 'complex_src', 'dong_fact');
+  IF n <> 13 THEN
+    RAISE EXCEPTION 'trade_stats self-check: new columns % / 13', n;
   END IF;
 END $$;
 

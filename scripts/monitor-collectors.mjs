@@ -268,7 +268,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1694,18 +1694,21 @@ export const TRADE_LINKS_COLLECTOR = "assign-trade-links";
 export const TRADE_LINKS_STALE_DAYS = 20;
 /** ⑰(b) 경보 본문에 펼칠 최대 열쇠 수 — 나머지는 "외 N개" 한 건으로 접는다. */
 const TRADE_LINKS_SIBLING_LIMIT = 10;
+/** ⑰(c) hold 줄이 사람 판정을 기다린 일수가 이보다 길면 알린다(보완 F10 — 월 2회 회차 셋쯤 지나도 그대로인 줄). */
+export const TRADE_LINKS_HOLD_AGE_DAYS = 45;
 
 /**
  * ⑰ 연결 표 건전성 — 개수가 아니라 **명단**(열쇠·단지 id)으로 본다([[next-session-grep-mandate]] §4).
  * (a) 묶기 배치 마지막 성공이 20일 넘게 없음 → `trade-links-stale`
  * (b) 같은 (link_kind, link_key) 가 **서로 다른 complex_key 묶음 둘 이상**의 단지에 active → `trade-links-sibling` 열쇠마다
- *     (빈 열쇠 = 자기 id 가 묶음 · 임대 행은 묶음 셈에서 뺀다 — 묶기의 형제 판정 `_trade-links.mjs planLinks` 와 같은 잣대.
- *     묶기는 이런 짝을 hold 로 두므로, active 로 보이면 사람 판정 파일이나 쓰기 경로가 규칙을 건넜다는 뜻)
- * (c) 연결 표가 비었거나 아직 없으면(마이그 직후~첫 반영) **셋 다 침묵**.
- * @param {Array<{ apartment_id: string, link_kind: string, link_key: string }>} links active 줄 전량
+ *     (묶음 열쇠가 빈 행과 임대 행은 묶음 셈에서 뺀다 — 묶기는 이런 짝을 hold 로 두므로, active 로 보이면 사람 판정 파일이나
+ *     쓰기 경로가 규칙을 건넜다는 뜻)
+ * (c) hold 줄이 45일 넘게 남음(updated_at 기준, 없으면 created_at — G3) → `trade-links-hold-aging` **명단**(단지 id·열쇠·사유)
+ * 연결 표가 비었거나 아직 없으면(마이그 직후~첫 반영) **전부 침묵**.
+ * @param {Array<{ apartment_id: string, link_kind: string, link_key: string, status?: string, hold_reason?: string | null, created_at?: string | null, updated_at?: string | null }>} links active·hold 줄 전량(status 없으면 active 로 본다)
  * @param {Array<{ id: string, complex_key?: string | null, presale_type?: string | null, name?: string | null }>} apts
  * @param {{ finished_at?: string | null } | null} latestSuccess
- * @param {{ now?: Date, staleDays?: number }} [opts]
+ * @param {{ now?: Date, staleDays?: number, holdAgeDays?: number }} [opts]
  * @returns {Issue[]}
  */
 export function checkTradeLinksHealth(links, apts, latestSuccess, opts = {}) {
@@ -1731,13 +1734,36 @@ export function checkTradeLinksHealth(links, apts, latestSuccess, opts = {}) {
   /** @type {Map<string, { bundles: Set<string>, ids: string[] }>} */
   const byKey = new Map();
   for (const l of links) {
+    if ((l.status ?? "active") !== "active") continue;
     const k = `${l.link_kind}|${l.link_key}`;
     let g = byKey.get(k);
     if (!g) { g = { bundles: new Set(), ids: [] }; byKey.set(k, g); }
     g.ids.push(l.apartment_id);
     const a = aptById.get(l.apartment_id);
     if (a && isLeaseUnit({ presale_type: a.presale_type, name: a.name })) continue;
-    g.bundles.add(a?.complex_key || `id:${l.apartment_id}`);
+    // 묶음 열쇠가 빈 행은 충돌 셈에서 뺀다(보완 F7 — 감시는 DB 값만 보고 가볍게. 묶기는 열쇠 규칙으로 계산해 센다)
+    if (!a?.complex_key) continue;
+    g.bundles.add(a.complex_key);
+  }
+  // (c) hold 가 45일 넘게 사람 판정을 기다림(보완 F10) — 명단(단지 id·열쇠·사유). 기준 = updated_at(없으면 created_at, G3) —
+  // 오래 active 였다가 오늘 hold 로 바뀐 줄이 created_at 기준이면 당일 "45일 넘음"이 된다(묶기가 고치기 때 updated_at 을 쓴다)
+  const holdAgeDays = opts.holdAgeDays ?? TRADE_LINKS_HOLD_AGE_DAYS;
+  const since = (/** @type {{ updated_at?: string | null, created_at?: string | null }} */ l) => l.updated_at ?? l.created_at ?? null;
+  const aged = links
+    .filter((l) => { const s = since(l); return l.status === "hold" && !!s && now.getTime() - new Date(s).getTime() > holdAgeDays * 86400000; })
+    .sort((a, b) => `${a.apartment_id}|${a.link_key}`.localeCompare(`${b.apartment_id}|${b.link_key}`));
+  if (aged.length) {
+    const ids = aged.map((l) => `${l.apartment_id}|${l.link_kind}|${l.link_key}`);
+    issues.push({
+      kind: "trade-links-hold-aging",
+      collector: "apartment_trade_links",
+      detail: `hold ${aged.length}줄이 ${holdAgeDays}일 넘게 사람 판정을 기다림`,
+      lines: [
+        ...aged.slice(0, 30).map((l) => `${l.apartment_id} · ${l.link_kind}:${l.link_key} · ${l.hold_reason ?? "?"} · ${String(since(l)).slice(0, 10)}`),
+        ...(aged.length > 30 ? [`외 ${aged.length - 30}줄`] : []),
+      ],
+      at: fingerprintIds(ids),
+    });
   }
   const siblings = [...byKey.entries()].filter(([, g]) => g.bundles.size >= 2).sort(([a], [b]) => a.localeCompare(b));
   for (const [key, g] of siblings.slice(0, TRADE_LINKS_SIBLING_LIMIT)) {
@@ -1772,7 +1798,7 @@ export async function fetchTradeLinksHealth(sbArg) {
   /** @type {Array<Record<string, any>>} */
   let links;
   try {
-    links = await selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key").eq("status", "active"), sb, "id");
+    links = await selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key,status,hold_reason,created_at,updated_at").in("status", ["active", "hold"]), sb, "id");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (isMissingTable({ message: msg })) return { missing: true, links: [], apts: [], latestSuccess: null };

@@ -16,7 +16,8 @@
  *   → 중앙값(dong_peer, same_area). 계수 없음(R5)
  * - T3: none · 적정가 null · 건수 0. 우리 면적을 모르면 T1·T2 를 건너뛰어 none(면적별 표는 채운다)
  * - 같은 단지 전세가율(R3·D11): apt_seq 열쇠의 같은 평수 전세(갱신 제외) ≥ 3 그리고 같은 평수 매매 ≥ 3 → 전세 중앙 ÷ 매매 중앙 × 100
- * - 면적별 표: 연결 열쇠의 그 종류 거래 · 전세(갱신 제외)를 면적(소수 둘째 반올림)별로
+ * - 면적별 표: 연결 열쇠의 그 종류 거래 · 전세(갱신 제외)를 면적(소수 둘째 반올림)별로 — T1 이 안 돼도 연결이 있으면 채우고(사실 표시용),
+ *   표의 종류는 `complex_src`(입주 후 sale · 입주 전 presale · 모름이면 있는 쪽, 연결 없으면 null — 계획서 B6)
  * - 동네 사실: 같은 법정동·같은 평수 매매(나이 제한 없음) ≥ 1 이면 저장 · age_gap_years = 우리 연도 − 그 집들 건축년도 중앙값(양수 = 그 집들이 오래됨)
  * - 우리 단지 거래를 동네 표본에서 빼지 않는다(사실대로)
  *
@@ -73,7 +74,7 @@ function medianRaw(arr) {
  * @typedef {{ cmp_scope: "complex" | "dong_peer" | "none"; cmp_fair_price: number | null; cmp_n: number; cmp_months: number;
  *   cmp_area_mode: "same_area" | "per_m2" | null; cmp_src: "sale" | "presale" | null;
  *   complex_jeonse_rate: number | null; complex_jeonse_n: number | null; complex_sale_n: number | null;
- *   complex_table: AreaRow[]; complex_jeonse_table: AreaRow[]; dong_fact: DongFact | null }} ScopeCols
+ *   complex_table: AreaRow[]; complex_jeonse_table: AreaRow[]; complex_src: "sale" | "presale" | null; dong_fact: DongFact | null }} ScopeCols
  */
 
 /** 해제되지 않은 정상 거래인가. @param {ScopeDeal} d */
@@ -148,7 +149,9 @@ export function computeScopeStats(apt, ctx) {
   const cols = {
     cmp_scope: "none", cmp_fair_price: null, cmp_n: 0, cmp_months: CMP_MONTHS, cmp_area_mode: null, cmp_src: null,
     complex_jeonse_rate: null, complex_jeonse_n: null, complex_sale_n: null,
-    complex_table: areaTable(src), complex_jeonse_table: areaTable(jeonse), dong_fact: null,
+    // complex_table 은 T1 이 안 돼도 연결만 있으면 채운다(사실 표시용 · 판정은 cmp_scope) — 그 표의 종류를 complex_src 에 적는다
+    // (보완 F8 · 계획서 B6: 입주 전 T2 면 cmp_src 는 sale(동네 매매)인데 표는 분양권이라 cmp_src 로는 표 종류를 알 수 없다)
+    complex_table: areaTable(src), complex_jeonse_table: areaTable(jeonse), complex_src: ctx.links.length ? srcKind : null, dong_fact: null,
   };
 
   if (A != null) {

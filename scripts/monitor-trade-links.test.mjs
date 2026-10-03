@@ -40,11 +40,38 @@ describe("checkTradeLinksHealth", () => {
     expect(issues.map((i) => [i.kind, i.detail, i.lines?.[0]])).toEqual([["trade-links-sibling", "apt_seq|S1 가 묶음 2개에 active", "단지: a1, b1"]]);
   });
 
-  it("(b) 같은 묶음 두 행 · 임대 행 + 분양 행 → 침묵 / 열쇠가 빈 두 행은 각자 묶음이라 형제", () => {
+  it("(b) 같은 묶음 두 행 · 임대 행 + 분양 행 → 침묵 / 묶음 열쇠가 빈 행은 충돌 셈에서 뺀다(보완 F7 — 빈 두 행도 침묵)", () => {
     expect(checkTradeLinksHealth([L("a1", "S1"), L("a2", "S1")], APTS, daysAgo(1), { now: NOW })).toEqual([]);
     expect(checkTradeLinksHealth([L("a1", "S1"), L("l1", "S1")], APTS, daysAgo(1), { now: NOW })).toEqual([]);
-    const e = checkTradeLinksHealth([L("e1", "S9"), L("e2", "S9")], APTS, daysAgo(1), { now: NOW });
-    expect(e.map((i) => i.lines?.[0])).toEqual(["단지: e1, e2"]);
+    expect(checkTradeLinksHealth([L("e1", "S9"), L("e2", "S9")], APTS, daysAgo(1), { now: NOW })).toEqual([]);
+    expect(checkTradeLinksHealth([L("a1", "S9"), L("e2", "S9")], APTS, daysAgo(1), { now: NOW })).toEqual([]);
+  });
+
+  it("(b) hold 줄은 형제 셈에 안 넣는다(active 만)", () => {
+    expect(checkTradeLinksHealth([L("a1", "S1"), { ...L("b1", "S1"), status: "hold" }], APTS, daysAgo(1), { now: NOW })).toEqual([]);
+  });
+
+  it("(c) hold 가 45일 넘게 남으면 명단(단지 id·열쇠·사유) — 44일은 침묵 · 46일은 알림", () => {
+    const created = (/** @type {number} */ d) => new Date(NOW.getTime() - d * 86400000).toISOString();
+    const h = (/** @type {string} */ apt, /** @type {string} */ key, /** @type {number} */ d) => ({ ...L(apt, key), status: "hold", hold_reason: "sibling", created_at: created(d) });
+    expect(checkTradeLinksHealth([L("a1", "S1"), h("b1", "S2", 44)], APTS, daysAgo(1), { now: NOW })).toEqual([]);
+    const issues = checkTradeLinksHealth([L("a1", "S1"), h("b1", "S2", 46), h("e1", "S3", 60)], APTS, daysAgo(1), { now: NOW });
+    expect(issues.map((i) => i.kind)).toEqual(["trade-links-hold-aging"]);
+    expect(issues[0].lines?.slice(0, 2).map((s) => s.split(" · ").slice(0, 3).join(" · "))).toEqual(["b1 · apt_seq:S2 · sibling", "e1 · apt_seq:S3 · sibling"]);
+    expect(formatIssue(issues[0])).toMatch(/\[조치\]/);
+  });
+
+  it("(c) G3 기준은 updated_at — 46일 전 created + 1일 전 updated(오늘 hold 로 바뀐 줄)는 명단에 없음 · updated_at 이 46일 전이면 알림", () => {
+    const at = (/** @type {number} */ d) => new Date(NOW.getTime() - d * 86400000).toISOString();
+    const hu = (/** @type {number} */ c, /** @type {number} */ u) => ({ ...L("b1", "S2"), status: "hold", hold_reason: "phase", created_at: at(c), updated_at: at(u) });
+    expect(checkTradeLinksHealth([L("a1", "S1"), hu(46, 1)], APTS, daysAgo(1), { now: NOW })).toEqual([]);
+    expect(checkTradeLinksHealth([L("a1", "S1"), hu(60, 46)], APTS, daysAgo(1), { now: NOW }).map((i) => i.kind)).toEqual(["trade-links-hold-aging"]);
+  });
+
+  it("(c) G5 hold 아닌 줄은 오래돼도 안 센다(active 60일) · 45일 정각은 침묵(넘어야 알림)", () => {
+    const at = (/** @type {number} */ d) => new Date(NOW.getTime() - d * 86400000).toISOString();
+    expect(checkTradeLinksHealth([{ ...L("a1", "S1"), status: "active", created_at: at(60), updated_at: at(60) }], APTS, daysAgo(1), { now: NOW })).toEqual([]);
+    expect(checkTradeLinksHealth([L("a1", "S1"), { ...L("b1", "S2"), status: "hold", hold_reason: "phase", created_at: at(45) }], APTS, daysAgo(1), { now: NOW })).toEqual([]);
   });
 
   it("(b) 같은 열쇠 이름이라도 종류(apt_seq/presale)가 다르면 다른 열쇠", () => {
@@ -52,8 +79,9 @@ describe("checkTradeLinksHealth", () => {
   });
 
   it("(b) 명단이 바뀌면 at(지문)도 바뀐다 — 같은 개수라도", () => {
-    const one = checkTradeLinksHealth([L("a1", "S1"), L("b1", "S1")], APTS, daysAgo(1), { now: NOW })[0];
-    const two = checkTradeLinksHealth([L("a1", "S1"), L("e1", "S1")], APTS, daysAgo(1), { now: NOW })[0];
+    const apts2 = [...APTS, { id: "c1", complex_key: "K9", presale_type: null, name: "다른단지" }];
+    const one = checkTradeLinksHealth([L("a1", "S1"), L("b1", "S1")], apts2, daysAgo(1), { now: NOW })[0];
+    const two = checkTradeLinksHealth([L("a1", "S1"), L("c1", "S1")], apts2, daysAgo(1), { now: NOW })[0];
     expect(one.at).not.toBe(two.at);
   });
 
@@ -77,7 +105,7 @@ describe("fetchTradeLinksHealth — 표 없음 침묵", () => {
         calls++;
         /** @type {any} */
         const q = {};
-        for (const m of ["select", "eq", "order", "limit", "gt"]) q[m] = () => q;
+        for (const m of ["select", "eq", "in", "order", "limit", "gt"]) q[m] = () => q;
         q.then = (/** @type {any} */ res, /** @type {any} */ rej) =>
           Promise.resolve({ data: null, error: { code: "PGRST205", message: "Could not find the table 'public.apartment_trade_links' in the schema cache" } }).then(res, rej);
         return q;

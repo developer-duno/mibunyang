@@ -34,7 +34,9 @@ import { loadEnv, log, logError, getSupabase, selectAll, recordCollectorRun, cre
 import { fetchTradeDealsWindow, isMissingTable } from "./_trade-deals.mjs";
 import {
   buildKeyDictionary, planLinks, diffLinks, evaluateLinkBreaker, planLines, compareLinkPlanToApproved, parseLinkDecisions,
+  withComputedComplexKeys, linkId,
 } from "./_trade-links.mjs";
+import { parseComplexExceptions } from "./_same-complex.mjs";
 import { isMovedIn, completionMonthIndex } from "./_match-gates.mjs";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -45,6 +47,8 @@ loadEnv();
 const PHASE = "assign-trade-links";
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DECISIONS_PATH = join(resolve(__dirname, "..", ".."), "docs", "audits", "trade-link-decisions.json");
+/** 묶음 열쇠 예외 명단 — 열쇠 깔기(`assign-complex-keys.mjs:52`)와 같은 파일. 빈 열쇠 행을 같은 규칙으로 계산할 때 쓴다(F7). */
+const EXCEPTIONS_PATH = join(resolve(__dirname, "..", ".."), "docs", "audits", "same-complex-exceptions.json");
 /** 거래 창(개월) — trade-stats 의 비교 기간과 같다. */
 export const LINK_WINDOW_MONTHS = 12;
 /** 공유 DB 에 한꺼번에 쏘지 않는다 — 열쇠 깔기와 같은 값. */
@@ -135,6 +139,50 @@ export function fromMonthOf(now, n) {
 }
 
 /**
+ * 계획을 표에 쓴다 — 넣기는 묶음 insert, 지우기·고치기는 **이전 status 가 그대로인 줄만**(동시 5). 성공은 보낸 수가 아니라
+ * **돌아온 행 수**로 센다(그 사이 남이 바꿔 0행이 돌아오면 실패).
+ * @param {any} sb
+ * @param {{ add: readonly any[]; remove: readonly any[]; change: readonly any[] }} plan
+ * @param {{ interrupted?: () => boolean; sleepFn?: (ms: number) => Promise<unknown>; now?: () => string }} [opts]
+ * @returns {Promise<{ ok: number; fail: number }>}
+ */
+export async function applyLinkPlan(sb, plan, opts = {}) {
+  const isInterrupted = opts.interrupted ?? (() => false);
+  const pause = opts.sleepFn ?? sleep;
+  const stamp = opts.now ?? (() => new Date().toISOString());
+  let ok = 0;
+  let fail = 0;
+  /** @param {any} r @param {number} expected */
+  const countBack = (r, expected) => {
+    const res = /** @type {{ data?: unknown[] | null, error?: { message?: string } | null }} */ (r);
+    const got = res?.error || !res?.data ? 0 : Math.min(res.data.length, expected);
+    if (got < expected && !fail) logError(PHASE, `쓰기 실패 예시: ${res?.error?.message ?? "돌아온 행이 모자람(행이 없거나 그 사이 상태가 바뀜)"}`);
+    ok += got;
+    fail += expected - got;
+  };
+  for (let i = 0; i < plan.add.length; i += INSERT_CHUNK) {
+    if (isInterrupted()) break;
+    if (i > 0) await pause(WRITE_BATCH_DELAY_MS);
+    const chunk = plan.add.slice(i, i + INSERT_CHUNK).map((l) => ({ ...l, updated_at: stamp() }));
+    countBack(await sb.from("apartment_trade_links").insert(chunk).select("id"), chunk.length);
+  }
+  /** @type {Array<() => PromiseLike<any>>} */
+  const jobs = [
+    ...plan.remove.map((c) => () => sb.from("apartment_trade_links").delete().eq("id", c.id).eq("status", c.status).select("id")),
+    ...plan.change.map((c) => () => sb.from("apartment_trade_links")
+      .update({ method: c.next.method, similarity: c.next.similarity, build_year_gap: c.next.build_year_gap, trade_apt_name: c.next.trade_apt_name, trade_jibun: c.next.trade_jibun, status: c.next.status, hold_reason: c.next.hold_reason, verified_at: c.next.verified_at, verified_by: c.next.verified_by, updated_at: stamp() })
+      .eq("id", c.id).eq("status", c.prev.status).select("id")),
+  ];
+  for (let i = 0; i < jobs.length; i += WRITE_CONCURRENCY) {
+    if (isInterrupted()) { log(PHASE, `중단 신호 — ${ok}줄까지 반영하고 멈춥니다`); break; }
+    if (i > 0) await pause(WRITE_BATCH_DELAY_MS);
+    const results = await Promise.all(jobs.slice(i, i + WRITE_CONCURRENCY).map((f) => f()));
+    for (const r of results) countBack(r, 1);
+  }
+  return { ok, fail };
+}
+
+/**
  * @param {boolean} apply @param {string} marker @param {string} why @param {number} rowCount
  */
 async function failRun(apply, marker, why, rowCount) {
@@ -160,7 +208,7 @@ async function main() {
 
   // 1) apartments 전량 + 행 수 확인
   const apts = await selectAll(
-    (s) => s.from("apartments").select("id,name,region,gu,dong,bjd_code,lot_main,lot_sub,completion,coord_shared,complex_key,presale_type"),
+    (s) => s.from("apartments").select("id,name,region,gu,dong,address,lat,lng,bjd_code,lot_main,lot_sub,completion,coord_shared,complex_key,presale_type"),
     sb,
     "id",
   );
@@ -180,7 +228,7 @@ async function main() {
   let current = [];
   let tableMissing = false;
   try {
-    current = await selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key,method,similarity,status,hold_reason"), sb, "id");
+    current = await selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key,method,similarity,status,hold_reason,created_at"), sb, "id");
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e);
     if (!isMissingTable({ message: msg })) throw e;
@@ -195,7 +243,13 @@ async function main() {
 
   // 4) 계획
   const dict = buildKeyDictionary(/** @type {any[]} */ (deals.rows));
-  const { desired, dropped } = planLinks(apts, dict, decisions, { now });
+  // 묶음 열쇠가 빈 행은 열쇠 규칙으로 계산한 값으로(보완 F7 — 열쇠 배치 03:00 보다 이 배치 01:00 이 먼저 도는 날)
+  const exceptions = parseComplexExceptions(JSON.parse(readFileSync(EXCEPTIONS_PATH, "utf8")));
+  const keyedApts = withComputedComplexKeys(apts, exceptions);
+  const filledKeys = keyedApts.filter((a, i) => !apts[i].complex_key && a.complex_key).length;
+  if (filledKeys) log(PHASE, `묶음 열쇠가 빈 행 ${filledKeys}곳은 열쇠 규칙으로 계산한 값으로 형제·전파를 셈`);
+  const { desired, dropped, dongVia, skippedDecisions, prefixStripped } = planLinks(keyedApts, dict, decisions, { now, current });
+  if (skippedDecisions) log(PHASE, `판정 파일의 단지 id 중 표에 없는 것 ${skippedDecisions}줄 — 건너뜀(dropped 에 사유)`);
   const plan = diffLinks(current, desired);
   const lines = planLines(plan);
   const counts = {
@@ -230,6 +284,14 @@ async function main() {
   log(PHASE, `연결 active ${counts.active} · hold ${counts.hold} · rejected ${counts.rejected} | 지금 표 ${current.length}${tableMissing ? "(표 없음)" : ""} → 넣기 ${counts.add} · 지우기 ${counts.remove} · 고치기 ${counts.change} · 그대로 ${counts.unchanged}`);
   log(PHASE, `방법별(active) ${JSON.stringify(byMethod)} · hold 사유별 ${JSON.stringify(byHold)}`);
   log(PHASE, `연결된 단지: ${Object.entries(byStatus).map(([k, v]) => `${k} ${v.linked}/${v.all}`).join(" · ")}`);
+  /** @type {Record<string, { apts: number, linked: number }>} 법정동 이름을 어느 단계로 얻었나(F2 사다리) — 단지 수 · 그중 active 연결된 단지 */
+  const byDongVia = {};
+  for (const [id, via] of dongVia) {
+    const b = byDongVia[via] ?? (byDongVia[via] = { apts: 0, linked: 0 });
+    b.apts++;
+    if (linkedApts.has(id)) b.linked++;
+  }
+  log(PHASE, `법정동 이름 얻은 길: ${JSON.stringify(byDongVia)}`);
   /** @type {string[]} */
   const controlLines = [];
   for (const p of CONTROL_PROBES) {
@@ -247,16 +309,23 @@ async function main() {
     /** @param {any} l */
     const readable = (l) => {
       const a = aptById.get(l.apartment_id);
-      return { ...l, name: a?.name ?? null, region: a?.region ?? null, gu: a?.gu ?? null, completion: a?.completion ?? null, complex_key: a?.complex_key ?? null };
+      const k = keyedApts.find((x) => x.id === l.apartment_id);
+      return { ...l, name: a?.name ?? null, region: a?.region ?? null, gu: a?.gu ?? null, completion: a?.completion ?? null, complex_key: k?.complex_key ?? null, dong_via: dongVia.get(l.apartment_id) ?? null };
     };
     /** @param {Map<string, any>} m */
     const dictOut = (m) => [...m.values()].map((e) => ({ key: e.key, sgg_cd: e.sgg_cd, umd_cd: e.umd_cd, umd_nm: e.umd_nm, name: e.name, build_year: e.build_year, jibuns: [...e.rawJibuns], n: e.n }));
+    // 동 이름 사다리 ④(G7)로 붙은 줄 전 명단 — 눈 검수용(이름·거래 이름·거래 법정동·건수)
+    const sggNameLinks = desired.filter((l) => dongVia.get(l.apartment_id) === "sgg_name").map((l) => {
+      const e = (l.link_kind === "apt_seq" ? dict.aptSeq : dict.presale).get(l.link_key);
+      return { apartment_id: l.apartment_id, name: aptById.get(l.apartment_id)?.name ?? null, link_kind: l.link_kind, link_key: l.link_key, trade_apt_name: l.trade_apt_name, umd_nm: e?.umd_nm ?? null, n: e?.n ?? null, status: l.status, method: l.method, prefix_stripped: prefixStripped.has(linkId(l)) };
+    });
     writeFileSync(args.out, JSON.stringify({
       takenAt: new Date().toISOString(), fromMonth, apartments: apts.length, deals: { total: deals.total, complete: deals.rows.length, droppedKeys: deals.droppedKeys },
       dictionary: { aptSeq: dictOut(dict.aptSeq), presale: dictOut(dict.presale) },
-      counts, byMethod, byHold, byStatus, controls: controlLines,
+      counts, byMethod, byHold, byStatus, byDongVia, skippedDecisions, controls: controlLines, sggNameLinks,
       holds: desired.filter((l) => l.status === "hold").map(readable),
-      dropped: dropped.filter((d) => d.key == null).slice(0, 500).map((d) => ({ ...d, name: aptById.get(d.apartment_id)?.name ?? null })),
+      // 자르지 않는다(보완 F10 — 500건에서 자르면 약 1,000곳이 안 보였다). 단지 사유(key null)와 후보 사유를 모두 싣는다.
+      dropped: dropped.map((d) => ({ ...d, name: aptById.get(d.apartment_id)?.name ?? null, dong_via: dongVia.get(d.apartment_id) ?? null })),
       plan: { add: plan.add.map(readable), remove: plan.remove.map(readable), change: plan.change.map((c) => ({ ...c, next: readable(c.next) })) },
       planLines: lines,
     }, null, 1) + "\n", { flag: "wx" });
@@ -284,38 +353,7 @@ async function main() {
   }
 
   const rpt = createReporter(PHASE);
-  let ok = 0;
-  let fail = 0;
-  /** @param {any} r @param {number} expected */
-  const countBack = (r, expected) => {
-    const res = /** @type {{ data?: unknown[] | null, error?: { message?: string } | null }} */ (r);
-    const got = res.error || !res.data ? 0 : res.data.length;
-    if (got < expected && !fail) logError(PHASE, `쓰기 실패 예시: ${res.error?.message ?? "돌아온 행이 모자람(행이 없거나 그 사이 상태가 바뀜)"}`);
-    ok += got;
-    fail += expected - got;
-  };
-  const stamp = () => new Date().toISOString();
-  // 넣기 — 묶음 insert, 돌아온 행 수로 센다
-  for (let i = 0; i < plan.add.length; i += INSERT_CHUNK) {
-    if (rpt.interrupted()) break;
-    if (i > 0) await sleep(WRITE_BATCH_DELAY_MS);
-    const chunk = plan.add.slice(i, i + INSERT_CHUNK).map((l) => ({ ...l, updated_at: stamp() }));
-    countBack(await sb.from("apartment_trade_links").insert(chunk).select("id"), chunk.length);
-  }
-  // 지우기·고치기 — 이전 상태가 그대로인 줄만(동시 5)
-  /** @type {Array<() => PromiseLike<any>>} */
-  const jobs = [
-    ...plan.remove.map((c) => () => sb.from("apartment_trade_links").delete().eq("id", c.id).eq("status", c.status).select("id")),
-    ...plan.change.map((c) => () => sb.from("apartment_trade_links")
-      .update({ method: c.next.method, similarity: c.next.similarity, build_year_gap: c.next.build_year_gap, trade_apt_name: c.next.trade_apt_name, trade_jibun: c.next.trade_jibun, status: c.next.status, hold_reason: c.next.hold_reason, verified_at: c.next.verified_at, verified_by: c.next.verified_by, updated_at: stamp() })
-      .eq("id", c.id).eq("status", c.prev.status).select("id")),
-  ];
-  for (let i = 0; i < jobs.length; i += WRITE_CONCURRENCY) {
-    if (rpt.interrupted()) { log(PHASE, `중단 신호 — ${ok}줄까지 반영하고 멈춥니다`); break; }
-    if (i > 0) await sleep(WRITE_BATCH_DELAY_MS);
-    const results = await Promise.all(jobs.slice(i, i + WRITE_CONCURRENCY).map((f) => f()));
-    for (const r of results) countBack(r, 1);
-  }
+  const { ok, fail } = await applyLinkPlan(sb, plan, { interrupted: () => rpt.interrupted() });
   rpt.success(ok);
   if (fail) rpt.fail(fail);
   rpt.skip(plan.unchanged);

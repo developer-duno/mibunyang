@@ -4,7 +4,7 @@
  * 계산 규칙은 `_trade-links.test.mjs` 가 본다(CLI 는 재료를 읽어 넘기고 쓰기만).
  */
 import { describe, it, expect } from "vitest";
-import { parseArgs, onMissingTable, fromMonthOf, assertOutFree, CONTROL_PROBES, LINK_WINDOW_MONTHS } from "./assign-trade-links.mjs";
+import { parseArgs, onMissingTable, fromMonthOf, assertOutFree, applyLinkPlan, CONTROL_PROBES, LINK_WINDOW_MONTHS } from "./assign-trade-links.mjs";
 
 const argv = (/** @type {string[]} */ ...a) => ["node", "assign-trade-links.mjs", ...a];
 
@@ -56,6 +56,73 @@ describe("거래 창 시작 달(KST)", () => {
     expect(fromMonthOf(new Date("2026-02-15T00:00:00Z"), 2)).toBe("202512");
     // UTC 로는 9월 30일 16시지만 KST 로는 10월 1일
     expect(fromMonthOf(new Date("2026-09-30T16:00:00Z"), 0)).toBe("202610");
+  });
+});
+
+describe("applyLinkPlan — 이전 status 확인 · 돌아온 행 수로 셈(F11)", () => {
+  /** 가짜 sb: 넣기는 넣은 수만큼, 지우기·고치기는 status 조건이 지금 값과 같을 때만 1행을 돌려준다 */
+  const fake = (/** @type {Record<number, string>} */ statusById) => {
+    const calls = { insert: 0, update: 0, delete: 0, eqStatus: /** @type {string[]} */ ([]) };
+    return {
+      calls,
+      from() {
+        /** @type {any} */
+        const q = { _op: "", _id: null, _status: null, _n: 0 };
+        q.insert = (/** @type {any[]} */ rows) => { calls.insert++; q._op = "insert"; q._n = rows.length; return q; };
+        q.update = () => { calls.update++; q._op = "update"; return q; };
+        q.delete = () => { calls.delete++; q._op = "delete"; return q; };
+        q.eq = (/** @type {string} */ c, /** @type {any} */ v) => { if (c === "id") q._id = v; if (c === "status") { q._status = v; calls.eqStatus.push(v); } return q; };
+        q.select = () => q;
+        q.then = (/** @type {any} */ res, /** @type {any} */ rej) => {
+          const data = q._op === "insert" ? Array.from({ length: q._n }, (_, i) => ({ id: i })) : statusById[q._id] === q._status ? [{ id: q._id }] : [];
+          return Promise.resolve({ data, error: null }).then(res, rej);
+        };
+        return q;
+      },
+    };
+  };
+  const noWait = async () => {};
+
+  it("이전 status 가 그대로면 성공, 그 사이 바뀌었으면(0행 반환) 실패로 센다 — 지우기·고치기 모두 이전 status 로 거른다", async () => {
+    const sb = fake({ 1: "active", 2: "hold", 3: "rejected" });
+    const plan = {
+      add: [{ apartment_id: "a", link_kind: "apt_seq", link_key: "N" }],
+      remove: [{ id: 1, status: "active" }, { id: 3, status: "active" }],
+      change: [{ id: 2, prev: { status: "hold" }, next: { status: "active", method: "manual" } }],
+    };
+    const r = await applyLinkPlan(sb, plan, { sleepFn: noWait, now: () => "2026-10-08T00:00:00Z" });
+    expect(r).toEqual({ ok: 3, fail: 1 }); // 넣기 1 + 지우기 1(id 1) + 고치기 1(id 2) 성공 · id 3 은 이미 rejected 라 0행 → 실패
+    expect(sb.calls.eqStatus).toEqual(["active", "active", "hold"]);
+  });
+
+  it("G3 고치기(change)·넣기는 updated_at 을 그 시각으로 보낸다(감시 ⑰(c) hold 오래됨의 기준)", async () => {
+    /** @type {any[]} */
+    const sent = [];
+    const sb = {
+      from() {
+        /** @type {any} */
+        const q = {};
+        q.insert = (/** @type {any[]} */ rows) => { sent.push(...rows.map((r) => ["insert", r.updated_at])); q._n = rows.length; return q; };
+        q.update = (/** @type {any} */ p) => { sent.push(["update", p.updated_at]); return q; };
+        q.delete = () => q;
+        q.eq = () => q;
+        q.select = () => q;
+        q.then = (/** @type {any} */ res, /** @type {any} */ rej) => Promise.resolve({ data: Array.from({ length: q._n ?? 1 }, (_, i) => ({ id: i })), error: null }).then(res, rej);
+        return q;
+      },
+    };
+    await applyLinkPlan(sb, {
+      add: [{ apartment_id: "a", link_kind: "apt_seq", link_key: "N" }], remove: [],
+      change: [{ id: 2, prev: { status: "active" }, next: { status: "hold", hold_reason: "phase", method: "name" } }],
+    }, { sleepFn: noWait, now: () => "2026-10-08T00:00:00Z" });
+    expect(sent).toEqual([["insert", "2026-10-08T00:00:00Z"], ["update", "2026-10-08T00:00:00Z"]]);
+  });
+
+  it("중단 신호가 오면 더 쓰지 않는다", async () => {
+    const sb = fake({ 1: "active" });
+    const r = await applyLinkPlan(sb, { add: [], remove: [{ id: 1, status: "active" }], change: [] }, { interrupted: () => true, sleepFn: noWait });
+    expect(r).toEqual({ ok: 0, fail: 0 });
+    expect(sb.calls.delete).toBe(0);
   });
 });
 

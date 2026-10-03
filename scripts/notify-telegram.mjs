@@ -104,6 +104,7 @@ const ACTION_GUIDE = {
   "trade-deals-norun": "[조치] 그 시각 앞뒤의 로컬 러너 로그(kosis-local.log)와 PC 재시작 기록을 보세요 — 실거래 수집 회차가 끝 기록 없이 죽었으면 trades 는 저장되지 않았으니 창 밖 시각에 collect-trades 를 1회 다시 돌립니다(scripts/monitor-collectors.mjs tradeDealsRunState).",
   "trade-links-stale": "[조치] collect-trade-stats.yml 실행 로그의 'Assign trade links' 단계를 보세요 — 실패했으면 그 머리말(LINK_BREAKER·LINK_PLAN_MISMATCH·LINK_NO_TABLE 등)대로: 차단기면 미리보기(--out) 명단을 승인받아 --apply-from 으로 반영합니다(scripts/collectors/assign-trade-links.mjs).",
   "trade-links-sibling": "[조치] 위 열쇠를 함께 쓰는 단지들이 정말 같은 단지인지 보세요 — 다르면 docs/audits/trade-link-decisions.json 에 rejected 로, 같은 단지인데 묶음 열쇠가 갈렸으면 docs/audits/same-complex-exceptions.json 에 always 로 적습니다(PR — 사장님 승인). 묶기는 이런 짝을 hold 로 두므로 active 면 판정 파일이나 쓰기 경로를 의심합니다(scripts/monitor-collectors.mjs checkTradeLinksHealth).",
+  "trade-links-hold-aging": "[조치] 위 hold 줄을 보고 같은 단지면 active, 아니면 rejected 로 docs/audits/trade-link-decisions.json 에 적습니다(PR — 사장님 승인). 미리보기(--out)의 holds 명단에 이름·거래 이름·유사도가 있습니다(scripts/monitor-collectors.mjs checkTradeLinksHealth).",
   "check-failed": "[조치] Actions 로그에서 그 번호(⑦~⑰) 줄의 오류를 보고 칸 이름 변경·칸 삭제·표 권한 변경을 확인하세요 — 고친 뒤 monitor 를 수동 1회 실행해 이 알림이 사라지는지 봅니다(scripts/monitor-collectors.mjs runDailyGuardedChecks).",
   "local-failure": "[조치] 그 수집기를 돌린 로컬 러너 로그(naver-collect.log · kosis-local.log · childcare-local.log)와 collector_runs.error_message 를 보세요 — STEP_FAILED 는 네이버 파이프라인의 끊긴 단계, 차단기 문구는 수집기가 일부러 멈춘 것입니다. 고친 뒤 그 수집기를 1회 다시 돌립니다(scripts/monitor-collectors.mjs checkLocalFailures).",
   outage: "[조치] raw API 1회 호출(curl)로 500/503/타임아웃 확인 후 외부 공식 공지(점검/장애) grep — 의심 확정 시 BACKLOG.md 1줄 박힘 (룰: .claude/rules/workflows/external-api-outage-policy.md).",
@@ -112,7 +113,7 @@ const ACTION_GUIDE = {
 /**
  * 수집기 이상 1건을 텔레그램 메시지 텍스트로 만든다.
  * @param {{
- *   kind: "fail" | "empty" | "stale" | "nulls" | "outage" | "region-unresolved" | "applyhome-unsold" | "check-failed" | "local-failure" | "kapt-window" | "trade-deals-dup" | "trade-deals-hwaseong" | "trade-deals-ratio" | "trade-deals-norun" | "trade-links-stale" | "trade-links-sibling",
+ *   kind: "fail" | "empty" | "stale" | "nulls" | "outage" | "region-unresolved" | "applyhome-unsold" | "check-failed" | "local-failure" | "kapt-window" | "trade-deals-dup" | "trade-deals-hwaseong" | "trade-deals-ratio" | "trade-deals-norun" | "trade-links-stale" | "trade-links-sibling" | "trade-links-hold-aging",
  *   collector: string,
  *   detail: string,
  *   conclusion?: "failure" | "cancelled" | "timed_out",
@@ -123,11 +124,11 @@ const ACTION_GUIDE = {
  * @returns {string}
  */
 export function formatIssue(issue) {
-  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️", "trade-deals-dup": "🧾", "trade-deals-hwaseong": "🧾", "trade-deals-ratio": "🧾", "trade-deals-norun": "🧾", "trade-links-stale": "🔗", "trade-links-sibling": "🔗" }[issue.kind];
+  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️", "trade-deals-dup": "🧾", "trade-deals-hwaseong": "🧾", "trade-deals-ratio": "🧾", "trade-deals-norun": "🧾", "trade-links-stale": "🔗", "trade-links-sibling": "🔗", "trade-links-hold-aging": "🔗" }[issue.kind];
   const conclusionKey = issue.conclusion;
   const title = issue.kind === "fail"
     ? `수집기 ${(conclusionKey ? /** @type {any} */ (CONCLUSION_LABEL)[conclusionKey] : undefined) ?? "이상"}`
-    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증", outage: "외부 API 장기 중단", "region-unresolved": "시도 이름 못 맞춤", "applyhome-unsold": "청약홈 미분양 값 점검", "check-failed": "감시 점검 실행 실패", "local-failure": "로컬 수집기 실패", "kapt-window": "2u K-apt 창 때문에 건너뜀", "trade-deals-dup": "실거래 원문 표 중복 회차", "trade-deals-hwaseong": "화성 실거래 코드 0행", "trade-deals-ratio": "실거래 원문 표 행 수 어긋남", "trade-deals-norun": "실거래 수집 회차 기록 없음", "trade-links-stale": "단지↔거래 묶기 미실행", "trade-links-sibling": "다른 단지가 같은 거래 열쇠 공유" }[issue.kind];
+    : { empty: "데이터 0건 수집", stale: "수집기 미발화", nulls: "NULL 급증", outage: "외부 API 장기 중단", "region-unresolved": "시도 이름 못 맞춤", "applyhome-unsold": "청약홈 미분양 값 점검", "check-failed": "감시 점검 실행 실패", "local-failure": "로컬 수집기 실패", "kapt-window": "2u K-apt 창 때문에 건너뜀", "trade-deals-dup": "실거래 원문 표 중복 회차", "trade-deals-hwaseong": "화성 실거래 코드 0행", "trade-deals-ratio": "실거래 원문 표 행 수 어긋남", "trade-deals-norun": "실거래 수집 회차 기록 없음", "trade-links-stale": "단지↔거래 묶기 미실행", "trade-links-sibling": "다른 단지가 같은 거래 열쇠 공유", "trade-links-hold-aging": "단지↔거래 보류 판정 대기 오래됨" }[issue.kind];
   const out = [`${emoji} <b>${title}</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)];
   // 상세 줄 — 점검 함수가 미리 만든 사람 말 문장들
   for (const line of issue.lines ?? []) out.push(escapeHtml(line));
@@ -157,7 +158,7 @@ export function formatIssue(issue) {
  */
 export function formatIssueForConsole(issue) {
   if (issue.collector !== "db-permissions") return formatIssue(issue);
-  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️", "trade-deals-dup": "🧾", "trade-deals-hwaseong": "🧾", "trade-deals-ratio": "🧾", "trade-deals-norun": "🧾", "trade-links-stale": "🔗", "trade-links-sibling": "🔗" }[issue.kind];
+  const emoji = { fail: "🔴", empty: "⚠️", stale: "🕒", nulls: "📉", outage: "🚨", "region-unresolved": "🗺️", "applyhome-unsold": "🏠", "check-failed": "🧯", "local-failure": "🛑", "kapt-window": "⏸️", "trade-deals-dup": "🧾", "trade-deals-hwaseong": "🧾", "trade-deals-ratio": "🧾", "trade-deals-norun": "🧾", "trade-links-stale": "🔗", "trade-links-sibling": "🔗", "trade-links-hold-aging": "🔗" }[issue.kind];
   return [`${emoji} <b>DB 권한 점검</b>`, escapeHtml(issue.collector), escapeHtml(issue.detail)].join("\n");
 }
 
@@ -223,7 +224,7 @@ export function fitBlock(block, maxLen) {
  * 이슈 1건 자체가 한 통(헤더 포함)보다 크면 `fitBlock` 으로 줄 단위로 잘라 생략 줄을
  * 붙인다 — 그래서 모든 통은 항상 한도 이하이고, 첫 통은 항상 헤더 + 첫 이슈를 함께 담는다
  * (헤더만 담긴 통은 생기지 않는다).
- * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
+ * @param {Array<{ kind: "fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging", collector: string, detail: string, url?: string, lines?: string[], at?: string }>} issues
  * @returns {string[]} 전송할 메시지 배열 (이슈 0건이면 빈 배열)
  */
 export function buildMessages(issues) {
