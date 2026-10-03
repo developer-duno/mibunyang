@@ -11,7 +11,7 @@ paths:
 
 ## data.go.kr API 쿼터 분배
 
-일일 한도: 10,000회 (MOLIT_KEY, mibunyang + naver-estate-web 공유).
+일일 한도: **창구(서비스)별 하루 10,000회** — MOLIT_KEY 하나를 mibunyang + naver-estate-web 이 같이 쓰지만, 한도는 키 전체가 아니라 창구마다 따로 센다(근거: 조사 2차 A7 응답 헤더 실측 2026-10-02 — 실거래 매매 `RTMSDataSvcAptTradeDev`·전월세 `RTMSDataSvcAptRent`·분양권 `RTMSDataSvcSilvTrade` 가 각각 `limit 10000`·남은 수 따로. 2u 는 다른 매매 창구 `RTMSDataSvcAptTrade` 를 쓴다). 그래서 아래 일자별 합계는 **같은 창구끼리만** 더해야 한다. 실거래 12개월 재수집 = 약 210 구 × 12 = 창구당 2,520콜(세션589 화성 4코드 반영).
 
 > ⚠️ 아래 "실행 주체" 열은 세션 515 에 바뀌었다 — 국토부(1613000) 의존 5종은 GH 워크플로가 아니라
 > **집서버 로컬 러너**(`kosis-local-runner.mjs`)가 돌린다. 발화일은 그대로라 쿼터 계산은 불변이다.

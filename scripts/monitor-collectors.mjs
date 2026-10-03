@@ -21,7 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
-import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, HWASEONG_LAWD_CODES } from "./collectors/_shared.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -266,7 +266,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1451,6 +1451,169 @@ async function fetchComplexKeyHealth() {
   return { gapRows: data ?? [], latestSuccess: runs?.[0] ?? null };
 }
 
+// ── ⑯ trade_deals 건전성 (세션589 — 시세 비교 범위 좁히기 가) ──────────────
+/** ⑯(c) `trade_deals` ÷ `trades` 같은 달 행 수의 정상 범위. trade_deals 는 접힘이 없어 크고, 입주권을 빼서 작다. */
+export const TRADE_DEALS_RATIO_MIN = 0.9;
+export const TRADE_DEALS_RATIO_MAX = 1.3;
+/** ⑯(a) 경보 본문에 펼칠 최대 열쇠 수 — 나머지는 "외 N개" 한 건으로 접는다. */
+const TRADE_DEALS_DUP_LIMIT = 10;
+
+/**
+ * ⑯ 이 볼 두 달 — "최근 달" = 어제(KST) 기준 전월, 그 앞 달.
+ * @param {Date} [now]
+ * @returns {{ latest: string, prev: string }}
+ */
+export function tradeDealsMonths(now = new Date()) {
+  // KST 는 서머타임이 없어 +9시간으로 고정해도 된다(어제 = −24시간).
+  const y = new Date(now.getTime() + 9 * 3600000 - 86400000);
+  const ym = (/** @type {number} */ back) => {
+    const d = new Date(Date.UTC(y.getUTCFullYear(), y.getUTCMonth() - back, 1));
+    return `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+  };
+  return { latest: ym(1), prev: ym(2) };
+}
+
+/**
+ * ⑯ `trade_deals` 건전성 — 개수가 아니라 **명단**(열쇠·코드)으로 본다([[next-session-grep-mandate]] §4).
+ *
+ * (a) 같은 (sgg_cd·월·종류) 에 `batch_id` 가 둘 이상 = 지난 회차가 중간에 죽은 흔적(읽기는 가장 새 것이라 정상이지만
+ *     다음 회차가 치울 때까지 남는다) → `trade-deals-dup` 열쇠마다.
+ * (b) 화성 4코드 각각 판정 달 매매 0행 → `trade-deals-hwaseong`(어느 코드인지). 옛 코드 41590 처럼 에러 대신 0건이 오는 사고.
+ * (c) 판정 달 `trade_deals` 행 수 ÷ `trades` 행 수가 0.9~1.3 밖 → `trade-deals-ratio`(두 수 모두).
+ *
+ * 판정 달 = `latest`(어제 기준 전월), 그 달 행이 아직 없으면(실거래 수집은 매월 6일) `prev`. 둘 다 없으면 (b)(c) 침묵.
+ * **표가 비어 있으면(마이그 적용~재수집 사이) 셋 다 침묵** — 그 사이엔 (c) 가 반드시 울리기 때문이다.
+ * (c) 의 `trade_deals` 쪽 수는 열쇠마다 **가장 새 batch** 만 센다(읽는 쪽과 같은 규칙 — 죽은 흔적이 비율을 부풀리지 않게).
+ *
+ * @param {Array<{ sgg_cd?: string|null, deal_month?: string|null, trade_type?: string|null, batch_id?: string|null, recorded_at?: string|null }>} rows 두 달치 행
+ * @param {Record<string, number | null | undefined>} tradesCounts 월 → `trades` 행 수
+ * @param {{ empty?: boolean, latest: string, prev: string, ratioMin?: number, ratioMax?: number, hwaseongCodes?: readonly string[] }} opts
+ * @returns {Issue[]}
+ */
+export function checkTradeDealsHealth(rows, tradesCounts, opts) {
+  if (opts.empty) return [];
+  const ratioMin = opts.ratioMin ?? TRADE_DEALS_RATIO_MIN;
+  const ratioMax = opts.ratioMax ?? TRADE_DEALS_RATIO_MAX;
+  const hwaseongCodes = opts.hwaseongCodes ?? HWASEONG_LAWD_CODES;
+  /** @type {Issue[]} */
+  const issues = [];
+
+  // 열쇠 → batch → { n, last }
+  /** @type {Map<string, Map<string, { n: number, last: string }>>} */
+  const byKey = new Map();
+  for (const r of rows) {
+    if (!r?.sgg_cd || !r.deal_month || !r.trade_type || !r.batch_id) continue;
+    const key = `${String(r.sgg_cd).trim()}|${r.deal_month}|${r.trade_type}`;
+    let batches = byKey.get(key);
+    if (!batches) { batches = new Map(); byKey.set(key, batches); }
+    const b = batches.get(r.batch_id) ?? { n: 0, last: "" };
+    b.n++;
+    const t = String(r.recorded_at ?? "");
+    if (t > b.last) b.last = t;
+    batches.set(r.batch_id, b);
+  }
+
+  // (a) 중복 batch 명단
+  const dups = [...byKey.entries()].filter(([, b]) => b.size >= 2).sort(([a], [b]) => a.localeCompare(b));
+  for (const [key, batches] of dups.slice(0, TRADE_DEALS_DUP_LIMIT)) {
+    const newest = [...batches.values()].map((b) => b.last).sort().pop() ?? "";
+    issues.push({
+      kind: "trade-deals-dup",
+      collector: "trade_deals",
+      detail: `${key} batch ${batches.size}개`,
+      lines: [
+        `batch 별 행 수: ${[...batches.entries()].map(([id, b]) => `${id.slice(0, 8)}…=${b.n}`).join(" · ")}`,
+        "읽는 쪽은 가장 새 batch 만 보므로 화면은 정상 — 다음 실거래 회차가 옛 것을 지운다. 회차가 계속 죽고 있으면 collect-trades 로그를 본다.",
+      ],
+      ...(newest ? { at: newest } : {}),
+    });
+  }
+  if (dups.length > TRADE_DEALS_DUP_LIMIT) {
+    issues.push({
+      kind: "trade-deals-dup",
+      collector: "trade_deals",
+      detail: `외 ${dups.length - TRADE_DEALS_DUP_LIMIT}개 열쇠도 batch 둘 이상`,
+      lines: [`나머지: ${dups.slice(TRADE_DEALS_DUP_LIMIT).map(([k]) => k).join(", ")}`],
+    });
+  }
+
+  // 판정 달 — 최근 달 행이 아직 없으면 그 앞 달
+  /** @param {string} m */
+  const monthRows = (m) => [...byKey.keys()].some((k) => k.split("|")[1] === m);
+  const month = monthRows(opts.latest) ? opts.latest : monthRows(opts.prev) ? opts.prev : null;
+  if (!month) return issues;
+
+  // (b) 화성 4코드 각각 판정 달 매매 > 0
+  /** @param {string} code */
+  const saleRows = (code) => {
+    const b = byKey.get(`${code}|${month}|sale`);
+    return b ? [...b.values()].reduce((s, x) => s + x.n, 0) : 0;
+  };
+  const missing = hwaseongCodes.filter((c) => saleRows(c) === 0);
+  if (missing.length) {
+    issues.push({
+      kind: "trade-deals-hwaseong",
+      collector: "trade_deals",
+      detail: `화성 ${missing.join(",")} ${month} 매매 0행`,
+      lines: [
+        `화성 4코드(${hwaseongCodes.join("·")}) 중 ${missing.length}개가 ${month} 매매 0행입니다 — 옛 코드처럼 에러 대신 0건이 오는 사고일 수 있습니다.`,
+        `각 코드 행 수: ${hwaseongCodes.map((c) => `${c}=${saleRows(c)}`).join(" · ")}`,
+      ],
+    });
+  }
+
+  // (c) 같은 달 trade_deals ÷ trades — 열쇠마다 가장 새 batch 만 센다
+  let dealCount = 0;
+  for (const [key, batches] of byKey) {
+    if (key.split("|")[1] !== month) continue;
+    const newest = [...batches.values()].sort((a, b) => a.last.localeCompare(b.last)).pop();
+    dealCount += newest?.n ?? 0;
+  }
+  const tradeCount = tradesCounts[month];
+  if (tradeCount == null) return issues;
+  const ratio = tradeCount > 0 ? dealCount / tradeCount : Infinity;
+  if (!(ratio >= ratioMin && ratio <= ratioMax)) {
+    issues.push({
+      kind: "trade-deals-ratio",
+      collector: "trade_deals",
+      detail: `${month} trade_deals ${dealCount.toLocaleString("en-US")}행 ÷ trades ${tradeCount.toLocaleString("en-US")}행 = ${Number.isFinite(ratio) ? ratio.toFixed(2) : "∞"} (기준 ${ratioMin}~${ratioMax})`,
+      lines: [
+        "trade_deals 는 접힘이 없어 trades 보다 조금 많고(입주권 제외분만큼 적다) 보통 이 범위 안에 든다.",
+        "벗어나면 한쪽 쓰기가 빠졌거나(실패 열쇠·0건 열쇠) 재수집 직후일 수 있다 — collect-trades 로그의 trade_deals 요약 줄을 본다.",
+      ],
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑯ 재료 — 표가 비었는지(실제 select 로 — head count 는 없는 표에도 null 을 준다) · 두 달치 행 · 같은 달 trades 행 수.
+ * 표가 아직 없으면(마이그 전) 조회가 실패하고 runFailOpenCheck 가 알린다.
+ * @param {any} [sbArg]
+ * @param {Date} [now]
+ * @returns {Promise<{ empty: boolean, rows: Array<Record<string, any>>, tradesCounts: Record<string, number | null>, latest: string, prev: string }>}
+ */
+export async function fetchTradeDealsHealth(sbArg, now = new Date()) {
+  const sb = sbArg ?? getSupabase();
+  const { latest, prev } = tradeDealsMonths(now);
+  const probe = await sb.from("trade_deals").select("id").limit(1);
+  if (probe.error) throw new Error(`trade_deals 조회 실패: ${probe.error.message}`);
+  if (!probe.data?.length) return { empty: true, rows: [], tradesCounts: {}, latest, prev };
+  const rows = await selectAll(
+    (s) => s.from("trade_deals").select("id, sgg_cd, deal_month, trade_type, batch_id, recorded_at").in("deal_month", [latest, prev]),
+    sb,
+    "id",
+  );
+  /** @type {Record<string, number | null>} */
+  const tradesCounts = {};
+  for (const m of [latest, prev]) {
+    const { count, error } = await sb.from("trades").select("id", { count: "exact", head: true }).eq("deal_month", m);
+    if (error) throw new Error(`trades(${m}) 행 수 조회 실패: ${error.message}`);
+    tradesCounts[m] = count ?? null;
+  }
+  return { empty: false, rows, tradesCounts, latest, prev };
+}
+
 /**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
@@ -2519,7 +2682,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 여덟(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮ 세션589)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 아홉(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589)을 돌려 이슈를 합친다.
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -2530,6 +2693,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
  *   fetchKeyHealth?: () => ReturnType<typeof fetchComplexKeyHealth>,
  *   fetchKaptWindowRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
+ *   fetchTradeDeals?: () => ReturnType<typeof fetchTradeDealsHealth>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -2544,6 +2708,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchAhRows = deps.fetchAhRows ?? fetchApplyhomeUnsoldRows;
   const fetchFailureRuns = deps.fetchFailureRuns ?? (() => fetchRecentFailureRuns());
   const fetchKeyHealth = deps.fetchKeyHealth ?? fetchComplexKeyHealth;
+  const fetchTradeDeals = deps.fetchTradeDeals ?? (() => fetchTradeDealsHealth());
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -2629,6 +2794,14 @@ export async function runDailyGuardedChecks(deps = {}) {
     const windowIssues = checkKaptWindowSkips(windowRuns);
     console.log(`[monitor] ⑮ 2u 창 건너뜀 점검: 수집기 ${Object.keys(windowRuns).length}/${names.length}개 최근 실행 → 이상 ${windowIssues.length}건`);
     return windowIssues;
+  }));
+
+  // ⑯ trade_deals 건전성 — 중복 batch 명단 · 화성 4코드 0행 · trades 대비 비율(세션589 시세 범위 좁히기 가). 표가 비면 침묵.
+  issues = issues.concat(await runFailOpenCheck("⑯ trade_deals 점검", async () => {
+    const h = await fetchTradeDeals();
+    const dealIssues = checkTradeDealsHealth(h.rows, h.tradesCounts, { empty: h.empty, latest: h.latest, prev: h.prev });
+    console.log(`[monitor] ⑯ trade_deals 점검: ${h.empty ? "표 비어 있음(재수집 전) — 침묵" : `${h.prev}·${h.latest} ${h.rows.length}행`} → 이상 ${dealIssues.length}건`);
+    return dealIssues;
   }));
 
   return issues;
@@ -3319,7 +3492,7 @@ async function main() {
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());

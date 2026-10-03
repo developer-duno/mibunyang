@@ -45,7 +45,7 @@ jobs:
               const tables = [
                 'apartments','prices','unsold_history','trades','trade_stats',
                 'infra','schools','transport','builders','regions',
-                'complexes','articles','complex_price_history','consults'
+                'complexes','articles','complex_price_history','consults','trade_deals'
               ];
               console.log('=== Supabase DB 테이블별 행 수 ===');
               let total = 0;

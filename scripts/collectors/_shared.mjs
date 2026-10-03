@@ -817,6 +817,28 @@ export function getLawdCd(region, gu) {
   return prefix ? prefix + "000" : null;
 }
 
+/**
+ * 수집기 전용 — 한 gu 가 여러 LAWD_CD 를 가질 때(2026 화성 4구 개편). 만세·효행·병점·동탄 순.
+ * 조사 2차 A5⑤ 실측(세션589, 2026-10-02): 옛 41590 매매 202608 = 0건 · 새 코드 12개월 매매
+ * 41591 1,385 · 41593 1,897 · 41595 3,511 · 41597 10,736.
+ * ⚠️ `GU_LAWD_MAP["경기"]["화성시"]` = "41591" 은 **그대로 둔다** — 다른 소비처(건축HUB·어린이집 arcode 등)가
+ * 한 코드만 기대한다. 여러 코드를 도는 것은 실거래 수집기(`collect-trades.mjs`)뿐이다.
+ */
+export const HWASEONG_LAWD_CODES = ["41591", "41593", "41595", "41597"];
+
+/**
+ * 실거래 수집기가 한 (region, gu) 에 대해 돌아야 할 LAWD_CD 목록.
+ * 화성시 = `HWASEONG_LAWD_CODES` 4개 · 그 밖 = `[getLawdCd(region, gu)]`(null 이면 []).
+ * @param {string} region
+ * @param {string | null | undefined} [gu]
+ * @returns {string[]}
+ */
+export function GU_LAWD_CODES(region, gu) {
+  if (region === "경기" && gu === "화성시") return [...HWASEONG_LAWD_CODES];
+  const code = getLawdCd(region, gu);
+  return code ? [code] : [];
+}
+
 // ── 건설사 별칭 ────────────────────────────────────────────
 /** @type {import("../types.ts").BuilderAliasMap} */
 export const BUILDER_ALIASES = {

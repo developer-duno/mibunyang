@@ -14,8 +14,10 @@
 import {
   loadEnv, getMibuyangSupabase, log, logError, sleep,
   upsertBatch, createReporter, recordApiQuota, recordCollectorRun, fetchWithRetry,
-  getLawdCd, normalizeGu, budgetExceeded, selectAll,
+  getLawdCd, normalizeGu, budgetExceeded, selectAll, GU_LAWD_CODES,
 } from "./_shared.mjs";
+import { buildDealRow, isOwnershipRight, dealKey, saveDealsForKey } from "./_trade-deals.mjs";
+import { randomUUID } from "node:crypto";
 
 loadEnv();
 
@@ -35,6 +37,8 @@ const API_BASE = "https://apis.data.go.kr/1613000";
  * @typedef {{ region: string; gu: string | null }} RegionGuPair
  * @typedef {{ region: string; gu: string | null; dong: string | null; deal_month: string; area: number; price: number; floor: number | null; build_year: number | null; trade_type?: string; deposit?: number | null; apt_name?: string | null; dealing_type?: string | null; cancel_date?: string | null }} TradeRow
  * @typedef {"sale" | "jeonse" | "presale"} TradeType
+ * @typedef {import("./_trade-deals.mjs").DealRow} DealRow
+ * @typedef {{ rows: TradeRow[]; deals: DealRow[]; skippedOwnership: number; apiCalls: number; apiFails: number; fallbackUsed: boolean }} FetchResult
  */
 
 /**
@@ -141,12 +145,21 @@ async function fetchXml(url) {
  * @param {RegionGuPair} rg
  * @param {Set<string>} seen
  * @param {boolean} prevFallbackUsed
- * @returns {Promise<{ rows: TradeRow[]; apiCalls: number; apiFails: number; fallbackUsed: boolean }>}
+ * @returns {Promise<FetchResult>}
+ *
+ * 세션589: 같은 item 으로 `trade_deals` 행(`deals`)도 만든다 — 원문 한 건 = 한 행이라 `seen` 으로 접지 않는다.
+ * `trades` 행 만들기·`seen` 열쇠·`validate` 는 그대로다. 분양권 "입"(입주권)은 `deals` 에서만 빠지고
+ * `skippedOwnership` 으로 센다(`trades` 행에는 지금처럼 들어간다 — 2u 가 읽는 표의 내용을 바꾸지 않는다).
+ * 한 달 응답이 중간에 예외로 끊기면 그 달 `deals` 는 버린다(반쪽 응답으로 열쇠를 교체하지 않게).
  */
 export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed) {
   const config = TRADE_CONFIGS[type];
   /** @type {TradeRow[]} */
   const rows = [];
+  /** @type {DealRow[]} */
+  const deals = [];
+  let skippedOwnership = 0;
+  const dealGu = tradeRowGu(rg.region, rg.gu);
   let apiCalls = 0;
   // 세션 503: 실패 횟수를 세어 올린다. 안 세면 "전부 실패해서 0건"과 "부를 게 없어서 0건"이
   // 구분되지 않아, 아래 main() 이 두 경우를 똑같이 성공으로 끝낸다(그게 2개월 공백을 숨겼다).
@@ -155,6 +168,9 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
   let regionFallback = false;
 
   for (const month of months) {
+    /** @type {DealRow[]} */
+    const monthDeals = [];
+    let monthOwnership = 0;
     try {
       let xml = await fetchXml(buildApiUrl(config.endpoint, lawdCd, month));
 
@@ -175,6 +191,10 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
         const area = parseFloat(getTag(item, "excluUseAr") || "0");
         if (!config.validate(price, area, item)) continue;
 
+        const deal = buildDealRow(item, { type, region: rg.region, gu: dealGu, sggCd: lawdCd, month, getTag });
+        if (deal) monthDeals.push(deal);
+        else if (type === "presale" && isOwnershipRight(item, getTag)) monthOwnership++;
+
         const floor = parseInt(getTag(item, "floor") || "0") || null;
         const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
         const dong = getTag(item, "umdNm") || null;
@@ -192,6 +212,8 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
         };
         rows.push(config.buildRow(item, base, regionFallback));
       }
+      deals.push(...monthDeals);
+      skippedOwnership += monthOwnership;
       apiCalls++;
     } catch (err) {
       apiFails++;
@@ -200,7 +222,67 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
     }
     await sleep(200);
   }
-  return { rows, apiCalls, apiFails, fallbackUsed };
+  return { rows, deals, skippedOwnership, apiCalls, apiFails, fallbackUsed };
+}
+
+/**
+ * 한 (region, gu) 의 LAWD_CD 전부 × 거래 종류 3개를 받는다(세션589 — 화성시는 4코드).
+ * `trades` 행은 지금처럼 모아 돌려주고, `trade_deals` 는 (코드·종류) 한 번 받을 때마다 `onDeals` 로 넘긴다
+ * (열쇠별 교체 저장은 호출자 — 회차 전체를 메모리에 쥐지 않게).
+ *
+ * @param {RegionGuPair} rg
+ * @param {string[]} codes                    `GU_LAWD_CODES(rg.region, rg.gu)`
+ * @param {string[]} months
+ * @param {{
+ *   seen: Set<string>;
+ *   fallbackUsed: boolean;
+ *   shouldStop?: () => "interrupt" | "budget" | null;
+ *   onDeals?: (lawdCd: string, type: TradeType, result: FetchResult) => Promise<void>;
+ * }} ctx
+ * @returns {Promise<{ rows: TradeRow[]; apiCalls: number; apiFails: number; fallbackUsed: boolean; stopped: "interrupt" | "budget" | null }>}
+ */
+export async function collectRegion(rg, codes, months, ctx) {
+  /** @type {TradeRow[]} */
+  const rows = [];
+  let apiCalls = 0;
+  let apiFails = 0;
+  let fallbackUsed = ctx.fallbackUsed;
+  /** @type {"interrupt" | "budget" | null} */
+  let stopped = null;
+  outer: for (const lawdCd of codes) {
+    for (const type of /** @type {TradeType[]} */ (["sale", "jeonse", "presale"])) {
+      stopped = ctx.shouldStop?.() ?? null;
+      if (stopped) break outer;
+      const result = await fetchTradeRows(lawdCd, months, type, rg, ctx.seen, fallbackUsed);
+      rows.push(...result.rows);
+      apiCalls += result.apiCalls;
+      apiFails += result.apiFails;
+      fallbackUsed = result.fallbackUsed;
+      if (ctx.onDeals) await ctx.onDeals(lawdCd, type, result);
+    }
+  }
+  return { rows, apiCalls, apiFails, fallbackUsed, stopped };
+}
+
+/**
+ * 한 번 받은 (코드·종류) 의 `deals` 를 월 열쇠별로 나눈다. 받은 달은 0건이어도 빈 목록으로 들어간다
+ * (0건 열쇠는 호출자가 지우지 않고 센다).
+ * @param {string} lawdCd
+ * @param {TradeType} type
+ * @param {string[]} months
+ * @param {DealRow[]} deals
+ * @returns {Map<string, DealRow[]>}
+ */
+export function groupDealsByKey(lawdCd, type, months, deals) {
+  /** @type {Map<string, DealRow[]>} */
+  const byKey = new Map(months.map((m) => [dealKey(lawdCd, m, type), /** @type {DealRow[]} */ ([])]));
+  for (const d of deals) {
+    const k = dealKey(d.sgg_cd, d.deal_month, d.trade_type);
+    const list = byKey.get(k);
+    if (list) list.push(d);
+    else byKey.set(k, [d]);
+  }
+  return byKey;
 }
 
 /**
@@ -283,6 +365,7 @@ async function main() {
 
   log(PHASE, "아파트 " + allApts.length + "건, " + regionGuPairs.length + "개 지역");
 
+  /** @type {string[]} */
   const months = [];
   const now = new Date();
   for (let m = 1; m <= monthCount; m++) {
@@ -310,21 +393,55 @@ async function main() {
   const budgetMin = budgetArg ? parseInt(budgetArg.replace("--budget-min=", ""), 10) : DEFAULT_BUDGET_MIN;
   let budgetHit = false;
 
+  // 세션589: trade_deals — (코드·월·종류) 열쇠별 교체 저장. 회차 id 하나.
+  const batchId = randomUUID();
+  const dealStats = { keys: 0, rows: 0, inserted: 0, deleted: 0, skippedOwnership: 0, zeroKeys: 0, failKeys: 0 };
+  /** @type {string[]} */
+  const zeroKeySamples = [];
+  /**
+   * @param {string} lawdCd
+   * @param {TradeType} type
+   * @param {FetchResult} result
+   */
+  const onDeals = async (lawdCd, type, result) => {
+    dealStats.skippedOwnership += result.skippedOwnership;
+    for (const [k, list] of groupDealsByKey(lawdCd, type, months, result.deals)) {
+      dealStats.keys++;
+      // 0건 응답은 지우지 않는다(옛 코드·장애가 에러 대신 0건으로 온다 — admin-district-code-reform.md §4)
+      if (!list.length) { dealStats.zeroKeys++; if (zeroKeySamples.length < 10) zeroKeySamples.push(k); continue; }
+      dealStats.rows += list.length;
+      if (dryRun) continue;
+      const [sgg_cd = "", deal_month = "", trade_type = ""] = k.split("|");
+      const res = await saveDealsForKey(sb, { sgg_cd, deal_month, trade_type }, list, batchId, { sleep });
+      if (res.status === "ok") {
+        dealStats.inserted += res.inserted;
+        dealStats.deleted += res.deleted + res.staleDeleted;
+      } else {
+        dealStats.failKeys++;
+        logError(PHASE, `trade_deals 쓰기 실패 ${k}: ${res.error ?? "?"}`);
+      }
+    }
+  };
+
   for (const rg of regionGuPairs) {
     if (rpt.interrupted()) break;
     if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }
-    const lawdCd = getLawdCd(rg.region, rg.gu);
-    if (!lawdCd) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
+    // 세션589: 화성시는 4코드(41591·41593·41595·41597) — 그 밖은 지금처럼 getLawdCd 한 코드
+    const codes = GU_LAWD_CODES(rg.region, rg.gu);
+    if (!codes.length) { log(PHASE, "  " + rg.region + " " + rg.gu + ": 법정동코드 없음"); continue; }
 
-    for (const type of /** @type {TradeType[]} */ (["sale", "jeonse", "presale"])) {
-      if (rpt.interrupted()) break;  // 세션 344: graceful shutdown (내부 trade type loop)
-      if (budgetExceeded(startedAt, budgetMin)) { budgetHit = true; break; }
-      const result = await fetchTradeRows(lawdCd, months, type, rg, seen, fallbackUsed);
-      rows.push(...result.rows);
-      apiCalls += result.apiCalls;
-      apiFails += result.apiFails;
-      fallbackUsed = result.fallbackUsed;
-    }
+    const result = await collectRegion(rg, codes, months, {
+      seen,
+      fallbackUsed,
+      // 세션 344: graceful shutdown (내부 trade type loop) — 코드·종류 한 번마다 본다
+      shouldStop: () => (rpt.interrupted() ? "interrupt" : budgetExceeded(startedAt, budgetMin) ? "budget" : null),
+      onDeals,
+    });
+    rows.push(...result.rows);
+    apiCalls += result.apiCalls;
+    apiFails += result.apiFails;
+    fallbackUsed = result.fallbackUsed;
+    if (result.stopped === "budget") budgetHit = true;
     if (budgetHit) break;  // 내부 loop 가 예산으로 끊겼으면 지역 loop 도 종료
 
     if (apiCalls % 50 === 0 && apiCalls > 0) log(PHASE, "  API " + apiCalls + "건, " + rows.length + "건 수집 중...");
@@ -339,6 +456,16 @@ async function main() {
   const presaleCount = rows.filter(r => r.trade_type === "presale").length;
   log(PHASE, "API 총 " + apiCalls + "건 호출" + (fallbackUsed ? " (매매: 기존 API 폴백)" : " (매매: AptTradeDev)"));
   log(PHASE, "수집 완료: 매매 " + saleCount + "건 + 전세 " + jeonseCount + "건 + 분양권 " + presaleCount + "건 = 총 " + rows.length + "건");
+
+  // 세션589: trade_deals 요약 한 줄 — 입주권 제외는 skip(실패 아님), 쓰기 실패 열쇠는 fail(회차 실패)
+  const n = (/** @type {number} */ v) => v.toLocaleString("en-US");
+  log(PHASE, `trade_deals${dryRun ? "(dry-run · 쓰지 않음)" : ""}: 열쇠 ${n(dealStats.keys)}개 · ` +
+    (dryRun ? `만들 행 ${n(dealStats.rows)}행` : `넣음 ${n(dealStats.inserted)}행 · 지움 ${n(dealStats.deleted)}행`) +
+    ` · 입주권 제외 ${n(dealStats.skippedOwnership)}행 · 0건 열쇠 ${n(dealStats.zeroKeys)}개` +
+    (dealStats.failKeys ? ` · 쓰기 실패 열쇠 ${n(dealStats.failKeys)}개` : "") +
+    (zeroKeySamples.length ? ` (0건 예: ${zeroKeySamples.join(", ")})` : ""));
+  rpt.skip(dealStats.skippedOwnership);
+  rpt.fail(dealStats.failKeys);
 
   if (dryRun) {
     if (rows.length > 0) {
@@ -384,6 +511,9 @@ async function main() {
   log(PHASE, "trades 테이블 " + inserted + "/" + rows.length + "건 저장 완료");
 
   await recordApiQuota("collect-trades", "MOLIT_KEY", apiCalls);
+  if (dealStats.failKeys) {
+    logError(PHASE, `trade_deals 쓰기 실패 열쇠 ${dealStats.failKeys}개 — trades 는 저장됨(${inserted}건). 회차는 실패로 끝낸다`);
+  }
 
   rpt.success(inserted);
   rpt.fail(uniqueRows.length - inserted);

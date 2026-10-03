@@ -18,6 +18,7 @@
 | prices | 분양가 이력 (시계열) | 청약홈 |
 | unsold_history | 미분양 추이 (시계열) | 청약홈 |
 | trades | 실거래가 (매매/전세) | collect-trades |
+| trade_deals | 실거래 원문 한 건 = 한 행(매매·전세·분양권 · aptSeq·지번·법정동코드·거래일 보존). **미분양 소유 · 공개 읽기 없음**(Service write 만) · (sgg_cd, deal_month, trade_type) 열쇠별 batch_id **교체 방식**(0건 응답은 안 지움, 읽을 땐 열쇠마다 가장 새 batch) · 2u 영향 0(2u 는 trades 만 읽는다) · 감시 ⑯ · 세션589 | collect-trades(같은 회차·같은 응답으로 trades 와 함께) |
 | trade_stats | 거래 통계 캐시 | trade-stats |
 | infra | 인프라 (병원/마트/어린이집/응급의료/경찰) | infra-kakao, childcare, emergency, police |
 | schools | 학교 정보 | schools-neis |
@@ -127,7 +128,7 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 | **공용** | air_quality_stations | **자매만 쓴다**(`env_air.py`). mibunyang 은 안 건드린다 |
 | **공용** | presale_schedule_official, applyhome_unit_supply, rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | **양쪽 쓰기** — 자매 `service_applyhome_officetel.py`·`service_applyhome_rental.py` 가 오피스텔·임대를 넣는다 |
 | **mibunyang 쓰기 · 자매 읽기** | apartments, prices, unsold_history, schools, transport, builders, regions, trades, trade_stats | 쓰기는 mibunyang 만. **자매가 `mb_models.py` 로 읽으므로 컬럼 삭제·이름 변경 금지** |
-| **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs 등 | mibunyang만 |
+| **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs, trade_deals 등 | mibunyang만 |
 | **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details, crawl_jobs, payments, billing_keys 등 | naver-estate-web만 |
 
 **읽기도 계약이다.** "자매가 안 쓰니 마음대로 바꿔도 된다" 가 성립하는 표는 마지막
