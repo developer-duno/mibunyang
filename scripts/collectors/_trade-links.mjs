@@ -9,7 +9,8 @@
  * ## 규칙 요약
  * - 열쇠: 매매·전세 = 국토부 `apt_seq` / 분양권 = `sgg_cd|umd_nm|jibun|정리이름`(분양권 원문엔 apt_seq 가 없다 — `presaleKeyOf`)
  * - 법정동 이름 사다리(`resolveDongName`, 보완 F2): ① 우리 bjd_code 10자리 → 매매 행 (sgg_cd+umd_cd → umd_nm)
- *   ② `apartments.address` 안에 같은 시군구 거래의 umd_nm 이 낱말 경계로 있음(가장 긴 이름이 동률이면 포기) ③ `apartments.dong` 이 그 집합에 있음
+ *   ② `apartments.address` 안에 같은 시군구 거래의 umd_nm 이 낱말 경계로 있음(이름 뒤 = 공백·끝·닫는 괄호·쉼표 「(작전동)」「(장현동, …)」 · 가장 긴 이름이 동률이면 포기)
+ *   ③ `apartments.dong` 이 그 집합에 있음
  *   ④ 동 이름을 끝내 못 얻은 단지만: 같은 시군구에서 정리한 이름이 완전히 같은 열쇠(6글자 이상 · 한 동에만 있을 때 · 맨 앞의 자기 지역 낱말은
  *   떼고 비교 — 2차 보완 G7·G7-b) ⑤ 모름(dropped).
  *   `apartments.dong` 은 대개 행정동이다(`reverse-geocode.mjs:90` region_type "H" — 세션590 표본 5행 중 4행이 거래 umd_nm 과 다름)
@@ -19,7 +20,9 @@
  * - 이름 경로(지번 없음 · 가짜 지번 · 지번 후보가 0개였거나 **지번 후보가 있었지만 이름 검사를 통과한 것이 0개**):
  *   같은 법정동 + namesCompatible + 우리만 차수 아님 + (유사도 ≥ NAME_ONLY_MIN 또는 공백 뗀 부분문자열) + |연도 차| ≤ 2 → `name`
  * - 정확 일치 우선(G9): 이름 경로에서 같은 kind 에 정리 이름이 같은(≥ EXACT_NAME_SIM) 후보가 있으면 덜 닮은 남의 이름 후보(부분문자열 아님)는 버림
- * - 우리 이름에 차수·블록 번호 없음(F1-c · G1 — 후보와 같은 `extractPhases` 추출): 차수 있는 후보는 **같은 kind** 에 차수 없는 후보가
+ *   — G9 는 사람이 rejected 한 후보도 정확 일치 증거로 센다(일부러 — 세션591 검사: 빼면 덜 닮은 남의 단지가 붙어 묶음에 퍼진다)
+ * - 우리 이름에 차수·블록 번호 없음(F1-c · G1 — `extractPhases` + 로마 숫자 = `namesCompatible` 과 같은 추출 · 후보 쪽 `phases` 는
+ *   `extractPhases` 만이라 로마 숫자를 안 센다, 세션591): 차수 있는 후보는 **같은 kind** 에 차수 없는 후보가
  *   있으면 버리고(G6), 없거나 다른 kind 에만 있으면 hold("phase")
  * - 묶음 전파(F9): 같은 complex_key 묶음(임대 제외) 행들의 active 열쇠 합집합을 묶음 모든 행에 준다(`method: bundle`) —
  *   묶음 안 어느 행이든 사람이 rejected 한 열쇠는 빼고(G2), 사람 active(manual) 줄은 전파 대상
@@ -33,11 +36,12 @@
  *   한 단지에 차수가 서로 다른 후보 둘 이상이면 phase
  * - 사람 판정 파일(docs/audits/trade-link-decisions.json)이 계산을 이긴다(active → manual · rejected 는 남겨 다시 제안 안 함).
  *   순서(G2): rejected 쌍은 매칭 직후 후보에서 빼고(형제·차수 셈 밖) · active 판정은 hold 판정 뒤·전파 앞 · rejected 줄은 맨 끝
+ *   (매칭 안의 G9 는 사람이 rejected 한 후보도 정확 일치 증거로 센다 — 일부러, 세션591 검사)
  *
  * ⚠️ `_` 접두 = 라이브러리(DB 접근 0). graceful/exit/orphan 감사가 자동 제외한다.
  */
 import { stringSimilarity, HWASEONG_LAWD_CODES } from "./_shared.mjs";
-import { cleanMatchName, namesCompatible, completionMonthIndex } from "./_match-gates.mjs";
+import { cleanMatchName, namesCompatible, completionMonthIndex, romanPhaseNumbers } from "./_match-gates.mjs";
 import { extractPhases, stripRoundWords } from "./_kakao-poi.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 import { assignComplexKeys } from "./_same-complex.mjs";
@@ -266,7 +270,7 @@ const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * ① 매매 행의 (sgg_cd+umd_cd → umd_nm) 사전에 우리 bjd_code 10자리가 있으면 그 이름
  * ② `apartments.address` 안에 같은 시군구 거래(매매·전세·분양권)의 `umd_nm` 이 **낱말 경계로** 들어 있으면 그 이름
  *    (여럿이면 가장 긴 것 — 가장 긴 것이 둘 이상 동률이면 ② 포기(G4) · 2글자 이상만 · "포곡읍 금어리" 같은 띄어쓴 이름도 그대로 ·
- *    "중동로" 안의 "중동" · "중앙동2가" 안의 "중앙동" 은 안 셈 — 이름 뒤는 공백 또는 끝만)
+ *    "중동로" 안의 "중동" · "중앙동2가" 안의 "중앙동" 은 안 셈 — 이름 뒤는 공백·끝·닫는 괄호·쉼표만: "주부토로 356(작전동)"·"(장현동, 골드클래스)" 은 셈, 나) 후속 ⑤)
  * ③ `apartments.dong` 이 같은 시군구 거래의 `umd_nm` 집합에 있으면 그 이름(행정동 = 법정동인 곳)
  * 모름 → null(그 뒤 `matchApartment` 가 사다리 ④ "시군구 안 정확한 이름"을 본다 — G7)
  * 화성 옛 코드 41590 단지는 새 4코드를 같은 시군구로 본다(`sggCodesOf`). `sggs` = 그 이름이 나온 거래 시군구 코드들(후보 풀 열쇠).
@@ -292,12 +296,14 @@ export function resolveDongName(apt, dict) {
   if (nameSggs.size === 0) return null;
   const addr = nfkc(apt.address).replace(/\s+/g, " ");
   if (addr) {
-    // 이름 뒤는 공백 또는 끝만(G4 — "중앙동2가" 안의 "중앙동" 은 안 셈) · 가장 긴 이름이 둘 이상 동률이면 ② 포기(③으로)
+    // 이름 뒤는 공백·끝·닫는 괄호·쉼표만(G4 — "중앙동2가" 안의 "중앙동" 은 안 셈 · 나) 후속 ⑤ — "주부토로 356(작전동)" ·
+    // 도로명주소 참고항목 "종가로 760 (장현동, 골드클래스)" 의 동 이름은 셈 · "중동-12"·"중동·1"·"중동(1)" 은 안 셈)
+    // · 가장 긴 이름이 둘 이상 동률이면 ② 포기(③으로)
     /** @type {string[]} */
     let best = [];
     for (const nm of nameSggs.keys()) {
       if (nm.length < 2 || (best.length && nm.length < best[0].length)) continue;
-      const re = new RegExp(`(^|[^가-힣A-Za-z0-9])${reEscape(nm)}(?=$|\\s)`);
+      const re = new RegExp(`(^|[^가-힣A-Za-z0-9])${reEscape(nm)}(?=$|[\\s),])`);
       if (!re.test(addr)) continue;
       best = best.length && nm.length === best[0].length ? [...best, nm] : [nm];
     }
@@ -321,6 +327,7 @@ export function sggCodesOf(bjd) {
 /**
  * 사다리 ④ 지역 접두 낱말(G7-b) — 우리 행 `region` 약칭("경기") + `gu` 의 각 토큰에서 끝의 시/군/구 를 뗀 것
  * ("화성시" → "화성" · "용인시 처인구" → "용인"·"처인"). 글자 그대로 쓴다(NFKC·공백 없음).
+ * **2글자 이상 낱말만** 낸다(나) 후속 ③, 세션591) — "중구" → "중" 을 떼면 「중앙하이츠빌리지」 가 「앙하이츠빌리지」 와 같아진다.
  * @param {{ region?: string | null; gu?: string | null }} apt
  * @returns {string[]}
  */
@@ -328,10 +335,10 @@ export function regionPrefixWords(apt) {
   /** @type {string[]} */
   const out = [];
   const r = nfkc(apt.region).replace(/\s+/g, "");
-  if (r) out.push(r);
+  if (r.length >= 2) out.push(r);
   for (const tok of nfkc(apt.gu).split(/\s+/)) {
     const w = tok.replace(/[시군구]$/, "");
-    if (w && !out.includes(w)) out.push(w);
+    if (w.length >= 2 && !out.includes(w)) out.push(w);
   }
   return out;
 }
@@ -575,14 +582,21 @@ export function withComputedComplexKeys(apts, exceptions) {
 }
 
 /**
- * 우리 이름에 차수·블록 번호가 있는가(F1-c 세 갈래 · 보완 G1) — 후보 쪽(`extractPhases(nfkc(e.name))`)과 **같은 추출**이다:
- * N차·N단지·NBL·N블록, 괄호 안 포함(공고 회차 낱말과 "(N차)"를 푼 회차는 뗀다 = `namesCompatible` 전처리).
+ * 우리 이름에 차수·블록 번호가 있는가(F1-c 세 갈래 · 보완 G1) — `namesCompatible` 과 **같은 추출**이다(세션591):
+ * N차·N단지·NBL·N블록, 괄호 안 포함 + 로마 숫자(공고 회차 낱말과 "(N차)"를 푼 회차는 뗀다 = `namesCompatible` 전처리).
+ * 후보 쪽(`extractPhases(nfkc(e.name))`)은 같은 `extractPhases` 를 쓰지만 로마 숫자는 안 센다(아래 ⚠️).
  * ⚠️ `phaseOnlyOneSide` 의 우리 쪽(N차·N단지만, 괄호 지움)과 **일부러 다르다** — 그쪽은 "우리만 차수면 버림"이라 블록까지
  * 세면 블록을 뗀 거래 이름("화성비봉호반써밋")과의 진짜 짝(B2블록·A106블록)이 버려진다. 이쪽은 "우리에게 번호가 있으니
  * 번호 있는 후보를 차수 없음 취급으로 hold·버림 하지 마라"는 판정이라 블록·괄호 번호까지 봐야 한다(1BL ↔ 1BL · (2차) ↔ 2단지).
+ * 로마 숫자(Ⅲ·III — NFKC 가 Ⅲ 를 III 로 바꿔도 `romanPhaseNumbers` 가 읽는다)도 번호로 센다 = `namesCompatible` 과 같은 추출(나) 후속 ①, 세션591).
+ * ⚠️ 후보 쪽(`judge` 의 `phases` = `extractPhases(nfkc(e.name))`)은 로마 숫자를 안 센다 — 그래서 우리 무차수 + 후보 「X Ⅲ」 는
+ * 무차수 후보로 남는다(알려진 비대칭, 미리보기 수는 세션591 보고). `phaseOnlyOneSide` 도 로마 숫자를 우리 쪽·거래 쪽 어디서도
+ * 세지 않는다 — 우리 「X 2차」 는 무차수 후보를 "우리만 차수"로 버리지만 우리 「X Ⅱ」 는 안 버린다(후속, 메인 판정 세션591).
  */
-const ourHasPhase = (/** @type {unknown} */ name) =>
-  extractPhases(stripRoundWords(nfkc(name).replace(/\(\s*(\d+\s*차)\s*\)/g, " $1"))).size > 0;
+const ourHasPhase = (/** @type {unknown} */ name) => {
+  const s = stripRoundWords(nfkc(name).replace(/\(\s*(\d+\s*차)\s*\)/g, " $1"));
+  return extractPhases(s).size > 0 || romanPhaseNumbers(s).size > 0;
+};
 
 /**
  * 연결 계획 — 판정 파일 나누기 → 단지마다 후보(rejected 쌍 빼기) → 차수 거르기·hold → 형제 hold → 사람 active(manual)

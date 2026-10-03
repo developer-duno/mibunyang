@@ -171,7 +171,7 @@ const ASCII_ROMAN_DIGITS = { I: "1", II: "2", III: "3", IV: "4", V: "5", VI: "6"
  * @param {string} name 회차 낱말을 뗀 이름
  * @returns {Set<string>}
  */
-function romanPhaseNumbers(name) {
+export function romanPhaseNumbers(name) {
   const out = romanNumbers(name);
   for (const m of name.matchAll(ASCII_ROMAN_RE)) out.add(ASCII_ROMAN_DIGITS[m[1]]);
   return out;

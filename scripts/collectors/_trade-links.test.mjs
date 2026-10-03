@@ -17,6 +17,7 @@ import {
   linkId, regionPrefixWords, stripRegionPrefix,
 } from "./_trade-links.mjs";
 import { stringSimilarity } from "./_shared.mjs";
+import { romanPhaseNumbers } from "./_match-gates.mjs";
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "__fixtures__", "trade-links");
 const APTS = JSON.parse(readFileSync(path.join(DIR, "apartments.json"), "utf8")).rows;
@@ -674,5 +675,132 @@ describe("G5 시험 빈칸 — 와일드카드 0.85~1.0 정상 짝 · 창 밖 �
     const r = planLinks([apt({ id: "a", name: "한빛마을" })], buildKeyDictionary([deal("S1", "한빛마을", "100", 2020)]), [], { now: NOW, current: cur });
     expect(r.desired.filter((l) => l.link_key === "OLDH").map((l) => [l.status, l.hold_reason])).toEqual([["hold", "phase"]]);
     expect(diffLinks(/** @type {any} */ (cur), r.desired).unchanged).toBe(1);
+  });
+});
+
+describe("나) 후속 ① 우리 이름의 로마 숫자도 번호로 셈(ourHasPhase = namesCompatible 과 같은 추출, 세션591)", () => {
+  /** @param {string} ours @param {string[]} theirs */
+  const one = (ours, theirs) => plan([apt({ id: "a", name: ours })], theirs.map((n, i) => deal(`S${i}`, n, "100", 2020)));
+  /** @param {any} r @returns {any[][]} */
+  const rows = (r) => r.desired.map((/** @type {any} */ l) => [l.link_key, l.status, l.hold_reason, l.method]);
+  it("NFKC 는 Ⅲ 를 III 로 바꾸고, romanPhaseNumbers 는 그래도 3 으로 읽는다", () => {
+    expect("넥스티엘Ⅲ".normalize("NFKC")).toBe("넥스티엘III");
+    expect([...romanPhaseNumbers("넥스티엘Ⅲ".normalize("NFKC"))]).toEqual(["3"]);
+    expect([...romanPhaseNumbers("평택 고덕국제신도시 호반써밋 III 더 트리아츠")]).toEqual(["3"]);
+  });
+  it("P1 「호반써밋 III 더 트리아츠」 ↔ 「호반써밋3차더트리아츠」(유일 후보) → active(차수 hold 아님)", () => {
+    expect(rows(one("호반써밋 III 더 트리아츠", ["호반써밋3차더트리아츠"]))).toEqual([["S0", "active", null, "jibun+name"]]);
+  });
+  // ⚠️ 알려진 비대칭(후속): 아라비아 꼴 「… 2차」 는 phaseOnlyOneSide(우리 쪽 /\d+(차|단지)/ — 로마 숫자를 안 셈)가
+  // 무차수 후보 P 를 "우리만 차수"로 버려 결과가 로마 꼴과 다르다. 이번 ① 은 ourHasPhase 만 고쳤다(메인 판정 세션591 (가)).
+  it("P1b 「한빛마을센트럴파크Ⅱ」 + {무차수, 2차} 같은 kind → 2차 버리지 않음(결과 전체) · 아라비아 꼴은 phaseOnlyOneSide 가 P 를 버려 다름(알려진 비대칭, 후속)", () => {
+    const T = ["한빛마을센트럴파크", "한빛마을센트럴파크2차"];
+    // 지번 꼴(100 일치)
+    expect(rows(one("한빛마을센트럴파크Ⅱ", T))).toEqual([["S0", "active", null, "jibun+name"], ["S1", "active", null, "jibun+name"]]);
+    expect(rows(one("한빛마을센트럴파크 2차", T))).toEqual([["S1", "active", null, "jibun+name"]]);
+    // 지번 없음 꼴(이름 경로 — 로마 꼴은 S1 이 유사도 0.82 로 0.85 미달)
+    const noLot = (/** @type {string} */ ours) => plan([apt({ id: "a", name: ours, lot_main: null })], T.map((n, i) => deal(`S${i}`, n, "100", 2020)));
+    expect(rows(noLot("한빛마을센트럴파크Ⅱ"))).toEqual([["S0", "active", null, "name"]]);
+    expect(rows(noLot("한빛마을센트럴파크 2차"))).toEqual([["S1", "active", null, "name"]]);
+  });
+  it("같은 번호 짝 — 우리 「넥스티엘 Ⅲ」 ↔ 「넥스티엘Ⅲ」 active · ↔ {「넥스티엘Ⅲ」, 「넥스티엘3차」} 둘 다 active(3차를 '섞임'으로 버리지 않음)", () => {
+    expect(rows(one("넥스티엘 Ⅲ", ["넥스티엘Ⅲ"]))).toEqual([["S0", "active", null, "jibun+name"]]);
+    expect(rows(one("넥스티엘 Ⅲ", ["넥스티엘Ⅲ", "넥스티엘3차"])).map((x) => [x[0], x[1]])).toEqual([["S0", "active"], ["S1", "active"]]);
+  });
+  it("다른 번호 — 우리 「넥스티엘 Ⅲ」 ↔ 「넥스티엘1차」 붙지 않음(namesCompatible)", () => {
+    const r = one("넥스티엘 Ⅲ", ["넥스티엘1차"]);
+    expect(r.desired).toEqual([]);
+    expect(r.dropped.some((/** @type {any} */ d) => d.key === "apt_seq:S0" && /차수·블록 다름/.test(d.why))).toBe(true);
+  });
+  it("유니코드 꼴 「의정부역 파밀리에Ⅰ」 + {무차수, 1차} → 1차도 active(옛 동작: 1차 버림)", () => {
+    expect(rows(one("의정부역 파밀리에Ⅰ", ["의정부역파밀리에", "의정부역파밀리에1차"])).map((x) => [x[0], x[1]])).toEqual([["S0", "active"], ["S1", "active"]]);
+  });
+});
+
+describe("나) 후속 ② 시험 빈칸 — 회차 낱말 떼기 · 괄호 「(N차)」 풀기 · G9 kind 범위(코드 무변경, 세션591)", () => {
+  it("P2 회차 낱말 「무순위 3차」 는 우리 차수가 아님 → 차수 후보만이면 hold(phase)", () => {
+    const r = plan([apt({ id: "a", name: "한빛마을 무순위 3차" })], [deal("S3", "한빛마을3단지", "100", 2020)]);
+    expect(r.desired.map((l) => [l.status, l.hold_reason])).toEqual([["hold", "phase"]]);
+  });
+  it("P2b 「임의공급 2차」 + {무차수, 2단지} 같은 kind → 2단지 버림", () => {
+    const r = plan([apt({ id: "a", name: "한빛마을 임의공급 2차" })], [deal("P", "한빛마을", "100", 2020), deal("S2", "한빛마을2단지", "100", 2020)]);
+    expect(r.desired.map((l) => l.link_key)).toEqual(["P"]);
+  });
+  it("P2d 「무순위(2차)」 는 회차(괄호 풀기) — 우리 차수 없음 → {무차수, 2단지} 같은 kind 면 2단지 버림", () => {
+    const r = plan([apt({ id: "a", name: "한빛마을 무순위(2차)" })], [deal("P", "한빛마을", "100", 2020), deal("S2", "한빛마을2단지", "100", 2020)]);
+    expect(r.desired.map((l) => l.link_key)).toEqual(["P"]);
+  });
+  it("P6 정확 일치가 분양권에만 → apt_seq 0.857 후보는 그대로(G9 는 같은 kind 안에서만)", () => {
+    const r = plan([apt({ id: "a", name: "에코델타시티 푸르지오 트레파크(11BL)", lot_main: null })], [
+      deal("", "에코델타시티푸르지오트레파크(11BL)", "1", null, "presale"), deal("A", "에코델타시티푸르지오센터파크", "2", 2020),
+    ]);
+    expect(r.desired.some((l) => l.link_key === "A")).toBe(true);
+  });
+});
+
+describe("나) 후속 ③ 사다리 ④ 지역 접두는 2글자 이상 낱말만(세션591)", () => {
+  /** @param {string} tradeName */
+  const dictOne = (tradeName) => buildKeyDictionary(/** @type {any} */ ([{ trade_type: "sale", sgg_cd: "41000", umd_cd: "20000", umd_nm: "다른동", apt_seq: "C", apt_name: tradeName, jibun: "7", jibun_main: "7", jibun_sub: "0", build_year: 2020 }]));
+  const ours = apt({ id: "a", name: "중앙하이츠빌리지", gu: "중구", region: "서울", bjd_code: "4100099999", address: "x" });
+  it("regionPrefixWords — 「중구」 의 「중」 은 안 냄 · 기존 꼴 그대로", () => {
+    expect(regionPrefixWords({ region: "서울", gu: "중구" })).toEqual(["서울"]);
+    expect(regionPrefixWords({ region: "경기", gu: "용인시 처인구" })).toEqual(["경기", "용인", "처인"]);
+  });
+  it("P16 우리 「중앙하이츠빌리지」(서울 중구) ↔ 거래 「앙하이츠빌리지」 → 안 붙음", () => {
+    expect(planLinks([ours], dictOne("앙하이츠빌리지"), [], { now: NOW }).desired).toEqual([]);
+  });
+  it("P15 「중앙하이츠빌리지」 정확 일치는 붙고 접두 표시 없음", () => {
+    const r = planLinks([ours], dictOne("중앙하이츠빌리지"), [], { now: NOW });
+    expect(r.desired.map((l) => l.link_key)).toEqual(["C"]);
+    expect(r.prefixStripped.size).toBe(0);
+  });
+});
+
+describe("나) 후속 ④(검사 뒤 되돌림) G9 는 사람이 rejected 한 정확 일치 후보도 증거로 센다(세션591)", () => {
+  // 근거(세션591 검사관 재현): rejected 한 정확 일치 E 를 증거에서 빼면, 같은 묶음 a·b 중 a 만 E 를 rejected 했을 때
+  // a 에 「…센터파크」(0.857)가 active 로 붙고 묶음 전파로 b 에도 퍼진다 — G9 가 막으려던 트레파크↔센터파크 틀린 짝 그 자체.
+  // E 가 우리 단지가 아니라고 덜 닮은 O 가 우리 단지가 되지는 않는다. O 가 정말 우리 것이면 사람이 manual active 로 넣는다.
+  // (hold 로 내는 길은 DB CHECK 가 hold_reason 을 sibling/phase 로만 받아 이번엔 못 한다 — 마이그 20261004000000:40)
+  const ours = apt({ id: "a", name: "에코델타시티 푸르지오 트레파크(11BL)", lot_main: null });
+  const deals = [deal("E", "에코델타시티푸르지오트레파크(11BL)", "1", 2020), deal("O", "에코델타시티푸르지오센터파크", "2", 2020)];
+  it("P8 정확 일치 E 를 rejected → E 는 rejected 줄로 남고, 덜 닮은 O(0.857)는 여전히 G9 로 버려져 붙지 않는다", () => {
+    const r = plan([ours], deals, [{ apartment_id: "a", link_kind: "apt_seq", link_key: "E", status: "rejected" }]);
+    expect(r.desired.map((l) => [l.link_key, l.status, l.method])).toEqual([["E", "rejected", "name"]]);
+    expect(r.dropped.some((d) => d.key === "apt_seq:O" && /정확 일치 후보 있음/.test(d.why))).toBe(true);
+  });
+  it("rejected 가 없으면 G9 그대로 — E 만 active, O 는 버림", () => {
+    const r = plan([ours], deals);
+    expect(r.desired.map((l) => [l.link_key, l.status])).toEqual([["E", "active"]]);
+    expect(r.dropped.some((d) => d.key === "apt_seq:O" && /정확 일치 후보 있음/.test(d.why))).toBe(true);
+  });
+});
+
+describe("나) 후속 ⑤ 주소 동 이름 뒤 닫는 괄호도 경계(세션591)", () => {
+  /** @param {string[]} names */
+  const dictWith = (names) => buildKeyDictionary(/** @type {any} */ (names.map((n, i) => ({ trade_type: "jeonse", sgg_cd: "41000", umd_nm: n, apt_seq: `J${i}`, apt_name: "x", jibun: "1", jibun_main: "1", jibun_sub: "0" }))));
+  it("「인천광역시 계양구 주부토로 356(작전동)」 → 작전동(address)", () => {
+    expect(resolveDongName(apt({ id: "a", name: "x", address: "인천광역시 계양구 주부토로 356(작전동)", dong: "행정1동" }), dictWith(["작전동", "계산동"])))
+      .toEqual({ name: "작전동", via: "address", sggs: ["41000"] });
+  });
+  it("「…A7블록(전남광주통합특별시 북구 월출동) 」(끝 공백) → 월출동(address)", () => {
+    expect(resolveDongName(apt({ id: "a", name: "x", address: "광주연구개발특구 첨단3지구 A7블록(전남광주통합특별시 북구 월출동) ", dong: "행정1동" }), dictWith(["월출동", "오룡동"])))
+      .toEqual({ name: "월출동", via: "address", sggs: ["41000"] });
+  });
+  it("괄호 뒤 경계가 다른 함정을 열지 않는다 — 「(중동로)」 안의 중동은 안 셈", () => {
+    expect(resolveDongName(apt({ id: "a", name: "x", address: "경기 부천시 길주로 1(중동로)", dong: "행정1동" }), dictWith(["중동"]))).toBe(null);
+  });
+  it("쉼표도 경계 — 도로명주소 참고항목 「종가로 760 (장현동, 골드클래스)」 → 장현동(운영 ah-2026910075 꼴)", () => {
+    expect(resolveDongName(apt({ id: "a", name: "x", address: "울산광역시 중구 종가로 760 (장현동, 골드클래스)", dong: "행정1동" }), dictWith(["장현동", "약사동"])))
+      .toEqual({ name: "장현동", via: "address", sggs: ["41000"] });
+  });
+  it("허용은 공백·끝·)·, 만 — 「중동-12」·「중동·1」·「중동(1)」 은 안 읽힘", () => {
+    for (const address of ["경기 부천시 중동-12", "경기 부천시 중동·1", "경기 부천시 중동(1)"]) {
+      expect(resolveDongName(apt({ id: "a", name: "x", address, dong: "행정1동" }), dictWith(["중동"]))).toBe(null);
+    }
+  });
+  it("괄호 경계 추가로 생긴 동률 — 「인천 계양구 계산동 1(작전동)」 + {계산동, 작전동} → ② 포기 → ③ dong 도 아니면 null(지금 동작 고정, 세션591 검사 🟡)", () => {
+    expect(resolveDongName(apt({ id: "a", name: "x", address: "인천 계양구 계산동 1(작전동)", dong: "행정1동" }), dictWith(["계산동", "작전동"]))).toBe(null);
+    expect(resolveDongName(apt({ id: "a", name: "x", address: "인천 계양구 계산동 1(작전동)", dong: "작전동" }), dictWith(["계산동", "작전동"])))
+      .toEqual({ name: "작전동", via: "dong", sggs: ["41000"] });
   });
 });
