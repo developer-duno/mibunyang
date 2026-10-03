@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildCardChips, splitCardChips, CHIP_ORDER, GOOD_CHIP_MAX, BAD_CHIP_MAX } from "./cardChips";
 import type { CardChip } from "./cardChips";
 import { NOXIOUS_PENALTY } from "@/constants/brands";
+import { fmtMoveIn } from "@/lib/format";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -148,6 +149,32 @@ describe("buildCardChips — 상태(status) 층", () => {
     const chips = build({ completion: "202401", unsold: 30, unsoldRate: null });
     expect(find(chips, "moveInDone")).toBeUndefined();
     expect(find(chips, "moveInLate")).toBeDefined();
+  });
+
+  it("준공이 지났는데 unsold 를 모르면(null) 입주완료·미입주 둘 다 단정하지 않고 날짜만 보여준다 (백로그 A-10 2차 E1, 세션573)", () => {
+    // unsold 가 null 인데 ?? 0 으로 보면 "입주완료"로 둔갑한다(라이브 24곳 실사고).
+    const chips = build({ completion: "202401", unsold: null });
+    expect(find(chips, "moveInDone")).toBeUndefined();
+    expect(find(chips, "moveInLate")).toBeUndefined();
+    const unknown = find(chips, "moveInUnknown");
+    expect(unknown).toBeDefined();
+    expect(unknown?.text).toBe(fmtMoveIn("202401", undefined));
+    expect(unknown?.text).not.toContain("입주완료");
+    expect(unknown?.text).not.toContain("미입주");
+    expect(unknown?.tone).toBe("plain");
+    expect(unknown?.layer).toBe("status");
+  });
+
+  it("unsold 가 undefined(필드 자체 없음)여도 같은 미상 처리 — 0 으로 보지 않는다", () => {
+    const chips = build({ completion: "202401" });
+    expect(find(chips, "moveInUnknown")).toBeDefined();
+    expect(find(chips, "moveInDone")).toBeUndefined();
+  });
+
+  it("미분양 미상이어도 준공이 아직 안 지났으면 입주예정 그대로(변경 없음)", () => {
+    const chips = build({ completion: "209912", unsold: null });
+    expect(find(chips, "moveInSoon")).toBeDefined();
+    expect(find(chips, "moveInUnknown")).toBeUndefined();
   });
 
   // ⚠️ 뮤테이션 대상: `completionChip(fmtMoveIn(...))` 배선을 원값으로 되돌리면 red 여야 한다.

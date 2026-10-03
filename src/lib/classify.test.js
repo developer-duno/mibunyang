@@ -47,6 +47,34 @@ describe("classify 상수 무결성", () => {
     expect(classifyMoveIn(apt)).toBe("입주완료");
   });
 
+  // 4경우 전수 + null/undefined 미상 처리 (백로그 A-10 2차 E1, 세션573 — cardChips.ts 와 같은 판정)
+  describe("4경우 전수 — 준공 전 / 완료 / 미입주 / 미상(null)", () => {
+    it("준공 전(완료 이전 연월) → 입주예정", () => {
+      const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "209912", unsold: null });
+      expect(classifyMoveIn(apt)).toBe("입주예정");
+    });
+
+    it("입주월 지남 + unsold>0 → 미입주", () => {
+      const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "202001", unsold: 12 });
+      expect(classifyMoveIn(apt)).toBe("미입주");
+    });
+
+    it("입주월 지남 + unsold=0 → 입주완료", () => {
+      const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "202001", unsold: 0 });
+      expect(classifyMoveIn(apt)).toBe("입주완료");
+    });
+
+    it("입주월 지남 + unsold=null(모름) → null — '입주완료'로 단정하지 않는다", () => {
+      const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "202001", unsold: null });
+      expect(classifyMoveIn(apt)).toBeNull();
+    });
+
+    it("입주월 지남 + unsold=undefined(필드 자체 없음) → 같은 미상 처리, null", () => {
+      const apt = /** @type {import('@/types/scoring').Apt} */ ({ completion: "202001" });
+      expect(classifyMoveIn(apt)).toBeNull();
+    });
+  });
+
   // classifyTier 반환값이 항상 TIER_VALUES 중 하나
   it("classifyTier 반환값은 TIER_VALUES 중 하나", () => {
     const validSet = new Set(TIER_VALUES);

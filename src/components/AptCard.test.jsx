@@ -130,7 +130,10 @@ describe("AptCard", () => {
 
   // 입주 알림
   it("completion이 있으면 입주 알림 표시", () => {
-    render(<AptCard {...makeProps()} />);
+    // 미분양 모름이면 이제 날짜만 뜬다 — E1. 여기서는 완료 상태 글자를 확인하려는
+    // 의도이므로 unsold 를 명시해 둔다.
+    const apt = /** @type {any} */ (makeApt({ unsold: 0 }));
+    render(<AptCard {...makeProps({ apt })} />);
     expect(screen.getByText(/입주/)).toBeInTheDocument();
   });
 
