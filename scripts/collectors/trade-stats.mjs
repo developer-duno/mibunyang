@@ -13,7 +13,127 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown, REGION_MAP } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown, REGION_MAP, selectAll } from "./_shared.mjs";
+// 시세 비교 범위 좁히기 나(세션590) — 새 칸 12개(cmp_* · complex_* · dong_fact). 옛 칸 계산은 그대로 두고 재료를 읽어 넘기기만 한다.
+import { fetchTradeDealsWindow } from "./_trade-deals.mjs";
+import { computeScopeStats, indexDeals, scopeColsEmpty } from "./_trade-scope.mjs";
+import { existsSync, writeFileSync } from "node:fs";
+
+// ── 세션590 새 칸 배선 도우미(보완 F3·F4·F11 — 시험이 직접 부른다) ──────────────
+/** 새 칸 13개(trade_stats `cmp_*`·`complex_*`·`dong_fact`). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
+export const SCOPE_COLS = Object.freeze([
+  "cmp_scope", "cmp_fair_price", "cmp_n", "cmp_months", "cmp_area_mode", "cmp_src",
+  "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
+]);
+/** "모든 값 null 이면 건너뜀"이 보는 옛 칸 여섯(결과 행 이름). */
+export const OLD_STAT_KEYS = Object.freeze(["nearby_median", "jeonse_rate", "pir", "psr", "recent_trades_6m", "cancel_ratio_6m"]);
+
+/**
+ * 이번 회차에 새 칸을 건너뛸 이유(없으면 null). 조회 실패 · 거래 0행(F4 — 원문이 비면 새 칸을 none·빈 표로 덮지 않는다) · 연결 0.
+ * @param {{ rows: unknown[] } | null} deals `fetchTradeDealsWindow` 결과(실패면 null)
+ * @param {unknown[] | null} links 연결 표 active(실패면 null)
+ * @returns {string | null}
+ */
+export function scopeSkipReasonOf(deals, links) {
+  if (deals == null) return "trade_deals 조회 실패";
+  if (deals.rows.length === 0) return "deals_0";
+  if (links == null) return "연결 표 조회 실패";
+  if (links.length === 0) return "연결 표 active 0줄";
+  return null;
+}
+
+/**
+ * 이번 회차 기록의 경고 마커(아침 브리핑 `scripts/monitor-briefing.mjs` WARN_STEPS_MARKER 가 읽는다) —
+ * 건너뜀이면 scope_skipped, 완성 batch 없는 열쇠가 있으면 scope_dropped_keys=N(F4).
+ * @param {string | null} skipReason @param {number} droppedKeys
+ * @returns {string | null}
+ */
+export function scopeWarnMarker(skipReason, droppedKeys) {
+  /** @type {string[]} */
+  const steps = [];
+  if (skipReason) steps.push("scope_skipped");
+  else if (droppedKeys > 0) steps.push(`scope_dropped_keys=${droppedKeys}`);
+  return steps.length ? `WARN_STEPS: ${steps.join(",")}` : null;
+}
+
+/**
+ * 단지 하나의 새 칸 — 건너뛰는 회차면 **계산하지 않고** null(행에 새 칸을 넣지 않는다 → upsert 가 지난 값을 둔다).
+ * @template T
+ * @param {string | null} skipReason
+ * @param {() => T} compute
+ * @returns {T | null}
+ */
+export function scopeForApt(skipReason, compute) {
+  return skipReason ? null : compute();
+}
+
+/**
+ * "모든 값 null 이면 건너뜀"(옛 조건)에 새 칸 빈칸을 AND 로 덧붙인 판정.
+ * @param {Record<string, unknown>} oldVals 옛 여섯 값
+ * @param {Parameters<typeof scopeColsEmpty>[0]} scopeCols
+ */
+export function skipStatRow(oldVals, scopeCols) {
+  return Object.values(oldVals).every((v) => v == null) && scopeColsEmpty(scopeCols);
+}
+
+/**
+ * 결과 행을 두 줄기로 가른다(보완 F3) — 옛 칸이 하나라도 있는 행은 지금처럼 전부 · 옛 칸이 전부 null 인데 새 칸이 있는 행은
+ * `{apartment_id, 새 칸 13, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
+ * PostgREST 일괄 upsert 는 한 배치 안 키가 같아야 하므로 두 줄기를 한 배열에 섞지 않는다.
+ * @param {Array<Record<string, any>>} results
+ * @returns {{ full: Array<Record<string, any>>, scopeOnly: Array<Record<string, any>> }}
+ */
+export function splitUpsertRows(results) {
+  /** @type {Array<Record<string, any>>} */
+  const full = [];
+  /** @type {Array<Record<string, any>>} */
+  const scopeOnly = [];
+  for (const { _medianSource, ...row } of results) {
+    if (OLD_STAT_KEYS.some((k) => row[k] != null)) { full.push(row); continue; }
+    /** @type {Record<string, any>} */
+    const o = { apartment_id: row.apartment_id };
+    for (const k of SCOPE_COLS) if (k in row) o[k] = row[k];
+    o.updated_at = row.updated_at;
+    scopeOnly.push(o);
+  }
+  return { full, scopeOnly };
+}
+
+/**
+ * trade_stats upsert — 두 줄기를 **따로** 배치 500 으로(배치 실패면 행마다 다시). 돌아온 오류로 성공 수를 센다.
+ * @param {any} sb
+ * @param {Array<Record<string, any>>} results
+ * @param {{ isInterrupted?: () => boolean, batchSize?: number }} [opts]
+ * @returns {Promise<number>} upsert 한 행 수
+ */
+export async function upsertTradeStats(sb, results, opts = {}) {
+  const isInterrupted = opts.isInterrupted ?? (() => false);
+  const BATCH = opts.batchSize ?? 500;
+  const { full, scopeOnly } = splitUpsertRows(results);
+  let upserted = 0;
+  streams: for (const stream of [full, scopeOnly]) {
+    for (let i = 0; i < stream.length; i += BATCH) {
+      if (isInterrupted()) break streams;  // 세션 344: graceful shutdown
+      const batch = stream.slice(i, i + BATCH);
+      const { error } = await sb
+        .from("trade_stats")
+        .upsert(batch, { onConflict: "apartment_id", ignoreDuplicates: false });
+      if (error) {
+        logError("upsert", `배치 ${i}~${i + batch.length}: ${error.message}`);
+        // 개별 재시도
+        for (const row of batch) {
+          const { error: e2 } = await sb
+            .from("trade_stats")
+            .upsert([row], { onConflict: "apartment_id", ignoreDuplicates: false });
+          if (!e2) upserted++;
+        }
+      } else {
+        upserted += batch.length;
+      }
+    }
+  }
+  return upserted;
+}
 
 loadEnv();
 
@@ -212,6 +332,11 @@ export function buildLatestPriceMap(rawPrices) {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  // 새 칸 검수 파일(세션590 — 메인 운영 반영 재료). 미리보기에서만, 있는 파일은 덮지 않는다(flag wx).
+  const outPath = process.argv.find((a) => a.startsWith("--out="))?.slice("--out=".length) ?? null;
+  if (outPath != null && !dryRun) throw new Error("--out 은 --dry-run 과 함께만 줍니다(검수 파일은 미리보기에서만)");
+  // DB 조회 전에 — 끝에서 wx 로 실패하면 전량 조회를 버리게 된다(보완 F12)
+  if (outPath != null && existsSync(outPath)) throw new Error(`--out 파일이 이미 있습니다: ${outPath} — 새 이름으로`);
   const cutoff12m = monthsAgo(12);
   const cutoff6m = monthsAgo(6);
 
@@ -222,8 +347,8 @@ async function main() {
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
   const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
-  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades] = await Promise.all([
-    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate", {}, sbMibunyang),
+  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades, scopeDeals, scopeLinks] = await Promise.all([
+    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate,completion,bjd_code", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at,house_type", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
@@ -262,7 +387,26 @@ async function main() {
       logError("load", `cancelledTrades 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
       return [];
     }),
+    // 세션590 새 칸 재료 — 실패하면 null(새 칸만 건너뛰고 옛 칸은 그대로, 아래 scopeSkipReason)
+    fetchTradeDealsWindow(sbMibunyang, { fromMonth: cutoff12mYM, cols: "trade_type,sgg_cd,umd_cd,umd_nm,jibun,apt_seq,apt_name,area,price,build_year,contract_type,cancel_date,deal_month" })
+      .catch(/** @param {any} e */ (e) => { logError("load", `trade_deals 조회 실패 — 새 칸 건너뜀: ${e?.message ?? e}`); return null; }),
+    selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key").eq("status", "active"), sbMibunyang, "id")
+      .catch(/** @param {any} e */ (e) => { logError("load", `연결 표 조회 실패 — 새 칸 건너뜀: ${e?.message ?? e}`); return null; }),
   ]);
+  /** @type {string | null} 새 칸을 이번 회차에 건너뛰는 이유(있으면 새 칸을 넣지 않는다 — 지난 값을 null 로 덮지 않게) */
+  const scopeSkipReason = scopeSkipReasonOf(scopeDeals, scopeLinks);
+  const scopeDroppedKeys = scopeDeals?.droppedKeys.length ?? 0;
+  if (!scopeSkipReason && scopeDroppedKeys > 0) logError("load", `trade_deals 완성 batch 없는 열쇠 ${scopeDroppedKeys}개 — 그 열쇠의 거래는 이번 새 칸 계산에서 빠진다(WARN_STEPS: scope_dropped_keys) · 예: ${scopeDeals?.droppedKeys.slice(0, 5).join(", ")}`);
+  /** @type {Map<string, Array<{ link_kind: "apt_seq" | "presale", link_key: string }>>} */
+  const scopeLinksByApt = new Map();
+  for (const l of /** @type {any[]} */ (scopeLinks ?? [])) {
+    const list = scopeLinksByApt.get(l.apartment_id);
+    if (list) list.push(l); else scopeLinksByApt.set(l.apartment_id, [l]);
+  }
+  const scopeIndex = indexDeals(scopeDeals?.rows ?? []);
+  const scopeNow = new Date();
+  if (scopeSkipReason) log("load", `SCOPE_SKIPPED ${scopeSkipReason} — 이번 회차는 새 칸(cmp_* 등)을 넣지 않는다`);
+  else log("load", `새 칸 재료: trade_deals ${scopeDeals?.total ?? 0}행 중 완성 batch ${scopeDeals?.rows.length ?? 0}행(완성 없는 열쇠 ${scopeDeals?.droppedKeys.length ?? 0}개 제외) · 연결 active ${scopeLinks?.length ?? 0}줄`);
   // rawPrices에서 아파트별 대표 가격·면적 매핑 (VIEW latest_prices 규칙 미러 — buildLatestPriceMap)
   const latestPriceMap = buildLatestPriceMap(rawPrices);
   /** @type {Array<Record<string, any>>} */
@@ -346,6 +490,8 @@ async function main() {
   const results = [];
   const dsrUpdates = [];
   let processed = 0;
+  /** @type {Map<string, { presale_n_if_moved_in: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
+  const scopeDiagById = new Map();
 
   for (const apt of apartments) {
     const key = statsKey(apt.region, apt.gu);
@@ -565,15 +711,12 @@ async function main() {
       nearbyBuildYear = Math.round(buildYears.reduce((s, y) => s + y, 0) / buildYears.length);
     }
 
-    // 모든 값이 null이면 스킵
-    if (
-      nearbyMedian == null &&
-      jeonseRate == null &&
-      pir == null &&
-      psr == null &&
-      recentTrades6m == null &&
-      cancelRatio6m == null
-    ) {
+    // 세션590 새 칸 — 건너뛰는 회차면 null(행에 새 칸을 아예 넣지 않는다 → upsert 가 지난 값을 그대로 둔다)
+    const scope = scopeForApt(scopeSkipReason, () =>
+      computeScopeStats({ id: apt.id, area: aptArea, completion: apt.completion, bjd_code: apt.bjd_code }, { links: scopeLinksByApt.get(apt.id) ?? [], ...scopeIndex, now: scopeNow }));
+
+    // 모든 값이 null이면 스킵(세션590: 새 칸도 전부 비었을 때만 — skipStatRow)
+    if (skipStatRow({ nearbyMedian, jeonseRate, pir, psr, recentTrades6m, cancelRatio6m }, scope?.cols)) {
       continue;
     }
 
@@ -594,7 +737,9 @@ async function main() {
       nearby_build_year: nearbyBuildYear,
       cancel_ratio_6m: cancelRatio6m,
       updated_at: new Date().toISOString(),
+      ...(scope ? scope.cols : {}),
     });
+    if (scope) scopeDiagById.set(apt.id, scope.diag);
 
     if (dsr40pass != null) {
       dsrUpdates.push({ id: apt.id, dsr40pass });
@@ -627,6 +772,43 @@ async function main() {
   log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + (r.cancel_ratio_6m ?? 0), 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
   log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass).length}통과 / ${dsrUpdates.filter(d => !d.dsr40pass).length}미통과 (총 ${dsrUpdates.length}건)`);
 
+  // 세션590 새 칸 요약(범위별 수 · ㎡당 · 같은 단지 전세가율 · 100% 초과 · 동네 사실 · 입주 후 분양권 진단)
+  if (scopeSkipReason) {
+    log("summary", `SCOPE_SKIPPED ${scopeSkipReason} — 새 칸 0건(지난 값 유지)`);
+  } else {
+    /** @type {Array<Record<string, any>>} */
+    const sc = results.filter((r) => r.cmp_scope !== undefined);
+    const t1s = sc.filter((r) => r.cmp_scope === "complex" && r.cmp_src === "sale").length;
+    const t1p = sc.filter((r) => r.cmp_scope === "complex" && r.cmp_src === "presale").length;
+    const t2 = sc.filter((r) => r.cmp_scope === "dong_peer").length;
+    const t3 = sc.filter((r) => r.cmp_scope === "none").length;
+    const perM2 = sc.filter((r) => r.cmp_area_mode === "per_m2").length;
+    const jr = sc.filter((r) => r.complex_jeonse_rate != null);
+    const jrOver = jr.filter((r) => r.complex_jeonse_rate > 100);
+    const df = sc.filter((r) => r.dong_fact != null).length;
+    const movedInPresale = [...scopeDiagById.entries()].filter(([id, d]) => {
+      const row = sc.find((r) => r.apartment_id === id);
+      return d.moved_in && (row?.complex_sale_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
+    }).length;
+    log("summary", `새 칸 범위: T1 매매 ${t1s} · T1 분양권 ${t1p} · T2 동네 또래 ${t2} · T3 없음 ${t3} (㎡당 환산 ${perM2})`);
+    log("summary", `같은 단지 전세가율 ${jr.length}곳 · 100% 초과 ${jrOver.length}곳 · 동네 사실 ${df}곳`);
+    log("summary", `진단: 입주 후 매매<3·분양권≥3 단지 ${movedInPresale}곳(판정엔 안 씀 — R2)`);
+    if (jrOver.length) logError("summary", `같은 단지 전세가율 100% 초과 ${jrOver.length}곳 — 예: ${jrOver.slice(0, 5).map((r) => `${r.apartment_id} ${r.complex_jeonse_rate}%`).join(", ")}`);
+  }
+  if (outPath != null) {
+    const aptById = new Map(apartments.map((a) => [a.id, a]));
+    const rows = results.map((r) => {
+      const a = aptById.get(r.apartment_id);
+      /** @type {Record<string, any>} */
+      const o = { id: r.apartment_id, name: a?.name ?? null, region: a?.region ?? null, gu: a?.gu ?? null, completion: a?.completion ?? null, area: a?.area ?? null };
+      for (const k of SCOPE_COLS) o[k] = /** @type {Record<string, any>} */ (r)[k] ?? null;
+      o.diag = scopeDiagById.get(r.apartment_id) ?? null;
+      return o;
+    });
+    writeFileSync(outPath, JSON.stringify({ takenAt: new Date().toISOString(), scopeSkipReason, rows }, null, 1) + "\n", { flag: "wx" });
+    log("dry-run", `새 칸 검수 파일 저장: ${outPath} (${rows.length}곳)`);
+  }
+
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
 
@@ -654,29 +836,8 @@ async function main() {
     return;
   }
 
-  const BATCH = 500;
-  let upserted = 0;
-
-  for (let i = 0; i < results.length; i += BATCH) {
-    if (isInterrupted()) break;  // 세션 344: graceful shutdown
-    const batch = results.slice(i, i + BATCH).map(({ _medianSource, ...row }) => row);
-    const { error } = await sbMibunyang
-      .from("trade_stats")
-      .upsert(batch, { onConflict: "apartment_id", ignoreDuplicates: false });
-
-    if (error) {
-      logError("upsert", `배치 ${i}~${i + batch.length}: ${error.message}`);
-      // 개별 재시도
-      for (const row of batch) {
-        const { error: e2 } = await sbMibunyang
-          .from("trade_stats")
-          .upsert([row], { onConflict: "apartment_id", ignoreDuplicates: false });
-        if (!e2) upserted++;
-      }
-    } else {
-      upserted += batch.length;
-    }
-  }
+  // 세션590 보완 F3: 옛 칸이 있는 행과 옛 칸이 전부 빈(새 칸만 있는) 행을 두 줄기로 따로 upsert — upsertTradeStats
+  const upserted = await upsertTradeStats(sbMibunyang, results, { isInterrupted });
 
   log("done", `trade_stats 테이블 ${upserted}/${results.length}건 upsert 완료`);
 
@@ -693,7 +854,7 @@ async function main() {
     log("done", `apartments.dsr40pass ${dsrOk}/${dsrUpdates.length}건 업데이트 완료`);
   }
 
-  await recordCollectorRun("trade-stats", { ok: upserted, fail: results.length - upserted });
+  await recordCollectorRun("trade-stats", { ok: upserted, fail: results.length - upserted, errorMessage: scopeWarnMarker(scopeSkipReason, scopeDroppedKeys) });
 }
 
 const argv1 = process.argv[1];

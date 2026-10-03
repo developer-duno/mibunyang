@@ -14,6 +14,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   buildDealRow, isOwnershipRight, dealKey, planReplace, getTagAny, saveDealsForKey, isMissingTable, DEAL_DROP_RATIO,
+  keepNewestCompleteBatches, fetchTradeDealsWindow,
 } from "./_trade-deals.mjs";
 import { fakeSb, fakeClock, batchCounts } from "./__fixtures__/trade-deals/fake-sb.mjs";
 
@@ -390,5 +391,138 @@ describe("saveDealsForKey — 교체 방식", () => {
       expect(sb.state.rows.length, `lag=${lag} ${JSON.stringify(counts)}`).toBeGreaterThan(0);
       expect(complete.length, `lag=${lag} ${JSON.stringify(counts)}`).toBeGreaterThanOrEqual(1);
     }
+  });
+});
+
+// ── 읽는 쪽: 열쇠마다 가장 새 완성 batch 만 (시세 비교 범위 좁히기 나, 세션590) ──
+describe("keepNewestCompleteBatches — 반쪽 batch 는 읽지 않는다", () => {
+  /**
+   * @param {string} sgg @param {string} month @param {string} type @param {string} batch
+   * @param {number} n 실제로 넣을 행 수 @param {number} batchRows 완성 표시 @param {string} at
+   */
+  const mk = (sgg, month, type, batch, n, batchRows, at) =>
+    Array.from({ length: n }, (_, i) => ({ sgg_cd: sgg, deal_month: month, trade_type: type, batch_id: batch, batch_rows: batchRows, recorded_at: at, i }));
+  const ids = (/** @type {any[]} */ rows) => [...new Set(rows.map((r) => r.batch_id))].sort();
+
+  it("완성 하나 → 그대로", () => {
+    const res = keepNewestCompleteBatches(mk("41591", "202608", "sale", "A", 3, 3, "2026-10-01T00:00:00Z"));
+    expect(res.rows.length).toBe(3);
+    expect(res.droppedKeys).toEqual([]);
+  });
+
+  it("완성 둘 → recorded_at 이 늦은 것만", () => {
+    const rows = [
+      ...mk("41591", "202608", "sale", "OLD", 4, 4, "2026-09-06T05:30:00Z"),
+      ...mk("41591", "202608", "sale", "NEW", 5, 5, "2026-10-03T05:30:00Z"),
+    ];
+    const res = keepNewestCompleteBatches(rows);
+    expect(ids(res.rows)).toEqual(["NEW"]);
+    expect(res.rows.length).toBe(5);
+  });
+
+  it("미완성만(행 2 ≠ batch_rows 5) → 그 열쇠는 통째로 빠지고 droppedKeys 에 남는다", () => {
+    const res = keepNewestCompleteBatches(mk("41591", "202608", "jeonse", "HALF", 2, 5, "2026-10-03T05:30:00Z"));
+    expect(res.rows).toEqual([]);
+    expect(res.droppedKeys).toEqual(["41591|202608|jeonse"]);
+  });
+
+  it("완성(옛) + 미완성(새) → 완성만 — 반쪽 batch 가 더 새로워도 읽지 않는다", () => {
+    const rows = [
+      ...mk("41591", "202608", "sale", "DONE", 3, 3, "2026-09-06T05:30:00Z"),
+      ...mk("41591", "202608", "sale", "HALF", 4, 6, "2026-10-03T05:30:00Z"),
+    ];
+    const res = keepNewestCompleteBatches(rows);
+    expect(ids(res.rows)).toEqual(["DONE"]);
+    expect(res.droppedKeys).toEqual([]);
+  });
+
+  it("행 수가 batch_rows 보다 많은 batch(재시도로 넘침)도 미완성", () => {
+    const res = keepNewestCompleteBatches(mk("41591", "202608", "sale", "OVER", 6, 5, "2026-10-03T05:30:00Z"));
+    expect(res.rows).toEqual([]);
+  });
+
+  it("열쇠 셋 섞임 — 열쇠마다 따로 고른다", () => {
+    const rows = [
+      ...mk("41591", "202608", "sale", "A1", 2, 2, "2026-09-06T00:00:00Z"),
+      ...mk("41591", "202608", "sale", "A2", 3, 3, "2026-10-03T00:00:00Z"),
+      ...mk("41591", "202608", "jeonse", "B1", 2, 2, "2026-10-03T00:00:00Z"),
+      ...mk("41593", "202608", "sale", "C1", 1, 3, "2026-10-03T00:00:00Z"),
+      ...mk("41591", "202607", "sale", "D1", 2, 2, "2026-10-03T00:00:00Z"),
+    ];
+    const res = keepNewestCompleteBatches(rows);
+    expect(ids(res.rows)).toEqual(["A2", "B1", "D1"]);
+    expect(res.rows.length).toBe(3 + 2 + 2);
+    expect(res.droppedKeys).toEqual(["41593|202608|sale"]);
+  });
+
+  it("insert 묶음마다 recorded_at 이 달라도 batch 단위로 센다(최댓값 = batch 시각)", () => {
+    const rows = [
+      ...mk("41591", "202608", "sale", "X", 2, 4, "2026-10-03T05:30:00Z"),
+      ...mk("41591", "202608", "sale", "X", 2, 4, "2026-10-03T05:30:02Z"),
+      ...mk("41591", "202608", "sale", "Y", 3, 3, "2026-10-03T05:30:01Z"),
+    ];
+    expect(ids(keepNewestCompleteBatches(rows).rows)).toEqual(["X"]);
+  });
+});
+
+describe("fetchTradeDealsWindow — 고유 키 커서 · 완성 batch 만 · 실패는 던진다", () => {
+  /** 가짜 supabase: select 칸·필터·커서를 기록하고 id 오름차순으로 pageSize 씩 준다 */
+  const fakeWindowSb = (/** @type {any[]} */ table, /** @type {{ error?: any }} */ opt = {}) => {
+    const state = { selects: /** @type {string[]} */ ([]), gte: /** @type {any[]} */ ([]), calls: 0 };
+    return {
+      state,
+      from(/** @type {string} */ t) {
+        expect(t).toBe("trade_deals");
+        /** @type {any} */
+        const q = { _gt: null, _lim: 1000, _gte: null };
+        q.select = (/** @type {string} */ s) => { state.selects.push(s); return q; };
+        q.gte = (/** @type {string} */ c, /** @type {any} */ v) => { q._gte = [c, v]; state.gte.push([c, v]); return q; };
+        q.order = (/** @type {string} */ c, /** @type {any} */ o) => { expect(c).toBe("id"); expect(o.ascending).toBe(true); return q; };
+        q.limit = (/** @type {number} */ n) => { q._lim = n; return q; };
+        q.gt = (/** @type {string} */ c, /** @type {any} */ v) => { expect(c).toBe("id"); q._gt = v; return q; };
+        q.then = (/** @type {any} */ res, /** @type {any} */ rej) => {
+          state.calls++;
+          if (opt.error) return Promise.resolve({ data: null, error: opt.error }).then(res, rej);
+          const data = table
+            .filter((r) => r.deal_month >= q._gte[1] && (q._gt == null || r.id > q._gt))
+            .sort((a, b) => a.id - b.id)
+            .slice(0, q._lim)
+            .map((r) => ({ ...r }));
+          return Promise.resolve({ data, error: null }).then(res, rej);
+        };
+        return q;
+      },
+    };
+  };
+  const row = (/** @type {number} */ id, /** @type {string} */ month, /** @type {string} */ batch, /** @type {number} */ br) =>
+    ({ id, sgg_cd: "41591", deal_month: month, trade_type: "sale", batch_id: batch, batch_rows: br, recorded_at: "2026-10-03T05:30:00Z", price: id });
+
+  it("페이지 경계를 넘어 전량 받고(커서) 반쪽 batch 는 뺀다 · 기본 칸을 덧붙인다", async () => {
+    const table = [
+      ...Array.from({ length: 5 }, (_, i) => row(i + 1, "202608", "OK", 5)),
+      ...Array.from({ length: 2 }, (_, i) => row(i + 10, "202607", "HALF", 4)),
+      row(20, "202501", "OLDMONTH", 1),
+    ];
+    const sb = fakeWindowSb(table);
+    const res = await fetchTradeDealsWindow(sb, { fromMonth: "202510", cols: "price,apt_seq", pageSize: 3 });
+    expect(res.total).toBe(7);
+    expect(res.rows.map((r) => r.id)).toEqual([1, 2, 3, 4, 5]);
+    expect(res.droppedKeys).toEqual(["41591|202607|sale"]);
+    expect(sb.state.gte[0]).toEqual(["deal_month", "202510"]);
+    for (const c of ["id", "batch_id", "batch_rows", "recorded_at", "sgg_cd", "deal_month", "trade_type", "price", "apt_seq"]) {
+      expect(sb.state.selects[0].split(",")).toContain(c);
+    }
+    expect(sb.state.calls).toBe(3); // 3 + 3 + 1
+  });
+
+  it("조회 실패는 던진다(조용한 [] 금지)", async () => {
+    const sb = fakeWindowSb([], { error: { message: "statement timeout", code: "57014" } });
+    await expect(fetchTradeDealsWindow(sb, { fromMonth: "202510", cols: "price" })).rejects.toThrow(/trade_deals 조회 실패/);
+  });
+
+  it("fromMonth 꼴이 틀리면 DB 를 보기 전에 던진다", async () => {
+    const sb = fakeWindowSb([]);
+    await expect(fetchTradeDealsWindow(sb, { fromMonth: "2025-10", cols: "price" })).rejects.toThrow(/YYYYMM/);
+    expect(sb.state.calls).toBe(0);
   });
 });

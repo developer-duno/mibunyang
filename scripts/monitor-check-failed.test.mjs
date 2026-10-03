@@ -29,6 +29,7 @@ const LABELS = {
   fetchKeyHealth: "⑭ 묶음 열쇠 칸 점검",
   fetchKaptWindowRuns: "⑮ 2u 창 건너뜀 점검",
   fetchTradeDeals: "⑯ trade_deals 점검",
+  fetchTradeLinks: "⑰ 연결 표 점검",
 };
 
 /** 전부 정상으로 도는 가짜 조회 — 판정 결과(이상)는 나올 수 있지만 실행 실패는 없다. */
@@ -52,6 +53,8 @@ function okDeps() {
     fetchKaptWindowRuns: async () => ({}),
     // trade_deals 표가 아직 비어 있음 — ⑯ 은 침묵하고 지나간다(세션589)
     fetchTradeDeals: async () => ({ empty: true, rows: /** @type {Array<Record<string, any>>} */ ([]), tradesCounts: {}, latest: "202609", prev: "202608" }),
+    // 연결 표가 아직 비어 있음 — ⑰ 은 침묵하고 지나간다(세션590)
+    fetchTradeLinks: async () => ({ links: /** @type {Array<Record<string, any>>} */ ([]), apts: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: null }),
     // 운영 monitor_alert_state 를 절대 지우지 않게 — 시험은 항상 가짜(세션572)
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
@@ -89,16 +92,16 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     expect(issues.some((i) => i.kind === "applyhome-unsold")).toBe(true);
   });
 
-  it("아홉 다 실패하면 9건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) 그대로", async () => {
+  it("열 다 실패하면 10건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) 그대로", async () => {
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
       fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchFailureRuns: boom, fetchKeyHealth: boom,
-      fetchKaptWindowRuns: boom, fetchTradeDeals: boom,
+      fetchKaptWindowRuns: boom, fetchTradeDeals: boom, fetchTradeLinks: boom,
       clearHoldAlertKeys: async () => {},
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
-      "⑬ 로컬 수집기 실패 점검", "⑭ 묶음 열쇠 칸 점검", "⑮ 2u 창 건너뜀 점검", "⑯ trade_deals 점검",
+      "⑬ 로컬 수집기 실패 점검", "⑭ 묶음 열쇠 칸 점검", "⑮ 2u 창 건너뜀 점검", "⑯ trade_deals 점검", "⑰ 연결 표 점검",
     ]);
   });
 });

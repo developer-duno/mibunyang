@@ -19,7 +19,8 @@
 | unsold_history | 미분양 추이 (시계열) | 청약홈 |
 | trades | 실거래가 (매매/전세) | collect-trades |
 | trade_deals | 실거래 원문 한 건 = 한 행(매매·전세·분양권 · aptSeq·지번·법정동코드·거래일·도로명·해제일 보존). **미분양 소유 · 공개 읽기 없음**(Service write 만) · (sgg_cd, deal_month, trade_type) 열쇠별 batch_id **교체 방식**(0건 응답은 안 지움, 읽을 땐 열쇠마다 **가장 새 완성 batch** = 행 수가 `batch_rows` 와 같은 것) · 2u 영향 0(2u 는 trades 만 읽는다) · 감시 ⑯ · 세션589 | collect-trades(같은 회차·같은 응답으로 trades 와 함께) |
-| trade_stats | 거래 통계 캐시 | trade-stats |
+| apartment_trade_links | 우리 단지 ↔ 실거래 열쇠(`trade_deals.apt_seq` 또는 분양권 열쇠 `sgg_cd\|umd_nm\|jibun\|정리이름`) · status active/hold/rejected · **미분양 소유 · 공개 읽기 없음**(Service write 만) · 월 2회 배치(collect-trade-stats.yml 안, trade-stats 바로 앞) · method jibun+name/name/manual/bundle(같은 묶음 전파) · 사람 판정 = `docs/audits/trade-link-decisions.json` · 감시 ⑰(무성공 20일·형제 명단·hold 45일 명단) · 세션590 | assign-trade-links |
+| trade_stats | 거래 통계 캐시 · 새 칸 13개(`cmp_*`·`complex_*`(표 종류 `complex_src` 포함)·`dong_fact` — 시세 비교 범위·건수, 세션590) 는 다) 점수 PR 전까지 **미사용·VIEW 미노출** | trade-stats |
 | infra | 인프라 (병원/마트/어린이집/응급의료/경찰) | infra-kakao, childcare, emergency, police |
 | schools | 학교 정보 | schools-neis |
 | transport | 교통 정보 | transport-tago |
@@ -132,7 +133,7 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 | **공용** | air_quality_stations | **자매만 쓴다**(`env_air.py`). mibunyang 은 안 건드린다 |
 | **공용** | presale_schedule_official, applyhome_unit_supply, rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | **양쪽 쓰기** — 자매 `service_applyhome_officetel.py`·`service_applyhome_rental.py` 가 오피스텔·임대를 넣는다 |
 | **mibunyang 쓰기 · 자매 읽기** | apartments, prices, unsold_history, schools, transport, builders, regions, trades, trade_stats | 쓰기는 mibunyang 만. **자매가 `mb_models.py` 로 읽으므로 컬럼 삭제·이름 변경 금지** |
-| **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs, trade_deals 등 | mibunyang만 |
+| **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs, trade_deals, apartment_trade_links 등 | mibunyang만 |
 | **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details, crawl_jobs, payments, billing_keys 등 | naver-estate-web만 |
 
 **읽기도 계약이다.** "자매가 안 쓰니 마음대로 바꿔도 된다" 가 성립하는 표는 마지막
@@ -245,6 +246,9 @@ naver-estate-web `backend/db/migrations/V031__revoke_anon_shared_tables.sql`.
 **새 표 마이그는 RLS 만으로 두지 않는다**: Supabase 는 public 새 표에 anon·authenticated 전권한을 기본으로 준다 →
 `site_feedback`(`20260925000000`)·`trade_deals`(`20261003000000`) 꼴로 표·시퀀스 권한을 PUBLIC·anon·authenticated·service_role 에서
 회수한 뒤 service_role 에 필요한 것만 다시 GRANT + 자체검사 DO 블록. 적용 뒤 권한 지문 기준선 재승인(`scripts/perm-baseline.mjs --make-expect` → `--accept --expect-file`).
+**VIEW `apartments_flat` 에 칸을 붙이면 그날 밤 공개 자료에 실린다** — 매일 굽기(`collect-data.mjs --from-supabase-only`)가 VIEW 를
+anon 키로 `select("*")` 해 `public/data/*.json` 에 쓴다. 화면·점수가 아직 안 쓰는 칸(예: `trade_stats` 새 칸 jsonb)은 VIEW 에 붙이지 않고,
+읽기 시작하는 PR 에서 붙인다(세션590 시세 범위 좁히기 계획서 B1).
 같은 날 보안 고문 경고 3건을 닫았다: `consults`·`subscribers` anon INSERT `true` 정책 삭제(우리 API 는
 두 표 모두 service key 로 넣는다) · `pg_trgm` → `extensions` 스키마(자매 검색 색인
 `idx_apartments_name_trgm` 은 그대로 동작 — 자매는 ILIKE 만 쓴다). 마이그 = `20260923000000~03`.

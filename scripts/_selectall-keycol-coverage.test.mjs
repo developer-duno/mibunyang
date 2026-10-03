@@ -61,6 +61,8 @@ export const MIN_TOTAL_CALLS = 71;
  */
 export const KNOWN_UNIQUE_KEYS = {
   default: "id",
+  // `id BIGSERIAL PRIMARY KEY`(20261004000000_trade_links_and_scope_stats.sql, 세션590 — assign-trade-links·trade-stats·감시 ⑰).
+  apartment_trade_links: "id",
   // `id` 컬럼이 없다 — PK 가 측정소명이다(세션559 마이그레이션 실측:
   // `station_name TEXT PRIMARY KEY`). 기본값 "id" 로 두면 조회가 죽는다.
   air_station_annual: "station_name",

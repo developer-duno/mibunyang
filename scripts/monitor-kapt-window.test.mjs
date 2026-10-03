@@ -108,6 +108,7 @@ describe("runDailyGuardedChecks — ⑮ 가 매일 점검 묶음에 연결돼 �
     fetchFailureRuns: async () => /** @type {Array<Record<string, any>>} */ ([]),
     fetchKeyHealth: async () => ({ gapRows: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: { finished_at: new Date().toISOString() } }),
     fetchTradeDeals: async () => ({ empty: true, rows: [], tradesCounts: {}, latest: "202609", prev: "202608" }), // ⑯(세션589) — 운영 조회로 새지 않게
+    fetchTradeLinks: async () => ({ links: [], apts: [], latestSuccess: null }), // ⑰(세션590) — 같은 이유
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
 

@@ -46,6 +46,23 @@ jobs:
           fi
           echo "Secrets validated"
 
+      # 세션590 시세 비교 범위 좁히기 나 — 단지↔거래 연결 표(apartment_trade_links)를 trade-stats 바로 앞에서 채운다.
+      # 왜 여기(계획서 B2): 연결 표를 읽는 쪽이 trade-stats 하나뿐이고 이것이 월 2회 돈다. 거래 원문(trade_deals)은 매월 6일에만 바뀐다.
+      # 실패해도(차단기·승인 대조·표 없음) 통계는 지난 연결로 계속 간다(continue-on-error) — 실패는 collector_runs 와 감시 ⑰ 이 알린다.
+      # dry_run 이면 묶기도 미리보기(인자 없음)만.
+      - name: Assign trade links (apartment_trade_links)
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          ARGS="--apply"
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            ARGS=""
+          fi
+          node scripts/collectors/assign-trade-links.mjs $ARGS
+
       - name: Calculate trade stats
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
