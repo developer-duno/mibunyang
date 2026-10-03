@@ -18,7 +18,7 @@
 | prices | 분양가 이력 (시계열) | 청약홈 |
 | unsold_history | 미분양 추이 (시계열) | 청약홈 |
 | trades | 실거래가 (매매/전세) | collect-trades |
-| trade_deals | 실거래 원문 한 건 = 한 행(매매·전세·분양권 · aptSeq·지번·법정동코드·거래일 보존). **미분양 소유 · 공개 읽기 없음**(Service write 만) · (sgg_cd, deal_month, trade_type) 열쇠별 batch_id **교체 방식**(0건 응답은 안 지움, 읽을 땐 열쇠마다 가장 새 batch) · 2u 영향 0(2u 는 trades 만 읽는다) · 감시 ⑯ · 세션589 | collect-trades(같은 회차·같은 응답으로 trades 와 함께) |
+| trade_deals | 실거래 원문 한 건 = 한 행(매매·전세·분양권 · aptSeq·지번·법정동코드·거래일·도로명·해제일 보존). **미분양 소유 · 공개 읽기 없음**(Service write 만) · (sgg_cd, deal_month, trade_type) 열쇠별 batch_id **교체 방식**(0건 응답은 안 지움, 읽을 땐 열쇠마다 **가장 새 완성 batch** = 행 수가 `batch_rows` 와 같은 것) · 2u 영향 0(2u 는 trades 만 읽는다) · 감시 ⑯ · 세션589 | collect-trades(같은 회차·같은 응답으로 trades 와 함께) |
 | trade_stats | 거래 통계 캐시 | trade-stats |
 | infra | 인프라 (병원/마트/어린이집/응급의료/경찰) | infra-kakao, childcare, emergency, police |
 | schools | 학교 정보 | schools-neis |
@@ -44,6 +44,10 @@
 | permission_baseline · permission_baseline_item | 권한 지문 기준선(승인 1회 = 1행 + 항목들) — **서비스 전용**: RLS 켬·정책 0·service_role 에 SELECT·INSERT 만 | `accept_permission_baseline()` (세션569) |
 | **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 | - |
 | **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 | - |
+
+> **원문 보존 표는 원문 칸 목록을 종류별로 전부 적고, 버리는 칸마다 이유를 쓴다**(세션589 검사관 C1) — 옛 표를 베끼면
+> 옛 표가 버린 것도 같이 버린다. `trade_deals` 1차 판이 `trades` 를 따라 분양권 해제일(`cdealDay`)·거래구분을 버렸고,
+> 나중에 넣으려면 12개월 재수집이 또 필요했다. 원문 칸 목록 = `.omc/artifacts/session589/scope/07-raw-tags.log`(깃 밖).
 
 ### apartments 추가 컬럼 그룹
 

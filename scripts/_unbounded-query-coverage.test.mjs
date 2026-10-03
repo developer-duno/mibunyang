@@ -58,6 +58,8 @@ export const BIG_TABLES = [
   "articles",
   "complex_price_history",
   "trades",
+  // 세션589 — 실거래 원문 한 건 = 한 행(재수집 뒤 약 1M 행 추정). ⚠️ `_trade-deals.mjs` 는 `sb.from(T)` 변수라 이 스캐너가 못 본다.
+  "trade_deals",
 ];
 
 /**

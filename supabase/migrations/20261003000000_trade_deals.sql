@@ -14,11 +14,14 @@
 -- 그래서 `trades` 쓰기 경로는 글자 하나 바꾸지 않고, 같은 회차·같은 응답으로 이 표를 **함께** 채운다.
 --
 -- 교체 방식 (열쇠 = sgg_cd · deal_month · trade_type):
---   ① 그 열쇠에 지난 회차 흔적(batch_id)이 둘 이상이면 가장 새 것만 남긴다(지난 회차가 중간에 죽은 흔적)
---   ② 이번 회차 batch_id 로 전부 insert
---   ③ 그 열쇠에서 batch_id <> 이번 것 을 지운다
---   읽는 쪽은 열쇠마다 **가장 새 batch_id 만** 읽는다 — ②·③ 사이에 죽어도 중복이 아니라 "옛 회차 그대로"다.
---   응답이 0건이면 **지우지 않는다**(옛 코드·장애가 0건으로 온다 — admin-district-code-reform.md §4).
+--   행마다 batch_rows(그 열쇠에 이번 회차가 넣으려던 행 수)를 함께 넣는다 — **행 수 = batch_rows 인 batch 만 완성**.
+--   ① 지난 회차 흔적 정리: 가장 새 **완성** batch 하나만 남기고 나머지(미완성·더 옛 완성)를 지운다
+--   ② 새 행이 남긴 완성본의 절반 미만이면 교체하지 않는다(급감 차단기 — 옛 것 유지)
+--   ③ 이번 회차 batch_id 로 전부 insert
+--   ④ 그 열쇠에서 **이번 회차 시작보다 먼저 들어간** 다른 batch 를 지운다(동시에 도는 회차의 새 행은 안 지운다)
+--   읽는 쪽은 열쇠마다 **가장 새 완성 batch 만** 읽는다 — insert 도중에 죽어도(PC 재시작 등) 반쪽 batch 는
+--   완성 표시가 안 맞아 읽히지 않는다. 응답이 0건이면 **지우지 않는다**(옛 코드·장애가 0건으로 온다 —
+--   admin-district-code-reform.md §4).
 --
 -- 저장하지 않는 것: 분양권 `ownershipGbn = "입"`(입주권) · 월세가 있는 전월세 · 금액·면적 0.
 -- 공개 읽기 정책 없음 — 거래 원문은 손님에게 직접 나가지 않는다(2u V031 이 `trades` 의 anon SELECT 도 회수했다).
@@ -33,8 +36,12 @@ CREATE TABLE IF NOT EXISTS trade_deals (
   umd_cd CHAR(5),                         -- 매매 umdCd. 전월세·분양권 원문에 없음 → NULL
   umd_nm TEXT,                            -- 법정동 이름(umdNm) — trades.dong 과 같은 값
   jibun TEXT,                             -- 원문 지번 그대로("A4BL" 같은 블록 표기 포함)
-  jibun_main TEXT,                        -- 지번 본번 — 매매 bonbun, 그 밖은 jibun 을 '-' 로 가른 앞
-  jibun_sub TEXT,                         -- 지번 부번 — 매매 bubun, 그 밖은 jibun 을 '-' 로 가른 뒤
+  jibun_main TEXT,                        -- 지번 본번(앞 0 뗌) — 매매는 landCd = '1'(대지)일 때만 bonbun, 그 밖은 jibun 을 '-' 로 가른 앞.
+                                          --   산·블록·"가-" 처럼 숫자 지번이 아니면 NULL(세 종류가 같은 원문에 같은 답)
+  jibun_sub TEXT,                         -- 지번 부번 — 같은 규칙(부번 없으면 '0', 숫자 지번이 아니면 NULL)
+  road_nm TEXT,                           -- 도로명(매매 roadNm · 전월세 roadnm — 끝 건물번호는 뗀다). 분양권 원문엔 없음 → NULL
+  road_bonbun TEXT,                       -- 건물 본번(매매 roadNmBonbun · 전월세 roadnmbonbun, 앞 0 뗌 · 0 이면 NULL)
+  road_bubun TEXT,                        -- 건물 부번(매매 roadNmBubun · 전월세 roadnmbubun, 앞 0 뗌 · 0 이면 NULL)
   apt_seq TEXT,                           -- 단지 일련번호 aptSeq(매매·전월세). 분양권·옛 매매 창구 폴백은 NULL
   apt_name TEXT,                          -- aptNm
   apt_dong TEXT,                          -- 매매 aptDong(동·棟) — 중복 판별 보조
@@ -45,24 +52,28 @@ CREATE TABLE IF NOT EXISTS trade_deals (
   build_year SMALLINT,
   price INTEGER NOT NULL,                 -- 만원. 매매·분양권 dealAmount / 전세 deposit(월세 0 만)
   contract_type TEXT,                     -- 전월세 contractType(신규/갱신/빈칸)
-  dealing_type TEXT,                      -- 매매 dealingGbn(중개/직거래)
-  cancel_date TEXT,                       -- 매매 cdealDay(해제일)
+  dealing_type TEXT,                      -- 매매·분양권 dealingGbn(중개/직거래)
+  cancel_date TEXT,                       -- 매매·분양권 cdealDay(해제일 — 분양권도 해제 거래가 있다, 사본 1,174행 중 71행)
   batch_id UUID NOT NULL,                 -- 수집 회차 — 교체 방식의 열쇠
-  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  batch_rows INTEGER NOT NULL,            -- 그 열쇠에 이번 회차가 넣으려던 행 수 — 행 수가 이것과 같아야 "완성" batch
+  recorded_at TIMESTAMPTZ NOT NULL DEFAULT NOW()  -- 수집기가 insert 배치마다 채운다(회차 시작 시각과 맞대 옛 batch 를 고른다)
 );
 
 COMMENT ON TABLE trade_deals IS
-  '국토부 실거래 원문 한 건 = 한 행(매매·전세·분양권). 미분양 소유 · scripts/collectors/collect-trades.mjs 가 trades 와 같은 회차에 (sgg_cd, deal_month, trade_type) 열쇠별 교체로 채운다. 읽을 때는 열쇠마다 가장 새 batch_id 만. trades(2u 가 읽음)는 그대로 둔다.';
+  '국토부 실거래 원문 한 건 = 한 행(매매·전세·분양권). 미분양 소유 · scripts/collectors/collect-trades.mjs 가 trades 와 같은 회차에 (sgg_cd, deal_month, trade_type) 열쇠별 교체로 채운다. 읽을 때는 열쇠마다 가장 새 완성 batch(행 수 = batch_rows)만. trades(2u 가 읽음)는 그대로 둔다.';
 COMMENT ON COLUMN trade_deals.sgg_cd IS
   '호출 LAWD_CD. 2026 화성 4구 개편으로 화성시는 41591·41593·41595·41597 네 코드(옛 41590 = 0건, 조사 2차 실측)';
 COMMENT ON COLUMN trade_deals.apt_seq IS
   '국토부 단지 일련번호(aptSeq) — 매매·전월세 원문에만 있다. 분양권 원문엔 없고, 매매 상세 창구 미등록으로 옛 창구 폴백을 쓴 회차도 NULL(사실대로)';
 COMMENT ON COLUMN trade_deals.batch_id IS
-  '수집 회차 id. 같은 열쇠에 둘 이상이면 지난 회차가 중간에 죽은 흔적 — 감시 ⑯ 가 명단으로 알린다';
+  '수집 회차 id. 같은 열쇠에 둘 이상이면 지난 회차가 중간에 죽었거나 두 회차가 겹친 흔적 — 감시 ⑯ 가 명단으로 알린다';
+COMMENT ON COLUMN trade_deals.batch_rows IS
+  '그 열쇠에 그 회차가 넣으려던 행 수. 실제 행 수가 이것과 같은 batch 만 완성 — insert 도중 죽은 반쪽 batch 를 읽는 쪽·다음 회차가 걸러낸다';
 
 CREATE INDEX IF NOT EXISTS idx_trade_deals_aptseq ON trade_deals(apt_seq, trade_type, deal_month);
 CREATE INDEX IF NOT EXISTS idx_trade_deals_jibun ON trade_deals(sgg_cd, umd_nm, jibun);
-CREATE INDEX IF NOT EXISTS idx_trade_deals_key ON trade_deals(sgg_cd, deal_month, trade_type, batch_id);
+-- deal_month 가 맨 앞 — 감시 ⑯ 가 달마다 훑고(`.eq("deal_month")`), 교체 저장의 열쇠 조회(3칸 일치)도 그대로 탄다
+CREATE INDEX IF NOT EXISTS idx_trade_deals_key ON trade_deals(deal_month, sgg_cd, trade_type, batch_id);
 CREATE INDEX IF NOT EXISTS idx_trade_deals_dong ON trade_deals(region, gu, umd_nm, deal_month);
 
 ALTER TABLE trade_deals ENABLE ROW LEVEL SECURITY;

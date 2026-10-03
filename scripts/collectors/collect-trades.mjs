@@ -145,6 +145,7 @@ async function fetchXml(url) {
  * @param {RegionGuPair} rg
  * @param {Set<string>} seen
  * @param {boolean} prevFallbackUsed
+ * @param {boolean} [dealsOnly] true 면 `trades` 행을 만들지 않고(`seen` 도 안 건드림) `deals` 만 — 화성 추가 3코드(사장님 결정 C2 가)
  * @returns {Promise<FetchResult>}
  *
  * 세션589: 같은 item 으로 `trade_deals` 행(`deals`)도 만든다 — 원문 한 건 = 한 행이라 `seen` 으로 접지 않는다.
@@ -152,7 +153,7 @@ async function fetchXml(url) {
  * `skippedOwnership` 으로 센다(`trades` 행에는 지금처럼 들어간다 — 2u 가 읽는 표의 내용을 바꾸지 않는다).
  * 한 달 응답이 중간에 예외로 끊기면 그 달 `deals` 는 버린다(반쪽 응답으로 열쇠를 교체하지 않게).
  */
-export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed) {
+export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed, dealsOnly = false) {
   const config = TRADE_CONFIGS[type];
   /** @type {TradeRow[]} */
   const rows = [];
@@ -194,6 +195,8 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
         const deal = buildDealRow(item, { type, region: rg.region, gu: dealGu, sggCd: lawdCd, month, getTag });
         if (deal) monthDeals.push(deal);
         else if (type === "presale" && isOwnershipRight(item, getTag)) monthOwnership++;
+        // 사장님 결정 C2 (가): 화성 추가 3코드 응답은 trades 행을 만들지 않는다 — trades 는 이 PR 전과 행 단위로 같다
+        if (dealsOnly) continue;
 
         const floor = parseInt(getTag(item, "floor") || "0") || null;
         const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
@@ -239,29 +242,107 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
  *   shouldStop?: () => "interrupt" | "budget" | null;
  *   onDeals?: (lawdCd: string, type: TradeType, result: FetchResult) => Promise<void>;
  * }} ctx
- * @returns {Promise<{ rows: TradeRow[]; apiCalls: number; apiFails: number; fallbackUsed: boolean; stopped: "interrupt" | "budget" | null }>}
+ * @returns {Promise<{ rows: TradeRow[]; apiCalls: number; apiFails: number; fallbackUsed: boolean; stopped: "interrupt" | "budget" | null; dealErrors: number }>}
  */
 export async function collectRegion(rg, codes, months, ctx) {
   /** @type {TradeRow[]} */
   const rows = [];
   let apiCalls = 0;
   let apiFails = 0;
+  let dealErrors = 0;
   let fallbackUsed = ctx.fallbackUsed;
   /** @type {"interrupt" | "budget" | null} */
   let stopped = null;
+  // trades 행을 만드는 코드 = 이 PR 전과 같은 getLawdCd 한 코드(목록에 없으면 첫 코드 — trades 가 통째로 비지 않게)
+  const primary = getLawdCd(rg.region, rg.gu);
+  const tradesCode = primary && codes.includes(primary) ? primary : codes[0];
   outer: for (const lawdCd of codes) {
     for (const type of /** @type {TradeType[]} */ (["sale", "jeonse", "presale"])) {
       stopped = ctx.shouldStop?.() ?? null;
       if (stopped) break outer;
-      const result = await fetchTradeRows(lawdCd, months, type, rg, ctx.seen, fallbackUsed);
+      // trades 행은 지금처럼 getLawdCd 한 코드(화성 = 41591) 응답에서만 — 나머지 코드는 trade_deals 만(사장님 결정 C2 가)
+      const result = await fetchTradeRows(lawdCd, months, type, rg, ctx.seen, fallbackUsed, lawdCd !== tradesCode);
       rows.push(...result.rows);
       apiCalls += result.apiCalls;
       apiFails += result.apiFails;
       fallbackUsed = result.fallbackUsed;
-      if (ctx.onDeals) await ctx.onDeals(lawdCd, type, result);
+      // trade_deals 저장이 예외를 던져도 trades 수집·저장·회차 기록은 계속 돌아야 한다(검사관 C8 — 세션503 꼴)
+      if (ctx.onDeals) {
+        try {
+          await ctx.onDeals(lawdCd, type, result);
+        } catch (err) {
+          dealErrors++;
+          logError(PHASE, `trade_deals 저장 예외 ${lawdCd}|${type}: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      }
     }
   }
-  return { rows, apiCalls, apiFails, fallbackUsed, stopped };
+  return { rows, apiCalls, apiFails, fallbackUsed, stopped, dealErrors };
+}
+
+/**
+ * `trade_deals` 저장기 — `collectRegion` 의 `onDeals` 와 회차 집계를 묶는다(시험이 main 없이 배선을 본다).
+ *
+ * - (코드·종류) 하나를 받으면 달 열쇠별로 나눠 `saveDealsForKey`. 0건 열쇠는 지우지 않고 센다.
+ * - **한 회차에 같은 (코드·종류) 는 한 번만** 저장한다 — 구 없는 시 이름 gu(천안시·창원시 등)가 그 시 첫 구의
+ *   코드를 받아 같은 열쇠를 두 번 돌 수 있다(검사관 A5·C9, 운영 16행). 두 번째는 건너뛰고 로그 1줄.
+ * - 표가 없으면(PGRST205 — 마이그 적용 전) 첫 1회에 그 회차의 저장을 멈추고 실패 1건만 센다(검사관 A6).
+ * - dry-run 이면 세기만 하고 저장하지 않는다.
+ *
+ * @param {{ sb: any; months: string[]; batchId: string; runStartedAt: string; dryRun: boolean; sleep?: (ms: number) => Promise<void> }} opts
+ */
+export function makeDealSaver({ sb, months, batchId, runStartedAt, dryRun, sleep: sl }) {
+  const stats = { keys: 0, rows: 0, inserted: 0, deleted: 0, skippedOwnership: 0, zeroKeys: 0, failKeys: 0, heldKeys: 0, warnKeys: 0, dupSkips: 0 };
+  /** @type {string[]} */
+  const zeroKeySamples = [];
+  /** @type {string[]} */
+  const heldKeySamples = [];
+  /** @type {Set<string>} */
+  const done = new Set();
+  let disabled = false;
+  /**
+   * @param {string} lawdCd
+   * @param {TradeType} type
+   * @param {FetchResult} result
+   */
+  const onDeals = async (lawdCd, type, result) => {
+    const once = `${lawdCd}|${type}`;
+    if (done.has(once)) {
+      stats.dupSkips++;
+      log(PHASE, `  trade_deals: ${once} 는 이번 회차에 이미 저장 — 건너뜀(같은 코드를 내는 gu 가 둘)`);
+      return;
+    }
+    done.add(once);
+    stats.skippedOwnership += result.skippedOwnership;
+    if (disabled) return;
+    for (const [k, list] of groupDealsByKey(lawdCd, type, months, result.deals)) {
+      stats.keys++;
+      // 0건 응답은 지우지 않는다(옛 코드·장애가 에러 대신 0건으로 온다 — admin-district-code-reform.md §4)
+      if (!list.length) { stats.zeroKeys++; if (zeroKeySamples.length < 10) zeroKeySamples.push(k); continue; }
+      stats.rows += list.length;
+      if (dryRun) continue;
+      const [sgg_cd = "", deal_month = "", trade_type = ""] = k.split("|");
+      const res = await saveDealsForKey(sb, { sgg_cd, deal_month, trade_type }, list, batchId, { sleep: sl, runStartedAt });
+      if (res.status === "ok") {
+        stats.inserted += res.inserted;
+        stats.deleted += res.deleted + res.staleDeleted;
+        if (res.warn) { stats.warnKeys++; log(PHASE, `  trade_deals 경고 ${k}: ${res.warn}`); }
+      } else if (res.status === "held") {
+        stats.heldKeys++;
+        stats.deleted += res.staleDeleted;
+        if (heldKeySamples.length < 10) heldKeySamples.push(`${k}(${list.length}<${res.keepRows ?? "?"}/2)`);
+      } else if (res.status === "no-table") {
+        stats.failKeys++;
+        disabled = true;
+        logError(PHASE, `trade_deals 표가 없다(마이그 적용 전?) — 이번 회차의 trade_deals 저장을 멈춘다: ${res.error ?? "?"}`);
+        return;
+      } else if (res.status === "fail") {
+        stats.failKeys++;
+        logError(PHASE, `trade_deals 쓰기 실패 ${k}: ${res.error ?? "?"}`);
+      }
+    }
+  };
+  return { onDeals, stats, zeroKeySamples, heldKeySamples, isDisabled: () => disabled };
 }
 
 /**
@@ -393,35 +474,12 @@ async function main() {
   const budgetMin = budgetArg ? parseInt(budgetArg.replace("--budget-min=", ""), 10) : DEFAULT_BUDGET_MIN;
   let budgetHit = false;
 
-  // 세션589: trade_deals — (코드·월·종류) 열쇠별 교체 저장. 회차 id 하나.
+  // 세션589: trade_deals — (코드·월·종류) 열쇠별 교체 저장. 회차 id 하나 + 회차 시작 시각(이보다 먼저 든 batch 만 지운다).
+  // ⚠️ 이 저장은 예산(budgetMin) **안쪽** 반복에서 돈다 — 첫 정기 회차 소요를 9/06 과 맞대 예산 근거를 다시 잰다
+  //    (collector-timeout-rootcause-analysis.md — 예산에 닿으면 뒤 지역은 trades 까지 빠진다).
   const batchId = randomUUID();
-  const dealStats = { keys: 0, rows: 0, inserted: 0, deleted: 0, skippedOwnership: 0, zeroKeys: 0, failKeys: 0 };
-  /** @type {string[]} */
-  const zeroKeySamples = [];
-  /**
-   * @param {string} lawdCd
-   * @param {TradeType} type
-   * @param {FetchResult} result
-   */
-  const onDeals = async (lawdCd, type, result) => {
-    dealStats.skippedOwnership += result.skippedOwnership;
-    for (const [k, list] of groupDealsByKey(lawdCd, type, months, result.deals)) {
-      dealStats.keys++;
-      // 0건 응답은 지우지 않는다(옛 코드·장애가 에러 대신 0건으로 온다 — admin-district-code-reform.md §4)
-      if (!list.length) { dealStats.zeroKeys++; if (zeroKeySamples.length < 10) zeroKeySamples.push(k); continue; }
-      dealStats.rows += list.length;
-      if (dryRun) continue;
-      const [sgg_cd = "", deal_month = "", trade_type = ""] = k.split("|");
-      const res = await saveDealsForKey(sb, { sgg_cd, deal_month, trade_type }, list, batchId, { sleep });
-      if (res.status === "ok") {
-        dealStats.inserted += res.inserted;
-        dealStats.deleted += res.deleted + res.staleDeleted;
-      } else {
-        dealStats.failKeys++;
-        logError(PHASE, `trade_deals 쓰기 실패 ${k}: ${res.error ?? "?"}`);
-      }
-    }
-  };
+  const saver = makeDealSaver({ sb, months, batchId, runStartedAt: new Date().toISOString(), dryRun, sleep });
+  const { onDeals, stats: dealStats, zeroKeySamples, heldKeySamples } = saver;
 
   for (const rg of regionGuPairs) {
     if (rpt.interrupted()) break;
@@ -441,6 +499,7 @@ async function main() {
     apiCalls += result.apiCalls;
     apiFails += result.apiFails;
     fallbackUsed = result.fallbackUsed;
+    dealStats.failKeys += result.dealErrors;
     if (result.stopped === "budget") budgetHit = true;
     if (budgetHit) break;  // 내부 loop 가 예산으로 끊겼으면 지역 loop 도 종료
 
@@ -462,10 +521,19 @@ async function main() {
   log(PHASE, `trade_deals${dryRun ? "(dry-run · 쓰지 않음)" : ""}: 열쇠 ${n(dealStats.keys)}개 · ` +
     (dryRun ? `만들 행 ${n(dealStats.rows)}행` : `넣음 ${n(dealStats.inserted)}행 · 지움 ${n(dealStats.deleted)}행`) +
     ` · 입주권 제외 ${n(dealStats.skippedOwnership)}행 · 0건 열쇠 ${n(dealStats.zeroKeys)}개` +
+    (dealStats.heldKeys ? ` · 보류 열쇠 ${n(dealStats.heldKeys)}개` : "") +
+    (dealStats.warnKeys ? ` · 옛 회차 지우기 경고 ${n(dealStats.warnKeys)}개` : "") +
+    (dealStats.dupSkips ? ` · 같은 코드 중복 건너뜀 ${n(dealStats.dupSkips)}번` : "") +
     (dealStats.failKeys ? ` · 쓰기 실패 열쇠 ${n(dealStats.failKeys)}개` : "") +
-    (zeroKeySamples.length ? ` (0건 예: ${zeroKeySamples.join(", ")})` : ""));
+    (zeroKeySamples.length ? ` (0건 예: ${zeroKeySamples.join(", ")})` : "") +
+    (heldKeySamples.length ? ` (보류 예: ${heldKeySamples.join(", ")})` : ""));
   rpt.skip(dealStats.skippedOwnership);
   rpt.fail(dealStats.failKeys);
+  // 보류(급감 차단기)·옛 회차 지우기 경고는 실패가 아니다 — 아침 브리핑의 경고 단계 줄(WARN_STEPS)로만 남긴다
+  const dealWarn = [
+    ...(dealStats.heldKeys ? [`trade_deals_held_${dealStats.heldKeys}`] : []),
+    ...(dealStats.warnKeys ? [`trade_deals_cleanup_warn_${dealStats.warnKeys}`] : []),
+  ];
 
   if (dryRun) {
     if (rows.length > 0) {
@@ -518,6 +586,7 @@ async function main() {
   rpt.success(inserted);
   rpt.fail(uniqueRows.length - inserted);
   const result = rpt.summary();
+  if (dealWarn.length && result.status === "success") Object.assign(result, { errorMessage: `WARN_STEPS: ${dealWarn.join(",")}` });
   await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }

@@ -24,7 +24,8 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 });
 
 const { getLawdCd, extractItems, getTag, TRADE_CONFIGS, buildApiUrl, parseOnlyFilter, fetchTradeRows, tradeRowGu,
-  collectRegion, groupDealsByKey } = await import("./collect-trades.mjs");
+  collectRegion, groupDealsByKey, makeDealSaver } = await import("./collect-trades.mjs");
+const { fakeSb } = await import("./__fixtures__/trade-deals/fake-sb.mjs");
 const { GU_LAWD_CODES } = await import("./_shared.mjs");
 
 describe("parseOnlyFilter (세션94 단계 C)", () => {
@@ -447,6 +448,30 @@ describe("fetchTradeRows · collectRegion — trade_deals (세션589)", () => {
     expect(r.stopped).toBeNull();
   });
 
+  it("사장님 결정 C2 (가): 화성 trades 행 = 41591 응답분만(이 PR 전과 행 단위로 같다) · deals = 4코드 전부", async () => {
+    // 코드마다 값이 다른 응답 — 추가 3코드 행이 trades 에 섞이면 값으로 드러난다
+    const base = items("sale-hwaseong-41597-202608.json");
+    /** @param {string} code */
+    const xmlFor = (code) => toXml(base.map((it) => ({ ...it, dealAmount: String(parseInt(it.dealAmount.replace(/,/g, "")) + Number(code.slice(-1))) })));
+    fetchMock.mockImplementation(async (/** @type {string} */ url) => {
+      const code = /LAWD_CD=(\d+)/.exec(url)?.[1] ?? "";
+      return { ok: true, text: async () => xmlFor(code) };
+    });
+    const months = ["202608"];
+    /** @type {Record<string, number>} */
+    const dealsByCode = {};
+    const r = await collectRegion({ region: "경기", gu: "화성시" }, GU_LAWD_CODES("경기", "화성시"), months, {
+      seen: new Set(), fallbackUsed: false,
+      onDeals: async (code, _type, res) => { dealsByCode[code] = (dealsByCode[code] ?? 0) + res.deals.length; },
+    });
+    // 이 PR 전 수집기 = getLawdCd("경기","화성시") 한 코드만 돌았다
+    const before = await collectRegion({ region: "경기", gu: "화성시" }, [getLawdCd("경기", "화성시") ?? ""], months, { seen: new Set(), fallbackUsed: false });
+    expect(getLawdCd("경기", "화성시")).toBe("41591");
+    expect(r.rows).toEqual(before.rows);
+    expect(r.rows.length).toBe(100); // 매매 50 + 분양권 꼴 50(같은 칸 응답) — 41591 분만
+    expect(dealsByCode).toEqual({ 41591: 100, 41593: 100, 41595: 100, 41597: 100 });
+  });
+
   it("다른 지역은 1코드 — 강남구 3종류 × 월 수", async () => {
     /** @type {string[]} */
     const urls = [];
@@ -481,5 +506,72 @@ describe("fetchTradeRows · collectRegion — trade_deals (세션589)", () => {
     const r = await fetchTradeRows("41597", ["202608"], "sale", { region: "경기", gu: "화성시" }, new Set(), false);
     expect(r.deals).toEqual([]);
     expect(r.apiFails).toBe(1);
+  });
+
+  it("세종 {gu:null} 의 deals gu 도 '세종시'(trades 와 같은 표기)", async () => {
+    respond(toXml(items("sale-11680-202608.json").slice(0, 3)));
+    const r = await fetchTradeRows("36110", ["202608"], "sale", { region: "세종", gu: null }, new Set(), false);
+    expect(r.deals).toHaveLength(3);
+    expect(r.deals.every((d) => d.gu === "세종시" && d.sgg_cd === "36110")).toBe(true);
+  });
+
+  it("onDeals 가 던져도 collectRegion 은 trades 행을 돌려주고 예외를 실패 열쇠로 센다(검사관 C8)", async () => {
+    respond(toXml(items("sale-11680-202608.json")));
+    const r = await collectRegion({ region: "서울", gu: "강남구" }, ["11680"], ["202608"], {
+      seen: new Set(), fallbackUsed: false,
+      onDeals: async () => { throw new Error("db boom"); },
+    });
+    expect(r.rows.length).toBeGreaterThan(0);
+    expect(r.dealErrors).toBe(3);
+  });
+});
+
+// ── 세션589 보완: trade_deals 저장기(makeDealSaver) — main 의 onDeals 배선 ──
+describe("makeDealSaver — dry-run · 같은 코드 두 번 · 표 없음 · 급감 보류", () => {
+  const months = ["202608"];
+  /** @param {string} code @param {"sale"|"jeonse"|"presale"} type @param {number} n */
+  const result = (code, type, n) => ({
+    rows: [], apiCalls: 1, apiFails: 0, fallbackUsed: false, skippedOwnership: 1,
+    deals: Array.from({ length: n }, (_, i) => /** @type {any} */ ({
+      trade_type: type, region: "서울", gu: "강남구", sgg_cd: code, deal_month: "202608", price: 100 + i, area: 84,
+    })),
+  });
+
+  it("dry-run 이면 DB 를 한 번도 부르지 않고 세기만 한다", async () => {
+    const sb = fakeSb();
+    const s = makeDealSaver({ sb, months, batchId: "B", runStartedAt: "2026-10-06T00:00:00.000Z", dryRun: true, sleep: async () => {} });
+    await s.onDeals("11680", "sale", /** @type {any} */ (result("11680", "sale", 5)));
+    expect(sb.state.fromCalls).toBe(0);
+    expect(s.stats).toMatchObject({ keys: 1, rows: 5, inserted: 0, skippedOwnership: 1 });
+  });
+
+  it("같은 (코드·종류) 를 두 번 받으면 두 번째는 건너뛴다 — deals 한 벌(검사관 A5·C9)", async () => {
+    const sb = fakeSb();
+    const s = makeDealSaver({ sb, months, batchId: "B", runStartedAt: "2026-10-06T00:00:00.000Z", dryRun: false, sleep: async () => {} });
+    await s.onDeals("43111", "sale", /** @type {any} */ (result("43111", "sale", 4))); // 청주시 상당구
+    await s.onDeals("43111", "sale", /** @type {any} */ (result("43111", "sale", 4))); // 구 없는 "청주시" 가 같은 코드
+    expect(sb.state.rows).toHaveLength(4);
+    expect(s.stats).toMatchObject({ inserted: 4, dupSkips: 1, skippedOwnership: 1 });
+  });
+
+  it("표가 없으면 첫 열쇠에서 멈추고 실패 1건 — 다음 (코드·종류)는 DB 를 안 부른다(검사관 A6)", async () => {
+    const sb = fakeSb([], { missingTable: true });
+    const s = makeDealSaver({ sb, months, batchId: "B", runStartedAt: "2026-10-06T00:00:00.000Z", dryRun: false, sleep: async () => {} });
+    await s.onDeals("11680", "sale", /** @type {any} */ (result("11680", "sale", 3)));
+    const calls = sb.state.fromCalls;
+    await s.onDeals("11680", "jeonse", /** @type {any} */ (result("11680", "jeonse", 3)));
+    await s.onDeals("11650", "sale", /** @type {any} */ (result("11650", "sale", 3)));
+    expect(sb.state.fromCalls).toBe(calls);
+    expect(s.stats.failKeys).toBe(1);
+    expect(s.isDisabled()).toBe(true);
+  });
+
+  it("급감이면 보류 열쇠로 센다(실패 아님)", async () => {
+    const seed = Array.from({ length: 10 }, () => ({ trade_type: "sale", sgg_cd: "11680", deal_month: "202608", batch_id: "OLD", batch_rows: 10, recorded_at: "2026-09-06T00:00:00.000Z" }));
+    const sb = fakeSb(seed);
+    const s = makeDealSaver({ sb, months, batchId: "B", runStartedAt: "2026-10-06T00:00:00.000Z", dryRun: false, sleep: async () => {} });
+    await s.onDeals("11680", "sale", /** @type {any} */ (result("11680", "sale", 2)));
+    expect(s.stats).toMatchObject({ heldKeys: 1, failKeys: 0, inserted: 0 });
+    expect(s.heldKeySamples).toEqual(["11680|202608|sale(2<10/2)"]);
   });
 });

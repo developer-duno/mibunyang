@@ -91,7 +91,7 @@ export function GU_LAWD_CODES(region, gu) { … 경기·화성시 → 위 4개 �
 ## Task 5: 감시 ⑯ `checkTradeDealsHealth`
 
 `monitor-collectors.mjs` 에 ⑮ 다음 자리. 재료 한 번 조회(그룹 쿼리 또는 `selectAll` 로 최근 2개월 `sgg_cd, deal_month, trade_type, batch_id` 만) → 판정 셋:
-- (a) 같은 (sgg_cd·월·종류) 에 `batch_id` 둘 이상 → `kind: "trade-deals-dup"` 명단(열쇠 글자 그대로).
+- (a) 같은 (sgg_cd·월·종류) 에 `batch_id` 둘 이상 또는 완성 batch 없음(보완) → `kind: "trade-deals-dup"` 명단(열쇠 글자 그대로). (보완) 진행 중 보류가 180분을 넘으면 `kind: "trade-deals-norun"`.
 - (b) 화성 4코드 각각 최근 달 매매 행 0 → `kind: "trade-deals-hwaseong"`(어느 코드인지).
 - (c) 최근 달(어제 기준 전월) `trade_deals` 행 수 ÷ 같은 달 `trades` 행 수 가 0.9~1.3 밖 → `kind: "trade-deals-ratio"`(두 수 모두 적는다). 재수집 전엔 (c) 가 울릴 수 있다 → **`trade_deals` 가 비어 있으면(0행) 세 판정 모두 "아직 없음" 으로 침묵**(마이그 적용~재수집 사이).
 `notify-telegram.mjs` "⑦~⑮" → "⑦~⑯". 시험 `monitor-trade-deals.test.mjs`(a·b·c 각 양성·음성 + 빈 표 침묵) + `monitor-check-failed.test.mjs` 의 묶음 수 반영. 변이: 임계 0.9/1.3 바꾸기 · 명단 대신 개수 · 빈 표 침묵 제거.
@@ -108,4 +108,9 @@ export function GU_LAWD_CODES(region, gu) { … 경기·화성시 → 위 4개 �
 2. 합침 → 운영 폴더 ff pull(예약 창 밖 — 매일 05:30~06:30 · 월·목 08:00~15:00 피함) → `node --check`.
 3. **12개월 재수집 1회** `node scripts/collectors/collect-trades.mjs --months=12`(파이프 금지 — 파일로 받기 · 창구별 2,520콜 · 2u 는 다른 창구 · 소요 = 9/06 6개월 회차 API 1,206초 실측 기준 API 약 40분 + 저장, 러너 주석의 옛 실측 74~120분(6개월)이면 2~4시간까지 — 예약 창 밖 낮에 시작). 전이표에 적을 변화: `trade_deals` 0 → 약 1M 행(새 표) · `trades` 행 수 **증가만**(강남 전세 옛 달 등 공백 메움 · 화성 3구 신규 약 +4만 — upsert 라 기존 행은 같은 값으로 덧씌워지고 줄어드는 행 0) · 재수집 로그의 `입주권 제외 J행` 은 `trade_deals` 에서만 빠진 수.
 4. 대조(§8 가): 표본 8구 월별 행 수 vs 원문 totalCount(조사 2차 `raw/` 와 맞대기) · `apt_seq` 채움률 · 화성 4코드 > 0 · 중복 batch 0 · `trades` 쓰기 경로 diff 0.
-5. 2u 통지(새 표 소개 · `trades` 계속 씀 · 창구별 한도 · 입주권 제외로 분양권 행이 준다).
+5. 2u 통지(새 표 소개 · `trades` 내용은 이 PR 전과 행 단위로 같음 — 화성 추가 3코드·입주권 제외는 새 표에서만 · 재수집으로 `trades` 빈 달이 메워지고 `recorded_at` 이 그날로 바뀜 · 창구별 한도).
+
+## 보완(검사관 3명 뒤, 10/03 09:2x — 상세는 설계서 §4-1·§6·§9)
+- 사장님 결정 C2(가): 화성 추가 3코드는 `trade_deals` 에만 · `trades` 는 41591 응답만(다 에서 전환).
+- 재수집은 `--budget-min=0` · 10/06 05:30 정기 회차 전에 끝냄 · 시작 전 collect-trades 프로세스 0 · 대조의 "중복 batch 0" 은 12개월 전부.
+- 마이그(①)는 합침(②) 전에.

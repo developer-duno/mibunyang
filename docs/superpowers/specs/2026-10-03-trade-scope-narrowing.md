@@ -45,14 +45,14 @@
 | D3 | 우리 단지 → `aptSeq` 연결 = **법정동코드 10자리 + 지번**으로 후보를 찾고 **이름·차수 검사(`_match-gates.mjs`)로 거른다**. 지번이 없으면 같은 법정동 안 이름으로. 한 단지에 열쇠가 여럿일 수 있어 **연결 표**에 목록으로 둔다 | 지번만 믿으면 35곳 중 2곳 오탐(옆 필지·차수) · 한 지번에 1·2·3단지가 함께 걸리는 경우 있음 |
 | D4 | **입주권("입")은 저장하지 않는다** | 분양권 창구에 재개발 입주권 14% 가 섞여 있다 — 다른 시장 |
 | D5 | 새 표는 **(시군구코드·월·종류) 단위로 지우고 다시 넣는다**(upsert 열쇠 없음) | 전세는 자연 열쇠가 없다. 같은 거래를 두 행으로 접지 않는다 |
-| D6 | 화성은 **4코드 전부** 받는다. `trades.gu`·`trade_deals.gu` 는 `"화성시"` 그대로(우리 `apartments.gu` 표기와 같게), 실제 호출 코드는 `sgg_cd` 칸에 | 코드표 한 줄만 바꾸면 다른 소비처(어린이집 arcode 등)가 흔들린다 → 수집기 전용 다중 코드표 |
+| D6 | 화성은 **4코드 전부** 받되, **가) 에서는 `trade_deals` 에만** 넣는다 — `trades` 는 지금처럼 41591 응답만(사장님 결정 2026-10-03 09:2x: 화성 60곳의 '거래 침체'·주변 시세·점수가 두 번 바뀌지 않게, 다) 점수 전환 때 함께 바로잡는다 → 다) 에서 `trades` 화성 4코드 전환을 같은 전이표에). `trade_deals.gu` 는 `"화성시"`(우리 `apartments.gu` 표기와 같게), 실제 호출 코드는 `sgg_cd` 칸에 | 코드표 한 줄만 바꾸면 다른 소비처(어린이집 arcode 등)가 흔들린다 → 수집기 전용 다중 코드표 |
 | D7 | 문턱 = **3건**. 값 옆에 **건수·기간·범위**를 늘 적는다 | 3·3 이면 전세가율 100% 초과 0 |
 | D8 | 같은 단지 적정가 = 같은 평수(§5-2) 실거래 **중앙값**. 연식·브랜드·면적 계수를 **곱하지 않는다** | 자기 단지 값이다. (시제품은 평균 — 나) 미리보기에서 차이 확인) |
 | D9 | 같은 평수가 3건 미만이면 같은 단지에서 **면적 차 20㎡ 이내** 거래 ≥3건의 ㎡당 중앙값 × 우리 면적. 그것도 없으면 **적정가 없음**. 면적 미상 단지는 **적정가 없음** | 소형↔대형 ㎡당 값이 달라 더 넓히면 어긋난다(시제품 표본) |
 | D10 | 적정가가 없을 때 **괴리도만 중립**(전세가율·PIR 은 각자 판정). 폴백이 아니므로 신뢰도 −15 차감 없음 | 지금 엔진은 4개 다 중립(`scorePrice.ts:256`) — 시제품 사본 ④ |
 | D11 | 전세가율의 전세는 **갱신 계약 제외**(`contractType` = "갱신"), 신규·빈칸은 포함 | 갱신은 상한 규제값이라 시세가 아니다 |
 | D12 | 가격 점수 가중치 = 괴리도 **0.55** · 전세가율 0.20 · PIR 0.15 · 신뢰도 0.07 · 택지비 0.03(합 1.00) | R4 |
-| D13 | 유동성(`recent_trades_6m`)·해제율(`cancel_ratio_6m`)·`regions.jeonse_rate`(지역 전세가율) 는 **구 통계가 맞다 — 그대로**. 다만 행 수가 늘면(+6~11% · 화성 약 +4만) `recent_trades_6m` 등급 경계(`src/constants/scoringTiers.ts`) 를 **재측정** | 유동성은 동네 지표다 |
+| D13 | 유동성(DB 칸 `trade_stats.recent_trades_6m` · 코드 `recentTrades6m` → 등급 `LIQUIDITY_TIERS`/`LIQUIDITY_LOW_SCORE`, `src/constants/scoringTiers.ts` · `src/scoring/scoreRisk.ts:84,107`)·해제율(`cancel_ratio_6m`)·`regions.jeonse_rate`(지역 전세가율) 는 **구 통계가 맞다 — 그대로**. 다만 `trades` 행 수가 늘면(재수집의 빈 달 메움 · 다) 의 화성 4코드 전환 — 화성 6개월 매매 620 → 약 8,160건) `LIQUIDITY_TIERS` 경계를 **재측정** | 유동성은 동네 지표다 |
 | D14 | 12개월 **재수집 1회**(창구당 2,520콜 · 합 7,560콜 · API 약 40분 + 저장 — 러너 주석의 옛 6개월 실측 74~120분이면 2~4시간) 로 새 표를 채운다. 정기 수집(매월 6일 05:30, 6개월치)이 이어 받는다 | 한도는 **창구별** 하루 10,000콜(헤더 실측) — `.claude/rules/scripts/api-quota-and-ratelimit.md` 의 "MOLIT_KEY 10,000 공유" 표기는 정정 |
 
 ## 3. 구조
@@ -93,15 +93,17 @@ VIEW apartments_flat 새 칸 → scorePrice (괴리도 0.55 · PSR 폐지 · 중
 | `floor` · `build_year` | smallint | | |
 | `price` | integer | 매매 `dealAmount` / 전세 `deposit` / 분양권 `dealAmount` | 만원. 전세는 월세 0 만(지금 규칙 유지) |
 | `contract_type` | text | 전월세 `contractType` | 신규/갱신/빈칸 |
-| `dealing_type` · `cancel_date` | text | 매매 | 지금 `trades` 와 같음 |
+| `dealing_type` · `cancel_date` | text | 매매·분양권 `dealingGbn`·`cdealDay` | 분양권도 원문에 있다(사본 해제 71/1,174 — 검사관 C1). 전세 없음 |
+| `road_nm` · `road_bonbun` · `road_bubun` | text | 매매 `roadNm…` / 전월세 `roadnm…`(글자 크기 다름) | 지번이 빈 단지(815곳)의 두 번째 묶기 길(검사관 C) · 분양권 없음 |
 | `batch_id` | uuid | 회차 | §4-1 교체 방식 |
+| `batch_rows` | integer not null | 회차 | 그 열쇠에 이번 회차가 넣으려던 행 수 — 행 수가 이 값과 같은 batch 만 **완성**(검사관 A2) |
 | `recorded_at` | timestamptz default now() | | |
 
 - 저장 안 함: `ownershipGbn = "입"` 행(D4) · 월세 있는 전월세 · 금액·면적 0.
-- **교체 방식**: 한 회차에서 (sgg_cd, deal_month, trade_type) 를 받으면 ① 그 열쇠의 기존 행 중 `batch_id` 가 둘 이상이면 가장 새 것만 남긴다(지난 회차가 중간에 죽은 흔적 치우기) ② 새 `batch_id` 로 전부 넣는다 ③ 그 열쇠에서 `batch_id <> 새 것` 을 지운다. 읽는 쪽(trade-stats)은 열쇠마다 **가장 새 `batch_id` 만** 읽는다 — ②·③ 사이에 죽어도 중복이 아니라 "옛 회차 그대로"가 된다. 0건 응답은 **지우지 않는다**(옛 코드·장애가 0건으로 온다 — `admin-district-code-reform.md` §4).
-- 색인: `(apt_seq, trade_type, deal_month)` · `(sgg_cd, umd_nm, jibun)` · `(sgg_cd, deal_month, trade_type, batch_id)` · `(region, gu, umd_nm, deal_month)`.
+- **교체 방식**: 한 회차에서 (sgg_cd, deal_month, trade_type) 를 받으면 ① 그 열쇠의 기존 batch 중 **가장 새 완성 batch**(행 수 = `batch_rows`)만 남기고 미완성·옛 batch 는 치운다 ② 새 `batch_id`·`batch_rows` 로 전부 넣는다(조회·넣기·지우기 재시도 3회 · 넣기 실패면 이번 회차분을 지워 되돌림) ③ 그 열쇠에서 **이번 회차 시작보다 먼저 들어간** batch 를 지운다(동시에 도는 다른 회차의 행은 안 지운다 — 검사관 A1) — ③ 실패는 경고(다음 회차가 치움). 읽는 쪽(trade-stats)은 열쇠마다 **가장 새 완성 batch 만** 읽는다 — 어느 단계에서 죽어도(강제 종료 포함) 반쪽 batch 는 "완성"이 아니라서 읽히지 않는다. 0건 응답은 **지우지 않는다**(옛 코드·장애가 0건으로 온다 — `admin-district-code-reform.md` §4). 새 행 수가 기존 완성 batch 의 **절반 미만**이면 교체를 보류한다(급감 차단기 — 경고 `WARN_STEPS: trade_deals_held_N`). 한 회차에 같은 열쇠는 한 번만 저장한다(구 없는 시 이름 gu 16행이 같은 코드를 두 번 부른다). 표가 없으면(마이그 적용 전) 첫 열쇠에서 그 회차의 새 표 쓰기를 멈춘다.
+- 색인: `(apt_seq, trade_type, deal_month)` · `(sgg_cd, umd_nm, jibun)` · `(deal_month, sgg_cd, trade_type, batch_id)`(감시가 달마다 읽는다 — 검사관 C5) · `(region, gu, umd_nm, deal_month)`.
 - RLS 켬, 공개 읽기 정책 없음(서비스 역할만). 감시 ⑩ 권한 지문 **재승인**(`scripts/perm-baseline.mjs`).
-- 보존: 받은 달은 지우지 않는다(정기 6개월치가 덧씌움). 36개월 넘는 달은 분기 정리 후보(BACKLOG) — 지금 `trades` 347MB(2u 기록) + 새 표 ≈ 12개월 1M 행 추정, `monitor-db-size` 에 걸린다.
+- 보존: 받은 달은 지우지 않는다(정기 6개월치가 덧씌움). 36개월 넘는 달은 분기 정리 후보(BACKLOG) — 지금 `trades` 347MB(2u 기록) + 새 표 ≈ 12개월 1M 행 · 0.4~0.6GB 추정(검사관 C 어림 — 매 회차 지우고 다시 넣어 죽은 행이 생김). `monitor-db-size` 는 행 수만 세므로 **바이트는 운영 반영 때 재수집 전·후·첫 정기 회차 뒤 `pg_total_relation_size` 로 잰다**(검사관 C10).
 
 ### 4-2. `apartment_trade_links` (새 표 · 우리 단지 ↔ 거래 열쇠)
 
@@ -109,7 +111,7 @@ VIEW apartments_flat 새 칸 → scorePrice (괴리도 0.55 · PSR 폐지 · 중
 |---|---|
 | `apartment_id` text FK → apartments | 한 단지에 여러 행 가능(대단지 여러 지번) |
 | `link_kind` text | `apt_seq`(매매·전세) / `presale`(분양권) |
-| `link_key` text | `apt_seq` 값 또는 `sgg_cd|umd_nm|jibun|정리이름` |
+| `link_key` text | `apt_seq` 값 또는 `sgg_cd\|umd_nm\|jibun\|정리이름` |
 | `method` text | `jibun+name` / `name` / `manual` |
 | `similarity` numeric · `build_year_gap` smallint | 판정 근거 |
 | `trade_apt_name` text · `trade_jibun` text | 눈 검수용 |
@@ -178,9 +180,9 @@ VIEW apartments_flat 새 칸 → scorePrice (괴리도 0.55 · PSR 폐지 · 중
 
 1. 원문 칸 파싱 확장: `aptSeq`·`umdCd`·`jibun`·`dealDay`·`aptDong`·`contractType`·`ownershipGbn`(분양권 "입" → 건너뛰고 skip 으로 센다 — 실패 아님).
 2. `trades` upsert 는 **그대로**(열쇠·중복 제거·`tradeRowGu` 전부 불변). 같은 회차 같은 응답으로 `trade_deals` 도 쓴다(§4-1 교체 방식). 둘 중 하나가 실패하면 회차는 실패로 끝낸다(`collector_runs` fail).
-3. 화성 4코드: `_shared.mjs` 에 **수집기 전용** `GU_LAWD_CODES(region, gu)` → `string[]`(기본 `[getLawdCd()]`, 화성시 = 4개). `GU_LAWD_MAP["경기"]["화성시"] = "41591"` 은 다른 소비처 때문에 그대로 둔다. `--only=경기:화성시` 는 4코드를 돈다. 행의 `gu` 는 "화성시", `sgg_cd` 가 실제 코드. **표를 바꾸기 전 소비처 raw 1회** 규칙은 조사 2차 A5⑤(옛 41590 = 0건 · 새 4코드 건수)로 충족.
+3. 화성 4코드: `_shared.mjs` 에 **수집기 전용** `GU_LAWD_CODES(region, gu)` → `string[]`(기본 `[getLawdCd()]`, 화성시 = 4개). `GU_LAWD_MAP["경기"]["화성시"] = "41591"` 은 다른 소비처 때문에 그대로 둔다. `--only=경기:화성시` 는 4코드를 돈다. 행의 `gu` 는 "화성시", `sgg_cd` 가 실제 코드. **`trades` 행은 `getLawdCd` 코드(41591) 응답에서만 만든다**(D6 — 추가 3코드는 `trade_deals` 전용, 다) 에서 전환). **표를 바꾸기 전 소비처 raw 1회** 규칙은 조사 2차 A5⑤(옛 41590 = 0건 · 새 4코드 건수)로 충족.
 4. 호출 간격 200ms 유지. 한도는 창구별 하루 10,000(D14). `recordApiQuota` 그대로.
-5. 12개월 재수집 1회 = `--months=12`(운영 반영 절차 §9-가). 이때 `trades` 도 12개월이 다시 upsert 된다(멱등 — 빠졌던 강남 전세 옛 달 같은 공백이 메워진다 → 행 수 증가는 **의도된 변화**로 전이표에 적는다).
+5. 12개월 재수집 1회 = `--months=12 --budget-min=0`(운영 반영 절차 §9-가 · 벽시계 예산 150분은 6개월 정기 회차 기준이라 재수집엔 끈다 — 예산에 닿으면 뒤쪽 지역은 **`trades` 까지** 빠진다, 검사관 C3). 이때 `trades` 도 12개월이 다시 upsert 된다(멱등 — 빠졌던 강남 전세 옛 달 같은 공백이 메워진다 → 행 수 증가는 **의도된 변화**로 전이표에 적는다). 재수집 소요는 첫 정기 회차(10/06) 예산 판단의 근거로 기록한다(새 표 쓰기가 예산 안쪽 반복에 더해졌다).
 6. 감시: `monitor-collectors.mjs` 에 ⑯ **trade_deals 건전성** — 최근 회차 (sgg_cd·월·종류) 열쇠마다 `batch_id` 가 둘 이상 = 경보 · `trade_deals` 최근 달 행 수 vs `trades` 같은 달 행 수 비율 0.9~1.3 밖 = 경보 · 화성 4코드 각각 최근 달 > 0.
 
 ## 7. 하지 않는 것
@@ -201,7 +203,7 @@ VIEW apartments_flat 새 칸 → scorePrice (괴리도 0.55 · PSR 폐지 · 중
 
 | PR | 내용 | 운영 반영(각각 전이표·승인) |
 |---|---|---|
-| **가** `s589/trade-scope-a` | 마이그 `trade_deals`(+롤백) · 수집기 §6 · `GU_LAWD_CODES` · 감시 ⑯ · 시험 · `api-quota-and-ratelimit.md` 창구별 한도 정정 | ① 마이그 psql(리허설 ROLLBACK → 적용) ② 권한 지문 재승인 ③ 합침·운영 폴더 반영(예약 창 밖) ④ **12개월 재수집 1회**(약 40분 · 2u 는 다른 창구) ⑤ 대조 §8 ⑥ 2u 통지(새 표 소개 · `trades` 계속 씀 · 창구별 한도) |
+| **가** `s589/trade-scope-a` | 마이그 `trade_deals`(+롤백) · 수집기 §6 · `GU_LAWD_CODES` · 감시 ⑯ · 시험 · `api-quota-and-ratelimit.md` 창구별 한도 정정 | ① 마이그 psql(리허설 ROLLBACK → 적용) ② 권한 지문 재승인 ③ 합침·운영 폴더 반영(예약 창 밖 — **반드시 ① 뒤**: 표 없이 합치면 감시 ⑯ 은 침묵하지만 회차는 실패 1건) ④ **12개월 재수집 1회**(`--budget-min=0` · 시작 전 collect-trades 프로세스 0 확인 · **10/06 05:30 정기 회차 전에 끝낸다** — 같은 열쇠를 동시에 쓰지 않게) ⑤ 대조 §8(중복 batch 0 은 **12개월 전부**에서 — 7~12번째 달은 정기 회차가 다시 안 쓴다) ⑥ 2u 통지(새 표 소개 · `trades` 내용 그대로 · 창구별 한도) |
 | **나** `s589/trade-scope-b` | 마이그 `apartment_trade_links` + `trade_stats` 새 칸 + VIEW 새 칸 · `assign-trade-links.mjs` · `trade-stats.mjs` §5-2 · 감시(연결 표 건전성) | 마이그 → 묶기 미리보기(명단 승인) → `--apply` → trade-stats 1회 → 새 칸 채움 대조. 화면·점수는 아직 옛 칸을 읽으므로 손님 노출 0 |
 | **다** `s589/trade-scope-c` | `scorePrice.ts` §5-3 · 등급표 재측정 · 문구표 · PSR 폐지 | 전이표(등급 바뀜 명단) 승인 → 합침 → 다음 굽기(03:0x)에 반영 — **라) 와 같은 굽기에 나가도록 합침 시각을 맞춘다**(점수만 먼저 바뀌고 화면은 옛 문구인 창을 없앤다) |
 | **라** `s589/trade-scope-d` | 보존 워크트리 `s589-viz-price`(시세 탭 새 화면, base dd8e1a4e → rebase) + §5-4 문구·칩·정렬 + 옛 칸 삭제 정리 | 캡처 전·후 사장님 확인 → 합침 |
