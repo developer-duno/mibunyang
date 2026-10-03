@@ -13,7 +13,14 @@
  *   SUPABASE_URL         — Supabase 프로젝트 URL
  *   SUPABASE_SERVICE_KEY  — Supabase service_role 키
  */
-import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown, REGION_MAP } from "./_shared.mjs";
+import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemaphore, recordCollectorRun, setupGracefulShutdown, REGION_MAP, selectAll } from "./_shared.mjs";
+// 시세 비교 범위 좁히기 나(세션590) — 새 칸 12개(cmp_* · complex_* · dong_fact). 옛 칸 계산은 그대로 두고 재료를 읽어 넘기기만 한다.
+import { fetchTradeDealsWindow } from "./_trade-deals.mjs";
+import { computeScopeStats, indexDeals, scopeColsEmpty } from "./_trade-scope.mjs";
+import { writeFileSync } from "node:fs";
+
+/** 새 칸을 건너뛴 회차의 경고 마커(아침 브리핑 `scripts/monitor-briefing.mjs` WARN_STEPS_MARKER 가 읽는다). */
+export const WARN_MARKER_SCOPE_SKIPPED = "WARN_STEPS: scope_skipped";
 
 loadEnv();
 
@@ -212,6 +219,9 @@ export function buildLatestPriceMap(rawPrices) {
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
+  // 새 칸 검수 파일(세션590 — 메인 운영 반영 재료). 미리보기에서만, 있는 파일은 덮지 않는다(flag wx).
+  const outPath = process.argv.find((a) => a.startsWith("--out="))?.slice("--out=".length) ?? null;
+  if (outPath != null && !dryRun) throw new Error("--out 은 --dry-run 과 함께만 줍니다(검수 파일은 미리보기에서만)");
   const cutoff12m = monthsAgo(12);
   const cutoff6m = monthsAgo(6);
 
@@ -222,8 +232,8 @@ async function main() {
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
   const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
-  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades] = await Promise.all([
-    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate", {}, sbMibunyang),
+  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades, scopeDeals, scopeLinks] = await Promise.all([
+    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate,completion,bjd_code", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at,house_type", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
@@ -262,7 +272,27 @@ async function main() {
       logError("load", `cancelledTrades 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
       return [];
     }),
+    // 세션590 새 칸 재료 — 실패하면 null(새 칸만 건너뛰고 옛 칸은 그대로, 아래 scopeSkipReason)
+    fetchTradeDealsWindow(sbMibunyang, { fromMonth: cutoff12mYM, cols: "trade_type,sgg_cd,umd_cd,umd_nm,jibun,apt_seq,apt_name,area,price,build_year,contract_type,cancel_date,deal_month" })
+      .catch(/** @param {any} e */ (e) => { logError("load", `trade_deals 조회 실패 — 새 칸 건너뜀: ${e?.message ?? e}`); return null; }),
+    selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key").eq("status", "active"), sbMibunyang, "id")
+      .catch(/** @param {any} e */ (e) => { logError("load", `연결 표 조회 실패 — 새 칸 건너뜀: ${e?.message ?? e}`); return null; }),
   ]);
+  /** @type {string | null} 새 칸을 이번 회차에 건너뛰는 이유(있으면 새 칸을 넣지 않는다 — 지난 값을 null 로 덮지 않게) */
+  const scopeSkipReason = scopeDeals == null ? "trade_deals 조회 실패"
+    : scopeLinks == null ? "연결 표 조회 실패"
+    : scopeLinks.length === 0 ? "연결 표 active 0줄"
+    : null;
+  /** @type {Map<string, Array<{ link_kind: "apt_seq" | "presale", link_key: string }>>} */
+  const scopeLinksByApt = new Map();
+  for (const l of /** @type {any[]} */ (scopeLinks ?? [])) {
+    const list = scopeLinksByApt.get(l.apartment_id);
+    if (list) list.push(l); else scopeLinksByApt.set(l.apartment_id, [l]);
+  }
+  const scopeIndex = indexDeals(scopeDeals?.rows ?? []);
+  const scopeNow = new Date();
+  if (scopeSkipReason) log("load", `SCOPE_SKIPPED ${scopeSkipReason} — 이번 회차는 새 칸(cmp_* 등)을 넣지 않는다`);
+  else log("load", `새 칸 재료: trade_deals ${scopeDeals?.total ?? 0}행 중 완성 batch ${scopeDeals?.rows.length ?? 0}행(완성 없는 열쇠 ${scopeDeals?.droppedKeys.length ?? 0}개 제외) · 연결 active ${scopeLinks?.length ?? 0}줄`);
   // rawPrices에서 아파트별 대표 가격·면적 매핑 (VIEW latest_prices 규칙 미러 — buildLatestPriceMap)
   const latestPriceMap = buildLatestPriceMap(rawPrices);
   /** @type {Array<Record<string, any>>} */
@@ -346,6 +376,8 @@ async function main() {
   const results = [];
   const dsrUpdates = [];
   let processed = 0;
+  /** @type {Map<string, { presale_n_if_moved_in: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
+  const scopeDiagById = new Map();
 
   for (const apt of apartments) {
     const key = statsKey(apt.region, apt.gu);
@@ -565,6 +597,11 @@ async function main() {
       nearbyBuildYear = Math.round(buildYears.reduce((s, y) => s + y, 0) / buildYears.length);
     }
 
+    // 세션590 새 칸 — 건너뛰는 회차면 null(행에 새 칸을 아예 넣지 않는다 → upsert 가 지난 값을 그대로 둔다)
+    const scope = scopeSkipReason
+      ? null
+      : computeScopeStats({ id: apt.id, area: aptArea, completion: apt.completion, bjd_code: apt.bjd_code }, { links: scopeLinksByApt.get(apt.id) ?? [], ...scopeIndex, now: scopeNow });
+
     // 모든 값이 null이면 스킵
     if (
       nearbyMedian == null &&
@@ -572,7 +609,8 @@ async function main() {
       pir == null &&
       psr == null &&
       recentTrades6m == null &&
-      cancelRatio6m == null
+      cancelRatio6m == null &&
+      scopeColsEmpty(scope?.cols)
     ) {
       continue;
     }
@@ -594,7 +632,9 @@ async function main() {
       nearby_build_year: nearbyBuildYear,
       cancel_ratio_6m: cancelRatio6m,
       updated_at: new Date().toISOString(),
+      ...(scope ? scope.cols : {}),
     });
+    if (scope) scopeDiagById.set(apt.id, scope.diag);
 
     if (dsr40pass != null) {
       dsrUpdates.push({ id: apt.id, dsr40pass });
@@ -626,6 +666,43 @@ async function main() {
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
   log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + (r.cancel_ratio_6m ?? 0), 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
   log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass).length}통과 / ${dsrUpdates.filter(d => !d.dsr40pass).length}미통과 (총 ${dsrUpdates.length}건)`);
+
+  // 세션590 새 칸 요약(범위별 수 · ㎡당 · 같은 단지 전세가율 · 100% 초과 · 동네 사실 · 입주 후 분양권 진단)
+  if (scopeSkipReason) {
+    log("summary", `SCOPE_SKIPPED ${scopeSkipReason} — 새 칸 0건(지난 값 유지)`);
+  } else {
+    /** @type {Array<Record<string, any>>} */
+    const sc = results.filter((r) => r.cmp_scope !== undefined);
+    const t1s = sc.filter((r) => r.cmp_scope === "complex" && r.cmp_src === "sale").length;
+    const t1p = sc.filter((r) => r.cmp_scope === "complex" && r.cmp_src === "presale").length;
+    const t2 = sc.filter((r) => r.cmp_scope === "dong_peer").length;
+    const t3 = sc.filter((r) => r.cmp_scope === "none").length;
+    const perM2 = sc.filter((r) => r.cmp_area_mode === "per_m2").length;
+    const jr = sc.filter((r) => r.complex_jeonse_rate != null);
+    const jrOver = jr.filter((r) => r.complex_jeonse_rate > 100);
+    const df = sc.filter((r) => r.dong_fact != null).length;
+    const movedInPresale = [...scopeDiagById.entries()].filter(([id, d]) => {
+      const row = sc.find((r) => r.apartment_id === id);
+      return d.moved_in && (row?.complex_sale_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
+    }).length;
+    log("summary", `새 칸 범위: T1 매매 ${t1s} · T1 분양권 ${t1p} · T2 동네 또래 ${t2} · T3 없음 ${t3} (㎡당 환산 ${perM2})`);
+    log("summary", `같은 단지 전세가율 ${jr.length}곳 · 100% 초과 ${jrOver.length}곳 · 동네 사실 ${df}곳`);
+    log("summary", `진단: 입주 후 매매<3·분양권≥3 단지 ${movedInPresale}곳(판정엔 안 씀 — R2)`);
+    if (jrOver.length) logError("summary", `같은 단지 전세가율 100% 초과 ${jrOver.length}곳 — 예: ${jrOver.slice(0, 5).map((r) => `${r.apartment_id} ${r.complex_jeonse_rate}%`).join(", ")}`);
+  }
+  if (outPath != null) {
+    const aptById = new Map(apartments.map((a) => [a.id, a]));
+    const rows = results.map((r) => {
+      const a = aptById.get(r.apartment_id);
+      /** @type {Record<string, any>} */
+      const o = { id: r.apartment_id, name: a?.name ?? null, region: a?.region ?? null, gu: a?.gu ?? null, completion: a?.completion ?? null, area: a?.area ?? null };
+      for (const k of ["cmp_scope", "cmp_fair_price", "cmp_n", "cmp_months", "cmp_area_mode", "cmp_src", "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_table", "complex_jeonse_table", "dong_fact"]) o[k] = /** @type {Record<string, any>} */ (r)[k] ?? null;
+      o.diag = scopeDiagById.get(r.apartment_id) ?? null;
+      return o;
+    });
+    writeFileSync(outPath, JSON.stringify({ takenAt: new Date().toISOString(), scopeSkipReason, rows }, null, 1) + "\n", { flag: "wx" });
+    log("dry-run", `새 칸 검수 파일 저장: ${outPath} (${rows.length}곳)`);
+  }
 
   if (dryRun) {
     log("dry-run", "미리보기 모드 — 업데이트 생략");
@@ -693,7 +770,7 @@ async function main() {
     log("done", `apartments.dsr40pass ${dsrOk}/${dsrUpdates.length}건 업데이트 완료`);
   }
 
-  await recordCollectorRun("trade-stats", { ok: upserted, fail: results.length - upserted });
+  await recordCollectorRun("trade-stats", { ok: upserted, fail: results.length - upserted, errorMessage: scopeSkipReason ? WARN_MARKER_SCOPE_SKIPPED : null });
 }
 
 const argv1 = process.argv[1];
