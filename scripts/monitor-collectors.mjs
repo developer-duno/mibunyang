@@ -23,6 +23,7 @@
  */
 import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, HWASEONG_LAWD_CODES } from "./collectors/_shared.mjs";
 import { isMissingTable } from "./collectors/_trade-deals.mjs";
+import { isLeaseUnit } from "../src/constants/leaseTypes.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -267,7 +268,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1686,6 +1687,110 @@ export async function fetchTradeDealsHealth(sbArg, now = new Date()) {
   return { empty: false, rows, tradesCounts, latest, prev, lastRunFinishedAt: runs?.[0]?.finished_at ?? null };
 }
 
+// ── ⑰ 단지↔거래 연결 표 건전성 (세션590 — 시세 비교 범위 좁히기 나) ──────────────
+/** ⑰ 이 `collector_runs` 에서 찾는 묶기 배치 이름(assign-trade-links.mjs PHASE). */
+export const TRADE_LINKS_COLLECTOR = "assign-trade-links";
+/** ⑰(a) 마지막 성공이 이 일수보다 오래면 알린다 — 월 2회(8·22일, collect-trade-stats.yml) + 여유. */
+export const TRADE_LINKS_STALE_DAYS = 20;
+/** ⑰(b) 경보 본문에 펼칠 최대 열쇠 수 — 나머지는 "외 N개" 한 건으로 접는다. */
+const TRADE_LINKS_SIBLING_LIMIT = 10;
+
+/**
+ * ⑰ 연결 표 건전성 — 개수가 아니라 **명단**(열쇠·단지 id)으로 본다([[next-session-grep-mandate]] §4).
+ * (a) 묶기 배치 마지막 성공이 20일 넘게 없음 → `trade-links-stale`
+ * (b) 같은 (link_kind, link_key) 가 **서로 다른 complex_key 묶음 둘 이상**의 단지에 active → `trade-links-sibling` 열쇠마다
+ *     (빈 열쇠 = 자기 id 가 묶음 · 임대 행은 묶음 셈에서 뺀다 — 묶기의 형제 판정 `_trade-links.mjs planLinks` 와 같은 잣대.
+ *     묶기는 이런 짝을 hold 로 두므로, active 로 보이면 사람 판정 파일이나 쓰기 경로가 규칙을 건넜다는 뜻)
+ * (c) 연결 표가 비었거나 아직 없으면(마이그 직후~첫 반영) **셋 다 침묵**.
+ * @param {Array<{ apartment_id: string, link_kind: string, link_key: string }>} links active 줄 전량
+ * @param {Array<{ id: string, complex_key?: string | null, presale_type?: string | null, name?: string | null }>} apts
+ * @param {{ finished_at?: string | null } | null} latestSuccess
+ * @param {{ now?: Date, staleDays?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkTradeLinksHealth(links, apts, latestSuccess, opts = {}) {
+  if (!links.length) return [];
+  const now = opts.now ?? new Date();
+  const staleDays = opts.staleDays ?? TRADE_LINKS_STALE_DAYS;
+  /** @type {Issue[]} */
+  const issues = [];
+  const t = latestSuccess?.finished_at ? new Date(latestSuccess.finished_at).getTime() : NaN;
+  if (!(Number.isFinite(t) && now.getTime() - t <= staleDays * 86400000)) {
+    const days = Number.isFinite(t) ? Math.floor((now.getTime() - t) / 86400000) : null;
+    issues.push({
+      kind: "trade-links-stale",
+      collector: TRADE_LINKS_COLLECTOR,
+      detail: days == null ? "단지↔거래 묶기의 성공 기록이 없음" : `단지↔거래 묶기의 마지막 성공이 ${days}일 전(기준 ${staleDays}일)`,
+      lines: [
+        "묶기(assign-trade-links)는 collect-trade-stats.yml 안에서 trade-stats 바로 앞에 월 2회(8·22일) 돈다 — 안 돌면 새 단지·새 거래가 연결되지 않고 통계는 지난 연결로 계산된다.",
+      ],
+      at: latestSuccess?.finished_at ?? "기록 없음",
+    });
+  }
+  const aptById = new Map(apts.map((a) => [a.id, a]));
+  /** @type {Map<string, { bundles: Set<string>, ids: string[] }>} */
+  const byKey = new Map();
+  for (const l of links) {
+    const k = `${l.link_kind}|${l.link_key}`;
+    let g = byKey.get(k);
+    if (!g) { g = { bundles: new Set(), ids: [] }; byKey.set(k, g); }
+    g.ids.push(l.apartment_id);
+    const a = aptById.get(l.apartment_id);
+    if (a && isLeaseUnit({ presale_type: a.presale_type, name: a.name })) continue;
+    g.bundles.add(a?.complex_key || `id:${l.apartment_id}`);
+  }
+  const siblings = [...byKey.entries()].filter(([, g]) => g.bundles.size >= 2).sort(([a], [b]) => a.localeCompare(b));
+  for (const [key, g] of siblings.slice(0, TRADE_LINKS_SIBLING_LIMIT)) {
+    const ids = [...g.ids].sort();
+    issues.push({
+      kind: "trade-links-sibling",
+      collector: "apartment_trade_links",
+      detail: `${key} 가 묶음 ${g.bundles.size}개에 active`,
+      lines: [`단지: ${ids.join(", ")}`, `묶음: ${[...g.bundles].sort().join(" · ")}`],
+      at: fingerprintIds(ids),
+    });
+  }
+  if (siblings.length > TRADE_LINKS_SIBLING_LIMIT) {
+    issues.push({
+      kind: "trade-links-sibling",
+      collector: "apartment_trade_links",
+      detail: `외 ${siblings.length - TRADE_LINKS_SIBLING_LIMIT}개 열쇠도 묶음 둘 이상에 active`,
+      lines: [`나머지: ${siblings.slice(TRADE_LINKS_SIBLING_LIMIT).map(([k]) => k).join(", ")}`],
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑰ 재료 — 연결 표 active 전량 · apartments(id·complex_key·임대 판정 재료) · 묶기 배치 마지막 success. 둘 다 고유 키 커서.
+ * 연결 표가 아직 없으면(PGRST205 — 마이그 적용 전) `missing` 으로 침묵한다. 그 밖의 조회 실패는 runFailOpenCheck 가 알린다.
+ * @param {any} [sbArg]
+ * @returns {Promise<{ missing?: boolean, links: Array<Record<string, any>>, apts: Array<Record<string, any>>, latestSuccess: Record<string, any> | null }>}
+ */
+export async function fetchTradeLinksHealth(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  /** @type {Array<Record<string, any>>} */
+  let links;
+  try {
+    links = await selectAll((s) => s.from("apartment_trade_links").select("id,apartment_id,link_kind,link_key").eq("status", "active"), sb, "id");
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (isMissingTable({ message: msg })) return { missing: true, links: [], apts: [], latestSuccess: null };
+    throw e;
+  }
+  if (!links.length) return { links, apts: [], latestSuccess: null };
+  const apts = await selectAll((s) => s.from("apartments").select("id,complex_key,presale_type,name"), sb, "id");
+  const { data: runs, error } = await sb
+    .from("collector_runs")
+    .select("finished_at")
+    .eq("collector", TRADE_LINKS_COLLECTOR)
+    .eq("status", "success")
+    .order("finished_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`collector_runs(${TRADE_LINKS_COLLECTOR}) 조회 실패: ${error.message}`);
+  return { links, apts, latestSuccess: runs?.[0] ?? null };
+}
+
 /**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
@@ -2754,7 +2859,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 아홉(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590)을 돌려 이슈를 합친다.
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -2766,6 +2871,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchKeyHealth?: () => ReturnType<typeof fetchComplexKeyHealth>,
  *   fetchKaptWindowRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchTradeDeals?: () => ReturnType<typeof fetchTradeDealsHealth>,
+ *   fetchTradeLinks?: () => ReturnType<typeof fetchTradeLinksHealth>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -2781,6 +2887,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchFailureRuns = deps.fetchFailureRuns ?? (() => fetchRecentFailureRuns());
   const fetchKeyHealth = deps.fetchKeyHealth ?? fetchComplexKeyHealth;
   const fetchTradeDeals = deps.fetchTradeDeals ?? (() => fetchTradeDealsHealth());
+  const fetchTradeLinks = deps.fetchTradeLinks ?? (() => fetchTradeLinksHealth());
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -2881,6 +2988,16 @@ export async function runDailyGuardedChecks(deps = {}) {
       : `${h.prev}·${h.latest} ${h.rows.length}행${inProgress ? " · 수집 회차 진행 중이라 (b)(c) 보류" : ""}`;
     console.log(`[monitor] ⑯ trade_deals 점검: ${state} → 이상 ${dealIssues.length}건`);
     return dealIssues;
+  }));
+
+  // ⑰ 단지↔거래 연결 표 — 묶기 배치 20일 무성공 · 다른 묶음이 같은 열쇠를 active 로 공유하는 명단(세션590 시세 범위 좁히기 나). 표가 비면 침묵.
+  issues = issues.concat(await runFailOpenCheck("⑰ 연결 표 점검", async () => {
+    const h = await fetchTradeLinks();
+    const linkIssues = checkTradeLinksHealth(/** @type {any[]} */ (h.links), /** @type {any[]} */ (h.apts), h.latestSuccess);
+    const state = h.missing ? "표 아직 없음(마이그 전) — 침묵" : h.links.length === 0 ? "표 비어 있음(첫 반영 전) — 침묵"
+      : `active ${h.links.length}줄 · 마지막 성공 ${h.latestSuccess?.finished_at ?? "없음"}`;
+    console.log(`[monitor] ⑰ 연결 표 점검: ${state} → 이상 ${linkIssues.length}건`);
+    return linkIssues;
   }));
 
   return issues;
@@ -3571,7 +3688,7 @@ async function main() {
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
