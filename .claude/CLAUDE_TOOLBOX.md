@@ -29,14 +29,14 @@
 | 상황 | 1순위 도구 | 호출 |
 |---|---|---|
 | 새 기능·리팩토링 시작 | `superpowers:brainstorming` + `superpowers:writing-plans` | Skill |
-| 버그·테스트 실패·재현 | `superpowers:systematic-debugging` + `engineering:debug` | Skill |
+| 버그·테스트 실패·재현 | `superpowers:systematic-debugging` | Skill |
 | 새 코드 작성 (TDD) | `superpowers:test-driven-development` | Skill |
 | UI/컴포넌트 만들기 | `frontend-design:frontend-design` | Skill (자동) |
 | UI 변경 후 검증 | `webapp-testing` (Playwright MCP) | Skill |
 | Supabase 쿼리·DB 진단 | `data:sql-queries` / `data:explore-data` | Skill |
 | 트렌드/세그먼트 분석 | `data:analyze` | Skill |
-| 외부 장애 (행안부/네이버 500) | `engineering:incident-response` | Skill |
-| 품질 갭 전략 (price 64% 등) | `engineering:tech-debt` | Skill |
+| 외부 장애 (행안부/네이버 500) | `superpowers:systematic-debugging` + `rules/workflows/external-api-outage-policy.md` | Skill·규칙 |
+| 품질 갭 전략 (price 64% 등) | `db-quality` | Skill(프로젝트) |
 | 커밋 전 5교차검증 | `cross-validate` (프로젝트 스킬, 자율 발동) | Skill |
 | 커밋·PR | `commit-commands:commit` / `commit-commands:commit-push-pr` | 슬래시 |
 | PR 코드 리뷰 | `pr-review-toolkit:review-pr` 또는 `/code-review:code-review` | 슬래시 |
@@ -111,8 +111,8 @@
 
 | 플러그인 | 출처 | 용도 |
 |---|---|---|
-| `engineering@knowledge-work-plugins` | knowledge-work | 디버깅·아키텍처·인시던트 등 10개 skill |
-| `data@knowledge-work-plugins` | knowledge-work | SQL·시각화·분석 10개 skill |
+| `engineering@knowledge-work-plugins` | knowledge-work | **꺼짐(2026-10-05 토큰 다이어트 P4 — 14일 사용 0~1회, MCP 연결 실패 알림 소음)** |
+| `data@knowledge-work-plugins` | knowledge-work | **꺼짐(2026-10-05 토큰 다이어트 P4 — 같은 이유)** |
 | `session-report@claude-plugins-official` | 공식 | 세션 토큰/스킬 사용 HTML 리포트 |
 | `supabase@claude-plugins-official` | 공식 (세션 340 신규, v0.1.9) | Supabase MCP — DB SQL + 스키마 + Edge Function (25 tool, 공식 답습 검증) |
 | `typescript-lsp@claude-plugins-official` | 공식 (세션 340 신규, v1.0.0) | TS 진단 자동 + goto definition + find references (TS 98% 프로젝트 필수). 사전 의무 = `npm i -g typescript-language-server typescript` (세션 340 완료) |
