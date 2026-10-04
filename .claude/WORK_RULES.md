@@ -18,11 +18,11 @@
 | 5+ 경쟁 가설 / timeout·cancelled 원인 진단 | **`Skill(oh-my-claudecode:trace)`** | 4-way 답습의 형식화 엔진 |
 | "Y MCP 추가" / "도구 등록" / "스킬 꺼내" 류 | `Skill(tool-discovery)` | 글로벌 오염 위험 |
 | 새 기능 / 컴포넌트 / 디자인 | `Skill(superpowers:brainstorming)` | 의도 파악 0회 위반 |
-| 버그 / 에러 / "X 안 됨" | `Skill(superpowers:systematic-debugging)` 또는 `Skill(engineering:debug)` | 추측 fix 위반 |
-| 인시던트 / 외부 API 500 / 503 | `Skill(engineering:incident-response)` | 진단 분산 |
-| DB 쿼리 / apartments_flat / 품질 진단 | `Skill(data:sql-queries)` / `Skill(data:explore-data)` | 직접 SQL 답습 위반 |
-| 트렌드 / 세그먼트 / 분포 | `Skill(data:analyze)` | 통계 추측 위반 |
-| 데이터 품질 검증 / 분석 공유 직전 | `Skill(data:validate-data)` / `Skill(data:statistical-analysis)` | NULL률·denominator shift·이상치 카탈로그 |
+| 버그 / 에러 / "X 안 됨" | `Skill(superpowers:systematic-debugging)` | 추측 fix 위반 |
+| 인시던트 / 외부 API 500 / 503 | `Skill(superpowers:systematic-debugging)` + `.claude/rules/workflows/external-api-outage-policy.md` | 진단 분산 |
+| DB 쿼리 / apartments_flat / 품질 진단 | `_shared.mjs` `selectAll`(고유 키 커서) + `count:"exact"` 대조 — `unordered-pagination-loses-rows`·`probe-must-be-self-verified` (2026-10-05 data·engineering 플러그인 끔 — 토큰 다이어트 P4) | 직접 SQL 답습 위반 |
+| 트렌드 / 세그먼트 / 분포 | `Agent(subagent_type=oh-my-claudecode:scientist)` | 통계 추측 위반 |
+| 데이터 품질 검증 / 분석 공유 직전 | `Skill(db-quality)` + `tool-output-illusion-guard` | NULL률·denominator shift·이상치 카탈로그 |
 | "완료" / "통과" / "고침" 주장 직전 | `Skill(superpowers:verification-before-completion)` | 회귀 가드 룰 강제 엔진 (증거 없이 성공 단정 금지) |
 | 외부 자원 부재 단정 직전 | `feedback_external_resource_existence_check.md` 답습 | 본문 손상 위험 |
 

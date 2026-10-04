@@ -118,8 +118,8 @@
     ]
   },
   "enabledPlugins": {
-    "engineering@knowledge-work-plugins": true,
-    "data@knowledge-work-plugins": true,
+    "engineering@knowledge-work-plugins": false,
+    "data@knowledge-work-plugins": false,
     "session-report@claude-plugins-official": true,
     "supabase@claude-plugins-official": true,
     "typescript-lsp@claude-plugins-official": true,
