@@ -38,15 +38,16 @@ import type { Apt } from "@/types/scoring";
  * 서랍 구성을 실행으로 재현해 확인). 그래서 이 카드는 "미래 위험 예방"이 아니라 **현존 누출을
  * 막는 수정**이다 — fmt 를 그대로 재사용했다면 누출을 더 눈에 띄는 자리로 옮기기만 했을 것이다.
  * → 점수 접미어 없는 별도 포맷을 쓴다(`fmtLayout`, `v || "미수집"`). 나머지 6필드는 기존
- * 원칙(TransportCard·BuilderCard 답습 — "센티널 문구는 fieldMeta 것을 그대로 재사용, 새로
- * 짓지 않는다")대로 `FIELD_META.fmt` 를 그대로 재사용한다.
+ * 원칙(옛 TransportCard·BuilderCard 답습 — "센티널 문구는 fieldMeta 것을 그대로 재사용, 새로
+ * 짓지 않는다")대로 `FIELD_META.fmt` 를 그대로 재사용한다. (TransportCard 의 접힘 카드는 세션591 에 해체돼
+ * 지금은 교통 사실 글자 함수만 남았다 — 이 원칙의 살아 있는 예는 BuilderCard.)
  *
  * ## primaryDirection — 색 규칙 답습
  *
  * `lib/dataSections.ts dataValueColor` 의 남향 초록 / 북향 빨강 규칙을 그대로 쓴다
  * (AptCard 향 칩과 같은 어휘 — 새 규칙 0).
  *
- * 기본 접힘 — TransportCard·BuilderCard 패턴 답습.
+ * 기본 접힘 — BuilderCard(와 세션591 에 해체된 옛 TransportCard) 패턴 답습.
  */
 const FIELDS = [
   "maxFloor",
@@ -59,7 +60,8 @@ const FIELDS = [
 ] as const;
 
 const BI_S: Record<string, import("react").CSSProperties> = {
-  // TransportCard 의 TC_S.container 와 byte-identical (같은 탭 형제와 시각 일관)
+  // 옛 TransportCard 의 TC_S.container 와 byte-identical 이었다(같은 탭 형제와 시각 일관 — 그 카드는 세션591 에
+  // 해체, 같은 모양은 BuilderCard 가 이어 쓴다).
   container: {
     background: C.bg,
     borderRadius: 10,

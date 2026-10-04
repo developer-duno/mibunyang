@@ -1,128 +1,55 @@
-import { memo, useState } from "react";
-import { C, F } from "@/theme";
-import { FIELD_META } from "@/constants/fieldMeta";
+import { isSentinel } from "@/constants/sentinels";
+import { fmtDist } from "@/components/charts/DistanceDots";
 import type { Apt } from "@/types/scoring";
 
 /**
- * TransportCard — 입지 탭 "교통 상세" 전용 카드 (세션508 PR-3b B1).
+ * 교통 사실 글자 — 입지 탭 (세션591 "접힘 없이 한눈에" L3).
  *
- * `LOCATION_SECTIONS`(`lib/dataSections.ts`)의 "교통 상세" 격자를 폐기하고 여기로 승격했다.
- * 담는 건 그림(`charts/DistanceDots`)이 못 그리는 값뿐이다 — 역 이름·노선처럼 글자값,
- * IC·KTX 처럼 km 단위(그림 축은 m)라 못 올리는 값. 역까지 "거리"(subwayDist, m 단위)는
- * 여전히 그림 소관이라 여기 없다.
+ * 옛 "교통 상세" 접힘 카드(세션508 PR-3b B1)를 해체한 자리다. 6칸이 각자 갈 곳으로 갔다:
+ * - 역 이름·노선(+역까지 거리) · 버스 노선 수 → 입지 판정 한 줄에 병기(`transportFacts`,
+ *   목업 "입지 우수 · 평촌역(4호선) 1.3km · 버스 12개 노선")
+ * - 버스 정류장 이름 → "학군 · 버스" 칩(`busStopsText`, `detail/SchoolInfo`)
+ * - IC·KTX 거리 → 거리 점 그림의 "고속도로·KTX" 줄(`charts/DistanceDots`)
  *
- * ⚠️ 센티널 문구는 `FIELD_META` 의 fmt 를 그대로 호출한다 — 새로 짓지 않는다. v1 플랜은
- * "icDist/ktxDist 99=미수집"으로 잘못 지었다가 적대검증에서 정정됐다(플랜 §"v1 에서 틀렸던 것" #1).
- * 실제로는 99 이상이 "반경 밖"(측정은 했고 90km 넘게 멀다는 뜻)이고, null 만 fmt 가 "—"로 그린다.
+ * 이 글자는 **점수 판정이 아니라 원자료 사실**이라 비로그인에도 보인다(판정 글자만 가린다).
  *
- * 기본 접힘 — 입지 판단의 1차 신호는 바로 위 `DistanceDots` 그림이 이미 준다.
+ * 좌표 자리표시 의심(사장님 결정, 세션568-3) — 역·정류장은 전부 이 단지 좌표로 찾은 값이라,
+ * 좌표가 다른 단지와 공유되면 이 단지 것이 아니다. **경고문이 아니라 틀린 값을 안 보여주는 것**
+ * (.claude/rules/our-defect-is-not-customer-warning.md) — 두 함수 모두 null 을 돌려주고, 거리 그림이
+ * 같은 자리에 "위치 확인 중" 사실 한 줄을 그린다.
  */
-const FIELDS = ["subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"] as const;
 
-const TC_S: Record<string, import("react").CSSProperties> = {
-  // DataSectionBlock 의 DSB_S.container 와 byte-identical (같은 탭 형제와 시각 일관)
-  container: {
-    background: C.bg,
-    borderRadius: 10,
-    padding: "10px 12px",
-    marginBottom: 10,
-    border: `1px solid ${C.border}`,
-  },
-  head: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer" },
-  title: { fontSize: F.sm, fontWeight: 700, color: C.sub },
-  arrow: { fontSize: F.sm, color: C.muted, transition: "transform .2s", display: "inline-block" },
-  body: { marginTop: 8, display: "grid", gridTemplateColumns: "1fr 1fr", gap: "4px 12px" },
-  cell: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" },
-  label: { fontSize: F.xs, color: C.muted },
-  value: { fontSize: F.xs, fontWeight: 600, color: C.text },
-};
-
-/** 필드 1행 — label/value 는 호출부가 리터럴 `apt.<field>` 로 넘긴다(회귀 가드가 소스를 grep 하기 때문). */
-function Field({ field, label, value }: { field: string; label: string; value: string }) {
-  return (
-    <div style={TC_S.cell} data-field={field}>
-      <span style={TC_S.label}>{label}</span>
-      <span style={TC_S.value}>{value}</span>
-    </div>
-  );
+/** "평촌역(4호선) 1.3km · 버스 12개 노선" — 적을 게 없으면 null */
+export function transportFacts(apt: Apt): string | null {
+  if (apt.coordShared === true) return null;
+  const parts: string[] = [];
+  const name = typeof apt.subwayName === "string" ? apt.subwayName.trim() : "";
+  if (name) {
+    const lines = typeof apt.subwayLines === "string" && apt.subwayLines.trim() ? `(${apt.subwayLines.trim()})` : "";
+    const d = Number(apt.subwayDist);
+    // 9999(10km 안에 없음)는 역 이름과 함께 적을 거리가 아니다
+    const dist =
+      apt.subwayDist != null && Number.isFinite(d) && d >= 0 && !isSentinel("subwayDist", d) ? ` ${fmtDist(d)}` : "";
+    parts.push(`${name}${lines}${dist}`);
+  }
+  const bus = Number(apt.busRoutes);
+  if (apt.busRoutes != null && Number.isFinite(bus) && bus > 0) parts.push(`버스 ${Math.round(bus)}개 노선`);
+  return parts.length ? parts.join(" · ") : null;
 }
 
-export const TransportCard = memo(function TransportCard({ apt }: { apt: Apt }) {
-  const [open, setOpen] = useState(false);
-  const hasAny = FIELDS.some((f) => apt[f] != null);
-  if (!hasAny) return null;
+/** 칩에 적는 정류장 이름 수 — 넘치면 "외 N" */
+const BUS_STOP_SHOWN = 3;
 
-  // 좌표 자리표시 의심(사장님 결정, 세션568-3) — 역·학교 이름·거리·도보 분은 전부 이 단지
-  // 좌표로 잰 값이라, 좌표가 다른 단지와 공유되면 이 단지 것이 아니다. **경고문이 아니라
-  // 틀린 값을 안 보여주는 것**이다(.claude/rules/our-defect-is-not-customer-warning.md —
-  // "이 숫자는 못 미더우니 참고만" 류 신뢰도 변명과 다르다: 값 자체를 감추고 사실 한 줄만 남긴다).
-  // ⚠️ 세션563 가드(TransportCard.test.tsx:118-128, 경고 문구 없음)는 계속 통과해야 하므로
-  //    `data-field="coordShared"` 같은 표식은 쓰지 않는다 — 표식은 `data-state="coord-unknown"`.
-  const coordUnknown = apt.coordShared === true;
-
-  return (
-    <div style={TC_S.container}>
-      <div
-        onClick={() => setOpen((v) => !v)}
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setOpen((v) => !v);
-          }
-        }}
-        style={TC_S.head}
-      >
-        <span style={TC_S.title}>교통 상세</span>
-        <span aria-hidden style={{ ...TC_S.arrow, transform: open ? "rotate(180deg)" : "rotate(0)" }}>
-          ▼
-        </span>
-      </div>
-      {/*
-        ⚠️ 좌표 자리표시 경고 **문구**를 일부러 두지 않는다(사장님 결정 2026-09-23, 세션563).
-
-        세션561이 여기에 "위치가 정확하지 않을 수 있으니 거리는 참고로만 봐 주세요" 를 달았다가
-        뺐다. 좌표가 부정확한 건 **우리 데이터 문제**이지 손님이 감당할 일이 아니다 — 손님에게
-        "이 숫자는 믿지 마세요" 라고 말하는 것은 문제를 떠넘기는 것이다.
-
-        세션568-3 에서 한 단계 더 나아갔다 — 경고문 대신 **틀린 값 자체를 안 보여준다**
-        (아래 coordUnknown 분기). "위치 확인 중"은 신뢰도 변명이 아니라 사실 서술이다.
-        같은 이유로 `SchoolInfo` 도 같은 처리(별도 파일). 지도의 점선 핀(`KakaoMapView`)도
-        남겨 둔다 — 그건 글이 아니라 핀의 생김새라서 손님에게 판단을 떠넘기지 않는다.
-      */}
-      {open &&
-        (coordUnknown ? (
-          <div style={TC_S.body} data-state="coord-unknown">
-            <span style={{ ...TC_S.label, gridColumn: "1 / -1" }}>위치 확인 중</span>
-          </div>
-        ) : (
-          <div style={TC_S.body}>
-            <Field
-              field="subwayName"
-              label={FIELD_META.subwayName.label}
-              value={FIELD_META.subwayName.fmt(apt.subwayName, apt)}
-            />
-            <Field
-              field="subwayLines"
-              label={FIELD_META.subwayLines.label}
-              value={FIELD_META.subwayLines.fmt(apt.subwayLines, apt)}
-            />
-            <Field
-              field="busRoutes"
-              label={FIELD_META.busRoutes.label}
-              value={FIELD_META.busRoutes.fmt(apt.busRoutes, apt)}
-            />
-            <Field
-              field="busStopNames"
-              label={FIELD_META.busStopNames.label}
-              value={FIELD_META.busStopNames.fmt(apt.busStopNames, apt)}
-            />
-            <Field field="icDist" label={FIELD_META.icDist.label} value={FIELD_META.icDist.fmt(apt.icDist, apt)} />
-            <Field field="ktxDist" label={FIELD_META.ktxDist.label} value={FIELD_META.ktxDist.fmt(apt.ktxDist, apt)} />
-          </div>
-        ))}
-    </div>
-  );
-});
+/** "버스 정류장 한신아파트 · 농수산물시장 · 평촌IC(미정차) 외 9" — 없으면 null */
+export function busStopsText(apt: Apt): string | null {
+  if (apt.coordShared === true) return null;
+  const names = String(apt.busStopNames ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    // 버스가 서지 않는 정류장은 이름·"외 N" 개수 둘 다에서 뺀다(세션591 보완 F7). 실측(10/02 사본 1,822곳 ·
+    // 이름 17,848개): "미정차" 든 이름 262개 — "…(미정차)" 끝 258 · 괄호가 가운데 2 · 괄호 없이 가운데 2.
+    .filter((s) => Boolean(s) && !s.includes("미정차"));
+  if (!names.length) return null;
+  const rest = names.length - BUS_STOP_SHOWN;
+  return `버스 정류장 ${names.slice(0, BUS_STOP_SHOWN).join(" · ")}${rest > 0 ? ` 외 ${rest}` : ""}`;
+}

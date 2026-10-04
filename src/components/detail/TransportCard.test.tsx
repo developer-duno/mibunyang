@@ -1,159 +1,119 @@
 import { describe, it, expect } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
-import { TransportCard } from "./TransportCard";
+import { transportFacts, busStopsText } from "./TransportCard";
 import { makeApt } from "@/__tests__/factories";
 import type { Apt } from "@/types/scoring";
 
 /**
- * TransportCard — 입지 탭 "교통 상세" 전용 카드 (세션508 PR-3b B1).
+ * 교통 사실 글자 — 세션591 L3 (옛 "교통 상세" 접힘 카드 해체).
  *
- * 이 파일이 이어받은 것: `DataSectionBlock.test.jsx` 의 "교통 상세" 값 렌더 검증
- * (역 이름·노선·정류장·null → "—")은 그 필드들이 `LOCATION_SECTIONS` 를 떠나면서
- * DataSectionBlock 이 더는 그리지 않는다 — 여기가 새 자리다.
+ * 옛 카드 시험(세션508 PR-3b B1, 15건)이 지키던 것과 새 자리:
+ * - 접힘·aria-expanded·"교통 상세" 헤더 → 접힘 자체가 없어졌다(V1). 이 파일엔 없다.
+ * - 역 이름·노선·버스 노선 수 → `transportFacts`(입지 판정 한 줄) — 아래 첫 묶음
+ * - 정류장 이름 → `busStopsText`("학군 · 버스" 칩) — 둘째 묶음
+ * - IC·KTX "반경 밖" → 거리 점 그림 "20km 안에 없음"(`charts/DistanceDots.test.tsx`)
+ * - 좌표 자리표시: 경고문 없음(세션563) + 값 감춤(세션568-3) — 셋째 묶음
  */
 
 function apt(over: Record<string, unknown> = {}): Apt {
   return makeApt(over) as unknown as Apt;
 }
 
-describe("TransportCard — 기본 접힘 + 존재 게이트", () => {
-  it("6필드가 전부 null 이면 아예 렌더하지 않는다", () => {
-    const { container } = render(
-      <TransportCard
-        apt={apt({
-          subwayName: null,
-          subwayLines: null,
-          busRoutes: null,
-          busStopNames: null,
-          icDist: null,
-          ktxDist: null,
-        })}
-      />
+describe("transportFacts — 역 이름(노선) 거리 · 버스 노선 수", () => {
+  it("목업 꼴 그대로 — '평촌역(4호선) 1.3km · 버스 12개 노선'", () => {
+    expect(transportFacts(apt({ subwayName: "평촌역", subwayLines: "4호선", subwayDist: 1311, busRoutes: 12 }))).toBe(
+      "평촌역(4호선) 1.3km · 버스 12개 노선"
     );
-    expect(container.firstChild).toBeNull();
   });
 
-  it("값이 하나라도 있으면 헤더만 보이고 본문은 접혀 있다", () => {
-    render(<TransportCard apt={apt()} />);
-    expect(screen.getByText("교통 상세")).toBeInTheDocument();
-    expect(screen.queryByText("영통역")).toBeNull();
+  it("노선이 없으면 괄호 없이, 거리가 없으면 거리 없이", () => {
+    expect(transportFacts(apt({ subwayName: "영통역", subwayLines: null, subwayDist: null, busRoutes: null }))).toBe(
+      "영통역"
+    );
   });
 
-  it("헤더 클릭 시 펼쳐지고 aria-expanded 가 바뀐다", () => {
-    render(<TransportCard apt={apt()} />);
-    const toggle = screen.getByRole("button", { expanded: false });
-    fireEvent.click(toggle);
-    expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("영통역")).toBeInTheDocument();
-  });
-});
-
-describe("TransportCard — 펼치면 6필드를 그린다 (fieldMeta fmt 그대로 재사용)", () => {
-  it("역 이름·노선·버스 노선수·정류장을 표시한다", () => {
-    render(<TransportCard apt={apt()} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("영통역")).toBeInTheDocument();
-    expect(screen.getByText("1호선")).toBeInTheDocument();
-    expect(screen.getByText("10개")).toBeInTheDocument();
-    // busStopNames fmt: 콤마 분리 후 ", " join (DataSectionBlock 시절과 동일 표기)
-    expect(screen.getByText("영통역입구, 삼성아파트")).toBeInTheDocument();
+  it("지하철 9999(10km 안에 없음)는 역 이름 옆에 거리로 적지 않는다", () => {
+    expect(transportFacts(apt({ subwayName: "영통역", subwayLines: "1호선", subwayDist: 9999, busRoutes: 0 }))).toBe(
+      "영통역(1호선)"
+    );
   });
 
-  it("6개 필드 줄이 정확히 그려진다 (data-field)", () => {
-    const { container } = render(<TransportCard apt={apt()} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(container.querySelectorAll("[data-field]").length).toBe(6);
-  });
-
-  it("null 필드는 '—' 로 표시한다", () => {
-    render(<TransportCard apt={apt({ subwayName: null, subwayLines: null, busStopNames: null })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    const dashes = screen.getAllByText("—");
-    expect(dashes.length).toBeGreaterThanOrEqual(3);
+  it("역이 없고 버스만 있으면 버스만, 버스 0·null 은 안 적는다", () => {
+    expect(transportFacts(apt({ subwayName: null, busRoutes: 4 }))).toBe("버스 4개 노선");
+    expect(transportFacts(apt({ subwayName: null, busRoutes: 0 }))).toBeNull();
+    expect(transportFacts(apt({ subwayName: "  ", busRoutes: null }))).toBeNull();
   });
 });
 
-describe("TransportCard — 센티널 문구는 fieldMeta.fmt 그대로 (v1 오류 정정 대상)", () => {
-  it("icDist=99 → '반경 밖' (측정은 했고 90km 넘게 멀다는 뜻, '미수집' 아님)", () => {
-    render(<TransportCard apt={apt({ icDist: 99 })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("반경 밖")).toBeInTheDocument();
-    expect(screen.queryByText("미수집")).toBeNull();
+describe("busStopsText — 정류장 이름 칩", () => {
+  it("앞 3개 + '외 N'", () => {
+    expect(busStopsText(apt({ busStopNames: "한신아파트,농수산물시장,꿈마을단지,귀인중학교,안양남초등학교" }))).toBe(
+      "버스 정류장 한신아파트 · 농수산물시장 · 꿈마을단지 외 2"
+    );
   });
 
-  it("ktxDist=99 → '반경 밖'", () => {
-    render(<TransportCard apt={apt({ ktxDist: 99, icDist: null })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("반경 밖")).toBeInTheDocument();
+  // 보완 F7 — 버스가 서지 않는 정류장은 이름에서도 "외 N" 개수에서도 뺀다(실측 표기 3꼴 모두)
+  it("'미정차' 든 정류장은 빼고 센다 — 끝 괄호·가운데 괄호·괄호 없음", () => {
+    expect(
+      busStopsText(
+        apt({
+          busStopNames:
+            "한신아파트,평촌IC(미정차),농수산물시장,문산역진입전(미정차).한진1차,꿈마을단지,행정미정차앞,귀인중학교",
+        })
+      )
+    ).toBe("버스 정류장 한신아파트 · 농수산물시장 · 꿈마을단지 외 1");
   });
 
-  it("icDist=5(반경 안) → 'km' 값 그대로 표시", () => {
-    render(<TransportCard apt={apt({ icDist: 5 })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("5km")).toBeInTheDocument();
+  it("전부 '미정차' 면 칩 글자가 없다(null)", () => {
+    expect(busStopsText(apt({ busStopNames: "평촌IC(미정차),문산사거리(미정차)" }))).toBeNull();
   });
 
-  it("icDist=null → '—' (fmt 자체가 null 만 미수집 취급, 99 와 다른 갈래)", () => {
-    render(<TransportCard apt={apt({ icDist: null })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getAllByText("—").length).toBeGreaterThan(0);
+  it("3개 이하면 '외' 없이 · 빈칸·공백 이름은 버린다", () => {
+    expect(busStopsText(apt({ busStopNames: "영통역입구, 삼성아파트,," }))).toBe("버스 정류장 영통역입구 · 삼성아파트");
+  });
+
+  it("배열로 와도 같다(타입은 string[] · 실제 JSON 은 쉼표 글자)", () => {
+    expect(busStopsText(apt({ busStopNames: ["가", "나"] }))).toBe("버스 정류장 가 · 나");
+  });
+
+  it("없으면 null", () => {
+    expect(busStopsText(apt({ busStopNames: null }))).toBeNull();
+    expect(busStopsText(apt({ busStopNames: "" }))).toBeNull();
   });
 });
 
 /**
- * 세션561 가드 — 좌표 자리표시 경고.
- *
- * 표시된 40곳(전체 2,457 중 1.6%)은 아직 준공 전이라 지도에 없어서, 지오코딩이 구청 같은
- * 대표 장소 좌표로 떨어진 행이다. 그 좌표로 재는 지하철·버스·IC 거리를 손님이 사실로 믿는
- * 것을 막는 게 이 경고의 목적이다.
+ * 좌표 자리표시 의심(세션568-3) — 역·정류장은 이 단지 좌표로 찾은 값이라 좌표 공유 시 이 단지 것이 아니다.
+ * 두 함수가 null 을 주고, 거리 그림·학군 칸이 "위치 확인 중" 사실 한 줄을 그린다(경고문이 아니다 — 세션563).
  */
-describe("좌표 자리표시 경고 — 일부러 두지 않는다 (세션563)", () => {
-  // 세션561이 달았던 손님용 경고를 뺐다(사장님 결정 2026-09-23). 좌표가 부정확한 건 우리
-  // 데이터 문제이지 손님이 감당할 일이 아니다. **다시 들어오면 이 검사가 빨간불이 된다.**
-  const WARN = /위치가 정확하지 않을 수 있습니다/;
-
-  // ⚠️ "없다" 를 단언하는 테스트는 **컴포넌트가 아예 안 그려져도 통과**한다(세션563 적대검증 🟠:
-  //    본문 첫 줄에 return null 을 넣는 뮤테이션에 이 2건이 초록이었다). 그래서 같은 render 결과에
-  //    **양성 앵커**(카드가 실제로 그려졌다는 증거)를 함께 단언한다.
-  it("coordShared 가 true 여도 손님용 경고 문구가 없다", () => {
-    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
-    expect(screen.getByText("교통 상세")).toBeTruthy(); // 양성 앵커 — 카드가 그려졌다
-    expect(screen.queryByText(WARN)).toBeNull();
+describe("좌표 공유 단지 — 역·정류장 글자를 아예 안 만든다", () => {
+  it("coordShared=true 면 둘 다 null (값 감춤)", () => {
+    const a = apt({
+      subwayName: "왕십리역",
+      subwayLines: "2호선",
+      busRoutes: 8,
+      busStopNames: "가,나",
+      coordShared: true,
+    });
+    expect(transportFacts(a)).toBeNull();
+    expect(busStopsText(a)).toBeNull();
   });
 
-  it("경고용 표식(data-field=coordShared)도 남아 있지 않다", () => {
-    const { container } = render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
-    expect(screen.getByText("교통 상세")).toBeTruthy(); // 양성 앵커
-    expect(container.querySelector('[data-field="coordShared"]')).toBeNull();
-  });
-});
-
-/**
- * 사장님 추가 결정(세션568-3) — 경고문 대신 **틀린 값 자체를 안 보여준다**.
- * 역 이름·노선·거리는 좌표로 잰 값이라 좌표 공유 시 이 단지 것이 아니다.
- * "위치 확인 중"은 신뢰도 변명이 아니라 사실 서술이라 세션563 가드(경고문 없음)와 충돌하지 않는다.
- */
-describe("좌표 자리표시 의심 — 이름·거리는 감추고 '위치 확인 중' 한 줄 (세션568-3)", () => {
-  it("coordShared=true 면 역 이름·거리·IC·KTX 값이 안 보이고 '위치 확인 중' 한 줄만 보인다", () => {
-    render(<TransportCard apt={apt({ subwayName: "왕십리역", subwayLines: "2호선", icDist: 5, coordShared: true })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("위치 확인 중")).toBeInTheDocument();
-    expect(screen.queryByText("왕십리역")).toBeNull();
-    expect(screen.queryByText("2호선")).toBeNull();
-    expect(screen.queryByText("5km")).toBeNull();
+  it("coordShared=false 면 그대로 (양성 앵커 — '없다' 단언이 빈 함수에 통과하지 않게)", () => {
+    const a = apt({
+      subwayName: "왕십리역",
+      subwayLines: "2호선",
+      subwayDist: 400,
+      busStopNames: "가",
+      coordShared: false,
+    });
+    expect(transportFacts(a)).toContain("왕십리역(2호선) 400m");
+    expect(busStopsText(a)).toBe("버스 정류장 가");
   });
 
-  it("경고 문구는 여전히 없다 (세션563 가드와 공존)", () => {
-    render(<TransportCard apt={apt({ subwayName: "왕십리역", coordShared: true })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.queryByText(/위치가 정확하지 않을 수 있습니다/)).toBeNull();
-  });
-
-  it("coordShared=false 면 기존과 완전히 같다 — 이름·거리가 그대로 보인다 (양성 앵커)", () => {
-    render(<TransportCard apt={apt({ subwayName: "왕십리역", icDist: 5, coordShared: false })} />);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(screen.getByText("왕십리역")).toBeInTheDocument();
-    expect(screen.getByText("5km")).toBeInTheDocument();
-    expect(screen.queryByText("위치 확인 중")).toBeNull();
+  it("어느 글자에도 신뢰도 경고 문구가 없다 (세션563 — 경고를 손님에게 넘기지 않는다)", () => {
+    const a = apt({ subwayName: "왕십리역", busRoutes: 3, busStopNames: "가" });
+    const all = `${transportFacts(a)} ${busStopsText(a)}`;
+    expect(all).toContain("왕십리역"); // 양성 앵커
+    expect(all).not.toMatch(/정확하지 않을 수|참고로만|오차/);
   });
 });

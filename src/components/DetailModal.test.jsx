@@ -197,18 +197,41 @@ describe("DetailModal", () => {
 
   // 입지 한 줄 요약 (세션508 PR-3b B4) — catVerdict("location", cats.location) + 상위 서브 1개.
   // getHighlights 는 CatPanel.tsx 에서 export 했다(재사용 전 export 확인 — 플랜 §"v1 에서 틀렸던 것" #8).
-  it("입지 탭 한 줄 요약 노출 — 판정 + 상위 서브 (makeItem() location total 80·subs 1개)", () => {
+  // 세션591 L3: 판정 옆에 옛 "교통 상세" 카드의 역 이름·노선·버스 노선 수를 사실 글자로 병기한다
+  //   (목업 "입지 우수 · 평촌역(4호선) 1.3km · 버스 12개 노선"). 팩토리 기본값 = 영통역·1호선·500m·버스 10.
+  it("입지 탭 한 줄 요약 노출 — 판정 + 역(노선) 거리 · 버스 노선 수 (makeItem() location total 80)", () => {
     render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
+    expect(screen.getByText("입지 우수 · 영통역(1호선) 500m · 버스 10개 노선")).toBeInTheDocument();
+  });
+
+  it("교통 사실이 없는 단지는 옛 '상위 서브 1개'를 그대로 쓴다", () => {
+    const base = makeItem();
+    const item = { ...base, apt: { ...base.apt, subwayName: null, busRoutes: null } };
+    render(<DetailModal {...makeProps({ item })} />);
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     // total=80(>=70) → "입지 우수", 유일한 서브 "지하철: 역세권"이 상위 1개
     expect(screen.getByText("입지 우수 · 지하철 역세권")).toBeInTheDocument();
   });
 
-  it("isLoggedIn=false(blind) 면 입지 한 줄 요약 대신 로그인 안내", () => {
-    render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+  it("isLoggedIn=false(blind) 면 판정은 로그인 안내로 가리고, 역·버스 사실 글자는 공개", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     expect(screen.getByText("입지 점수는 로그인 후 볼 수 있어요")).toBeInTheDocument();
     expect(screen.queryByText(/입지 우수|입지 양호|입지 아쉬움/)).toBeNull();
+    expect(container.querySelector('[data-testid="location-facts"]')?.textContent).toBe(
+      "영통역(1호선) 500m · 버스 10개 노선"
+    );
+  });
+
+  it("isLoggedIn=false 여도 거리 점 그림·치안·환경 칩은 공개 (값이지 점수가 아니다)", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
+    const loc = container.querySelector("#sec-location");
+    expect(loc?.textContent).toContain("주변 시설까지 거리");
+    expect(loc?.textContent).toContain("고속도로·KTX");
+    expect(loc?.textContent).toContain("치안 · 환경");
+    expect(loc?.querySelector('[data-testid="noise-gauge"]')).not.toBeNull();
   });
 });
 
@@ -338,14 +361,22 @@ describe("DetailModal StickyJumpNav", () => {
 
   // 세션 408 D2a — 공공데이터 재배분: 입지 탭에 교통 상세 섹션, 시세 탭에 데이터 섹션 헤더
   // (그 헤더 이름은 세션 507 에 "시장/투자 지표" → "이 동네 거래 시세" 로 바뀌었다)
-  it("입지 탭에 '교통 상세' 데이터 섹션 헤더가 보인다 (D2a 입지 탭 빈약 해소)", () => {
+  // 세션591 L3·L5·L6: "교통 상세"·"치안/환경"·서랍 세 접힘을 해체했다 — 값은 펼치지 않아도 본문에 있다.
+  it("입지 탭은 접힘 없이 한눈에 — 거리 5줄·치안·환경 칩·학군·버스 칩 (D2a 입지 탭 빈약 해소의 후속)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     const loc = container.querySelector("#sec-location");
-    expect(loc?.textContent).toContain("교통 상세");
-    expect(loc?.textContent).toContain("치안/환경");
+    expect(loc?.textContent).toContain("고속도로·KTX"); // IC 5km·KTX 15km 가 20km 줄에
+    expect(loc?.textContent).toContain("치안 · 환경");
+    expect(loc?.textContent).toContain("버스 정류장 영통역입구 · 삼성아파트");
+    // 옛 접힘 머리글은 없다
+    expect(loc?.textContent).not.toContain("교통 상세");
+    expect(loc?.textContent).not.toContain("치안/환경");
+    expect(loc?.textContent).not.toContain("아직 안 보여드린 자료");
     // 세션 505: "생활인프라 (반경 1km)" 표는 없앴다 — 거리 점 그림이 개수까지 병기해 흡수.
     expect(loc?.textContent).not.toContain("생활인프라");
+    // 남는 펼침은 "전체 N개 학교 보기"(긴 목록 — V1 예외)뿐이다. 이 픽스처엔 학교가 없어 0개.
+    expect(loc?.querySelectorAll("[aria-expanded]").length).toBe(0);
   });
 
   it("시세 탭에 '이 동네 거래 시세' 데이터 섹션 헤더가 보인다 (D2a, 세션 507 개명)", () => {
@@ -993,7 +1024,9 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
     expect(container.querySelector("#sec-price")?.textContent).toContain("이 동네 거래 시세");
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
-    expect(container.querySelector("#sec-location")?.textContent).toContain("교통 상세");
+    // 세션591: 옛 "교통 상세" 접힘 대신 거리 점 그림·치안·환경 칩이 공개 본문이다
+    expect(container.querySelector("#sec-location")?.textContent).toContain("주변 시설까지 거리");
+    expect(container.querySelector("#sec-location")?.textContent).toContain("치안 · 환경");
   });
 
   it("isLoggedIn=false 여도 탭 6개·CTA 바(관심/비교/공유)는 그대로", () => {

@@ -3,7 +3,7 @@
 //   `import.meta.url` 이 http:// 스킴이라 readFileSync 가 못 읽는다.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { SENTINEL, isSentinel } from "./sentinels";
+import { SENTINEL, SENTINEL_RADIUS_KM, isSentinel } from "./sentinels";
 
 // `process.cwd()` 는 src/ ESLint 설정에 Node 전역이 없어 못 쓴다.
 // `import.meta.url` 은 표준 ESM 이라 그대로 통과하고, 실행 위치와 무관해 더 견고하다.
@@ -29,6 +29,31 @@ describe("SENTINEL — data-audit.mjs 와 값 동기", () => {
 
     expect(Object.keys(parsed).length, "MASKED_DEFAULTS 파싱 결과가 비었습니다").toBeGreaterThan(0);
     expect(parsed).toEqual({ ...SENTINEL });
+  });
+});
+
+const TRANSPORT_PATH = new URL("../../scripts/collectors/transport-tago.mjs", import.meta.url);
+
+describe("SENTINEL_RADIUS_KM — 수집기가 찾아본 반경과 같다 (세션591)", () => {
+  /**
+   * 화면은 센티널을 "N km 안에 없음"으로 적는다. 그 N 이 수집기 반경과 어긋나면
+   * "20km 안에 없음"이라 적어 놓고 실제로는 10km 만 찾아본 거짓이 된다.
+   */
+  it("transport-tago.mjs 의 RADIUS(m) 와 같다", () => {
+    const src = readFileSync(TRANSPORT_PATH, "utf8");
+    const m = src.match(/export\s+const\s+RADIUS\s*=\s*\{([^}]*)\}/);
+    expect(m, "transport-tago.mjs 에서 RADIUS 선언을 찾지 못했습니다").not.toBeNull();
+    const r: Record<string, number> = {};
+    for (const [, key, val] of (m?.[1] ?? "").matchAll(/(\w+)\s*:\s*(\d+)/g)) r[key] = Number(val);
+    expect({
+      subwayDist: (r.SUBWAY ?? NaN) / 1000,
+      icDist: (r.IC ?? NaN) / 1000,
+      ktxDist: (r.KTX ?? NaN) / 1000,
+    }).toEqual({ ...SENTINEL_RADIUS_KM });
+  });
+
+  it("센티널이 있는 필드마다 반경이 있다", () => {
+    expect(Object.keys(SENTINEL_RADIUS_KM).sort()).toEqual(Object.keys(SENTINEL).sort());
   });
 });
 

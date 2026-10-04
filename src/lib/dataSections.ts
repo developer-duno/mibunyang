@@ -70,19 +70,13 @@ export const OVERVIEW_SECTIONS: DataSection[] = [
 // ⚠️ 세션508 PR-3b B1: "교통 상세" 섹션(subwayName·subwayLines·busRoutes·busStopNames·
 //   icDist·ktxDist)을 이 표에서 완전히 뺐다 — `detail/TransportCard` 전용 카드로 승격했다
 //   (등재는 `lib/tabExtraFields.ts` FIELDS_SHOWN_IN_DETAIL_CARDS). 남는 건 치안/환경 하나뿐이다.
-export const LOCATION_SECTIONS: DataSection[] = [
-  {
-    // `noxious`(시설 이름 목록)를 서랍에서 여기로 옮겼다 — 거리(`noxiousDist`)만 여기 있고
-    // "무엇이 있는지"는 서랍 깊은 곳에 따로 있어, 정작 같이 봐야 할 두 값이 떨어져 있었다.
-    // ⚠️ 세션 507: `sunlight`(일조) 를 뺐다 — 수집된 2,043단지가 **전부 "양호"** 라
-    //   변별력이 0 이다. 모두가 같은 값이면 그 줄은 정보가 아니라 자리만 차지하는 장식이고,
-    //   손님은 "확인해 봤더니 양호하구나"라고 읽는다(실제로는 아무도 안 재본 값이다).
-    //   점수(`scoreLocation`)는 그대로 이 필드를 쓴다 — 화면에서만 내린 것이다.
-    title: "치안/환경",
-    grid: ["crimeSafetyGrade", "airQuality", "noxious", "noxiousDist", "view", "noise"],
-    hint: "주변 치안 안전등급, 대기질(미세먼지), 그리고 가까운 혐오시설이 무엇이고 얼마나 떨어져 있는지예요. 조망·소음(dB)은 집의 주거 환경을 보여줘요. 경찰관서까지 거리는 위 '주변 시설까지 거리' 그림에 있어요.",
-  },
-];
+//   (세션591 에 그 카드도 해체 — 역·버스는 판정 줄·학군 칩 글자, IC·KTX 는 거리 점 그림으로 갔다.)
+// ⚠️ 세션591(입지 탭 "접힘 없이 한눈에" L5): 마지막 남은 "치안/환경" 접힘 표(6칸)도 해체했다 —
+//   `detail/LocationEnvBlock` 이 칩(치안 등급·대기 3년 평균·조망·혐오시설 이름+거리) + 소음 게이지 +
+//   오늘 대기질 작은 글씨로 펼치지 않아도 보이게 그린다(등재는 `lib/tabExtraFields.ts`
+//   FIELDS_SHOWN_IN_DETAIL_CARDS). 그래서 입지 탭 세부 섹션은 이제 비어 있다.
+//   (세션 507 `sunlight`(일조) 제외 결정은 그대로 — 2,043단지 전부 "양호"라 변별력 0, 그 칩도 없다.)
+export const LOCATION_SECTIONS: DataSection[] = [];
 
 // 시세 탭 — "이 동네 거래 시세" 1섹션.
 //
