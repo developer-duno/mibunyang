@@ -1,5 +1,6 @@
 /**
- * 지역 시장 추이 차트(`components/detail/MarketStatsCharts`)가 그리는 5지표를
+ * 지역 시장 추이 차트(`components/detail/MarketStatsCharts`)가 그리는 4지표를(세션592: 분양가격지수 뺌 —
+ * 서랍으로 새로 나오지 않게 `lib/tabExtraFields` INTERNAL_ONLY_FIELDS 가 막는다)
  * `FIELD_META` 키(camelCase)로 옮겨 적은 것.
  *
  * ⚠️ 차트의 `METRICS` 는 KOSIS 시계열 테이블 컬럼(snake_case)을 쓰고, 서랍
@@ -10,7 +11,6 @@
  */
 export const MARKET_STATS_FIELD_KEYS: readonly string[] = [
   "avgPriceSqm",
-  "priceIndex",
   "newSupply",
   "initialSaleRate",
   "landCostRatio",

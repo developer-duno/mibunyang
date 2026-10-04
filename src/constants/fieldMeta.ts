@@ -188,7 +188,9 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     isEstimated: (v, apt) => apt?._fallbackSupplyRatio,
   },
   builderCreditGrade: {
-    label: "시공사 신용등급",
+    // 세션592: 신용평가사 등급이 아니라 부채비율로 계산한 구간(`dart-builders.mjs estimateCreditGrade`)이라 이름을
+    //   사실대로 바꿨다. 손님 화면에는 이 값이 나오지 않는다(관리자 전수 표에만 — `tabExtraFields` INTERNAL_ONLY).
+    label: "시공사 부채비율 구간(계산값)",
     section: "가격",
     fmt: (v, apt) => v ?? (isBuilderNoCreditGrade(apt?.builder) ? "해당없음" : "—"),
     isNotApplicable: (v, apt) => v == null && isBuilderNoCreditGrade(apt?.builder),

@@ -10,10 +10,6 @@ import {
   LAND_COST_NULL,
   PRICE_NO_DATA_DEFAULTS,
   PIR_SCORE_TIERS,
-  PRICE_INDEX_HOT,
-  PRICE_INDEX_WARM,
-  PRICE_INDEX_HOT_BONUS,
-  PRICE_INDEX_WARM_BONUS,
   PRICE_FALLBACK_RELIABILITY_PENALTY,
   AREA_BUCKET_TOLERANCE_M2,
 } from "@/constants/scoringTiers";
@@ -190,7 +186,8 @@ function classifyNoPrice(apt: Apt): string {
  * 2~4순위 폴백 사용 시: dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY (기본 15).
  *   1순위(버킷 매칭)는 신뢰도 차감 없음 — 시도 평균보다 정밀한 그 평형대 실거래이기 때문.
  * PIR 구간: ≤10→100, ≤20→80~100 선형, ≤30→60~80 선형, >30→60-(pir-30)×2 (0 하한, 세션108).
- * priceIndex 보정: 130+ → +5, 110+ → +3 (과열 시장 신뢰도 가산).
+ * priceIndex(분양가격지수) 보정은 세션592 에 껐다 — 원천(KOSIS)이 2025-10 에서 멈췄고, 정적 사본 1,918곳이
+ *   전부 130 초과라 모두에게 +5 를 주는 동점 가산이었다(가격 점수 631곳 −1). 신뢰도 = dataReliability(폴백 차감)만.
  */
 export function scorePrice(apt: Apt): Res {
   // ⚠️ 이 자리는 **선재 결함**이다 — #400(세션513)이 만든 게 아니라, #400 이 브랜드 정규화를
@@ -239,19 +236,12 @@ export function scorePrice(apt: Apt): Res {
   // 택지비 비율 서브스코어 (공통)
   const landSc: number =
     apt.landCostRatio != null ? tierMin(apt.landCostRatio, LAND_COST_TIERS, LAND_COST_LOW) : LAND_COST_NULL;
-  // priceIndex 보정: 과열 시장에서 신뢰도 가산
-  const idxBonus =
-    apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_HOT
-      ? PRICE_INDEX_HOT_BONUS
-      : apt.priceIndex != null && apt.priceIndex > PRICE_INDEX_WARM
-        ? PRICE_INDEX_WARM_BONUS
-        : 0;
   // 방안 A: 시도 평균 폴백 사용 시 dataReliability 차감(세션114)
   const dataReliability = (apt.dataReliability ?? 30) as number;
   const relBase = fairPriceFromSidoAvg
     ? Math.max(0, dataReliability - PRICE_FALLBACK_RELIABILITY_PENALTY)
     : dataReliability;
-  const relSc = Math.min(relBase + idxBonus, 100);
+  const relSc = Math.min(relBase, 100);
   const price = (apt.price ?? 0) as number;
   if (fairPrice <= 0 || !price || price <= 0) {
     const devSc = PRICE_NO_DATA_DEFAULTS.dev;
@@ -292,8 +282,8 @@ export function scorePrice(apt: Apt): Res {
         {
           name: "데이터 신뢰도",
           score: relSc,
-          info: `${dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}`,
-          detail: `${dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""} (80%↑신뢰, 30%↓추정)`,
+          info: `${dataReliability}%`,
+          detail: `${dataReliability}% (80%↑신뢰, 30%↓추정)`,
         },
         {
           name: "택지비비율",
@@ -414,8 +404,8 @@ export function scorePrice(apt: Apt): Res {
       {
         name: "데이터 신뢰도",
         score: relSc,
-        info: `${dataReliability}%${idxBonus ? `(+${idxBonus})` : ""}${relNotice}`,
-        detail: `${dataReliability}%${idxBonus ? ` +지수보정${idxBonus}` : ""}${relNotice} (80%↑신뢰, 50%↑보통, 30%↓추정)`,
+        info: `${dataReliability}%${relNotice}`,
+        detail: `${dataReliability}%${relNotice} (80%↑신뢰, 50%↑보통, 30%↓추정)`,
       },
       {
         name: "택지비비율",

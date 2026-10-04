@@ -9,6 +9,7 @@ import {
   EXCL_RATIO_TIERS,
   NOISE_TIERS,
   CANCEL_RATIO_TIERS,
+  BUILDER_DEBT_TIERS,
   liquidityBand,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
@@ -352,7 +353,8 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     },
     "시공사 재무": {
       interpret: (sc) => (sc >= 70 ? "재무 안정" : sc >= 40 ? "재무 보통" : "재무 리스크 주의"),
-      benchmark: "AA등급, 부채비율 150% 이하",
+      // 세션592: 옛 "AA등급, …" — 등급은 부채비율 계산값이고 계산상 AA 는 나오지 않는다(최고 A). 경계는 점수표에서.
+      benchmark: `부채비율 ${BUILDER_DEBT_TIERS[0].max}% 이하`,
     },
     // ⚠️ 이 축은 **이진**이다 — 서브점수 고유값이 {40, 90} 둘뿐이라 3단 문구가 축과 안 맞았다.
     //    규제지역 296곳(18.0%)이 전부 sc=40 에 걸려 `info` "규제지역" 옆에 "규제 일부"를 달고 있었다.

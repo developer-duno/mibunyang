@@ -528,7 +528,7 @@ crimeSc = gradeRisk * 0.7 + policeRisk * 0.3. `100 - crimeSc`가 최종.
 | presaleType | scoreRisk finSc | "공공" 포함 시 -15 보너스 |
 | housingSupplyLevel | scoreRisk supSc **주 지표** | 96%↓ 5 / 101%↓ 25 / 104%↓ 50 / 초과 75, null 75 |
 | supplyRatio (인허가율) | scoreRisk supSc 보정 | 2.2%+ → +5, 1.5%- → -3, null 무보정 |
-| priceIndex | scorePrice relSc | 130+ → +5, 110+ → +3 |
+| priceIndex | **점수 미사용** (세션592 보정 끔) | 옛 130+ → +5, 110+ → +3. 원천(KOSIS) 2025-10 에서 멈췄고 정적 1,918곳 전부 130 초과라 모두 같은 +5(가격 점수 631곳 −1). 분양 탭 지역 통계 그림에서도 뺌(관리자 표에만) |
 | presaleParking/presaleGeneralSupply | scoreProduct | parkingRatio null 폴백 |
 | presaleHousingType | scoreProduct | 오피스텔/도시형 brandSc 상한 15 |
 | floorAreaRatio(용적률) | scoreProduct farSc | `_noFar` → FAR_UNKNOWN_SCORE(중립 7점, 예전 가짜 값 300%→최하점 3점을 대체) (세션539) |

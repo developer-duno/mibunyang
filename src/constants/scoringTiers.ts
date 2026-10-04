@@ -715,8 +715,6 @@ export const CREDIT_GRADE_SCORES: Record<string, number> = {
   B: 75,
   CCC: 90,
 };
-/** 안전 등급 목록 (AptCard 경고 태그 판정용) */
-export const SAFE_CREDIT_GRADES: string[] = ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-"];
 export const CREDIT_DEFAULT = 30;
 // 시공사 부채비율 미수집(null) 시 중립 보정 (세션508 — "모르는 것을 나쁘게 단정하는" 기본값 정정).
 // 채워진 301건의 중앙값 171.9%가 정확히 "주의(150~200%)=+10" 구간 — "모르면 전형적인 시공사처럼
@@ -728,8 +726,8 @@ export const BUILDER_DEBT_UNKNOWN_ADJ = 10;
 /**
  * 시공사 부채비율 → 재무 위험 가산 (세션591 — `scoreRisk.ts` 의 손글씨 150·200 을 옮겼다, 값 변화 0).
  * `≤150` 0 · `≤200` +10 · 그 위 `BUILDER_DEBT_HIGH_ADJ`(+20). 점수(`scoreRisk`)와 분양 탭 부채비율 눈금
- * (`detail/BuilderCard` DEBT_GAUGE)이 이 표를 읽는다. ⚠️ 판정표 `subContext.ts` "부채비율 150% 이하" 문구는
- * 아직 손글씨라 이 표를 읽지 않는다 — 150 을 바꾸면 그 문구도 손으로 같이 고쳐야 한다(세션591 보완 F8).
+ * (`detail/BuilderCard` DEBT_GAUGE)이 이 표를 읽는다. 세션592 부터 판정표 `subContext.ts` "부채비율 150% 이하"·
+ * 점수 탭 "시공사 재무" detail 경계 글자·카드 칩 "시공사 부채비율" 뜨는 조건(`cardChips.ts`)도 이 표를 읽는다.
  * ⚠️ `scoreRisk` 는 옛 식 모양(`> 200 ? … : > 150 ? … : 0`)을 그대로 두고 숫자만 여기서 읽는다
  *    (`tierMax` 로 바꾸면 NaN 이 0 대신 +20 이 된다 — 식 모양을 바꾸지 않는 이유).
  */
@@ -1136,11 +1134,7 @@ export const LAND_COST_TIERS: Tier[] = [
 export const LAND_COST_LOW = 25; // 20% 미만
 export const LAND_COST_NULL = 50; // 데이터 없음 중립
 
-// === Price: 매매가격지수 보정 임계값 ===
-export const PRICE_INDEX_HOT = 130; // 과열 시장 → +5
-export const PRICE_INDEX_WARM = 110; // 상승 시장 → +3
-export const PRICE_INDEX_HOT_BONUS = 5;
-export const PRICE_INDEX_WARM_BONUS = 3;
+// (세션592: 분양가격지수 보정 PRICE_INDEX_* 4상수 삭제 — scorePrice 가 더 이상 지수를 안 쓴다)
 
 // === Product: 주택유형별 브랜드 상한 ===
 export const HOUSING_TYPE_CAP_DEFAULT = 20;

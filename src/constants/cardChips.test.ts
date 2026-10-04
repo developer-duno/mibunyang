@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { buildCardChips, splitCardChips, CHIP_ORDER, GOOD_CHIP_MAX, BAD_CHIP_MAX } from "./cardChips";
 import type { CardChip } from "./cardChips";
 import { NOXIOUS_PENALTY } from "@/constants/brands";
+import { FIELD_META } from "@/constants/fieldMeta";
 import { fmtMoveIn } from "@/lib/format";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
@@ -272,9 +273,34 @@ describe("buildCardChips — 강점/약점 판정", () => {
     expect(find(build({ schoolGrade: "C" }), "schoolC")).toBeUndefined();
   });
 
-  it("시공사 신용은 안전 등급 목록에 없을 때만 약점", () => {
-    expect(find(build({ builderCreditGrade: "BBB" }), "builderCredit")).toBeDefined();
-    expect(find(build({ builderCreditGrade: "AA" }), "builderCredit")).toBeUndefined();
+  // 세션592 사장님 결정: 등급은 부채비율 계산값이라 글자를 부채비율 숫자로. 뜨는 곳은 옛 "등급이 A- 밖" =
+  //   부채비율 150% 초과와 같다(정적 사본 332곳 같음). 경계는 점수표 `BUILDER_DEBT_TIERS[0].max`.
+  describe("시공사 부채비율 칩 (옛 '시공사 신용', 세션592)", () => {
+    it("150% 초과일 때만 빨강 약점 — 경계 150 은 칩 없음, 150.1 은 칩", () => {
+      expect(find(build({ builderDebtRatio: 150 }), "builderCredit")).toBeUndefined();
+      expect(find(build({ builderDebtRatio: 100 }), "builderCredit")).toBeUndefined();
+      const c = find(build({ builderDebtRatio: 150.1 }), "builderCredit");
+      expect(c).toMatchObject({ text: "시공사 부채비율 150.1%", tone: "red", layer: "bad" });
+    });
+
+    it("글자 = '시공사 부채비율 {값}' — 값 형식은 분양 탭 눈금(FIELD_META.builderDebtRatio.fmt)과 같다", () => {
+      for (const v of [277.7, 157.6, 551, 200]) {
+        expect(find(build({ builderDebtRatio: v }), "builderCredit")?.text).toBe(
+          `시공사 부채비율 ${FIELD_META.builderDebtRatio.fmt(v)}`
+        );
+      }
+    });
+
+    it("등급 글자(A·BBB·CCC)는 칩에 안 나오고, 등급만 있고 부채비율이 없으면 칩이 없다", () => {
+      expect(find(build({ builderCreditGrade: "CCC" }), "builderCredit")).toBeUndefined();
+      const c = find(build({ builderCreditGrade: "B", builderDebtRatio: 277.7 }), "builderCredit");
+      expect(c?.text).not.toMatch(/\b(A|A-|BBB|BB|B|CCC)\b/);
+    });
+
+    it("부채비율 미수집(null·폴백 표식)이면 칩이 없다", () => {
+      expect(find(build({ builderDebtRatio: null }), "builderCredit")).toBeUndefined();
+      expect(find(build({ builderDebtRatio: 400, _fallbackBuilderDebt: true }), "builderCredit")).toBeUndefined();
+    });
   });
 
   it("DSR 통과는 true 일 때만 — false·null 은 칩이 없다", () => {
@@ -528,7 +554,7 @@ describe("splitCardChips — 흔한 경고가 진짜 위험을 밀어내지 않�
     // 복도식·LPG난방은 scoring/ 어디에도 등장하지 않는다(감점 0). 흔하기로는 LPG(18.1%)가
     // 미분양(14.3%)과 비슷하지만, 점수를 깎는 쪽이 먼저다.
     const s = splitCardChips(
-      build({ unsoldRate: 45, builderCreditGrade: "BBB", corridorType: "복도식", heatFuel: "LPG" })
+      build({ unsoldRate: 45, builderDebtRatio: 171.9, corridorType: "복도식", heatFuel: "LPG" })
     );
     expect(s.bad.map((c) => c.id)).toEqual(["unsoldHigh", "builderCredit"]);
     expect(s.hidden.map((c) => c.id)).toEqual(expect.arrayContaining(["corridor", "heatLpg"]));
@@ -603,7 +629,7 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
       { jeonseRate: 40, parkingRatio: 0.7, exclusiveRatio: 60, naverSchoolWalkMin: 20 },
       { jeonseRate: 92 },
       { corridorType: "복도식", heatFuel: "LPG", schoolGrade: "D", primaryDirection: "북향" },
-      { unsoldRate: 45, builderCreditGrade: "BBB", crimeSafetyGrade: 5 },
+      { unsoldRate: 45, builderDebtRatio: 171.9, crimeSafetyGrade: 5 },
       { crimeSafetyGrade: 4 },
       { crimeSafetyGrade: 1, noxious: ["장례식장"], noxiousDist: 1500, dsr40pass: true },
       { noxious: ["소각장"], noxiousDist: 200, id: "ah-1", unsoldEventCount: 3 },

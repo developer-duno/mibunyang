@@ -20,6 +20,7 @@ import {
   LIQUIDITY_LEGEND,
   LIQUIDITY_AREA_UNIT,
   LIQUIDITY_TIERS,
+  BUILDER_DEBT_TIERS,
   LOCATION_SUB_WEIGHTS,
   AREA_BUCKET_TOLERANCE_M2,
   FAR_UNKNOWN_SCORE,
@@ -872,9 +873,10 @@ describe("scoreRisk", () => {
     const sNull = nullish.subs.find((s) => s.name === "시공사 재무");
     // 점수 불변 (폴백값 250 기준 채점 동일)
     expect(sNull?.score).toBe(sFilled?.score);
-    // 정직 표시: 폴백 부채율 "250%" 노출 금지 (credit grade 부분은 유지)
+    // 정직 표시: 폴백 부채율 "250%" 노출 금지 (세션592: 등급 글자도 빠졌다 — "부채비율 미수집 (중립)")
     expect(sNull?.detail).not.toContain("250%");
-    expect(sNull?.detail).toContain("미수집");
+    expect(sNull?.detail).toBe("부채비율 미수집 (중립)");
+    expect(sNull?.info).toBe("정보 없음");
     // 정상값은 현행 "250%" 표시 유지 (회귀 방지)
     expect(sFilled?.detail).toContain("250%");
   });
@@ -908,6 +910,45 @@ describe("scoreRisk", () => {
     const s = r.subs.find((x) => x.name === "시공사 재무");
     expect(s?.detail).toContain("미수집");
     expect(s?.detail).not.toContain("%)"); // "175%)" 류 부채율 수치 노출 금지
+  });
+  // 세션592 사장님 결정: 등급(A·BBB…)은 신용평가사 등급이 아니라 부채비율 계산값 → 손님 글자는 부채비율 숫자만.
+  //   점수(finSc)는 그대로. 화면이 실제로 지나는 길(`calcCats` → sanitize → scoreRisk)로 잰다.
+  describe("시공사 재무 글자 — 등급 대신 부채비율 (세션592)", () => {
+    const finOf = (/** @type {Record<string, unknown>} */ over) =>
+      calcCats(makeApt(/** @type {any} */ (over))).risk.subs.find((s) => s.name === "시공사 재무");
+    it("값 있음 — info '부채비율 {값}' · detail 경계 숫자는 BUILDER_DEBT_TIERS 에서", () => {
+      const s = finOf({ builderCreditGrade: "B", builderDebtRatio: 277.7 });
+      expect(s?.info).toBe("부채비율 277.7%");
+      expect(s?.detail).toBe(
+        `부채비율 277.7% (${BUILDER_DEBT_TIERS[0].max}% 이하 안정 · ${BUILDER_DEBT_TIERS[1].max}% 이하 보통 · 그 위 주의)`
+      );
+      expect(s?.detail).toBe("부채비율 277.7% (150% 이하 안정 · 200% 이하 보통 · 그 위 주의)");
+    });
+    it("값 없음 — info '정보 없음' · detail '부채비율 미수집 (중립)'", () => {
+      const s = finOf({ builderCreditGrade: null, builderDebtRatio: null });
+      expect(s?.info).toBe("정보 없음");
+      expect(s?.detail).toBe("부채비율 미수집 (중립)");
+    });
+    it("등급 글자(A·A-·BBB·BB·B·CCC·AA)는 info·detail 어디에도 안 나온다", () => {
+      for (const [grade, debt] of [
+        ["A", 80],
+        ["A-", 120],
+        ["BBB", 171.9],
+        ["BB", 230],
+        ["B", 277.7],
+        ["CCC", 551],
+        ["BBB", null],
+      ]) {
+        const s = finOf({ builderCreditGrade: grade, builderDebtRatio: debt });
+        expect(`${s?.info} ${s?.detail}`).not.toMatch(/(^|[^A-Z])(AA|A-|A|BBB|BB|B|CCC)([^A-Z]|$)/);
+      }
+    });
+    it("점수는 그대로 — 등급 표(CREDIT_GRADE_SCORES)를 계속 쓴다(대조: 같은 부채비율에서 등급만 바꾸면 점수가 움직인다)", () => {
+      const a = finOf({ builderCreditGrade: "A", builderDebtRatio: 120, hugGuarantee: true });
+      const b = finOf({ builderCreditGrade: "CCC", builderDebtRatio: 120, hugGuarantee: true });
+      expect(a?.info).toBe(b?.info);
+      expect(Number(a?.score)).toBeGreaterThan(Number(b?.score));
+    });
   });
   // 대조군: builderDebtRatio 가 null 이어도 신용등급 단조성(세션392 회귀 가드)은 유지된다.
   it("builderDebtRatio null 이어도 신용등급 단조성은 유지된다 (대조군)", () => {
@@ -1953,13 +1994,24 @@ describe("scorePrice — null 가드 (유령 폴백 제거)", () => {
   });
 });
 
-describe("scorePrice — priceIndex 보정", () => {
-  it("priceIndex=140 → 신뢰도 +5", () => {
-    const base = scorePrice(makeApt({ priceIndex: null }));
-    const hot = scorePrice(makeApt({ priceIndex: 140 }));
-    expect(hot.subs.find((s) => s.name === "데이터 신뢰도")?.score ?? 0).toBeGreaterThanOrEqual(
-      base.subs.find((s) => s.name === "데이터 신뢰도")?.score ?? 0
-    );
+// 세션592 사장님 결정: 분양가격지수 보정(옛 130+ → +5, 110+ → +3) 끔 — 원천이 2025-10 에서 멈췄고 전 단지가 같은 +5.
+//   화면이 지나는 길(`calcCats`)로 잰다. 옛 보정이 되살아나면 지수 200 단지가 null 단지보다 높아진다.
+describe("scorePrice — priceIndex 보정 없음 (세션592)", () => {
+  const rel = (/** @type {any} */ c) => c.price.subs.find((/** @type {any} */ s) => s.name === "데이터 신뢰도");
+  it("지수 200·120·null 단지의 가격 점수·신뢰도 점수가 같다", () => {
+    const none = calcCats(makeApt(/** @type {any} */ ({ priceIndex: null })));
+    for (const idx of [200, 131, 120, 111]) {
+      const c = calcCats(makeApt({ priceIndex: idx }));
+      expect(c.price.total, `지수 ${idx}`).toBe(none.price.total);
+      expect(rel(c)?.score, `지수 ${idx}`).toBe(rel(none)?.score);
+    }
+  });
+  it("신뢰도 글자에 지수 보정 표시(+5·지수보정)가 없다 — 정상·데이터 부재 두 경로", () => {
+    const withPrice = calcCats(makeApt({ priceIndex: 200 }));
+    const noPrice = calcCats(makeApt(/** @type {any} */ ({ priceIndex: 200, price: null })));
+    for (const c of [withPrice, noPrice]) {
+      expect(`${rel(c)?.info} ${rel(c)?.detail}`).not.toMatch(/\(\+\d+\)|지수보정/);
+    }
   });
 });
 

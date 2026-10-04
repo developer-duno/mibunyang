@@ -94,7 +94,7 @@ export const FIELDS_SHOWN_IN_TABS: ReadonlySet<string> = new Set(
  * 자동으로 따라오게 하려는 것이다(손 목록이면 반드시 어긋난다 — 그게 이 파일이 처음부터
  * 차집합을 "계산"하는 이유다).
  *
- * 편차 스트립 8 + 거리 점 그림 12(거리) + 개수 11 + 지역 시장 추이 5.
+ * 편차 스트립 8 + 거리 점 그림 12(거리) + 개수 11 + 지역 시장 추이 4(세션592: 분양가격지수 뺌).
  *
  * ⚠️ 세션 505 에 **개수 필드**가 합류했다. 거리 점 그림이 라벨에 개수를 병기하면서
  * ("병원 3곳") 개수까지 흡수했고, 그래서 개수만 따로 늘어놓던 "생활인프라" 표를 없앴다.
@@ -194,12 +194,7 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   // ── 세션508 PR-3c C2: 분양 탭 `detail/BuilderCard`(시공사 정보) 3필드. `builder` 는
   // 종합 탭 "단지 기본정보" 격자(OVERVIEW_SECTIONS)에서 뺀 자리 — 표면 중복 차단.
   "builder",
-  // ⚠️ 세션591 사장님 결정: 이 값은 신용평가사 등급이 아니라 부채비율로 계산한 값이라(dart-builders.mjs
-  //   estimateCreditGrade) 분양 탭 시공사 블록에서 칩을 뺐다 — 바로 아래 부채비율 눈금이 같은 내용이다.
-  //   등재는 남긴다(빼면 분양 탭 서랍에 새로 나타난다). 로그인 손님은 점수 탭 "시공사 재무" 줄에서 이 등급을 본다 ·
-  //   비로그인은 점수 탭이 잠겨 이 등급 글자를 어디서도 못 본다(사장님 결정: 분양 탭에서 등급 글자를 뺌 — 같은 내용인
-  //   부채비율 눈금은 분양 탭에서 누구나 본다).
-  "builderCreditGrade",
+  // `builderCreditGrade` 는 세션592 에 아래 INTERNAL_ONLY_FIELDS 로 내렸다(점수 탭에서도 등급 글자를 뺐다).
   "builderDebtRatio",
   // ── 세션508 PR-3c C3: 분양 탭 `charts/PresaleTimeline`(분양 진행 그림) 3필드. 옛
   // PRESALE_SECTIONS.grid "분양 안전" 표에서 빼고 그림 아래 실값 병기로 옮겼다.
@@ -274,6 +269,14 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   // 결국 `maxFloor`에서 파생되는 값이라 애초에 중복이기도 했다(사장님 결정 — 관리자
   // 전수 표에는 그대로 남는다).
   "floors",
+  // ── 세션592 사장님 결정 ──
+  // 시공사 "신용등급"은 신용평가사 등급이 아니라 부채비율로 계산한 값이다(`dart-builders.mjs` estimateCreditGrade).
+  // 분양 탭 칩(세션591)에 이어 점수 탭 "시공사 재무" 줄·카드 칩에서도 등급 글자를 빼고 부채비율 숫자만 말한다 —
+  // 그래서 이 값을 그리는 손님 화면이 없다. 서랍에도 내지 않는다(같은 내용은 분양 탭 부채비율 눈금). 점수는 그대로 쓴다.
+  "builderCreditGrade",
+  // 분양가격지수 — 원천(KOSIS)이 2025-10 에서 멈춰 분양 탭 지역 통계 그림에서 뺐고 가격 점수 보정도 껐다(세션592).
+  // 그림 목록(`MARKET_STATS_FIELD_KEYS`)에서 빠지면 분양 탭 서랍으로 새로 나오므로 여기서 막는다(관리자 표엔 남는다).
+  "priceIndex",
 ];
 
 export type ExtraSection = { key: string; title: string; color: string; fields: string[] };

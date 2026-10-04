@@ -1,6 +1,6 @@
 import { gr } from "@/theme";
 import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
-import { SAFE_CREDIT_GRADES, DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
+import { BUILDER_DEBT_TIERS, DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
 // 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
 // 번들 비용 0: `scoreLocation` 이 이미 이 파일을 쓰고, 카드는 그 스코어링을 이미 로드한다.
@@ -85,7 +85,7 @@ export const CHIP_ORDER: Readonly<Record<string, number>> = {
   // ── 약점: 계급 1 (0.5 이상) ── 계급 안에서는 드문 것부터
   parkingLow: 11, // 주차 1대/세대 미만 (−0.96 / 9.2%)
   unsoldHigh: 12, // 미분양 30%↑ (−0.84 / 14.3%)
-  builderCredit: 13, // 시공사 신용 (−0.72 / 15.3%)
+  builderCredit: 13, // 시공사 부채비율 150% 초과 — 옛 "시공사 신용"(세션592 글자만 바꿈, id 유지) (−0.72 / 15.3%)
   jeonseLow: 14, // 전세가율 50% 미만 (−0.68 / 17.3%)
   // ── 약점: 계급 2 (0 초과) ──
   crimeDanger: 15, // 치안위험 5등급 (−0.19 / 5.5%)
@@ -399,9 +399,21 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
       layer: "bad",
     });
   }
-  const builderCreditGrade = a.builderCreditGrade as string | undefined;
-  if (builderCreditGrade && !SAFE_CREDIT_GRADES.includes(builderCreditGrade)) {
-    out.push({ id: "builderCredit", text: `시공사 ${builderCreditGrade}`, tone: "red", layer: "bad" });
+  // 세션592 사장님 결정: 옛 칩은 "시공사 BBB" 처럼 등급 글자를 띄웠는데, 그 등급은 신용평가사 등급이 아니라
+  //   부채비율로 계산한 값이다(`dart-builders.mjs estimateCreditGrade` — 정적 400/400 일치). 그래서 글자를
+  //   부채비율 숫자로 바꾼다. 뜨는 조건은 그대로다 — 옛 판정 "등급이 SAFE_CREDIT_GRADES 밖" = 부채비율
+  //   150% 초과(A- 의 상한)라, 점수표 경계 `BUILDER_DEBT_TIERS[0].max` 로 같은 곳을 고른다(정적 332곳 같음).
+  //   값 형식은 분양 탭 부채비율 눈금(`FIELD_META.builderDebtRatio.fmt` = 값 그대로 + "%")과 같다 — 위 머리
+  //   주석대로 이 파일은 FIELD_META 를 import 하지 못해 같은 모양을 여기 적고, `cardChips.test.ts` 가 두 글자를
+  //   맞대 잠근다. "미수집" 판정(null·폴백이면 칩 없음)도 그 눈금(`detail/BuilderCard`)과 같다.
+  const builderDebtRatio = a.builderDebtRatio as number | null | undefined;
+  if (
+    builderDebtRatio != null &&
+    !a._fallbackBuilderDebt &&
+    Number.isFinite(Number(builderDebtRatio)) &&
+    Number(builderDebtRatio) > BUILDER_DEBT_TIERS[0].max
+  ) {
+    out.push({ id: "builderCredit", text: `시공사 부채비율 ${builderDebtRatio}%`, tone: "red", layer: "bad" });
   }
   // 혐오시설 — 가장 가까운 것이 1km 밖이면 안심 칩으로 경고를 대체한다(상호배타, 세션 430)
   const noxList = (a.noxious as string[] | undefined) || [];

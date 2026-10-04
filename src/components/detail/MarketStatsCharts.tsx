@@ -27,7 +27,7 @@ interface MarketRow {
 const SECTION_HINT =
   "이 지역(시·도) 전체의 분양 시장 흐름이에요. 이 단지 하나가 아니라 주변 평균 추세를 보여줘요. (출처: KOSIS 통계 — 초기분양율은 분기마다, 나머지는 매달 갱신)";
 
-// 5지표 메타 정보 — KOSIS 시계열 컬럼 ↔ 한국어 라벨/단위/색/도움말.
+// 4지표 메타 정보(세션592 — 분양가격지수 뺌) — KOSIS 시계열 컬럼 ↔ 한국어 라벨/단위/색/도움말.
 // hint = "보는 법" 쉬운 말 (세션 411 — 단위·scoring 방향 적대검증 정정).
 const METRICS: MarketMetric[] = [
   {
@@ -37,13 +37,8 @@ const METRICS: MarketMetric[] = [
     color: C.green,
     hint: "주변에서 새로 분양한 아파트의 1㎡당 평균 분양가(단위: 천원)예요. 위로 오르면 분양가가 비싸지는 흐름이에요.",
   },
-  {
-    key: "price_index",
-    label: "분양가격지수",
-    unit: "(100=기준)",
-    color: C.blue,
-    hint: "2014년을 100으로 놓고 분양가가 얼마나 올랐는지 보는 숫자예요. 100보다 높으면 그때보다 비싸진 거예요.",
-  },
+  // 세션592 사장님 결정: "분양가격지수"(price_index) 그림은 뺐다 — 원천(KOSIS)이 2025-10 에서 멈춰 최신 값이
+  //   1년 가까이 낡았다. 같은 흐름은 바로 위 평균분양가격(㎡당) 그림이 말한다.
   {
     key: "new_supply",
     label: "신규공급 세대수",
@@ -84,14 +79,14 @@ export const baseMonthLabel = (raw: unknown, period: "M" | "Q" = "M"): string =>
 };
 
 /**
- * MarketStatsCharts — region+gu 시장통계 5지표 시계열
+ * MarketStatsCharts — region+gu 시장통계 4지표 시계열(세션592: 분양가격지수 뺌)
  *
  * Props:
  *   region: string — DB 짧은 이름 ("서울"·"경기")
  *   gu: string — DB 표기 ("강남구") 또는 "" (시도 단위)
  *
  * - 5/5 cron 전 데이터 0건 = amberLight 안내 박스 노출
- * - 정상 시 작은 칸 5개(이름 · 최신 값 · 작은 추이 선 · 기준 연·월)를 grid 배치 (세션591 P4 —
+ * - 정상 시 작은 칸 4개(이름 · 최신 값 · 작은 추이 선 · 기준 연·월)를 grid 배치 (세션591 P4 —
  *   옛 큰 `LineChart` 5개를 분양 탭 지역 통계 묶음 안에 접힘 없이 넣으려고 줄였다)
  * - region 미설정 / loading / error 시 null (조용한 숨김)
  */
@@ -105,7 +100,7 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
   };
 
   // 각 metric 별로 유효 값이 2개 이상 있어야 차트 렌더 가능. 1개 이상 metric 이 그릴 수
-  // 있어야 진짜 데이터 있음. data.length>=2 인데 5필드 모두 null 인 경우 + 1행만 값 있는
+  // 있어야 진짜 데이터 있음. data.length>=2 인데 4필드 모두 null 인 경우 + 1행만 값 있는
   // corner case (chartData.length<2 → 미렌더) 모두 안내 박스로 분기.
   // null/undefined 명시적 제외 — Number(null)=0 강제 변환 + isFinite(0)=true 통과 사고 방지.
   const hasRenderableMetric = useMemo(() => {
@@ -200,11 +195,12 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
         {headerSuffix})
         <HelpHint text={SECTION_HINT} label="지역 시장 추이" />
       </div>
-      {/* 작은 칸 5개 (세션591 P4 — 옛 큰 선 그래프 5개[칸마다 120px]를 작은 추이 선으로 줄였다).
-          auto-fill minmax 120px: 휴대폰 390 폭에서 2열, PC(분양 탭 폭 ~690)에서 한 줄 5칸(캡처 실측 — 132px 면 4+1). */}
+      {/* 작은 칸 4개 — 세션592 에 분양가격지수를 빼 5 → 4 (세션591 P4 — 옛 큰 선 그래프 5개[칸마다 120px]를 작은 추이 선으로 줄였다).
+          auto-fit minmax 120px: 휴대폰 390 폭에서 2열, PC(분양 탭 폭 ~690)에서 4칸이 한 줄을 채운다
+          (auto-fill 이면 5칸 자리를 잡아 오른쪽에 빈 칸 하나 폭이 남는다 — 세션592 캡처). */}
       <div
         data-testid="market-charts-grid"
-        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 8 }}
       >
         {METRICS.map((m) => {
           type Point = { month: string | undefined; v: number };

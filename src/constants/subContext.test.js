@@ -8,6 +8,7 @@ import {
   LIQUIDITY_AREA_UNIT,
   DEV_NEUTRAL_BAND_PCT,
   EXCL_RATIO_TIERS,
+  BUILDER_DEBT_TIERS,
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
 import { scorePrice, scoreLocation, scoreProduct, scoreBenefit, scoreRisk, scoreFuture } from "@/scoring/engine";
@@ -286,6 +287,12 @@ describe("PRODUCT_MAX", () => {
       expect(say("price", "전세가율", 30, "55.0%")).toMatch(/낮음/);
       // 점수로 가르면 아래쪽(jr 66% → sc 72)이 "적정"에 섞여 새 거짓이 생긴다
       expect(say("price", "전세가율", 72, "66.1%")).not.toMatch(/적정/);
+    });
+
+    it("시공사 재무 기준선은 BUILDER_DEBT_TIERS 에서 만든다 — 등급 글자(AA)는 없다 (세션592)", () => {
+      const b = SUB_CONTEXT.risk["시공사 재무"].benchmark;
+      expect(b).toBe(`부채비율 ${BUILDER_DEBT_TIERS[0].max}% 이하`);
+      expect(b).not.toMatch(/AA|등급/);
     });
 
     it("PIR 기준선은 PIR_SCORE_TIERS 에서 만든다 — 손으로 적으면 어긋난다", () => {

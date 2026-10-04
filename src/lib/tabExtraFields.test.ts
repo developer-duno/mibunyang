@@ -56,6 +56,10 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   // 보여줄 자리가 없어 손님 화면에서 뺐다.
   naverAvgFloor: "짝(avgFloor)이 계단 카드로 승격해 단독 비교값이 됨 — 새 자리 없음 (세션508 PR-3b B3)",
   floors: "maxFloor 에서 파생되는 구간 문자열인데 재계산이 안 돼 최고층과 어긋난다(306곳/18.1%). 관리자 표에만 남긴다.",
+  builderCreditGrade:
+    "신용평가사 등급이 아니라 부채비율 계산값 — 분양 탭(세션591)·점수 탭·카드 칩(세션592) 모두 등급 글자를 빼고 부채비율 숫자만 말한다",
+  priceIndex:
+    "원천(KOSIS) 2025-10 에서 멈춤 — 분양 탭 지역 통계 그림에서 빼고 가격 점수 보정도 껐다. 서랍으로 새로 나오면 안 된다 (세션592)",
 };
 
 /**
@@ -243,12 +247,20 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
   const BUILDER_CARD = "../components/detail/BuilderCard.tsx";
   for (const f of ["builder", "builderDebtRatio"])
     CARD_SOURCE[f] = [{ file: BUILDER_CARD, re: new RegExp(`apt\\.${f}\\b`), why: "시공사 카드" }];
-  // 세션591 보완 G3(사장님 결정): 부채비율로 계산한 값이라 분양 탭 칩에서 뺐다. 이 등급 글자가 남은 자리는 점수 탭
-  //   "시공사 재무" 줄(scoreRisk.ts info) 하나다 — **로그인 손님만** 본다. 비로그인은 점수 탭이 잠겨 이 등급 글자를
-  //   어디서도 못 본다(같은 내용인 부채비율 눈금은 분양 탭에서 누구나 본다). 거기서도 빠지면 화면 어디에도 안 남는다.
-  CARD_SOURCE.builderCreditGrade = [
-    { file: "../scoring/scoreRisk.ts", re: /info: builderCreditGrade \|\| "정보 없음"/, why: "점수 탭 시공사 재무 줄" },
-  ];
+  // 세션591 보완 G3 → 세션592(사장님 결정): 부채비율로 계산한 등급이라 분양 탭 칩(591)에 이어 점수 탭 "시공사 재무"
+  //   줄·카드 칩(592)에서도 등급 글자를 뺐다 — 그리는 손님 화면이 없어 INTERNAL_ONLY_FIELDS 로 내렸다(위 목록).
+  it("시공사 등급(builderCreditGrade)을 손님 글자로 그리는 자리가 없다 (세션592)", () => {
+    for (const file of [
+      "../scoring/scoreRisk.ts",
+      "../constants/cardChips.ts",
+      "../components/detail/BuilderCard.tsx",
+    ]) {
+      const src = readFileSync(new URL(file, import.meta.url), "utf8");
+      expect(src, `${file} 가 등급 글자를 info·text 로 내보낸다`).not.toMatch(
+        /(info|text|detail):\s*[^\n]*builderCreditGrade/
+      );
+    }
+  });
 
   // 세션591 P3 — 옛 "분양 안전" 표의 계약해제율을 "이 지역 통계" 묶음 눈금으로. 눈금 정의 줄(`field:`)과
   //   DetailModal 의 렌더 줄 두 곳을 본다(정의만 있고 묶음을 안 그리면 화면에서 증발한다).
@@ -422,7 +434,14 @@ describe("표면끼리도 안 겹친다 — 서랍·카드 등재 필드는 탭 
 });
 
 describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋나지 않는다", () => {
-  it("지역 시장 추이 5지표가 MARKET_STATS_FIELD_KEYS 와 순서·개수까지 같다", () => {
+  it("분양가격지수는 그림에서 빠졌고 어느 탭 서랍에도 새로 나오지 않는다 (세션592)", () => {
+    expect(MARKET_STATS_FIELD_KEYS).toEqual(["avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio"]);
+    expect(FIELDS_SHOWN_IN_CHARTS.has("priceIndex")).toBe(false);
+    for (const tab of ALL_TABS) expect(extrasOf(tab), tab).not.toContain("priceIndex");
+    expect(ALL_TABS.reduce((n, t) => n + extraCount(t), 0)).toBe(0);
+  });
+
+  it("지역 시장 추이 4지표가 MARKET_STATS_FIELD_KEYS 와 순서·개수까지 같다", () => {
     const src = readFileSync(new URL("../components/detail/MarketStatsCharts.tsx", import.meta.url), "utf8");
     // 차트는 KOSIS 컬럼(snake_case), 서랍은 FIELD_META 키(camelCase)라 자동으로 안 이어진다.
     // ⚠️ `key:` 만 잡으면 `d?.[m.key]` 같은 참조에도 걸리므로 문자열 리터럴만 잡는다.
