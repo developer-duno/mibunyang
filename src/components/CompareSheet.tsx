@@ -1,6 +1,6 @@
 import { memo, useRef, useState, useCallback } from "react";
 import { C, F, catCol, gr } from "@/theme";
-import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
+import { zoneOf, calcLTV, ZONE_TYPE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 import { PROFILES } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
@@ -87,8 +87,13 @@ export const CompareSheet = memo(function CompareSheet({
   // 비교표 6행의 순서 — catsCache JSON 키 순서가 아니라 CAT_DISPLAY_ORDER 고정 (세션 487).
   const cats = orderedCatEntries(items[0].res.cats as unknown as Record<string, unknown>).map(([k]) => k);
   const zoneData = items.map((it: CompareItem) => {
-    const z = getZone(it.apt.region as string, it.apt.gu as string);
-    const ltv = calcLTV((it.apt.price ?? 0) as number, z);
+    // DB 규제 표시 우선(zoneOf) — 상세 금융 탭과 같은 판정. 수도권 6억 한도 때문에 시도도 넘긴다.
+    const z = zoneOf({
+      isRegulated: it.apt.isRegulated as boolean | null | undefined,
+      region: it.apt.region as string,
+      gu: it.apt.gu as string,
+    });
+    const ltv = calcLTV((it.apt.price ?? 0) as number, z, it.apt.region as string);
     return { zone: z as keyof typeof ZONE_TYPE, ltv, needCash: ((it.apt.price ?? 0) as number) - ltv };
   });
   // 프로필 기준 추천 요약

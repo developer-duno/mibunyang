@@ -1,6 +1,14 @@
 import { memo, useState } from "react";
 import { C, F } from "@/theme";
-import { getZone, calcLTV, ZONE_TYPE, NORMAL_LTV, REGULATED_LTV_RATE } from "@/constants/regulations";
+import {
+  zoneOf,
+  calcLTV,
+  isMetroRegion,
+  ZONE_TYPE,
+  NORMAL_LTV,
+  REGULATED_LTV_RATE,
+  METRO_LOAN_CAP,
+} from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 import { hasKnownArea } from "@/lib/area";
 import { thStyle, tdStyle } from "./tableStyles";
@@ -25,12 +33,20 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
     loading: boolean;
   };
 
-  const zone = getZone(apt.region, apt.gu);
+  // DB 규제 표시 우선(zoneOf) — 점수·대출 막대와 같은 판정.
+  const zone = zoneOf({
+    isRegulated: apt.isRegulated as boolean | null | undefined,
+    region: apt.region,
+    gu: apt.gu,
+  });
   const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
+  const metro = isMetroRegion(apt.region);
   // 규제지역은 비율 하나로 못 적는다 — 40% 를 곱한 뒤 집값 구간별 금액 뚜껑이 또 씌워지기 때문.
+  // 수도권(서울·경기·인천)은 구역과 상관없이 주택구입 대출 최대 6억이 한 번 더 씌워진다.
   const ltvSummary =
     zone === "normal"
-      ? `LTV: 9억 이하 ${Math.round(NORMAL_LTV.under * 100)}% / 초과분 ${Math.round(NORMAL_LTV.over * 100)}% (무주택자 기준)`
+      ? `LTV: ${Math.round(NORMAL_LTV * 100)}% (무주택자 기준)` +
+        (metro ? ` · 수도권 대출한도 최대 ${METRO_LOAN_CAP / 10000}억` : "")
       : `LTV: ${Math.round(REGULATED_LTV_RATE * 100)}% (무주택자 기준) · 대출한도 15억 초과 4억 / 25억 초과 2억`;
   // 2단 통일(세션508 PR-3a A3) — 종합 탭(2단: normal→초록/그외→빨강)과 여기(옛 3단:
   // overheated→주황/speculative→빨강)가 갈려 있었다. ZONE_MAP 이 전 항목을 overheated 하나로만
@@ -43,7 +59,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
   // 면적을 모르면 면적별 표를 거르지 않는다 — 0㎡ 로 두면 "0㎡ ±20㎡" 에 걸리는 행이 없어 표가 통째로 사라진다(세션576 D2).
   const areaKnown = hasKnownArea(apt.area);
   const aptArea = areaKnown ? Number(apt.area) : 0;
-  const ltvBase = calcLTV(aptPrice, zone);
+  const ltvBase = calcLTV(aptPrice, zone, apt.region);
   const needCash = aptPrice - ltvBase;
   const allLoan = (apt.priceByArea as PriceAreaRow[] | undefined) ?? [];
   const narrowLoan = allLoan.filter((p) => Math.abs(p.area - aptArea) <= 10);
@@ -60,7 +76,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
     ? loanSrc.map((p) => {
         const rent = allRent.find((r) => r.area === p.area);
         const gap = rent ? p.min - rent.avg : null;
-        const ltv = calcLTV(p.min, zone);
+        const ltv = calcLTV(p.min, zone, apt.region);
         const monthlyInterest =
           gap != null && gap > 0 && rentMinRate ? Math.round((gap * rentMinRate) / 100 / 12) : null;
         return { area: p.area, min: p.min, rentAvg: rent?.avg, gap, ltv, monthlyInterest, count: p.count };
@@ -97,7 +113,13 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>{ltvSummary}</div>
         {zone !== "normal" && (
           <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 8 }}>
-            2025년 10·15 대책으로 조정대상지역·투기과열지구에 함께 지정된 곳이에요.
+            정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요(2026년 10월 기준).
+            {/* 경과 규정 — 금융위 「대출수요 관리 방안 FAQ」(2025-10-15, fsc.go.kr/po020201/85518).
+                금액 계산은 바꾸지 않고 규칙만 한 줄로 알린다(사장님 결정, 세션592). */}
+            <div style={{ marginTop: 2 }}>
+              규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수
+              있어요(분양권 전매는 강화 기준).
+            </div>
           </div>
         )}
         <div style={{ display: "flex", gap: 8, marginBottom: hasDetail ? 10 : 0 }}>
@@ -258,22 +280,27 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         </div>
         {showLegal && (
           <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.6, marginTop: 8 }}>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>2026년 10월 기준</div>
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 규제지역(조정대상지역·투기과열지구 동시
-              지정) 40%, 단 대출한도는 집값 15억 초과 시 4억·25억 초과 시 2억으로 제한. 비규제지역은 9억 이하 70%,
-              초과분 60% (2025년 10·15 대책, 무주택자 기준)
+              지정) 40%, 단 대출한도는 집값 15억 이하 6억·15억 초과 4억·25억 초과 2억. 비규제지역 70%. 수도권(서울·
+              경기·인천)은 구역과 상관없이 주택구입 대출 최대 6억 (무주택자 기준)
             </div>
             <div style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.text }}>DSR (총부채원리금상환비율)</strong> — 전 금융권 40% 적용. 연소득 대비
-              모든 대출의 원리금 상환액 비율 제한
+              <strong style={{ color: C.text }}>DSR (총부채원리금상환비율)</strong> — 은행권 40%, 2금융권 50% 적용.
+              연소득 대비 모든 대출의 원리금 상환액 비율 제한
             </div>
             <div style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 연소득 6천만원 이하, 최대
-              2.5억(생애최초 3억), 금리 2.15~3.00%
+              <strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 부부합산 연소득 6천만원 이하
+              (생애최초·2자녀 이상 7천만원, 신혼 8.5천만원), 주택가격 5억 이하(신혼·2자녀 이상 6억), 최대 2억 (생애최초
+              2.4억, 신혼·2자녀 이상 3.2억), 금리 연 2.85~4.15%
             </div>
             <div style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하, 최대 3.6억,
-              고정금리
+              <strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하(신혼
+              8.5천만원), 주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리
+            </div>
+            <div style={{ marginBottom: 6 }}>
+              자세한 조건은 주택도시기금·한국주택금융공사 누리집에서 확인할 수 있어요.
             </div>
             <div style={{ color: C.red, fontSize: F.xs, fontWeight: 600, marginTop: 8 }}>
               본 정보는 참고용이며 실제 대출 조건은 금융기관에 확인하세요. 규제지역 지정·해제는 수시 변경될 수 있습니다.

@@ -49,6 +49,56 @@ export function isRegulatedArea(regulated, region, gu) {
 }
 
 /**
+ * 법정동코드 앞자리 규칙 읽기 — JSON `_bjdPrefixZones` ({ "41597": "경기 화성시 동탄구" }).
+ * 값(지정 이름)이 규제 Set 에 들어 있을 때만 규칙으로 쓴다 — 목록에서 그 이름을 빼면 규칙도 같이 꺼진다.
+ * @param {Record<string, unknown>} zones
+ * @param {Set<string>} regulated
+ * @returns {Array<{ prefix: string; region: string; city: string; dongPrefix: string }>}
+ */
+export function buildBjdPrefixRules(zones, regulated) {
+  const raw = zones["_bjdPrefixZones"];
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return [];
+  /** @type {Array<{ prefix: string; region: string; city: string; dongPrefix: string }>} */
+  const rules = [];
+  for (const [prefix, name] of Object.entries(/** @type {Record<string, unknown>} */ (raw))) {
+    const full = String(name ?? "").trim();
+    if (!/^\d{2,10}$/.test(prefix) || !regulated.has(full)) continue;
+    // "경기 화성시 동탄구" → 시도 "경기" · 시 "화성시" · 동 이름 머리 "동탄"(구 이름에서 끝 "구"를 뗀 것)
+    const [region = "", city = "", sub = ""] = full.split(/\s+/);
+    rules.push({ prefix, region, city, dongPrefix: sub.replace(/구$/, "") });
+  }
+  return rules;
+}
+
+/**
+ * 규제지역 판정(수집기 전체 규칙) — ① 이름 키(`isRegulatedArea`) ② 법정동코드 앞자리 규칙
+ * ③ 법정동코드가 비었으면 같은 시·같은 동 이름 머리(예: gu "화성시" + dong "동탄…").
+ *
+ * 우리 DB 는 화성시를 gu "화성시" 하나로 저장해(2026-10-04 실측) 2026-07-01 지정된 동탄구만
+ * 이름으로 고를 수 없다 — 그래서 ②③ 이 있다. ③ 은 bjd_code 가 빈 행(실측 3행)을 위한 것.
+ *
+ * @param {Set<string>} regulated
+ * @param {Array<{ prefix: string; region: string; city: string; dongPrefix: string }>} prefixRules
+ * @param {{ region?: string | null; gu?: string | null; dong?: string | null; bjd_code?: string | null }} apt
+ * @returns {boolean}
+ */
+export function isRegulatedApt(regulated, prefixRules, apt) {
+  if (isRegulatedArea(regulated, apt.region, apt.gu)) return true;
+  const code = String(apt.bjd_code ?? "").trim();
+  const region = String(apt.region ?? "").trim();
+  const gu = String(apt.gu ?? "").trim();
+  const dong = String(apt.dong ?? "").trim();
+  for (const r of prefixRules) {
+    if (code !== "") {
+      if (code.startsWith(r.prefix)) return true;
+      continue;
+    }
+    if (region === r.region && gu === r.city && r.dongPrefix !== "" && dong.startsWith(r.dongPrefix)) return true;
+  }
+  return false;
+}
+
+/**
  * region + gu → 규제 조회 키
  * @param {string | null | undefined} region
  * @param {string | null | undefined} gu
@@ -70,19 +120,21 @@ async function main() {
   const zones = JSON.parse(readFileSync(jsonPath, "utf8"));
 
   const regulated = buildRegulatedSet(zones);
-  log("regulation", `규제지역: ${regulated.size}개 시군구`);
+  const prefixRules = buildBjdPrefixRules(zones, regulated);
+  log("regulation", `규제지역: ${regulated.size}개 시군구 · 법정동코드 규칙 ${prefixRules.length}개`);
 
   // 전체 아파트 조회 — 세션534: 무정렬 OFFSET → 고유키(id) 커서
   // (unordered-pagination-loses-rows.md §1). apartments 3페이지 경계에서의 행 유실 차단.
-  const apts = /** @type {Array<{ id: string; region: string | null; gu: string | null; is_regulated: boolean | null }>} */ (
-    await selectAll((s) => s.from("apartments").select("id, region, gu, is_regulated"), sb, "id")
+  // bjd_code·dong 은 이름으로 못 가르는 곳(화성시 동탄구) 판정용 — isRegulatedApt 참조.
+  const apts = /** @type {Array<{ id: string; region: string | null; gu: string | null; dong: string | null; bjd_code: string | null; is_regulated: boolean | null }>} */ (
+    await selectAll((s) => s.from("apartments").select("id, region, gu, dong, bjd_code, is_regulated"), sb, "id")
   );
 
   let updated = 0;
   for (const apt of apts) {
     if (rpt.interrupted()) break;
     const key = makeRegionKey(apt.region, apt.gu);
-    const shouldBeRegulated = isRegulatedArea(regulated, apt.region, apt.gu);
+    const shouldBeRegulated = isRegulatedApt(regulated, prefixRules, apt);
 
     // 이미 동일하면 건너뜀
     if (apt.is_regulated === shouldBeRegulated) { rpt.skip(); continue; }

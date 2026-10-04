@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
-import { getZone, calcLTV, ZONE_TYPE } from "@/constants/regulations";
+import { zoneOf, calcLTV, ZONE_TYPE, METRO_LOAN_CAP } from "@/constants/regulations";
 
 /**
  * 이 집을 사려면 돈이 어떻게 나뉘나 — 대출 가능액 / 내 돈, 두 조각.
@@ -34,20 +34,26 @@ export const LoanStack = memo(function LoanStack({
   price,
   region,
   gu,
+  isRegulated,
   dsr40pass,
 }: {
   price?: number | null;
   region?: string | null;
   gu?: string | null;
+  /** DB 규제 표시 — 참/거짓이면 이름 조회보다 먼저 본다(`zoneOf`). 화성시 동탄구는 이름으로 못 가른다. */
+  isRegulated?: boolean | null;
   dsr40pass?: boolean | null;
 }) {
   const calc = useMemo(() => {
     if (price == null || !Number.isFinite(price) || price <= 0) return null;
-    const zone = getZone(region ?? null, gu ?? null);
-    const loan = calcLTV(price, zone);
+    const zone = zoneOf({ isRegulated, region, gu });
+    const loan = calcLTV(price, zone, region);
+    // 수도권 6억 한도 때문에 깎였나 — 시도를 빼고 잰 값보다 작으면 그 한도가 걸린 것이다.
+    // 걸렸는데 "비규제지역 기준 최대 40%" 라고만 쓰면 비규제 규칙이 40% 인 것처럼 읽힌다.
+    const metroCapped = loan < calcLTV(price, zone, null);
     const own = Math.max(0, price - loan);
-    return { zone, loan, own, loanPct: Math.round((loan / price) * 100) };
-  }, [price, region, gu]);
+    return { zone, loan, own, metroCapped, loanPct: Math.round((loan / price) * 100) };
+  }, [price, region, gu, isRegulated]);
 
   const aria = calc
     ? `분양가 ${fmtEok(price as number)} 중 대출 가능액 ${fmtEok(calc.loan)}, 직접 준비할 돈 ${fmtEok(calc.own)}. ` +
@@ -105,7 +111,9 @@ export const LoanStack = memo(function LoanStack({
             <span style={{ color: C.amber, fontWeight: 700 }}>직접 준비할 돈 {fmtEok(calc.own)}</span>
           </div>
           <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
-            {ZONE_TYPE[calc.zone]} 기준 최대 {calc.loanPct}%까지 빌릴 수 있어요.
+            {calc.metroCapped
+              ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 최대 ${fmtEok(METRO_LOAN_CAP)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
+              : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
             {dsr40pass === true && (
               <span style={{ color: C.green }}> 소득 대비 상환 부담(DSR) 기준도 통과할 만해요.</span>
             )}

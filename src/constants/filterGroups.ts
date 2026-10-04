@@ -77,7 +77,7 @@ export const DETAIL_FILTER_GROUPS: readonly FilterGroup[] = [
     toggles: [
       { key: "dsrPassOnly", label: "DSR 통과", ariaLabel: "DSR 통과 매물만(자금조달 양호)", color: "indigo" },
       { key: "benefitOnly", label: "혜택", ariaLabel: "혜택 있는 매물만", color: "amber" },
-      { key: "nonRegulatedOnly", label: "비규제", ariaLabel: "비규제지역 매물만(매매·대출 자유)", color: "purple" },
+      { key: "nonRegulatedOnly", label: "비규제", ariaLabel: "비규제지역 매물만(규제지역 제외)", color: "purple" },
     ],
   },
   {

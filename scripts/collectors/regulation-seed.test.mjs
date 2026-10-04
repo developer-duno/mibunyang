@@ -18,7 +18,9 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { buildRegulatedSet, makeRegionKey, isRegulatedArea } = await import("./regulation-seed.mjs");
+const { buildRegulatedSet, makeRegionKey, isRegulatedArea, buildBjdPrefixRules, isRegulatedApt } = await import(
+  "./regulation-seed.mjs"
+);
 
 const { readFileSync } = await import("fs");
 const { resolve } = await import("path");
@@ -100,6 +102,103 @@ describe("isRegulatedArea — 실제 regulation-zones.json 기준", () => {
   it("region 이 비면 폴백이 발동하지 않는다 (빈 문자열이 키로 새지 않게)", () => {
     expect(isRegulatedArea(regulated, null, null)).toBe(false);
     expect(isRegulatedArea(regulated, "", "")).toBe(false);
+  });
+
+  it("2026-07-01 추가 지정 — 구리시·용인시 기흥구 → 규제 (DB gu 표기 그대로)", () => {
+    expect(isRegulatedArea(regulated, "경기", "구리시")).toBe(true);
+    expect(isRegulatedArea(regulated, "경기", "용인시 기흥구")).toBe(true);
+  });
+
+  it("화성시는 이름 키만으로는 규제가 아니다 (동탄구만 지정 — 법정동코드 규칙이 가른다)", () => {
+    expect(isRegulatedArea(regulated, "경기", "화성시")).toBe(false);
+  });
+});
+
+// ── 법정동코드 규칙 (화성시 동탄구) ──────────────────────────────
+describe("buildBjdPrefixRules · isRegulatedApt — 실제 regulation-zones.json 기준", () => {
+  const regulated = buildRegulatedSet(realZones);
+  const rules = buildBjdPrefixRules(realZones, regulated);
+
+  it("41597 규칙 하나 — 시도 경기 · 시 화성시 · 동 이름 머리 '동탄'", () => {
+    expect(rules).toEqual([{ prefix: "41597", region: "경기", city: "화성시", dongPrefix: "동탄" }]);
+  });
+
+  // 화성시 4구 코드 = _shared.mjs HWASEONG_LAWD_CODES 주석 순서(만세 41591·효행 41593·병점 41595·동탄 41597)
+  it("동탄구 코드(41597)로 시작하면 규제 — 동 이름이 '동탄'이 아니어도(반송동·여울동 등)", () => {
+    for (const [code, dong] of [
+      ["4159711500", "동탄6동"],
+      ["4159711100", "반송동"],
+      ["4159712000", "여울동"],
+    ]) {
+      expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: code, dong })).toBe(true);
+    }
+  });
+
+  it.each(["41591", "41593", "41595"])("화성 나머지 구(%s)는 비규제 — 동 이름이 동탄으로 시작해도 코드가 이긴다", (p) => {
+    expect(
+      isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: `${p}25000`, dong: "남양읍" })
+    ).toBe(false);
+    expect(
+      isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: `${p}25000`, dong: "동탄구" })
+    ).toBe(false);
+  });
+
+  it("법정동코드가 비었고 gu 화성시 + dong '동탄…' → 규제 (코드 없는 행 실측 3)", () => {
+    for (const code of [null, undefined, ""]) {
+      expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: code, dong: "동탄구" })).toBe(
+        true
+      );
+    }
+  });
+
+  it("법정동코드가 비었어도 동탄이 아니면(효행구) 비규제 · 다른 시의 '동탄' 동 이름은 비규제", () => {
+    expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: null, dong: "효행구" })).toBe(
+      false
+    );
+    expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "오산시", bjd_code: null, dong: "동탄로" })).toBe(
+      false
+    );
+  });
+
+  it("이름 키 규제는 그대로 — 서울·구리시·기흥구, 지방은 비규제", () => {
+    expect(isRegulatedApt(regulated, rules, { region: "서울", gu: "강남구", bjd_code: "1168010100" })).toBe(true);
+    expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "구리시", bjd_code: "4131010100" })).toBe(true);
+    expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "용인시 기흥구", bjd_code: "4146310100" })).toBe(
+      true
+    );
+    expect(isRegulatedApt(regulated, rules, { region: "부산", gu: "해운대구", bjd_code: "2635010100" })).toBe(false);
+  });
+
+  it("규칙의 이름이 규제 목록에서 빠지면 규칙도 꺼진다 (목록이 단일 출처)", () => {
+    const z = {
+      ...realZones,
+      투기과열지구: realZones["투기과열지구"].filter((/** @type {string} */ x) => x !== "경기 화성시 동탄구"),
+    };
+    z["조정대상지역"] = z["투기과열지구"];
+    const reg = buildRegulatedSet(z);
+    expect(buildBjdPrefixRules(z, reg)).toEqual([]);
+  });
+
+  // 세션592 보완 F4 — 규칙이 0개면 이름 키 말고는 아무것도 규제로 잡지 않는다.
+  // ⚠️ 변이 대상: 규칙 없이도 코드·동 이름만으로 참을 돌려주게 바꾸면 빨강.
+  it("규칙이 0개면 동탄 코드·동 이름이어도 비규제 (이름 키 규제는 그대로)", () => {
+    expect(isRegulatedApt(regulated, [], { region: "경기", gu: "화성시", bjd_code: "4159711500", dong: "동탄6동" })).toBe(
+      false
+    );
+    expect(isRegulatedApt(regulated, [], { region: "경기", gu: "화성시", bjd_code: null, dong: "동탄구" })).toBe(false);
+    expect(isRegulatedApt(regulated, [], { region: "서울", gu: "강남구", bjd_code: "1168010100" })).toBe(true);
+  });
+
+  // ⚠️ 변이 대상: 코드 없는 행의 동 이름 규칙에서 시도 비교(`region === r.region`)를 빼면 빨강.
+  it("코드가 없고 동 이름이 '동탄…'이어도 다른 시도의 같은 시 이름이면 비규제", () => {
+    expect(isRegulatedApt(regulated, rules, { region: "충남", gu: "화성시", bjd_code: null, dong: "동탄1동" })).toBe(
+      false
+    );
+  });
+
+  it("_bjdPrefixZones 가 없거나 배열이면 규칙 0", () => {
+    expect(buildBjdPrefixRules({}, regulated)).toEqual([]);
+    expect(buildBjdPrefixRules({ _bjdPrefixZones: ["41597"] }, regulated)).toEqual([]);
   });
 });
 

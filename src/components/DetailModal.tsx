@@ -919,6 +919,7 @@ export const DetailModal = memo(function DetailModal({
                   price={(apt.price as number | null) ?? null}
                   region={apt.region as string | null}
                   gu={apt.gu as string | null}
+                  isRegulated={(mergedApt ?? apt).isRegulated as boolean | null}
                   dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
                 />
                 <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />

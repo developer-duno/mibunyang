@@ -76,6 +76,13 @@ describe("DetailPanel", () => {
     expect(screen.getByLabelText("혜택 있는 매물만")).toBeInTheDocument();
   });
 
+  // 세션592 보완 F6 — 수도권은 비규제여도 주택구입 대출 최대 6억이라 "대출 자유"는 틀린 말이다.
+  it("비규제 토글 이름은 '규제지역 제외' — '대출 자유'라고 말하지 않는다", () => {
+    render(<DetailPanel {...makeProps()} />);
+    expect(screen.getByLabelText("비규제지역 매물만(규제지역 제외)")).toBeInTheDocument();
+    expect(screen.queryByLabelText(/대출 자유/)).toBeNull();
+  });
+
   // 혜택 토글 클릭 시 onToggleBenefitOnly 콜백
   it("혜택 토글 클릭 시 onToggleBenefitOnly 호출", () => {
     const onToggleBenefitOnly = vi.fn();
