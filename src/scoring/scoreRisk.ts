@@ -290,7 +290,7 @@ export function scoreRisk(apt: Apt): Res {
         name: "규제",
         score: 100 - regSc,
         info: zone !== "normal" ? "규제지역" : "비규제",
-        detail: zone !== "normal" ? "규제지역 (매매·대출 제약)" : "비규제 (거래 자유)",
+        detail: zone !== "normal" ? "규제지역 (매매·대출 제약)" : "비규제 (대출 최대 70%)",
       },
       {
         name: "공급량",
