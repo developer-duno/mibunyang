@@ -248,8 +248,8 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   "cashback",
   "contractDiscount",
   // 규제지역 여부 — 이 **필드 자체**는 화면 어디서도 안 그린다(실측). 같은 이야기는
-  // 종합 탭 규제현황(`getZone` 계산)과 분양 카드 "공고 당시 규제"(`regulationFlags`)가
-  // 이미 하고, 둘 다 이 컬럼이 아니라 자기 출처를 쓴다. 세 번째 말할 자리는 없다
+  // 금융 탭 규제 배지·대출 한도(`zoneOf` — 이 컬럼이 참/거짓이면 그것, 비면 `getZone` 이름 조회, 세션592)와
+  // 분양 카드 "공고 당시 규제"(`regulationFlags`)가 이미 한다. 세 번째 말할 자리는 없다
   // (세션 505 목업 — 관리자 전수 표에는 그대로 남는다).
   "isRegulated",
   // ── 세션 507 PR-2 (Q6): 변별력이 0 인 6종 ──

@@ -13,6 +13,7 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRate
   const { rates: loanRates, loading: ratesLoading, error: ratesError } = useLoanRates(selectedGroup);
 
   const ltvBase = Number(apt._ltvBase ?? 0);
+  const monthlyRate = pickMonthlyRate(loanRates);
 
   return (
     <div
@@ -139,14 +140,14 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRate
                   ))}
                 </tbody>
               </table>
-              {ltvBase > 0 && loanRates[0]?.rateMin != null && (
+              {ltvBase > 0 && monthlyRate != null && (
                 <div style={{ fontSize: F.xs, color: C.muted, marginTop: 8, lineHeight: 1.5 }}>
                   <strong style={{ color: C.text }}>월 상환액 시뮬레이션</strong> (대출 {fmtPrice(ltvBase)}, 30년
                   원리금균등)
                   <div style={{ marginTop: 4 }}>
-                    최저 금리 {loanRates[0].rateMin}% 기준:{" "}
+                    아파트·분할상환 최저 금리 {monthlyRate}% 기준:{" "}
                     <strong style={{ color: C.blue }}>
-                      {fmtPrice(Math.round(calcMonthlyPayment(ltvBase, loanRates[0].rateMin, 30)))}/월
+                      {fmtPrice(Math.round(calcMonthlyPayment(ltvBase, monthlyRate, 30)))}/월
                     </strong>
                   </div>
                 </div>
@@ -161,6 +162,25 @@ export const LoanRatesSection = memo(function LoanRatesSection({ apt }: LoanRate
     </div>
   );
 });
+
+/**
+ * 월 상환액 시뮬레이션에 쓸 금리 — **아파트 담보 + 분할상환** 상품 중 최저 `rateMin`.
+ * 30년 원리금균등으로 계산하므로 만기일시상환·아파트외 상품의 금리를 쓰면 안 된다
+ * (10/02 은행권 응답의 맨 위 3.7% 가 '아파트외·만기일시상환'이었다 — 세션592). 그런 상품이 없으면 null(줄을 그리지 않는다).
+ */
+export function pickMonthlyRate(
+  rates: ReadonlyArray<{ mortgageType?: string | null; repayType?: string | null; rateMin?: number | null }>
+): number | null {
+  let best: number | null = null;
+  for (const r of rates) {
+    if (r.mortgageType !== "아파트") continue;
+    if (!String(r.repayType ?? "").startsWith("분할상환")) continue;
+    const v = r.rateMin;
+    if (v == null || !Number.isFinite(v) || v <= 0) continue;
+    if (best == null || v < best) best = v;
+  }
+  return best;
+}
 
 /** 원리금균등 월 상환액 계산 (만원 단위) */
 function calcMonthlyPayment(principal: number, annualRate: number, years: number) {

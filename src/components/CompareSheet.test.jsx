@@ -105,6 +105,21 @@ describe("CompareSheet", () => {
     expect(screen.getByText("필요자본")).toBeInTheDocument();
   });
 
+  // 세션592 — 비교표 LTV 도 상세 금융 탭과 같은 규칙(DB 규제 표시 우선 · 비규제 70% · 수도권 최대 6억)
+  it("LTV한도 행 — 경기 비규제 10억은 6억, 화성시 + DB 규제 표시 참은 4억", () => {
+    const a = makeItem(1, "A");
+    a.apt = { ...a.apt, gu: "평택시", price: 100000, isRegulated: false };
+    const b = makeItem(2, "B");
+    b.apt = { ...b.apt, gu: "화성시", price: 100000, isRegulated: true };
+    render(<CompareSheet items={[a, b]} onClose={vi.fn()} profile={/** @type {any} */ ("live")} />);
+    const ltvRow = screen.getByText("LTV한도").closest("tr");
+    const cells = [...(ltvRow?.querySelectorAll("td") ?? [])].slice(1).map((td) => td.textContent);
+    expect(cells).toEqual(["6억", "4억"]);
+    const zoneRow = screen.getByText("규제현황").closest("tr");
+    const zones = [...(zoneRow?.querySelectorAll("td") ?? [])].slice(1).map((td) => td.textContent);
+    expect(zones).toEqual(["비규제지역", "규제지역"]);
+  });
+
   // ── 혜택 행 라벨은 파생이다 (세션512) ────────────────────────────────────────
   //
   // ⚠️ 카드·상세는 `wonSource` 파생으로 바꿨는데 이 행만 `"관리비 절감 등 혜택"` 으로 손에 적혀

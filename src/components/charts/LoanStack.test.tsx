@@ -27,18 +27,66 @@ describe("LoanStack — 두 조각이 분양가와 정확히 맞는다", () => {
   it("대출 + 내 돈 = 분양가 (밑변이 어긋나면 그림이 거짓말이다)", () => {
     const price = 50000;
     const zone = getZone("서울", "강남구");
-    const loan = calcLTV(price, zone);
+    const loan = calcLTV(price, zone, "서울");
     render(<LoanStack price={price} region="서울" gu="강남구" />);
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
     expect(label).toContain(fmtEok(loan));
     expect(label).toContain(fmtEok(price - loan));
   });
 
-  it("9억 넘는 구간도 기존 calcLTV 규칙을 그대로 쓴다 (규칙을 새로 쓰지 않는다)", () => {
+  it("비싼 구간도 기존 calcLTV 규칙을 그대로 쓴다 (규칙을 새로 쓰지 않는다)", () => {
     const price = 150000; // 15억
     const zone = getZone("서울", "강남구");
     render(<LoanStack price={price} region="서울" gu="강남구" />);
-    expect(screen.getByText(new RegExp(`빌릴 수 있는 돈 ${fmtEok(calcLTV(price, zone))}`))).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(`빌릴 수 있는 돈 ${fmtEok(calcLTV(price, zone, "서울"))}`))).toBeInTheDocument();
+  });
+});
+
+describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
+  it("지방 비규제 10억 → 7억 (70% 하나, 한도 없음)", () => {
+    render(<LoanStack price={100000} region="부산" gu="해운대구" />);
+    expect(screen.getByText("빌릴 수 있는 돈 7억")).toBeInTheDocument();
+  });
+
+  it("경기 비규제 10억 → 6억 (수도권 주택구입 대출 최대 6억)", () => {
+    render(<LoanStack price={100000} region="경기" gu="평택시" />);
+    expect(screen.getByText("빌릴 수 있는 돈 6억")).toBeInTheDocument();
+    // 6억 한도로 깎였으면 "비규제지역 기준 최대 60%" 처럼 비규제 규칙이 바뀐 것처럼 쓰지 않는다
+    expect(
+      screen.getByText(/비규제지역이지만 수도권 주택구입 대출은 최대 6억이라 분양가의 60%까지 빌릴 수 있어요/)
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/비규제지역 기준 최대 60%/)).toBeNull();
+  });
+
+  it("6억 한도에 안 걸리면 옛 문장 그대로 — 경기 비규제 5억 → 최대 70%", () => {
+    render(<LoanStack price={50000} region="경기" gu="평택시" />);
+    expect(screen.getByText(/비규제지역 기준 최대 70%까지 빌릴 수 있어요/)).toBeInTheDocument();
+  });
+
+  it("DB 규제 표시가 이름보다 먼저 — 화성시(이름은 비규제) + isRegulated 참 → 40%", () => {
+    render(<LoanStack price={100000} region="경기" gu="화성시" isRegulated />);
+    expect(screen.getByText("빌릴 수 있는 돈 4억")).toBeInTheDocument();
+    expect(screen.getByText(/규제지역 기준 최대 40%/)).toBeInTheDocument();
+  });
+
+  it("DB 거짓이면 이름이 규제여도 비규제 — 서울 + isRegulated 거짓 → 70%(서울이라 6억 한도)", () => {
+    render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated={false} />);
+    expect(screen.getByText("빌릴 수 있는 돈 3.5억")).toBeInTheDocument();
+  });
+
+  // 세션592 보완 F2 — 같은 집값·시도에서 DB 표시만 바뀌어도 다시 계산해야 한다.
+  // ⚠️ 변이 대상: useMemo 의존 배열에서 isRegulated 를 빼면 옛 금액(3.5억)이 남아 빨강.
+  it("isRegulated 가 거짓 → 참으로 바뀌어 다시 그리면 금액이 바뀐다 (메모 키에 DB 표시가 들어 있다)", () => {
+    const { rerender } = render(<LoanStack price={50000} region="경기" gu="화성시" isRegulated={false} />);
+    expect(screen.getByText("빌릴 수 있는 돈 3.5억")).toBeInTheDocument();
+    rerender(<LoanStack price={50000} region="경기" gu="화성시" isRegulated />);
+    expect(screen.getByText("빌릴 수 있는 돈 2억")).toBeInTheDocument();
+    expect(screen.queryByText("빌릴 수 있는 돈 3.5억")).toBeNull();
+  });
+
+  it("DB 값이 비었으면 이름 조회 — 구리시(2026-07-01 지정) → 40%", () => {
+    render(<LoanStack price={100000} region="경기" gu="구리시" isRegulated={null} />);
+    expect(screen.getByText("빌릴 수 있는 돈 4억")).toBeInTheDocument();
   });
 });
 

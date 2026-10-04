@@ -1095,6 +1095,37 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     });
   });
 
+  // 세션592 A9 — 금융 탭이 LoanStack 에 분양가·시도·DB 규제 표시를 실제로 넘기는지(배선) 지킨다.
+  // ⚠️ 뮤테이션 대상: DetailModal 의 LoanStack `isRegulated=` 줄을 빼면 화성시 행이 red 여야 한다
+  //    (이름 "화성시"는 비규제라 DB 표시가 안 넘어가면 70% = 3.5억이 된다).
+  describe("금융 탭 — 대출 막대 배선 (세션592)", () => {
+    /** @param {Record<string, unknown>} aptOver
+     * @returns {any} */
+    const itemWithApt = (aptOver) => ({ ...makeItem(), apt: { ...makeItem().apt, ...aptOver } });
+    /** @param {Record<string, unknown>} aptOver */
+    const financeText = (aptOver) => {
+      const { container } = render(<DetailModal {...makeProps({ item: itemWithApt(aptOver) })} />);
+      fireEvent.click(screen.getByRole("tab", { name: "금융" }));
+      return container.querySelector("#sec-finance")?.textContent ?? "";
+    };
+
+    it("서울 강남 5억(규제) → 빌릴 수 있는 돈 2억", () => {
+      const t = financeText({ price: 50000, region: "서울", gu: "강남구", isRegulated: true });
+      expect(t).toContain("빌릴 수 있는 돈 2억");
+    });
+
+    it("부산 5억(비규제) → 빌릴 수 있는 돈 3.5억", () => {
+      const t = financeText({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false });
+      expect(t).toContain("빌릴 수 있는 돈 3.5억");
+    });
+
+    it("화성시 5억 + DB 규제 표시 참(동탄구) → 이름은 비규제여도 2억", () => {
+      const t = financeText({ price: 50000, region: "경기", gu: "화성시", isRegulated: true });
+      expect(t).toContain("빌릴 수 있는 돈 2억");
+      expect(t).not.toContain("빌릴 수 있는 돈 3.5억");
+    });
+  });
+
   // PC 두 칸 + 고정 레일 (세션554, 원장 D2) — 데스크톱(≥1024)에서만.
   // 지금까지 점수·판정은 "종합" 탭 안에만 있어 시세·입지·금융 탭으로 가면 사라졌다.
   // 레일로 옮기면 어느 탭을 보든 "몇 점인가·무슨 등급인가·상담하기"가 옆에 남는다.

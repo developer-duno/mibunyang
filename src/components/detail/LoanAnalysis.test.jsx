@@ -42,6 +42,66 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("3억 5,000만")).toBeTruthy();
   });
 
+  // 세션592 규정 정정 — 비규제 70% 하나 · 수도권 최대 6억 · DB 규제 표시 우선
+  it("지방 비규제 10억 → 대출한도 7억 (옛 9억 나눔이면 6.9억)", () => {
+    const apt = /** @type {any} */ (makeApt({ price: 100000, region: "부산", gu: "해운대구", isRegulated: false }));
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("7억")).toBeTruthy();
+    expect(screen.getByText("LTV: 70% (무주택자 기준)")).toBeTruthy();
+  });
+
+  it("경기 비규제 10억 → 대출한도 6억 (수도권 주택구입 대출 최대 6억) + 요약에 한도 문장", () => {
+    const apt = /** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "평택시", isRegulated: false }));
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getAllByText("6억").length).toBeGreaterThan(0);
+    expect(screen.getByText("LTV: 70% (무주택자 기준) · 수도권 대출한도 최대 6억")).toBeTruthy();
+  });
+
+  it("DB 규제 표시가 이름보다 먼저 — 화성시 + isRegulated 참 → 규제지역 배지·40%", () => {
+    const apt = /** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "화성시", isRegulated: true }));
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    expect(screen.getByText("규제지역")).toBeTruthy();
+    expect(screen.getByText("4억")).toBeTruthy();
+    expect(
+      screen.getByText(/정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요\(2026년 10월 기준\)/)
+    ).toBeTruthy();
+  });
+
+  // 세션592 보완 F8 — 경과 규정 한 줄은 규제지역일 때만(금액 계산은 그대로).
+  // ⚠️ 변이 대상: `zone !== "normal" &&` 조건을 빼면 비규제 단지에도 나와 빨강.
+  it("규제지역이면 경과 규정 한 줄(지정 전 모집공고 단지 종전 기준)이 있고 비규제면 없다", () => {
+    const line =
+      "규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
+    const reg = render(
+      <LoanAnalysis
+        apt={/** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "구리시", isRegulated: true }))}
+      />
+    );
+    expect(reg.container.textContent).toContain(line);
+    expect(reg.container.textContent).toContain("4억"); // 금액은 그대로 40%
+    reg.unmount();
+    const normal = render(
+      <LoanAnalysis
+        apt={/** @type {any} */ (makeApt({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false }))}
+      />
+    );
+    expect(normal.container.textContent).not.toContain("종전 기준");
+  });
+
+  it("법률 안내문은 2026년 10월 기준 숫자 (DSR 은행 40%·2금융 50% · 디딤돌 · 보금자리)", () => {
+    const apt = /** @type {any} */ (makeApt({ price: 50000 }));
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    fireEvent.click(screen.getByText("관련 법률/규정 안내"));
+    const text = document.body.textContent ?? "";
+    expect(text).toContain("2026년 10월 기준");
+    expect(text).toContain("은행권 40%, 2금융권 50%");
+    expect(text).toContain("연 2.85~4.15%");
+    expect(text).toContain("최대 2억");
+    expect(text).toContain("주택가격 6억 이하");
+    expect(text).not.toContain("9억 이하 70%");
+    expect(text).not.toContain("전 금융권 40%");
+  });
+
   // region/gu가 null인 경우 — getZone은 normal 폴백
   it("region이 null이어도 크래시 없이 렌더링한다", () => {
     const apt = /** @type {any} */ (makeApt({ region: null, gu: null, price: 30000 }));
@@ -196,5 +256,23 @@ describe("LoanAnalysis", () => {
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("84㎡")).toBeTruthy();
     expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
+  });
+
+  // 세션592 보완 F1 — 면적별 표의 줄마다 대출 한도도 같은 규칙(수도권 최대 6억)을 쓴다.
+  // ⚠️ 변이 대상: 줄 계산 `calcLTV(p.min, zone, apt.region)` 에서 시도를 빼면 이 줄이 7억이 되어 빨강.
+  it("면적별 표 — 경기 비규제·그 면적 최저가 10억이면 그 줄 대출 한도는 6억", () => {
+    const apt = makeApt({
+      price: 50000,
+      area: 84,
+      region: "경기",
+      gu: "평택시",
+      isRegulated: false,
+      priceByArea: [{ area: 84, min: 100000, avg: 100000, max: 100000, count: 5 }],
+      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
+    });
+    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    const row = screen.getByTestId("loan-trade-count-84").closest("tr");
+    const cells = [...(row?.querySelectorAll("td") ?? [])];
+    expect(cells[cells.length - 1]?.textContent).toBe("6억");
   });
 });
