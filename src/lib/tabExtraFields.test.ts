@@ -241,8 +241,29 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
 
   // 세션508 PR-3c C2 — 분양 탭 시공사 카드 3필드. `builder` 는 종합 탭 격자에서 빠진 자리.
   const BUILDER_CARD = "../components/detail/BuilderCard.tsx";
-  for (const f of ["builder", "builderCreditGrade", "builderDebtRatio"])
+  for (const f of ["builder", "builderDebtRatio"])
     CARD_SOURCE[f] = [{ file: BUILDER_CARD, re: new RegExp(`apt\\.${f}\\b`), why: "시공사 카드" }];
+  // 세션591 보완 G3(사장님 결정): 부채비율로 계산한 값이라 분양 탭 칩에서 뺐다. 이 등급 글자가 남은 자리는 점수 탭
+  //   "시공사 재무" 줄(scoreRisk.ts info) 하나다 — **로그인 손님만** 본다. 비로그인은 점수 탭이 잠겨 이 등급 글자를
+  //   어디서도 못 본다(같은 내용인 부채비율 눈금은 분양 탭에서 누구나 본다). 거기서도 빠지면 화면 어디에도 안 남는다.
+  CARD_SOURCE.builderCreditGrade = [
+    { file: "../scoring/scoreRisk.ts", re: /info: builderCreditGrade \|\| "정보 없음"/, why: "점수 탭 시공사 재무 줄" },
+  ];
+
+  // 세션591 P3 — 옛 "분양 안전" 표의 계약해제율을 "이 지역 통계" 묶음 눈금으로. 눈금 정의 줄(`field:`)과
+  //   DetailModal 의 렌더 줄 두 곳을 본다(정의만 있고 묶음을 안 그리면 화면에서 증발한다).
+  CARD_SOURCE.cancelRatio6m = [
+    {
+      file: "../components/detail/RegionStats.tsx",
+      re: /field: "cancelRatio6m",\s*\n\s*label: "계약해제율"/,
+      why: "지역 통계 눈금 정의",
+    },
+    {
+      file: "../components/DetailModal.tsx",
+      re: /<RegionStats\s+apt=\{mergedApt \?\? apt\}/,
+      why: "분양 탭이 묶음을 그린다",
+    },
+  ];
 
   // 세션508 PR-3c C3 — 분양 탭 청약 진행 그림(PresaleTimeline) 3필드. DetailModal 이 prop 으로
   // 넘기고(dsr40pass 와 같은 두 파일 패턴), PresaleTimeline 이 실제로 계산·렌더한다.
@@ -357,7 +378,13 @@ describe("이 지역 통계 서랍이 그린다고 적어둔 7필드는 실제�
 
   it("RegionStats 가 그 행 정의를 실제로 순회한다", () => {
     // 목록만 맞고 컴포넌트가 안 쓰면 7필드가 화면 어디에도 안 나온다.
-    expect(/REGION_STATS_ROWS\.map\(/.test(viewSrc), "RegionStats.tsx 가 REGION_STATS_ROWS 를 안 그린다").toBe(true);
+    // 세션591 P4: 접힘 해체 뒤 7필드는 눈금(REGION_GAUGES)과 작은 글자 줄(REGION_STATS_ROWS 중 눈금 아닌 것) 두 길로
+    //   그린다. 두 순회가 다 있어야 하고, 7필드 전부가 어느 한 길에 닿는지는 RegionStats.test.jsx 가 렌더로 본다.
+    expect(
+      /const smallParts = REGION_STATS_ROWS\.filter\(/.test(viewSrc),
+      "RegionStats.tsx 가 REGION_STATS_ROWS 를 안 그린다"
+    ).toBe(true);
+    expect(/const gauges = REGION_GAUGES\.map\(/.test(viewSrc), "RegionStats.tsx 가 눈금 정의를 안 그린다").toBe(true);
   });
 
   for (const f of REGION_STATS_FIELDS) {
@@ -558,9 +585,10 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "floorAreaRatio",
       "buildingCoverageRatio",
       "layout",
+      // ── 세션591 P3 ── 분양 탭 "분양 안전" 표를 해체하고 "이 지역 통계" 눈금(RegionStats)으로 옮긴 1종.
+      "cancelRatio6m",
       // ⚠️ 여기 **넣으면 안 되는 것들**:
       //   pir·psr·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
-      //   cancelRatio6m = "분양 안전" 표에 그대로 남는다(C3 은 청약경쟁 3필드만 옮겼다).
       //   units·unsold·heating = 종합 탭 "단지 기본정보" 격자에 그대로 남는다(C4 는 heatFuel·
       //   primaryDirection 두 필드만 옮겼다).
     ];

@@ -1,6 +1,10 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { PresaleTimeline, logPos, fmtRate, STAGES } from "./PresaleTimeline";
+import { PresaleTimeline, logPos, fmtRate, STAGES, RENTAL_STAGE, isMoveInPast } from "./PresaleTimeline";
+import { parseCompletionMonth } from "@/scoring/scorePrice";
+
+/** 시험용 "지금" = 2026-10-15 12:00 KST (실제 시각에 기대지 않는다) */
+const OCT_2026 = new Date(Date.UTC(2026, 9, 15, 3, 0, 0));
 
 describe("logPos — 자릿수 눈금이 작은 값을 살려낸다", () => {
   it("1 이하는 0 (막대 없음)", () => {
@@ -82,7 +86,7 @@ describe("PresaleTimeline — 분양 정보 없는 절반은 안 그린다", () 
 });
 
 describe("PresaleTimeline — 단계 표시", () => {
-  it.each(STAGES)("%s 단계면 네 칸 모두 이름이 보이고 현재 단계 설명이 붙는다", (stage) => {
+  it.each(STAGES)("%s 단계면 다섯 칸 모두 이름이 보이고 현재 단계 설명이 붙는다", (stage) => {
     render(<PresaleTimeline stage={stage} />);
     for (const s of STAGES) expect(screen.getByText(s)).toBeInTheDocument();
     expect(screen.getByRole("img")).toBeInTheDocument();
@@ -91,8 +95,44 @@ describe("PresaleTimeline — 단계 표시", () => {
   it("스크린리더에 몇 번째 단계인지 말해준다", () => {
     render(<PresaleTimeline stage="분양중" />);
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
-    expect(label).toContain("4칸 중 3번째");
+    expect(label).toContain("5칸 중 3번째");
     expect(label).not.toContain("점수");
+  });
+});
+
+// 세션591 E3 — 옛 4칸 목록 밖이던 두 단계. 입주예정(사본 564곳)은 단계 그림이 통째로 사라졌고,
+// 임대모집은 진행 순서에 끼지 않아 칸 대신 배지로 말한다.
+describe("PresaleTimeline — 입주예정·임대모집 (세션591 E3)", () => {
+  it("진행 순서는 분양계획 → 청약중 → 분양중 → 미분양 → 입주예정 다섯 칸이다", () => {
+    expect([...STAGES]).toEqual(["분양계획", "청약중", "분양중", "미분양", "입주예정"]);
+  });
+
+  it("입주 시기가 앞으로 남은 입주예정이면 다섯째 칸이 지금 단계이고 설명 줄이 붙는다", () => {
+    render(<PresaleTimeline stage="입주예정" moveIn="2027-06" completion="202706" now={OCT_2026} />);
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toContain("5칸 중 5번째, 입주예정");
+    expect(screen.getByText("입주를 앞두고 있어요")).toBeInTheDocument();
+  });
+
+  it("임대모집이면 단계 칸 대신 '임대모집' 배지를 그린다 (칸 이름은 하나도 안 나온다)", () => {
+    render(<PresaleTimeline stage={RENTAL_STAGE} />);
+    expect(screen.getByTestId("presale-rental-badge")).toHaveTextContent("임대모집");
+    for (const s of STAGES) expect(screen.queryByText(s)).toBeNull();
+    expect(screen.queryByText(/분양 정보를 아직 모으지 못했어요/)).toBeNull();
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toContain("임대");
+    expect(label).not.toContain("칸 중");
+    expect(label).not.toContain("점수");
+  });
+
+  it("임대모집이어도 경쟁률이 있으면 배지와 경쟁률을 함께 그린다", () => {
+    render(<PresaleTimeline stage={RENTAL_STAGE} competitionRate={3.5} />);
+    expect(screen.getByTestId("presale-rental-badge")).toBeInTheDocument();
+    expect(screen.getByText(/3.5 : 1/)).toBeInTheDocument();
+  });
+
+  it("임대모집은 진행 순서 목록에 들어 있지 않다", () => {
+    expect((STAGES as readonly string[]).includes(RENTAL_STAGE)).toBe(false);
   });
 });
 
@@ -165,5 +205,97 @@ describe("PresaleTimeline — 신청수·모집세대 병기 (세션508 PR-3c C3
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
     expect(label).toContain("1,560명 신청");
     expect(label).toContain("300세대 모집");
+  });
+});
+
+// 보완 G1(사장님 결정) — 입주 시기가 이미 지난 '입주예정' 단지는 단계 그림을 안 그린다(이번 PR 전과 같은 모습).
+//   정적 사본 실측 꼴: presaleMoveIn "2026-09"(556곳) · "2030 미정"(8) / completion "202609"(557) · "2030 미"(3) · null(4).
+describe("PresaleTimeline — 입주 시기가 지난 입주예정 (보완 G1)", () => {
+  it("달 읽기는 parseCompletionMonth 를 그대로 쓴다 — 실제 꼴 '2026-09'·'202609' 둘 다 같은 달, '2030 미정'은 못 읽음", () => {
+    expect(parseCompletionMonth("2026-09")).toBe(2026 * 12 + 8);
+    expect(parseCompletionMonth("202609")).toBe(2026 * 12 + 8);
+    expect(parseCompletionMonth("2030 미정")).toBeNull();
+    expect(parseCompletionMonth("2030 미")).toBeNull();
+  });
+
+  it("isMoveInPast — 지난 달 true · 같은 달 false · 앞 달 false (지금 2026-10)", () => {
+    expect(isMoveInPast("2026-09", null, OCT_2026)).toBe(true);
+    expect(isMoveInPast("2026-10", null, OCT_2026)).toBe(false);
+    expect(isMoveInPast("2026-11", null, OCT_2026)).toBe(false);
+  });
+
+  it("isMoveInPast — 입주 시기를 못 읽으면 준공월로: 준공월 지남 true · 둘 다 못 읽음/없음 false", () => {
+    expect(isMoveInPast(null, "202609", OCT_2026)).toBe(true);
+    expect(isMoveInPast("2030 미정", "202609", OCT_2026)).toBe(true);
+    expect(isMoveInPast("2030 미정", "2030 미", OCT_2026)).toBe(false);
+    expect(isMoveInPast(null, null, OCT_2026)).toBe(false);
+    // 입주 시기가 읽히면 그것이 우선 — 준공월이 지났어도 입주 시기가 남았으면 false
+    expect(isMoveInPast("2027-03", "202609", OCT_2026)).toBe(false);
+  });
+
+  it("지난 입주예정은 칸 이름·설명 줄이 없고 aria 에 '입주예정'·'칸 중'이 0, 범위·경쟁률은 그대로", () => {
+    render(
+      <PresaleTimeline
+        stage="입주예정"
+        moveIn="2026-09"
+        completion="202609"
+        now={OCT_2026}
+        minPrice={95400}
+        maxPrice={111500}
+        competitionRate={80}
+      />
+    );
+    for (const s of STAGES) expect(screen.queryByText(s)).toBeNull();
+    expect(screen.queryByText("입주를 앞두고 있어요")).toBeNull();
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).not.toContain("입주예정");
+    expect(label).not.toContain("칸 중");
+    expect(label).toContain("분양가");
+    expect(screen.getByText("분양가 범위")).toBeInTheDocument();
+    expect(screen.getByText(/80 : 1/)).toBeInTheDocument();
+  });
+
+  it("지난 입주예정 + 범위·경쟁률도 없으면 빈 상태(이번 PR 전과 같음)", () => {
+    render(<PresaleTimeline stage="입주예정" moveIn="2026-09" now={OCT_2026} />);
+    expect(screen.getByText(/분양 정보를 아직 모으지 못했어요/)).toBeInTheDocument();
+  });
+
+  it("같은 달 입주예정은 단계 그림을 그대로 그린다", () => {
+    render(<PresaleTimeline stage="입주예정" moveIn="2026-10" now={OCT_2026} />);
+    expect(screen.getByText("입주를 앞두고 있어요")).toBeInTheDocument();
+  });
+
+  it("지난 입주 시기라도 단계가 입주예정이 아니면 그대로 (다른 단계는 이 판정을 안 받는다)", () => {
+    render(<PresaleTimeline stage="미분양" moveIn="2026-01" completion="202601" now={OCT_2026} />);
+    expect(screen.getByText("다 팔리지 않고 남은 집이 있어요")).toBeInTheDocument();
+  });
+});
+
+// 보완 G2(사장님 결정) — 입주예정이면 '미분양' 칸만 회색. 다 팔린 단지도 미분양을 거친 것처럼 읽혔다.
+describe("PresaleTimeline — 입주예정의 미분양 칸 (보완 G2)", () => {
+  /** 칸마다 [막대 배경, 글자 색] — 칸 순서 = STAGES 순서 */
+  const cells = (container: HTMLElement) =>
+    STAGES.map((s) => {
+      const labelEl = [...container.querySelectorAll<HTMLElement>("div")].find(
+        (d) => d.textContent === s && d.children.length === 0
+      );
+      const bar = labelEl?.previousElementSibling as HTMLElement | null;
+      return [bar?.style.background ?? "", labelEl?.style.color ?? ""];
+    });
+  const GRAY = "rgb(232, 234, 240)"; // C.border #E8EAF0 — 안 지나온 칸
+  const PAST = "rgb(195, 214, 253)"; // C.blueBorder #C3D6FD — 지나온 칸
+  const NOW = "rgb(37, 99, 235)"; // C.blue #2563EB — 지금 칸
+  const MUTED = "rgb(107, 114, 128)"; // C.muted #6B7280
+
+  it("입주예정 → 앞 3칸 지나온 색 · 미분양 칸 회색(글자도 흐린 색) · 다섯째 칸 지금 색", () => {
+    const { container } = render(<PresaleTimeline stage="입주예정" moveIn="2027-06" now={OCT_2026} />);
+    const c = cells(container);
+    expect(c.map((x) => x[0])).toEqual([PAST, PAST, PAST, GRAY, NOW]);
+    expect(c[3][1]).toBe(MUTED);
+  });
+
+  it("미분양 단계는 예전 그대로 — 앞 3칸 지나온 색 · 미분양 칸 지금 색 · 입주예정 칸 회색", () => {
+    const { container } = render(<PresaleTimeline stage="미분양" />);
+    expect(cells(container).map((x) => x[0])).toEqual([PAST, PAST, PAST, NOW, GRAY]);
   });
 });

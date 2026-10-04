@@ -498,6 +498,23 @@ export const FUTURE_RAW_MAX =
   FUTURE_AXIS_MAX.ind * FUTURE_WEIGHTS.ind;
 
 /**
+ * 인구 증감률(%) → 미래가치 인구 축 점수 7단계 (세션591 — `scoreFuture.ts` 의 손글씨 7단 삼항을
+ * 옮겼다, 값 변화 0). `value >= min` 첫 매칭(`tierMin`), 모두 못 넘으면 `POP_GROWTH_LOW_SCORE`.
+ * 분양 탭 "인구 증감" 눈금이 같은 표를 읽는다 — 가운데 0(`min: 0`), 오른쪽 끝 = 첫 칸(더 올라도
+ * 점수가 안 움직이는 지점), 왼쪽 끝 = 마지막 칸.
+ * (null 기본 35점·순이동 보정은 이 표 밖 — `scoreFuture` 에 그대로 있다.)
+ */
+export const POP_GROWTH_TIERS = [
+  { min: 1.0, score: 95 },
+  { min: 0.5, score: 80 },
+  { min: 0, score: 65 },
+  { min: -0.3, score: 50 },
+  { min: -0.8, score: 35 },
+  { min: -2.0, score: 20 },
+] as const satisfies readonly Tier[];
+export const POP_GROWTH_LOW_SCORE = 10;
+
+/**
  * 자연환경 서브의 이론 만점 — 조망 40 + 일조·방향 38 + 소음 30 + 대기 20 = **128**.
  *
  * `scoreLocation` 의 다른 서브(교통·학군·인프라·혐오시설)는 전부 0~100 으로 정규화되는데
@@ -708,6 +725,19 @@ export const CREDIT_DEFAULT = 30;
 // 과 같은 무지에 서로 다른 대우를 하고 있었다 — "부채 미수집인데 신용등급은 있는 단지"는 0건이라
 // 두 필드는 항상 함께 없는데도 대우가 갈렸다.
 export const BUILDER_DEBT_UNKNOWN_ADJ = 10;
+/**
+ * 시공사 부채비율 → 재무 위험 가산 (세션591 — `scoreRisk.ts` 의 손글씨 150·200 을 옮겼다, 값 변화 0).
+ * `≤150` 0 · `≤200` +10 · 그 위 `BUILDER_DEBT_HIGH_ADJ`(+20). 점수(`scoreRisk`)와 분양 탭 부채비율 눈금
+ * (`detail/BuilderCard` DEBT_GAUGE)이 이 표를 읽는다. ⚠️ 판정표 `subContext.ts` "부채비율 150% 이하" 문구는
+ * 아직 손글씨라 이 표를 읽지 않는다 — 150 을 바꾸면 그 문구도 손으로 같이 고쳐야 한다(세션591 보완 F8).
+ * ⚠️ `scoreRisk` 는 옛 식 모양(`> 200 ? … : > 150 ? … : 0`)을 그대로 두고 숫자만 여기서 읽는다
+ *    (`tierMax` 로 바꾸면 NaN 이 0 대신 +20 이 된다 — 식 모양을 바꾸지 않는 이유).
+ */
+export const BUILDER_DEBT_TIERS = [
+  { max: 150, score: 0 },
+  { max: 200, score: 10 },
+] as const satisfies readonly Tier[];
+export const BUILDER_DEBT_HIGH_ADJ = 20;
 // 세션 501: 공급량 항목의 **지표 자체를 교체**했다.
 //
 // 옛 `SUPPLY_RATIO_TIERS`(50/100/130)는 이름이 "인허가율"인데 값은 **주택보급률용** 숫자였다.
@@ -754,12 +784,16 @@ export const PERMIT_RATIO_LOW_ADJ = -3;
 // 마지막 경계는 오늘 실측 최댓값 4.4가 아니라 **5로 반올림** — 오늘 데이터에 맞춰 재단한 것이
 // 아니라 여유를 둔 것이며, 오늘 기준으로는 결과가 동일하다. 5를 넘는 값은
 // `CANCEL_RATIO_HIGH_SCORE`(85, 위험 최고점)로 떨어져 단조성이 유지된다.
+// label(세션591 — 분양 탭 계약해제율 눈금의 판정 글자)은 판정표(`subContext` 계약해제율)와 같은 경계다 —
+// 그쪽은 안전점수(100 − score) 70/40 으로 가르는데, 그 문턱이 정확히 1.2·1.6 경계와 맞는다
+// (≤1.2 "계약 해제 적음" · ≤1.6 "해제율 보통" · 그 위 "계약 해제 주의"). 점수는 안 바뀐다.
 export const CANCEL_RATIO_TIERS: Tier[] = [
-  { max: 0.7, score: 10 },
-  { max: 1.2, score: 25 },
-  { max: 1.6, score: 45 },
-  { max: 5, score: 65 },
+  { max: 0.7, score: 10, label: "적음" },
+  { max: 1.2, score: 25, label: "적음" },
+  { max: 1.6, score: 45, label: "보통" },
+  { max: 5, score: 65, label: "많음" },
 ];
+export const CANCEL_RATIO_HIGH_LABEL = "많음";
 export const CANCEL_RATIO_HIGH_SCORE = 85;
 export const CANCEL_RATIO_NULL_SCORE = 35;
 

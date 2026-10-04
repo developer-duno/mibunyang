@@ -11,8 +11,8 @@ describe("dataSections — 세션508 PR-3c 승격 필드는 표에서 빠졌다"
     expect(presaleFields).not.toContain("competitionRate");
     expect(presaleFields).not.toContain("competitionSupply");
     expect(presaleFields).not.toContain("competitionApplicants");
-    // 계약해제율은 그대로 남는다 — 청약경쟁 3필드만 옮겼다.
-    expect(presaleFields).toContain("cancelRatio6m");
+    // 세션591 P3: 남아 있던 계약해제율도 "이 지역 통계" 눈금(RegionStats)으로 옮겨 표가 비었다.
+    expect(presaleFields).not.toContain("cancelRatio6m");
   });
 
   it("종합 탭 '단지 기본정보' 격자에 builder(시공사)가 없다 (시공사 카드로 승격)", () => {
@@ -105,8 +105,10 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
     expect(hint).toMatch(/낮은 게 정상/);
   });
 
-  it("분양 탭에 계약해제율(cancelRatio6m) 노출", () => {
-    expect(presaleFields).toContain("cancelRatio6m");
+  // 세션591 P3: 표가 아니라 "이 지역 통계" 묶음 눈금이 그린다 — 노출 자체는 그대로여야 한다.
+  it("분양 탭에 계약해제율(cancelRatio6m) 노출 — 이제 표가 아니라 지역 통계 눈금", () => {
+    expect(presaleFields).not.toContain("cancelRatio6m");
+    expect(FIELDS_SHOWN_IN_DETAIL_CARDS).toContain("cancelRatio6m");
   });
 
   // 세션 505: newSupply 는 지역 시장 추이 차트가 시계열로 그린다 — 한 시점 숫자를 옆에 또 적지 않는다.
@@ -114,10 +116,10 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
     expect(presaleFields).not.toContain("newSupply");
   });
 
-  it("분양 안전 섹션은 hideWhenEmpty 아님(항상 노출 — 청약경쟁이 비어도 계약해제율은 남는다)", () => {
-    const safety = PRESALE_SECTIONS.find((s) => s.title === "분양 안전");
-    expect(safety).toBeDefined();
-    expect(safety?.hideWhenEmpty).toBeFalsy();
+  // 세션591 P3: "분양 안전" 접힘을 해체했다 — 되살아나면 계약해제율이 표와 눈금 두 곳에 나온다.
+  it("분양 안전 섹션은 없다 (세션591 — 분양 탭 세부 섹션은 비어 있다)", () => {
+    expect(PRESALE_SECTIONS.find((s) => s.title === "분양 안전")).toBeUndefined();
+    expect(PRESALE_SECTIONS).toEqual([]);
   });
 
   // 세션 505: PresaleInfo 카드가 그리는 15필드를 표로 또 그리던 "네이버 분양정보" 섹션 폐지
