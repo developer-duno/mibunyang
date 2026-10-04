@@ -1134,11 +1134,7 @@ export const LAND_COST_TIERS: Tier[] = [
 export const LAND_COST_LOW = 25; // 20% 미만
 export const LAND_COST_NULL = 50; // 데이터 없음 중립
 
-// === Price: 매매가격지수 보정 임계값 ===
-export const PRICE_INDEX_HOT = 130; // 과열 시장 → +5
-export const PRICE_INDEX_WARM = 110; // 상승 시장 → +3
-export const PRICE_INDEX_HOT_BONUS = 5;
-export const PRICE_INDEX_WARM_BONUS = 3;
+// (세션592: 분양가격지수 보정 PRICE_INDEX_* 4상수 삭제 — scorePrice 가 더 이상 지수를 안 쓴다)
 
 // === Product: 주택유형별 브랜드 상한 ===
 export const HOUSING_TYPE_CAP_DEFAULT = 20;

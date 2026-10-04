@@ -84,7 +84,8 @@ describe("MarketStatsCharts", () => {
     expect(screen.getByRole("status")).toBeTruthy();
   });
 
-  it("정상 데이터면 작은 칸 5개(추이 선 5개)를 렌더링한다", () => {
+  // 세션592: 분양가격지수 칸을 뺐다(원천 2025-10 멈춤) — 5 → 4. 응답에 price_index 가 있어도 안 그린다.
+  it("정상 데이터면 작은 칸 4개(추이 선 4개)를 렌더링한다 — 분양가격지수는 없다", () => {
     mockUseMarketStatsHistory.mockReturnValue({
       data: makeRows(),
       loading: false,
@@ -93,8 +94,31 @@ describe("MarketStatsCharts", () => {
       fallback: false,
     });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
-    expect(tiles()).toHaveLength(5);
-    expect(sparks()).toHaveLength(5);
+    expect(tiles()).toHaveLength(4);
+    expect(sparks()).toHaveLength(4);
+    expect(screen.queryByText(/분양가격지수/)).toBeNull();
+    for (const label of ["평균분양가격", "신규공급 세대수", "초기분양율", "택지비율"])
+      expect(screen.getByText(label)).toBeTruthy();
+  });
+
+  it("price_index 만 값이 있으면 그릴 것이 없어 안내 박스 (세션592)", () => {
+    const rows = makeRows().map((r) => ({
+      ...r,
+      avg_price_sqm: null,
+      new_supply: null,
+      initial_sale_rate: null,
+      land_cost_ratio: null,
+    }));
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: rows,
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
+    render(<MarketStatsCharts region="서울" gu="강남구" />);
+    expect(screen.getByRole("status")).toBeTruthy();
+    expect(tiles()).toHaveLength(0);
   });
 
   // E16 — 옛 x축은 월(두 자리)만 적어 연도가 섞여 읽혔다. 칸마다 최신 값과 그 기준 연·월을 적는다.
@@ -157,8 +181,8 @@ describe("MarketStatsCharts", () => {
     expect(price).toHaveTextContent("2026.02 기준");
   });
 
-  // 세션 411 — ? 도움말. 차트 5개 + 상단 "지역 시장 추이" = ? 6개. line-chart 개수 불변.
-  it("정상 데이터면 ? 도움말 6개(차트 5 + 상단 1) 표시, line-chart 개수 불변", () => {
+  // 세션 411 — ? 도움말. 차트 4개(세션592 — 분양가격지수 뺌) + 상단 "지역 시장 추이" = ? 5개. line-chart 개수 불변.
+  it("정상 데이터면 ? 도움말 5개(차트 4 + 상단 1) 표시, line-chart 개수 불변", () => {
     mockUseMarketStatsHistory.mockReturnValue({
       data: makeRows(),
       loading: false,
@@ -167,8 +191,8 @@ describe("MarketStatsCharts", () => {
       fallback: false,
     });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
-    expect(screen.getAllByLabelText(/풀이 보기$/)).toHaveLength(6);
-    expect(sparks()).toHaveLength(5); // ? 추가해도 추이 선 개수 불변
+    expect(screen.getAllByLabelText(/풀이 보기$/)).toHaveLength(5);
+    expect(sparks()).toHaveLength(4); // ? 추가해도 추이 선 개수 불변
   });
 
   it("초기분양율 ? 클릭 시 '보는 법' 설명(role=tooltip) 표시", () => {

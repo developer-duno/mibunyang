@@ -1994,13 +1994,24 @@ describe("scorePrice — null 가드 (유령 폴백 제거)", () => {
   });
 });
 
-describe("scorePrice — priceIndex 보정", () => {
-  it("priceIndex=140 → 신뢰도 +5", () => {
-    const base = scorePrice(makeApt({ priceIndex: null }));
-    const hot = scorePrice(makeApt({ priceIndex: 140 }));
-    expect(hot.subs.find((s) => s.name === "데이터 신뢰도")?.score ?? 0).toBeGreaterThanOrEqual(
-      base.subs.find((s) => s.name === "데이터 신뢰도")?.score ?? 0
-    );
+// 세션592 사장님 결정: 분양가격지수 보정(옛 130+ → +5, 110+ → +3) 끔 — 원천이 2025-10 에서 멈췄고 전 단지가 같은 +5.
+//   화면이 지나는 길(`calcCats`)로 잰다. 옛 보정이 되살아나면 지수 200 단지가 null 단지보다 높아진다.
+describe("scorePrice — priceIndex 보정 없음 (세션592)", () => {
+  const rel = (/** @type {any} */ c) => c.price.subs.find((/** @type {any} */ s) => s.name === "데이터 신뢰도");
+  it("지수 200·120·null 단지의 가격 점수·신뢰도 점수가 같다", () => {
+    const none = calcCats(makeApt(/** @type {any} */ ({ priceIndex: null })));
+    for (const idx of [200, 131, 120, 111]) {
+      const c = calcCats(makeApt({ priceIndex: idx }));
+      expect(c.price.total, `지수 ${idx}`).toBe(none.price.total);
+      expect(rel(c)?.score, `지수 ${idx}`).toBe(rel(none)?.score);
+    }
+  });
+  it("신뢰도 글자에 지수 보정 표시(+5·지수보정)가 없다 — 정상·데이터 부재 두 경로", () => {
+    const withPrice = calcCats(makeApt({ priceIndex: 200 }));
+    const noPrice = calcCats(makeApt(/** @type {any} */ ({ priceIndex: 200, price: null })));
+    for (const c of [withPrice, noPrice]) {
+      expect(`${rel(c)?.info} ${rel(c)?.detail}`).not.toMatch(/\(\+\d+\)|지수보정/);
+    }
   });
 });
 

@@ -58,6 +58,8 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   floors: "maxFloor 에서 파생되는 구간 문자열인데 재계산이 안 돼 최고층과 어긋난다(306곳/18.1%). 관리자 표에만 남긴다.",
   builderCreditGrade:
     "신용평가사 등급이 아니라 부채비율 계산값 — 분양 탭(세션591)·점수 탭·카드 칩(세션592) 모두 등급 글자를 빼고 부채비율 숫자만 말한다",
+  priceIndex:
+    "원천(KOSIS) 2025-10 에서 멈춤 — 분양 탭 지역 통계 그림에서 빼고 가격 점수 보정도 껐다. 서랍으로 새로 나오면 안 된다 (세션592)",
 };
 
 /**
@@ -432,7 +434,14 @@ describe("표면끼리도 안 겹친다 — 서랍·카드 등재 필드는 탭 
 });
 
 describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋나지 않는다", () => {
-  it("지역 시장 추이 5지표가 MARKET_STATS_FIELD_KEYS 와 순서·개수까지 같다", () => {
+  it("분양가격지수는 그림에서 빠졌고 어느 탭 서랍에도 새로 나오지 않는다 (세션592)", () => {
+    expect(MARKET_STATS_FIELD_KEYS).toEqual(["avgPriceSqm", "newSupply", "initialSaleRate", "landCostRatio"]);
+    expect(FIELDS_SHOWN_IN_CHARTS.has("priceIndex")).toBe(false);
+    for (const tab of ALL_TABS) expect(extrasOf(tab), tab).not.toContain("priceIndex");
+    expect(ALL_TABS.reduce((n, t) => n + extraCount(t), 0)).toBe(0);
+  });
+
+  it("지역 시장 추이 4지표가 MARKET_STATS_FIELD_KEYS 와 순서·개수까지 같다", () => {
     const src = readFileSync(new URL("../components/detail/MarketStatsCharts.tsx", import.meta.url), "utf8");
     // 차트는 KOSIS 컬럼(snake_case), 서랍은 FIELD_META 키(camelCase)라 자동으로 안 이어진다.
     // ⚠️ `key:` 만 잡으면 `d?.[m.key]` 같은 참조에도 걸리므로 문자열 리터럴만 잡는다.
