@@ -188,11 +188,12 @@ describe("AptCard", () => {
     expect(screen.getByText("공장·장례식장")).toBeInTheDocument();
   });
 
-  // 시공사 신용등급 경고
-  it("시공사 신용등급이 안전 등급 밖이면 경고 표시", () => {
-    const apt = /** @type {any} */ (makeApt({ builderCreditGrade: "BBB" }));
+  // 시공사 부채비율 경고 (옛 "시공사 {등급}" — 세션592: 등급은 부채비율 계산값이라 숫자로)
+  it("시공사 부채비율이 150% 초과면 경고 표시 — 등급 글자는 안 보인다", () => {
+    const apt = /** @type {any} */ (makeApt({ builderCreditGrade: "BBB", builderDebtRatio: 157.6 }));
     render(<AptCard {...makeProps({ apt })} />);
-    expect(screen.getByText("시공사 BBB")).toBeInTheDocument();
+    expect(screen.getByText("시공사 부채비율 157.6%")).toBeInTheDocument();
+    expect(screen.queryByText("시공사 BBB")).toBeNull();
   });
 
   // 키보드 접근성
@@ -465,7 +466,8 @@ describe("AptCard", () => {
       { field: "unsoldRate", from: 0, to: 50, expectedText: /미분양 50%/ },
       { field: "presaleStage", from: null, to: "분양중", expectedText: /분양중/ },
       { field: "crimeSafetyGrade", from: null, to: 5, expectedText: /치안위험/ },
-      { field: "builderCreditGrade", from: null, to: "C", expectedText: /시공사 C/ },
+      // 세션592: 칩 재료가 등급 → 부채비율로 바뀌어 memo 비교도 builderDebtRatio 를 본다
+      { field: "builderDebtRatio", from: null, to: 277.7, expectedText: /시공사 부채비율 277\.7%/ },
       { field: "unsoldEventCount", from: 0, to: 3, expectedText: /추가 모집/ },
     ];
 
@@ -480,6 +482,15 @@ describe("AptCard", () => {
         expect(screen.getByText(expectedText)).toBeInTheDocument();
       });
     }
+
+    it("부채비율 미수집 표식(_fallbackBuilderDebt)만 바뀌어도 카드 리렌더 — 시공사 칩이 사라진다 (세션592)", () => {
+      const aptInitial = makeApt({ id: "naver-100", builderDebtRatio: 277.7 });
+      const aptUpdated = makeApt({ id: "naver-100", builderDebtRatio: 277.7, _fallbackBuilderDebt: true });
+      const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      expect(screen.getByText(/시공사 부채비율 277\.7%/)).toBeInTheDocument();
+      rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      expect(screen.queryByText(/시공사 부채비율/)).toBeNull();
+    });
   });
 
   // 맞춤 추천 이유 칩 (세션 432) — 프로필 최우선 카테고리가 긍정일 때만 노출

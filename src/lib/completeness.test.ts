@@ -92,7 +92,7 @@ describe("computeCompleteness", () => {
     const a = apt({ builder: "LH공사", builderCreditGrade: null });
     const r = computeCompleteness(["region", "builderCreditGrade"], a);
     expect(r.na).toBe(1);
-    expect(r.naFields).toContain("시공사 신용등급");
+    expect(r.naFields).toContain("시공사 부채비율 구간(계산값)"); // 세션592 이름 정정(옛 "시공사 신용등급")
     expect(r.evalTotal).toBe(1); // region만 평가, builderCreditGrade는 na
     expect(r.pct).toBe(100);
   });
@@ -103,7 +103,7 @@ describe("computeCompleteness", () => {
     const r = computeCompleteness(["region", "builderCreditGrade"], a);
     expect(r.na).toBe(0);
     expect(r.missing).toBe(1);
-    expect(r.missingFields).toContain("시공사 신용등급");
+    expect(r.missingFields).toContain("시공사 부채비율 구간(계산값)");
   });
 
   // 11. 공기업이라도 등급이 실제로 있으면 filled (na 아님 — v==null 가드)

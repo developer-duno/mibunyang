@@ -433,7 +433,9 @@ export const AptCard = memo(
     if (pa.presaleStage !== na.presaleStage) return false;
     if (pa.competitionRate !== na.competitionRate) return false;
     if (pa.crimeSafetyGrade !== na.crimeSafetyGrade) return false;
-    if (pa.builderCreditGrade !== na.builderCreditGrade) return false;
+    // 세션592: 시공사 칩이 등급 글자 대신 부채비율을 띄운다 — 칩 재료(값·미수집 표식)를 본다.
+    if (pa.builderDebtRatio !== na.builderDebtRatio) return false;
+    if (pa._fallbackBuilderDebt !== na._fallbackBuilderDebt) return false;
     if (pa.unsoldEventCount !== na.unsoldEventCount) return false;
     // infoRow/alertRow 칩 신호 (세션 430) — 역세권·전세가율·주차·혐오안심
     if (pa.subwayDist !== na.subwayDist) return false;

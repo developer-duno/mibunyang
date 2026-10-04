@@ -94,6 +94,8 @@ export function scoreRisk(apt: Apt): Res {
   // 세션508: null 보존(engine.ts sanitize 가 더 이상 250 으로 채우지 않는다). "미수집"은
   //   BUILDER_DEBT_UNKNOWN_ADJ(중립 +10)로 채점 — 아래 finSc 계산과 detail 텍스트 참조.
   const builderDebtRatio = apt.builderDebtRatio as number | null | undefined;
+  /** 글자(점수 탭 "시공사 재무")에 부채비율을 말해도 되는가 — 값이 있고 폴백이 아닐 때만(점수 식과 무관) */
+  const debtKnown = builderDebtRatio != null && !apt._fallbackBuilderDebt;
   const builderCreditGrade = apt.builderCreditGrade as string | undefined;
   // 세션 508: HUG 보증 null = "모름". 수집률 0%(builders.hug_guarantee 32개사 전부 null, DART 로는
   //   영구히 못 채우는 필드)인데 옛 코드 `apt.hugGuarantee ? 0 : 40` 은 null 을 "보증 없음"으로 단정해
@@ -274,10 +276,15 @@ export function scoreRisk(apt: Apt): Res {
               : "DSR 미산정 (분양가·소득 자료 부족으로 산출 불가 — 중립)",
       },
       {
+        // 세션592 사장님 결정: 등급 글자(A·BBB…)는 신용평가사 등급이 아니라 부채비율로 계산한 값이라
+        //   (`dart-builders.mjs estimateCreditGrade`) 손님 글자에서 빼고 부채비율 숫자만 말한다. 점수(finSc)는 그대로.
+        //   경계 숫자는 점수표(`BUILDER_DEBT_TIERS`)에서 조립한다 — 손으로 적으면 표를 바꿀 때 글자가 남는다.
         name: "시공사 재무",
         score: 100 - Math.round(finSc),
-        info: builderCreditGrade || "정보 없음",
-        detail: `${builderCreditGrade || "미확인"} (AA↑안전, A보통, BBB↓주의, 부채율 ${builderDebtRatio == null || apt._fallbackBuilderDebt ? "미수집" : `${builderDebtRatio}%`})`,
+        info: debtKnown ? `부채비율 ${builderDebtRatio}%` : "정보 없음",
+        detail: debtKnown
+          ? `부채비율 ${builderDebtRatio}% (${BUILDER_DEBT_TIERS[0].max}% 이하 안정 · ${BUILDER_DEBT_TIERS[1].max}% 이하 보통 · 그 위 주의)`
+          : "부채비율 미수집 (중립)",
       },
       {
         name: "규제",

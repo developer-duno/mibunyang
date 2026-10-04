@@ -3,14 +3,12 @@
  * scoringTiers 상수 테스트
  *
  * 스코어링 엔진에서 사용하는 룩업 테이블 상수의 무결성을 검증합니다.
- * - SAFE_CREDIT_GRADES: 안전 등급 목록 7개
  * - FUTURE_WEIGHT_MAP: 8개 키의 가중치 합계가 항상 1.00
  * - PRICE_NO_DATA_DEFAULTS: 데이터 부재 시 기본값
  * - tierMax/tierMin: 임계값 매칭 함수
  */
 import { describe, it, expect } from "vitest";
 import {
-  SAFE_CREDIT_GRADES,
   CREDIT_GRADE_SCORES,
   FUTURE_WEIGHTS,
   FUTURE_AXIS_MAX,
@@ -22,21 +20,6 @@ import {
   IC_DIST_TIERS,
   UNIT_TIERS,
 } from "@/constants/scoringTiers";
-
-describe("SAFE_CREDIT_GRADES", () => {
-  // 안전 등급은 정확히 7개여야 한다
-  it("7개의 안전 신용등급이 존재한다", () => {
-    expect(SAFE_CREDIT_GRADES).toHaveLength(7);
-  });
-
-  // AAA, AA+, AA, AA-, A+, A, A- 포함
-  it("AAA부터 A-까지 포함한다", () => {
-    const expected = ["AAA", "AA+", "AA", "AA-", "A+", "A", "A-"];
-    expected.forEach((grade) => {
-      expect(SAFE_CREDIT_GRADES).toContain(grade);
-    });
-  });
-});
 
 describe("CREDIT_GRADE_SCORES", () => {
   // estimateCreditGrade(dart-builders.mjs)가 생성하는 등급 6개를 전수 커버해야 한다.
