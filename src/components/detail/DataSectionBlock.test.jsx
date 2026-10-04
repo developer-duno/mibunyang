@@ -10,30 +10,43 @@ import { makeApt } from "@/__tests__/factories";
 const find = (title) =>
   [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
 
+/**
+ * 일반 동작(헤더·접힘·키보드·도넛) 검증용 섹션 — 세션591 이전 실제 "치안/환경" 섹션과 같은 모양.
+ *
+ * 세션591 L5 에 그 실제 섹션이 `detail/LocationEnvBlock` 칩으로 해체돼 `LOCATION_SECTIONS` 가 비었다.
+ * 이 컴포넌트는 종합("단지 기본정보")·시세("이 동네 거래 시세")·분양("분양 안전") 탭이 여전히 쓰므로,
+ * 동작 시험은 지우지 않고 같은 모양의 섹션 객체를 직접 주입해 이어 간다(아래 hideWhenEmpty 시험과 같은 방식).
+ */
+const ENV_FIXTURE = {
+  title: "치안/환경",
+  grid: ["crimeSafetyGrade", "airQuality", "noxious", "noxiousDist", "view", "noise"],
+  hint: "주변 치안 안전등급, 대기질(미세먼지), 혐오시설, 조망·소음(dB) 시험용 섹션이에요.",
+};
+
 describe("DataSectionBlock", () => {
   // ⚠️ 세션508 PR-3b B1: 옛 대상이던 "교통 상세" 섹션은 `LOCATION_SECTIONS` 에서 완전히
-  //    빠지고 전용 카드(`detail/TransportCard`)로 승격했다 — 그 컴포넌트가 이제 역 이름·
-  //    노선·정류장 값을 그린다(검증은 `TransportCard.test.tsx`). 이 파일이 보던 "일반 동작"
-  //    (헤더·접힘·키보드·도넛) 검증은 잔존 섹션("치안/환경")으로 옮긴다.
+  //    빠지고 전용 카드(`detail/TransportCard`)로 승격했다. 이 파일이 보던 "일반 동작"
+  //    (헤더·접힘·키보드·도넛) 검증은 잔존 섹션("치안/환경")으로 옮겼고, 세션591 에 그 섹션마저
+  //    칩으로 해체돼 같은 모양의 주입 섹션(ENV_FIXTURE)으로 이어 간다.
 
   // 헤더(제목) 항상 표시 — 접힌 상태에서도
   it("기본 접힘 상태에서 섹션 제목 헤더를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     expect(screen.getByText("치안/환경")).toBeTruthy();
   });
 
   // 기본 접힘 — 본문 숨김
   it("기본 접힘이면 본문(필드값)은 숨겨져 있다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     expect(screen.queryByText("그린")).toBeNull();
   });
 
   // 클릭 시 펼침 (아코디언)
   it("헤더 클릭 시 본문이 펼쳐진다 — 치안/환경 필드 표시", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     fireEvent.click(screen.getByText("치안/환경"));
     // view="그린"(조망) · noise=55(소음dB) — makeApt 기본값
     expect(screen.getByText("그린")).toBeTruthy();
@@ -45,7 +58,7 @@ describe("DataSectionBlock", () => {
   // 헤더 토글은 aria-expanded 보유로 특정(? 트리거는 expanded 속성 없음).
   it("aria-expanded가 클릭으로 변경된다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     const toggle = screen.getByRole("button", { expanded: false });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
@@ -55,7 +68,7 @@ describe("DataSectionBlock", () => {
   // 키보드 접근성 — Enter
   it("Enter 키로 펼칠 수 있다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     fireEvent.keyDown(screen.getByRole("button", { expanded: false }), { key: "Enter" });
     expect(screen.getByText("그린")).toBeTruthy();
   });
@@ -63,7 +76,7 @@ describe("DataSectionBlock", () => {
   // 키보드 접근성 — Space
   it("Space 키로 펼칠 수 있다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     fireEvent.keyDown(screen.getByRole("button", { expanded: false }), { key: " " });
     expect(screen.getByText("그린")).toBeTruthy();
   });
@@ -71,7 +84,7 @@ describe("DataSectionBlock", () => {
   // 채움률 도넛 — hasAny 섹션 헤더에 표시 (접힌 상태에서도)
   it("데이터 있는 섹션은 접힌 상태에서도 헤더 채움률 도넛(role=img)을 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     expect(screen.getByRole("img", { name: /치안\/환경.*채움률/ })).toBeTruthy();
   });
 
@@ -89,7 +102,7 @@ describe("DataSectionBlock", () => {
         noise: null,
       })
     );
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     // 도넛 없음
     expect(screen.queryByRole("img", { name: /치안\/환경.*채움률/ })).toBeNull();
     // 펼치면 "데이터 수집 중..."
@@ -97,12 +110,11 @@ describe("DataSectionBlock", () => {
     expect(screen.getByText("데이터 수집 중...")).toBeTruthy();
   });
 
-  // 세션 507 Q6 — 일조는 전 단지 "양호"(변별력 0)라 표에서 뺐다. 되돌아오면 여기가 빨개진다.
-  it("치안/환경 섹션을 펼쳐도 '일조'는 없다 (세션 507 — 전 단지 같은 값)", () => {
-    const apt = /** @type {any} */ (makeApt({ sunlight: "양호" }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} />);
-    fireEvent.click(screen.getByText("치안/환경"));
-    expect(screen.queryByText("일조")).toBeNull();
+  // 세션 507 Q6 — 일조는 전 단지 "양호"(변별력 0)라 표에서 뺐다. 세션591 에 그 실제 섹션이 없어졌으므로
+  //   이 검사는 "입지 탭 표가 되살아나지 않는다"로 바뀐다. 칩 쪽 일조 없음은 `LocationEnvBlock.test.tsx`.
+  it("입지 탭 '치안/환경' 표는 되살아나지 않는다 (세션591 — 칩으로 해체, 일조는 어디에도 없다)", () => {
+    expect(find("치안/환경")).toBeUndefined();
+    expect(LOCATION_SECTIONS.flatMap((s) => s.grid ?? [])).not.toContain("sunlight");
   });
 
   // hideWhenEmpty — 세션 505 로 실제 섹션에서는 사라졌지만(청약 경쟁이 "분양 안전"에 합쳐지며
@@ -156,7 +168,7 @@ describe("DataSectionBlock", () => {
   // defaultOpen=true 면 처음부터 펼침
   it("defaultOpen=true면 처음부터 본문이 보인다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("치안/환경"))} apt={apt} defaultOpen />);
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} defaultOpen />);
     expect(screen.getByText("그린")).toBeTruthy();
   });
 

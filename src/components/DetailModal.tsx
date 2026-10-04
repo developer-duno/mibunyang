@@ -12,7 +12,8 @@ import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
-import { TransportCard } from "./detail/TransportCard";
+import { transportFacts } from "./detail/TransportCard";
+import { LocationEnvBlock } from "./detail/LocationEnvBlock";
 import { fmtPrice, fmtMoveIn, fmtAddress } from "@/lib/format";
 import { hasKnownArea } from "@/lib/area";
 import { PriceTable } from "./detail/PriceTable";
@@ -32,7 +33,7 @@ import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { BlindScoreBadge, LoginCta, ScoreLockPanel } from "./detail/ScoreBlind";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
-import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
+import { OVERVIEW_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { UnsoldEventCard } from "./detail/UnsoldEventCard";
 import { BuilderCard } from "./detail/BuilderCard";
@@ -88,6 +89,8 @@ const DM_S = {
   // 종합 판정 한 줄 (세션508 PR-3a A1) — ScoreBadge 보다 먼저 뜨는 상위 결론 문장.
   verdictLine: { fontSize: F.md, fontWeight: 700, color: C.text, textAlign: "center" as const, marginBottom: 8 },
   verdictBlind: { fontSize: F.sm, color: C.muted, textAlign: "center" as const, marginBottom: 8 },
+  // 입지 탭 교통 사실 한 줄(세션591 L3) — 판정이 가려졌을 때(비로그인)도 보이는 원자료 글자
+  factLine: { fontSize: F.sm, fontWeight: 600, color: C.sub, textAlign: "center" as const, marginBottom: 8 },
   scoreBadgeWrap: { textAlign: "center" as const, marginBottom: 16 },
   metricsHead: { fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 },
   metricsRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
@@ -644,7 +647,7 @@ export const DetailModal = memo(function DetailModal({
                 )}
 
                 {/* 건물 정보 카드 (세션508 PR-3c C4) — 최고층·구조·용적률·향 7필드. 기본 접힘 —
-                  TransportCard·BuilderCard 패턴 답습. layout 은 카드 자체가 점수 접미어 없는
+                  BuilderCard(와 세션591 에 해체된 옛 TransportCard) 패턴 답습. layout 은 카드 자체가 점수 접미어 없는
                   전용 포맷을 쓴다(FIELD_META.layout.fmt 는 점수를 문자열에 박아 재사용 금지). */}
                 <BuildingInfoCard apt={mergedApt ?? apt} />
 
@@ -797,45 +800,58 @@ export const DetailModal = memo(function DetailModal({
                 role="tabpanel"
                 aria-labelledby="tab-sec-location"
                 data-tab-panel
-                style={panelStyle("sec-location")}
+                // 첫 블록이 붙박이 탭 줄에 바로 붙지 않게 위 여백을 둔다(세션591 L8 — 시세 탭 세션589 와 같은 값).
+                style={{ ...panelStyle("sec-location"), paddingTop: 12 }}
               >
-                {/* 입지 한 줄 요약 (세션508 PR-3b B4) — catVerdict + 상위 서브 1개. A1(종합 탭
-                  판정 한 줄)과 같은 blind/슬림 catsCache 가드 패턴. getHighlights 는 CatPanel.tsx
-                  에서 export 했다(플랜 §"v1 에서 틀렸던 것" #8 — 모듈 비공개라 그냥 쓰면 TS2305). */}
-                {blind ? (
-                  <div style={DM_S.verdictBlind}>입지 점수는 로그인 후 볼 수 있어요</div>
-                ) : (
-                  (() => {
-                    const locCat = res.cats.location;
-                    if (!locCat) return null;
-                    const top = getHighlights(locCat.subs, "location")[0];
+                {/* 입지 한 줄 요약 (세션508 PR-3b B4 · 세션591 L3) — 판정(catVerdict)은 A1(종합 탭 판정
+                  한 줄)과 같은 blind/슬림 catsCache 가드. 그 옆에 옛 "교통 상세" 접힘 카드의 역 이름·노선·
+                  버스 노선 수를 사실 글자로 병기한다(목업 "입지 우수 · 평촌역(4호선) 1.3km · 버스 12개 노선").
+                  ⚠️ 판정은 점수라 비로그인에 가리지만, 역·버스 글자는 원자료 사실이라 비로그인에도 보인다.
+                  교통 사실이 없는 단지(역·버스 둘 다 없음)는 옛 "상위 서브 1개"를 그대로 쓴다. */}
+                {(() => {
+                  const facts = transportFacts(mergedApt ?? apt);
+                  if (blind) {
                     return (
-                      <div style={DM_S.verdictLine}>
-                        {catVerdict("location", locCat)}
-                        {top && ` · ${top.name} ${top.info ?? ""}`}
-                      </div>
+                      <>
+                        <div style={DM_S.verdictBlind}>입지 점수는 로그인 후 볼 수 있어요</div>
+                        {facts && (
+                          <div style={DM_S.factLine} data-testid="location-facts">
+                            {facts}
+                          </div>
+                        )}
+                      </>
                     );
-                  })()
-                )}
+                  }
+                  const locCat = res.cats.location;
+                  if (!locCat)
+                    return facts ? (
+                      <div style={DM_S.factLine} data-testid="location-facts">
+                        {facts}
+                      </div>
+                    ) : null;
+                  const top = getHighlights(locCat.subs, "location")[0];
+                  return (
+                    <div style={DM_S.verdictLine}>
+                      {catVerdict("location", locCat)}
+                      {facts ? ` · ${facts}` : top && ` · ${top.name} ${top.info ?? ""}`}
+                    </div>
+                  );
+                })()}
 
-                {/* 요약 시각화 (세션 487 PR-5b) — 거리 자릿수가 필드마다 달라 축 3분리.
-                  세션 505 에 개수까지 라벨에 병기해("병원 3곳") 아래 "생활인프라" 표를 흡수했다.
-                  KTX·IC(km 단위라 m 축과 안 맞음)·혐오시설(멀수록 좋아 방향이 반대)은 여전히 제외. */}
+                {/* 요약 시각화 (세션 487 PR-5b · 세션591 L1) — 거리 자릿수가 필드마다 달라 축을 나눈다.
+                  세션 505 에 개수까지 라벨에 병기해("병원 3곳") "생활인프라" 표를 흡수했고, 세션591 에
+                  초·중·고 학교 · IC·KTX(따로 0~20km 줄) · 개발 사업지(옛 서랍 4필드)까지 5줄이 됐다.
+                  혐오시설(멀수록 좋아 방향이 반대)만 여전히 제외 — 아래 치안·환경 칩이 이름과 함께 다룬다. */}
                 <DistanceDots apt={mergedApt ?? apt} />
 
-                {/* 교통 상세 카드 (세션508 PR-3b B1) — LOCATION_SECTIONS 의 옛 "교통 상세" 격자를
-                  전용 카드로 승격. 기본 접힘 — 입지 판단 1차 신호는 위 DistanceDots 그림이 준다. */}
-                <TransportCard apt={mergedApt ?? apt} />
+                {/* 치안·환경 (세션591 L5) — 옛 "치안/환경" 접힘 표를 칩 + 소음 게이지로. */}
+                <LocationEnvBlock apt={mergedApt ?? apt} />
 
+                {/* 학군 · 버스 (세션591 L4) — 등급·초등 도보·정류장 칩 + "전체 N개 학교 보기"(긴 목록). */}
                 <SchoolInfo apt={mergedApt ?? apt} />
 
                 <NearbyChildcareSection apt={mergedApt ?? apt} />
 
-                {/* 치안/환경 (세션 408 D2a — 입지 탭 빈약 해소. 세션508 PR-3b: "교통 상세" 는
-                  위 TransportCard 로 승격돼 LOCATION_SECTIONS 에서 빠졌다) */}
-                {LOCATION_SECTIONS.map((s) => (
-                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-                ))}
                 <NearbyFacilitiesBlock apt={mergedApt ?? apt} />
                 <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-location" />
               </section>

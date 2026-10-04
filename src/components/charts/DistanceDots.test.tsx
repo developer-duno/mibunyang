@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { DistanceDots, fmtDist } from "./DistanceDots";
+import { DistanceDots, fmtDist, parseKmText } from "./DistanceDots";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import type { Apt } from "@/types/scoring";
 
@@ -18,14 +18,35 @@ function apt(over: Record<string, unknown> = {}): Apt {
     subwayDist: 1200,
     policeDist: 2000,
     emergencyDist: 3000,
+    icDist: 2.4, // km (세션591 — 20km 줄)
+    ktxDist: 6, // km
     ...over,
   } as unknown as Apt;
 }
 
 describe("DistanceDots — 축 구성", () => {
-  it("자릿수가 다른 거리를 축 3개로 나눈다", () => {
-    expect(DISTANCE_AXES).toHaveLength(3);
-    expect(DISTANCE_AXES.map((a) => a.cap)).toEqual([500, 1000, 10000]);
+  it("자릿수가 다른 거리를 축 5개로 나눈다 (세션591: IC·KTX 20km 줄 · 개발 사업지 5km 줄)", () => {
+    expect(DISTANCE_AXES).toHaveLength(5);
+    expect(DISTANCE_AXES.map((a) => a.cap)).toEqual([500, 1000, 10000, 20000, 5000]);
+  });
+
+  it("IC·KTX 는 '차로 10km' 줄이 아니라 따로 0~20km 줄에 있다 (사장님 결정 L1)", () => {
+    const axisOf = (f: string) => DISTANCE_AXES.find((a) => a.items.some((i) => i.field === f));
+    expect(axisOf("icDist")?.cap).toBe(20000);
+    expect(axisOf("ktxDist")?.cap).toBe(20000);
+    expect(axisOf("subwayDist")?.cap).toBe(10000);
+    expect(axisOf("icDist")?.items.every((i) => i.unit === "km")).toBe(true);
+  });
+
+  it("초·중·고 거리는 '걸어서 갈 만한 거리'(0~1km) 줄에 있다 (목업)", () => {
+    const ax = DISTANCE_AXES.find((a) => a.cap === 1000);
+    expect(ax?.items.filter((i) => i.schoolType).map((i) => i.schoolType)).toEqual(["초", "중", "고"]);
+  });
+
+  it("옛 서랍 4필드가 '개발 사업지' 줄에 있다 (교통개발 이름 + 개발지 거리 · 도시·산업 개발 글자)", () => {
+    const ax = DISTANCE_AXES.find((a) => a.cap === 5000);
+    const f = ax?.items.flatMap((i) => [i.field, i.nameField].filter(Boolean));
+    expect(f?.sort()).toEqual(["cityDev", "devDist", "industryDev", "transitDev"]);
   });
 
   it("한 축 안의 필드는 실측 최댓값이 그 축 상한 안에 든다", () => {
@@ -57,14 +78,12 @@ describe("DistanceDots — 축 구성", () => {
 describe("DistanceDots — 일부러 뺀 필드", () => {
   const fields = DISTANCE_AXES.flatMap((a) => a.items.map((i) => i.field));
 
-  // ⚠️ 옛 사유("채움 0.0%"·"3.9%")는 세션 499 수집 정정으로 거짓이 됐다(KTX 71.8%·IC 79.2%).
-  //    남은 진짜 사유는 **단위**뿐이다 — 둘 다 km 라 m 축에 그대로 올릴 수 없다.
-  it("ktxDist 는 넣지 않는다 — 단위가 km 라 m 축에 섞으면 안 된다", () => {
-    expect(fields, "단위가 다른 필드(km)를 m 축에 올렸다").not.toContain("ktxDist");
-  });
-
-  it("icDist 는 넣지 않는다 — 단위가 km 라 m 축에 섞으면 안 된다", () => {
-    expect(fields, "단위가 다른 필드(km)를 m 축에 올렸다").not.toContain("icDist");
+  // 세션591: 옛 "ktxDist·icDist 는 넣지 않는다" 두 단언은 뒤집혔다 — 사유가 **단위**뿐이었고,
+  //   이제 그 둘은 km 표시(unit:"km")를 달고 자기 전용 20km 줄에 오른다(위 "축 구성" 묶음이 지킨다).
+  it("km 필드는 전부 unit:'km' 표시가 붙어 있다 (m 로 읽혀 'IC 8m' 가 되지 않게)", () => {
+    const KM_FIELDS = ["icDist", "ktxDist", "devDist"];
+    for (const ax of DISTANCE_AXES)
+      for (const it of ax.items) if (KM_FIELDS.includes(it.field)) expect(it.unit, it.field).toBe("km");
   });
 
   it("noxiousDist 는 넣지 않는다 — 멀수록 좋은 유일한 필드라 방향이 반대다", () => {
@@ -86,10 +105,119 @@ describe("DistanceDots — 렌더", () => {
     expect(screen.getByText("마트")).toBeInTheDocument();
   });
 
-  it("센티널(지하철 9999)은 값이 아니라 미수집으로 본다", () => {
-    render(<DistanceDots apt={apt({ subwayDist: 9999 })} />);
+  it("센티널(지하철 9999)은 점이 아니라 '10km 안에 없음' — 수집 반경을 찾아봤는데 없던 것 (세션591 L2)", () => {
+    const { container } = render(<DistanceDots apt={apt({ subwayDist: 9999 })} />);
     expect(screen.getByText("지하철역")).toBeInTheDocument();
-    expect(screen.getAllByText("미수집").length).toBeGreaterThan(0);
+    expect(screen.getByText("10km 안에 없음")).toBeInTheDocument();
+    expect(screen.queryByText("미수집")).toBeNull();
+    expect(screen.queryByText("10km")).toBeNull(); // 9999m 를 거리처럼 적지 않는다
+    expect(container.querySelector('[data-row="subwayDist"] [data-state="out-of-range"]')).not.toBeNull();
+  });
+
+  it("IC·KTX 99 는 '20km 안에 없음' (사장님 결정 L2) · null 은 지금처럼 미수집", () => {
+    render(<DistanceDots apt={apt({ icDist: 99, ktxDist: null })} />);
+    expect(screen.getByText("20km 안에 없음")).toBeInTheDocument();
+    expect(screen.getAllByText("미수집")).toHaveLength(1); // KTX null 하나
+  });
+
+  // 보완 F8 — 교통 자료 행 자체가 없는 단지(정적 JSON 1곳 = ah-2026910248)는 VIEW 가 지하철만 9999 로 채운다.
+  //   찾아본 적이 없으니 "10km 안에 없음"은 거짓 → 같은 수집기가 쓰는 IC·KTX 가 둘 다 null 이면 미수집.
+  it("지하철 9999 라도 IC·KTX 가 둘 다 null(교통 자료 행 없음)이면 '미수집' — '10km 안에 없음' 아님", () => {
+    const { container } = render(<DistanceDots apt={apt({ subwayDist: 9999, icDist: null, ktxDist: null })} />);
+    expect(screen.queryByText("10km 안에 없음")).toBeNull();
+    expect(container.querySelector('[data-row="subwayDist"]')?.textContent).toContain("미수집");
+  });
+
+  it("IC·KTX 중 하나라도 값이 있으면(교통 자료 행 있음) 지하철 9999 는 '10km 안에 없음' 그대로 (양성 대조)", () => {
+    render(<DistanceDots apt={apt({ subwayDist: 9999, icDist: null, ktxDist: 14 })} />);
+    expect(screen.getByText("10km 안에 없음")).toBeInTheDocument();
+  });
+
+  it("음수 거리는 점을 안 찍고 미수집 (보완 F9)", () => {
+    const { container } = render(<DistanceDots apt={apt({ convDist: -5, icDist: -1 })} />);
+    expect(container.querySelector('[data-row="convDist"]')?.textContent).toContain("미수집");
+    expect(container.querySelector('[data-row="icDist"]')?.textContent).toContain("미수집");
+    expect(container.querySelector('[data-row="convDist"] div[style*="border-radius: 50%"]')).toBeNull();
+  });
+
+  it("개발 거리가 5km 축을 넘으면 끝에 테두리만 찍고 실제 값을 적는다 (축 밖 그림, 보완 F9)", () => {
+    const { container } = render(<DistanceDots apt={apt({ industryDev: "먼산단 7.5km" })} />);
+    const row = container.querySelector('[data-row="industryDev"]');
+    expect(row?.textContent).toContain("7.5km");
+    const dot = row?.querySelector<HTMLElement>('div[style*="border-radius: 50%"]');
+    expect(dot?.style.left).toBe("100%");
+    expect(dot?.style.background).toBe("rgb(255, 255, 255)"); // 축 밖 = 흰 속 + 주황 테두리
+  });
+
+  it("IC·KTX km 값은 m 로 바꿔 20km 줄에 점으로 — 0.2km → 200m, 8.2km 는 축 안", () => {
+    const { container } = render(<DistanceDots apt={apt({ icDist: 0.2, ktxDist: 8.2 })} />);
+    expect(container.querySelector('[data-row="icDist"]')?.textContent).toContain("200m");
+    expect(container.querySelector('[data-row="ktxDist"]')?.textContent).toContain("8.2km");
+    const dot = container.querySelector('[data-row="ktxDist"] div[style*="left: 41%"]');
+    expect(dot, "8.2km 는 20km 줄의 41% 자리").not.toBeNull();
+  });
+
+  it("초·중·고 가장 가까운 학교 거리를 1km 줄에 — 학교가 아닌 이름은 빼고, 없는 종류는 줄을 안 그린다", () => {
+    render(
+      <DistanceDots
+        apt={apt({
+          nearbySchools: [
+            { name: "가나초등학교", type: "초", distance: 335 },
+            { name: "다라초등학교", type: "초", distance: 120 },
+            { name: "마바중학교", type: "중", distance: 405 },
+            { name: "사아학원", type: "고", distance: 50 },
+          ],
+        })}
+      />
+    );
+    expect(screen.getByText("초등학교")).toBeInTheDocument();
+    expect(screen.getByText("120m")).toBeInTheDocument(); // 가까운 쪽
+    expect(screen.getByText("405m")).toBeInTheDocument();
+    expect(screen.queryByText("고등학교")).toBeNull(); // 학원은 학교가 아니다 → 고등학교 줄 없음
+    expect(screen.queryByText("50m")).toBeNull();
+  });
+
+  it("개발 사업지 — 교통개발 이름 + 개발지 km · 도시/산업 개발 글자 속 km 를 읽는다", () => {
+    const { container } = render(
+      <DistanceDots
+        apt={apt({
+          transitDev: "인덕원동탄선 인덕원역 착공",
+          devDist: 1.6,
+          cityDev: "의왕내손 0.7km",
+          industryDev: "안양평촌스마트스퀘어 1.9km",
+        })}
+      />
+    );
+    const row = (k: string) => container.querySelector(`[data-row="${k}"]`)?.textContent ?? "";
+    expect(screen.getByText("개발 사업지까지")).toBeInTheDocument();
+    expect(row("devDist")).toContain("교통 개발");
+    expect(row("devDist")).toContain("인덕원동탄선 인덕원역 착공");
+    expect(row("devDist")).toContain("1.6km");
+    expect(row("cityDev")).toContain("의왕내손");
+    expect(row("cityDev")).toContain("700m");
+    expect(row("industryDev")).toContain("안양평촌스마트스퀘어");
+    expect(row("industryDev")).toContain("1.9km");
+  });
+
+  it("개발 사업지 — km 를 못 읽는 글자는 이름만 두고 거리는 미수집, 셋 다 없으면 줄 제목도 없다", () => {
+    const { unmount } = render(<DistanceDots apt={apt({ cityDev: "청주분평 도시개발" })} />);
+    expect(screen.getByText("청주분평 도시개발")).toBeInTheDocument();
+    expect(screen.getByText("미수집")).toBeInTheDocument();
+    expect(screen.queryByText("교통 개발")).toBeNull(); // 이름·거리 다 없는 줄은 안 그린다
+    unmount();
+    render(<DistanceDots apt={apt()} />);
+    expect(screen.queryByText("개발 사업지까지")).toBeNull();
+  });
+
+  it("좌표 공유 단지는 점을 하나도 안 그리고 '위치 확인 중' 사실 한 줄 (세션568-3 · 세션591 L7)", () => {
+    const { container } = render(
+      <DistanceDots apt={apt({ coordShared: true, icDist: 1.2, cityDev: "수원조원 0.6km" })} />
+    );
+    expect(container.querySelector('[data-state="coord-unknown"]')?.textContent).toBe("위치 확인 중");
+    expect(screen.queryByText("100m")).toBeNull();
+    expect(screen.queryByText("1.2km")).toBeNull();
+    expect(screen.queryByText("600m")).toBeNull();
+    expect(container.textContent).not.toMatch(/정확하지|참고로|오차/); // 경고문 금지
   });
 
   it("전부 비면 왜 없는지 말한다 (고장난 줄 알지 않게)", () => {
@@ -142,6 +270,25 @@ describe("DistanceDots — 스크린리더", () => {
     render(<DistanceDots apt={apt({ conv: 12 })} />);
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
     expect(label).toContain("편의점 12곳");
+  });
+});
+
+describe("parseKmText — 글자 끝 'N km' 읽기", () => {
+  it("끝의 km 를 거리(m)로, 앞을 이름으로", () => {
+    expect(parseKmText("고양덕은 도시개발사업 0.3km")).toEqual({ name: "고양덕은 도시개발사업", m: 300 });
+    expect(parseKmText("마곡 2.1km")).toEqual({ name: "마곡", m: 2100 });
+    expect(parseKmText("마곡 2 km")).toEqual({ name: "마곡", m: 2000 });
+  });
+
+  it("km 가 없거나 비면 — 이름만 / 둘 다 null", () => {
+    expect(parseKmText("청주분평 도시개발")).toEqual({ name: "청주분평 도시개발", m: null });
+    expect(parseKmText("")).toEqual({ name: null, m: null });
+    expect(parseKmText(null)).toEqual({ name: null, m: null });
+    expect(parseKmText(12)).toEqual({ name: null, m: null });
+  });
+
+  it("글자 가운데 숫자는 거리로 안 읽는다 (번지 '1013-3' 등)", () => {
+    expect(parseKmText("강서구 화곡동 1013-3번지 일원 역세권 청년주택 1.3km").m).toBe(1300);
   });
 });
 

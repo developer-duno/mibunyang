@@ -19,6 +19,20 @@ export const SENTINEL = {
 export type SentinelField = keyof typeof SENTINEL;
 
 /**
+ * 센티널이 뜻하는 "찾아본 반경"(km) — 화면이 "N km 안에 없음"으로 적는 데 쓴다(세션591).
+ *
+ * 센티널은 "모름"이 아니라 **수집기가 이 반경을 찾아봤는데 없었다**는 뜻이다
+ * (`scripts/collectors/transport-tago.mjs` 의 `RADIUS` — 지하철 10km · IC·KTX 20km).
+ * 그래서 "미수집"이 아니라 "20km 안에 없음"이 사실이다.
+ * ⚠️ 수집기 반경을 바꾸면 여기도 같이 바꿔야 한다 — `sentinels.test.ts` 가 두 파일을 대조한다.
+ */
+export const SENTINEL_RADIUS_KM: Readonly<Record<SentinelField, number>> = {
+  subwayDist: 10,
+  icDist: 20,
+  ktxDist: 20,
+};
+
+/**
  * 이 값이 센티널(= 사실상 미수집)인가.
  *
  * `>=` 로 보는 이유 — 마스킹 값 이상은 전부 "반경 밖"이라는 뜻이지

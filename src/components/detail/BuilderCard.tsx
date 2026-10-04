@@ -27,7 +27,8 @@ import type { Apt } from "@/types/scoring";
 const FIELDS = ["builder", "builderCreditGrade", "builderDebtRatio"] as const;
 
 const BC_S: Record<string, import("react").CSSProperties> = {
-  // TransportCard 의 TC_S.container 와 byte-identical (같은 탭 형제와 시각 일관)
+  // 옛 TransportCard 의 TC_S.container 와 byte-identical 이었다(같은 탭 형제와 시각 일관). 그 카드는 세션591 에
+  // 해체됐고, 같은 모양은 BuildingInfoCard 가 이어 쓴다.
   container: {
     background: C.bg,
     borderRadius: 10,

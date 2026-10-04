@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "./dataSections";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
+import { FIELDS_SHOWN_IN_DETAIL_CARDS } from "./tabExtraFields";
 
 // 세션508 PR-3c — 분양 탭 청약 진행 3필드가 카드로 승격되며 표에서 빠졌다. 종합 탭
 // "단지 기본정보" 격자에서도 builder(시공사)가 빠졌다(시공사 카드로 승격).
@@ -35,10 +36,11 @@ describe("dataSections hint", () => {
   // 세션 505 에 6 → 5(입지 "생활인프라" 표 폐지), 세션 507 에 5 → 4
   // (시세의 "네이버 교차검증" 표를 `detail/SourceComparison` 대조표가 대체),
   // 세션508 PR-3b B1 에 4 → 3(입지 "교통 상세" 격자를 전용 카드로 승격 — LOCATION_SECTIONS 는
-  // 이제 "치안/환경" 하나뿐).
-  it("종합·입지·시세 섹션 3개 모두 hint 가 채워져 있다", () => {
+  // 이제 "치안/환경" 하나뿐), 세션591 L5 에 3 → 2(그 "치안/환경"도 `detail/LocationEnvBlock` 칩으로 해체).
+  it("종합·시세 섹션 2개 모두 hint 가 채워져 있다 (입지 섹션은 0개 — 세션591)", () => {
+    expect(LOCATION_SECTIONS).toEqual([]);
     const all = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS];
-    expect(all).toHaveLength(3);
+    expect(all).toHaveLength(2);
     for (const s of all) {
       expect(typeof s.hint).toBe("string");
       expect((s.hint ?? "").length).toBeGreaterThan(10);
@@ -56,15 +58,18 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
   const priceFields = PRICE_SECTIONS.flatMap(fieldsOf);
   const presaleFields = PRESALE_SECTIONS.flatMap(fieldsOf);
 
-  it("입지 탭에 조망·소음(view/noise) 노출", () => {
-    expect(locationFields).toContain("view");
-    expect(locationFields).toContain("noise");
+  // 세션591 L5: 표가 없어지고 치안·환경 칩(`detail/LocationEnvBlock`)이 그린다 — 노출 자체는 그대로여야 한다.
+  it("입지 탭에 조망·소음(view/noise) 노출 — 이제 표가 아니라 치안·환경 칩·게이지", () => {
+    expect(locationFields).not.toContain("view");
+    expect(FIELDS_SHOWN_IN_DETAIL_CARDS).toContain("view");
+    expect(FIELDS_SHOWN_IN_DETAIL_CARDS).toContain("noise");
   });
 
   // 세션 507 Q6 — 일조는 수집된 단지가 **전부 "양호"** 라 변별력이 0 이다.
   // 모두가 같은 답인 줄은 정보가 아니라 "확인해 봤다"는 인상만 주는 장식이다.
-  it("일조(sunlight)는 표에서 뺐다 (전 단지 같은 값 — 변별력 0)", () => {
+  it("일조(sunlight)는 표에서 뺐다 (전 단지 같은 값 — 변별력 0) · 치안·환경 칩에도 없다", () => {
     expect(locationFields).not.toContain("sunlight");
+    expect(FIELDS_SHOWN_IN_DETAIL_CARDS).not.toContain("sunlight");
   });
 
   // 세션 507 — 주택보급률은 이 단지 값이 아니라 시·도 통계라 분양 탭 "이 지역 통계"로 옮겼다.
@@ -167,10 +172,11 @@ describe("생활인프라 — 개수와 거리가 한 곳(거리 점 그림)에�
     expect(fields).not.toContain("policeDist");
   });
 
-  it("혐오시설 이름 목록은 거리 옆(치안/환경)으로 옮겼다 — 서랍 깊은 곳이 아니라", () => {
-    const safety = LOCATION_SECTIONS.find((s) => s.title === "치안/환경");
-    const fields = safety ? fieldsOf(safety) : [];
-    expect(fields).toContain("noxious");
-    expect(fields).toContain("noxiousDist");
+  // 세션591 L5: 그 "치안/환경" 표가 칩으로 해체됐다 — 이름과 거리가 **한 칩**에 같이 있는지는
+  //   `LocationEnvBlock.test.tsx`("혐오시설 장례식장·공장 883m")가 지킨다. 여기선 둘 다 같은 칸 소속인지만.
+  it("혐오시설 이름 목록은 거리와 같은 칸(치안·환경 칩)에 있다 — 서랍 깊은 곳이 아니라", () => {
+    expect(LOCATION_SECTIONS.find((s) => s.title === "치안/환경")).toBeUndefined();
+    expect(FIELDS_SHOWN_IN_DETAIL_CARDS).toContain("noxious");
+    expect(FIELDS_SHOWN_IN_DETAIL_CARDS).toContain("noxiousDist");
   });
 });

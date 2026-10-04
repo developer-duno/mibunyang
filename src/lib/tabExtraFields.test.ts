@@ -180,12 +180,19 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
     { file: "../components/detail/SchoolInfo.tsx", re: /apt\)?\.naverSchoolWalkMin\b/, why: "초등 도보 칩" },
   ];
 
-  // 세션508 PR-3b B1 — 입지 탭 전용 카드(TransportCard) 6필드. 각 필드는 `<Field field="..."
-  // label={FIELD_META.<f>.label} value={FIELD_META.<f>.fmt(apt.<f>, apt)} />` 형태로 리터럴
-  // `apt.<f>` 접근을 그대로 남긴다(동적 인덱싱이면 이 grep 이 무의미해진다).
-  for (const f of ["subwayName", "subwayLines", "busRoutes", "busStopNames", "icDist", "ktxDist"])
+  // 세션508 PR-3b B1 → 세션591 L3 — 옛 "교통 상세" 카드 6필드 중 4필드가 `TransportCard.tsx` 의
+  // 사실 글자 함수(transportFacts·busStopsText)에 남는다. 리터럴 `apt.<f>` 접근을 그대로 남긴다
+  // (동적 인덱싱이면 이 grep 이 무의미해진다). icDist·ktxDist 는 거리 점 그림 축 정의로 갔다
+  // (FIELDS_SHOWN_IN_CHARTS — 아래 "거리 점 그림" 검사가 지킨다).
+  for (const f of ["subwayName", "subwayLines", "busRoutes", "busStopNames"])
     CARD_SOURCE[f] = [
-      { file: "../components/detail/TransportCard.tsx", re: new RegExp(`apt\\)?\\.${f}\\b`), why: "교통 상세 카드" },
+      { file: "../components/detail/TransportCard.tsx", re: new RegExp(`apt\\.${f}\\b`), why: "교통 사실 글자" },
+    ];
+
+  // 세션591 L5 — 옛 "치안/환경" 접힘 표 6필드를 칩·소음 게이지로 올린 `LocationEnvBlock`.
+  for (const f of ["crimeSafetyGrade", "airQuality", "noxious", "noxiousDist", "view", "noise"])
+    CARD_SOURCE[f] = [
+      { file: "../components/detail/LocationEnvBlock.tsx", re: new RegExp(`apt\\.${f}\\b`), why: "치안·환경 칩" },
     ];
 
   /**
@@ -292,6 +299,17 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
       "DetailModal 에서 `<BuildingInfoCard apt={mergedApt ?? apt} />` 를 못 찾았다.\n" +
         "→ 카드를 뺐다면 FIELDS_SHOWN_IN_DETAIL_CARDS 의 7필드도 함께 빼야 한다(안 빼면 화면 어디에도 안 나온다)."
     ).toBe(true);
+  });
+
+  // 세션591 — 같은 배선 가드를 입지 탭 새 자리 셋에도. 렌더 줄이 빠지면 치안·환경 6필드·교통 사실 2필드·
+  //   정류장(학군 칸)이 화면에서 조용히 사라진다.
+  it("DetailModal 이 입지 탭 치안·환경 칸·교통 사실 글자·학군 칸을 실제로 그린다", () => {
+    const src = readFileSync(new URL("../components/DetailModal.tsx", import.meta.url), "utf8");
+    expect(/<LocationEnvBlock\s+apt=\{mergedApt \?\? apt\}/.test(src), "<LocationEnvBlock> 렌더 줄이 없다").toBe(true);
+    expect(/const facts = transportFacts\(mergedApt \?\? apt\)/.test(src), "transportFacts 호출이 없다").toBe(true);
+    expect(/<SchoolInfo\s+apt=\{mergedApt \?\? apt\}/.test(src), "<SchoolInfo> 렌더 줄이 없다").toBe(true);
+    const school = readFileSync(new URL("../components/detail/SchoolInfo.tsx", import.meta.url), "utf8");
+    expect(/const bus = busStopsText\(apt\)/.test(school), "학군 칸이 정류장 칩을 안 만든다").toBe(true);
   });
 
   it("목록에 든 필드가 전부 어느 카드 소속인지 적혀 있다", () => {
@@ -550,9 +568,34 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
     expect(back, `서랍으로 되돌아온 필드: ${back.join(", ")}`).toEqual([]);
   });
 
-  it("거리 점 그림이 그리는 12종은 서랍에 없다", () => {
-    const dists = DISTANCE_AXES.flatMap((ax) => ax.items.map((it) => it.field));
-    expect(dists.length, "축 정의를 못 읽었다").toBe(12);
+  it("거리 점 그림이 그리는 필드는 서랍에 없다 (세션591: 12종 → 학교 목록·IC·KTX·개발 사업지 4필드 합류)", () => {
+    const dists = [
+      ...new Set(DISTANCE_AXES.flatMap((ax) => ax.items.flatMap((it) => [it.field, it.nameField].filter(Boolean)))),
+    ] as string[];
+    // ⚠️ 손으로 적는다 — 축 정의를 펼쳐 쓰면 정의를 비우는 순간 이 검사도 같이 사라진다(위 gone 주석과 같은 이유).
+    expect(dists.sort()).toEqual(
+      [
+        "convDist",
+        "cafeDist",
+        "pharmacyDist",
+        "childcareDist",
+        "cultureDist",
+        "hospitalDist",
+        "parkDist",
+        "bankDist",
+        "martDist",
+        "nearbySchools",
+        "subwayDist",
+        "policeDist",
+        "emergencyDist",
+        "icDist",
+        "ktxDist",
+        "devDist",
+        "transitDev",
+        "cityDev",
+        "industryDev",
+      ].sort()
+    );
     const back = dists.filter((f) => ALL_EXTRAS.includes(f));
     expect(back, `서랍으로 되돌아온 거리 필드: ${back.join(", ")}`).toEqual([]);
   });
@@ -568,18 +611,26 @@ describe("탭 배치", () => {
    * 0 이면 `ExtraFieldsAccordion` 이 null 을 돌려줘 버튼 자체가 안 뜬다(빈 서랍 아님).
    * 세션508 PR-3c C4 로 종합 탭도 0 이 됐다 — 건물 정보 카드(층수·구조·용적률·향 7필드)가
    * 옛 종합 탭 아코디언의 마지막 잔여를 흡수했다(`floors` 는 카드에도 안 남고 관리자 표로만
-   * 갔다 — maxFloor 와 어긋나는 306곳). 이제 **입지 탭 하나만** 서랍이 남는다 —
-   * 그것마저 0 이 되면 그건 "정리"가 아니라 "실종"이므로 그대로 잠근다.
+   * 갔다 — maxFloor 와 어긋나는 306곳). 그때는 **입지 탭 하나만** 서랍이 남아 "그것마저 0 이 되면
+   * 실종"이라 잠가 두었다.
+   * 세션591 L6(입지 탭 "접힘 없이 한눈에")에 그 잠금을 **뒤집었다** — 마지막 4필드(교통개발·개발지거리·
+   * 도시개발·산업개발)가 거리 점 그림 "개발 사업지까지" 줄로 올라갔다. 0 은 이제 "실종"이 아니라
+   * "본문 그림에 닿음"이다 — 그래서 아래 검사가 0 만 보지 않고 **그 4필드가 축 정의에 있는지**를 함께 본다.
    */
-  it("입지 말고 나머지 탭은 서랍이 비어 있다 (빈 아코디언은 안 만든다)", () => {
-    for (const t of ALL_TABS) {
-      if (t === "sec-location") continue;
-      expect(extraCount(t), `${t} 여분이 남아 있다`).toBe(0);
-    }
+  it("모든 탭 서랍이 비어 있다 (빈 아코디언은 안 만든다 — 세션591 로 입지 탭도 0)", () => {
+    for (const t of ALL_TABS) expect(extraCount(t), `${t} 여분이 남아 있다`).toBe(0);
   });
 
-  it("입지 탭은 보여줄 게 남아 있다", () => {
-    expect(extraCount("sec-location"), "sec-location 여분 0").toBeGreaterThan(0);
+  it("입지 탭 옛 서랍 4필드는 사라진 게 아니라 거리 점 그림 본문에 닿는다 (세션591 L6 — 옛 잠금 뒤집기)", () => {
+    const FOUR = ["transitDev", "devDist", "cityDev", "industryDev"];
+    const future = DISTANCE_AXES.find((ax) => ax.title === "개발 사업지까지");
+    expect(future, "'개발 사업지까지' 줄이 축 정의에 없다").toBeDefined();
+    const onAxis = (future?.items ?? []).flatMap((it) => [it.field, it.nameField].filter(Boolean));
+    for (const f of FOUR) {
+      expect(onAxis, `${f} 가 거리 그림 줄에 없다 — 서랍도 그림도 아니면 화면에서 실종`).toContain(f);
+      expect(FIELDS_SHOWN_IN_CHARTS.has(f), `${f} 가 '그림이 보여준 필드'로 안 세진다`).toBe(true);
+      expect(extrasOf("sec-location"), `${f} 가 서랍으로 되돌아왔다`).not.toContain(f);
+    }
   });
 
   it("금융 탭 서랍은 비어 있다 (혜택 9종은 손님 화면에서 뺐다)", () => {

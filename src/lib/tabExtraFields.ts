@@ -1,6 +1,6 @@
 import { FIELD_META, FIELD_SECTIONS } from "@/constants/fieldMeta";
 import { DEVIATION_FIELD_NAMES } from "@/constants/deviationFields";
-import { DISTANCE_AXES } from "@/constants/distanceAxes";
+import { DISTANCE_AXES, distanceAxisFields } from "@/constants/distanceAxes";
 import { MARKET_STATS_FIELD_KEYS } from "@/constants/marketStatsFields";
 import { FIELDS_SHOWN_IN_PRESALE_CARD } from "@/constants/presaleCardFields";
 import { REGION_STATS_FIELDS } from "@/constants/regionStatsFields";
@@ -103,7 +103,8 @@ export const FIELDS_SHOWN_IN_TABS: ReadonlySet<string> = new Set(
  */
 export const FIELDS_SHOWN_IN_CHARTS: ReadonlySet<string> = new Set([
   ...DEVIATION_FIELD_NAMES,
-  ...DISTANCE_AXES.flatMap((ax) => ax.items.flatMap((it) => (it.countField ? [it.field, it.countField] : [it.field]))),
+  // 거리·개수·이름 필드 전부(세션591: IC·KTX·학교·개발 사업지 4필드가 합류 — 이름 필드 `transitDev` 포함)
+  ...distanceAxisFields(DISTANCE_AXES),
   ...MARKET_STATS_FIELD_KEYS,
 ]);
 
@@ -145,14 +146,22 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   // 세션508 PR-3b B2: naverSchoolWalkMin 을 같은 카드로 승격("초등 도보 N분" 줄).
   // 교차검증 섹션에서 시세 탭 서랍에 남던 마지막 필드였다 — 이제 서랍이 아니라 카드가 그린다.
   "naverSchoolWalkMin",
-  // 세션508 PR-3b B1: 입지 탭 `detail/TransportCard` 전용 카드 6필드.
-  // "교통 상세" 격자(LOCATION_SECTIONS)를 폐기하고 카드로 승격한 자리.
+  // 세션508 PR-3b B1: 입지 탭 "교통 상세" 카드 6필드 → 세션591 L3 에 그 접힘 카드를 해체했다.
+  // 역 이름·노선·버스 노선 수는 입지 판정 한 줄(`transportFacts`), 정류장은 "학군 · 버스" 칩
+  // (`busStopsText`) — 둘 다 `detail/TransportCard.tsx` 에 있다. icDist·ktxDist 는 거리 점 그림
+  // "고속도로·KTX" 줄로 갔으므로 여기가 아니라 FIELDS_SHOWN_IN_CHARTS(축 정의)에서 센다.
   "subwayName",
   "subwayLines",
   "busRoutes",
   "busStopNames",
-  "icDist",
-  "ktxDist",
+  // 세션591 L5: 입지 탭 "치안/환경" 접힘 표(LOCATION_SECTIONS)를 해체하고 `detail/LocationEnvBlock`
+  // 칩·소음 게이지로 올린 6필드.
+  "crimeSafetyGrade",
+  "airQuality",
+  "noxious",
+  "noxiousDist",
+  "view",
+  "noise",
   // 금융 탭 `charts/LoanStack` 이 한 문장으로 그린다("DSR 기준도 통과할 만해요").
   // 분양 탭 서랍이 아니라 금융 탭 대출 그림이 제자리 (세션 505 목업).
   "dsr40pass",
