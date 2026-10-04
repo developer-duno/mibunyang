@@ -31,23 +31,23 @@
 | 새 기능·리팩토링 시작 | `superpowers:brainstorming` + `superpowers:writing-plans` | Skill |
 | 버그·테스트 실패·재현 | `superpowers:systematic-debugging` | Skill |
 | 새 코드 작성 (TDD) | `superpowers:test-driven-development` | Skill |
-| UI/컴포넌트 만들기 | `frontend-design:frontend-design` | Skill (자동) |
+| UI/컴포넌트 만들기 | `superpowers:brainstorming` (frontend-design 플러그인 꺼짐 — 필요하면 레포 settings 에서 켬) | Skill |
 | UI 변경 후 검증 | `webapp-testing` (Playwright MCP) | Skill |
 | Supabase 쿼리·DB 진단 | `data:sql-queries` / `data:explore-data` | Skill |
 | 트렌드/세그먼트 분석 | `data:analyze` | Skill |
 | 외부 장애 (행안부/네이버 500) | `superpowers:systematic-debugging` + `rules/workflows/external-api-outage-policy.md` | Skill·규칙 |
 | 품질 갭 전략 (price 64% 등) | `db-quality` | Skill(프로젝트) |
 | 커밋 전 5교차검증 | `cross-validate` (프로젝트 스킬, 자율 발동) | Skill |
-| 커밋·PR | `commit-commands:commit` / `commit-commands:commit-push-pr` | 슬래시 |
-| PR 코드 리뷰 | `pr-review-toolkit:review-pr` 또는 `/code-review:code-review` | 슬래시 |
+| 커밋·PR | 직접 `git commit -F <파일>` · `gh pr create --body-file` (fetch→보고→허락) | Bash |
+| PR 코드 리뷰 | `pr-review-toolkit:review-pr` 또는 내장 `/code-review` | 슬래시 |
 | 스코어링 검증 | `Task(subagent_type="scoring-validator")` | Task |
 | null 안전성 | `Task(subagent_type="null-safety-checker")` | Task |
 | 수집기 계약 | `Task(subagent_type="collector-contract")` | Task |
 | 네이버 수집 실행 | `/collect-naver` | 슬래시 |
 | 점수 재계산 | `score-recalc` (스킬, 자율) | Skill |
 | DB 품질 측정 | `db-quality` (스킬, 자율) | Skill |
-| 세션 종료 정리 | `session-report` + `/claude-md-management:revise-claude-md` | Skill |
-| CLAUDE.md 점검·갱신 | `claude-md-management:claude-md-improver` | Skill |
+| 세션 종료 정리 | `session-report` + `session-wrap` | Skill |
+| CLAUDE.md 점검·갱신 | 전역 `doc-diet` 스킬 + 직접 편집 | Skill |
 | **Vercel 배포·env 조회** | Vercel MCP 도구 (`/mcp` 인증 후) | MCP tool |
 | **Supabase 쿼리 (read-only)** | Supabase MCP 도구 (`/mcp` 인증 후) | MCP tool |
 | **PDF 분석/생성** | document-skills (자동 활성, plugin) | Skill |
@@ -64,15 +64,15 @@
 
 | 플러그인 | 출처 | 주요 산출 | 호출 예 |
 |---|---|---|---|
-| `code-review@claude-plugins-official` | 공식 | `/code-review:code-review` | 슬래시 |
+| `code-review@claude-plugins-official` | 공식 | **꺼짐 (2026-10-05 전역 플러그인 꺼짐 — 토큰 다이어트)** — 내장 `/code-review` 사용 | - |
 | `pr-review-toolkit@claude-plugins-official` | 공식 | `/pr-review-toolkit:review-pr` + 6 서브에이전트 | 슬래시 / Task |
-| `commit-commands@claude-plugins-official` | 공식 | `/commit` `/commit-push-pr` `/clean_gone` | 슬래시 |
-| `claude-md-management@claude-plugins-official` | 공식 | `claude-md-improver` skill + `/revise-claude-md` | Skill / 슬래시 |
+| `commit-commands@claude-plugins-official` | 공식 | **꺼짐 (2026-10-05 전역 플러그인 꺼짐 — 토큰 다이어트)** | - |
+| `claude-md-management@claude-plugins-official` | 공식 | **꺼짐 (2026-10-05 전역 플러그인 꺼짐 — 토큰 다이어트)** | - |
 | `hookify@claude-plugins-official` | 공식 | hook 자동 생성 | `/hookify:configure` `/hookify:hookify` |
 | `code-simplifier@claude-plugins-official` | 공식 | `simplify` 스킬 | Skill |
 | `typescript-lsp@claude-plugins-official` | 공식 | LSP 도구 | 자동 (LSP 호출) |
 | `pyright-lsp@claude-plugins-official` | 공식 | Python LSP | 자동 |
-| `frontend-design@claude-plugins-official` | 공식 | `frontend-design` skill | Skill (UI 작업 시 자동) |
+| `frontend-design@claude-plugins-official` | 공식 | **꺼짐 (2026-10-05 전역 플러그인 꺼짐 — 토큰 다이어트)** — 필요하면 레포 settings 에서 켬 | - |
 | `superpowers@claude-plugins-official` | 공식 | brainstorming / TDD / debugging / verification 등 13+ skills | Skill |
 
 ### Hooks (2)
@@ -101,7 +101,7 @@
 - **superpowers**: brainstorming / writing-plans / executing-plans / TDD / systematic-debugging / verification-before-completion / receiving-code-review / requesting-code-review / dispatching-parallel-agents / using-git-worktrees / writing-skills
 - **engineering**: debug / architecture / code-review / documentation / deploy-checklist / standup / incident-response / testing-strategy / tech-debt / system-design
 - **data**: analyze / create-viz / explore-data / data-visualization / sql-queries / write-query / build-dashboard / validate-data / statistical-analysis / data-context-extractor
-- **frontend-design** / **webapp-testing** / **claude-api** / **session-report** / **claude-md-improver**
+- **webapp-testing** / **claude-api** / **session-report** (frontend-design·claude-md-improver 는 2026-10-05 전역 플러그인 꺼짐)
 
 ---
 

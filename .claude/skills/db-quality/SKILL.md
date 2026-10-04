@@ -1,7 +1,13 @@
 ---
 name: db-quality
-description: Supabase apartments_flat / apartments 핵심 품질 지표를 재측정하고 세션 318 기준 대비 회귀를 점검한다. 채움률·dataReliability·행 수를 표로 보고. Claude 가 스스로 판단해 발동 — 사용자 타이핑 불필요. 트리거 = "DB 품질", "apartments_flat 품질", "채움률 확인", "데이터 회귀", "품질 재측정". 사용 안 함 = 단일 행 조회, 스키마 질문.
-when_to_use: |
+description: apartments_flat/apartments 품질 지표(채움률·dataReliability·행 수)를 재측정해 세션 318 기준 대비 회귀 점검. 트리거 = "DB 품질", "채움률 확인", "데이터 회귀", "품질 재측정", collector 변경 후. 사용 안 함 = 단일 행 조회, 스키마 질문.
+allowed-tools: Bash, Read
+---
+
+## 언제 쓰나 (frontmatter 설명에서 옮김 — 원문 그대로)
+
+Supabase apartments_flat / apartments 핵심 품질 지표를 재측정하고 세션 318 기준 대비 회귀를 점검한다. 채움률·dataReliability·행 수를 표로 보고. Claude 가 스스로 판단해 발동 — 사용자 타이핑 불필요. 트리거 = "DB 품질", "apartments_flat 품질", "채움률 확인", "데이터 회귀", "품질 재측정". 사용 안 함 = 단일 행 조회, 스키마 질문.
+
   Claude 가 자동 판단해 발동:
   - "DB 품질", "품질 재측정", "채움률 확인", "데이터 회귀 점검" 의도
   - apartments_flat / apartments 핵심 지표를 세션 318 기준과 대조해야 할 때
@@ -9,8 +15,6 @@ when_to_use: |
   사용 안 함:
   - 단일 행/단일 컬럼 조회 (그냥 SQL)
   - 스키마 구조 질문 (supabase MCP 직접)
-allowed-tools: Bash, Read
----
 
 Supabase `apartments_flat` (VIEW 1,424행) 또는 `apartments` 테이블 (2,001건) 핵심 품질 지표를 재측정하고 회귀 여부를 확인한다.
 

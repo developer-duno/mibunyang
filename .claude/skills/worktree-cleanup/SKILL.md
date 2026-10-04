@@ -1,15 +1,19 @@
 ---
 name: worktree-cleanup
-description: git worktree 머지·완료 후 stale worktree(고아 디렉토리 포함)를 안전하게 정리한다. .claude/worktrees/ 의 복제본이 grep 노이즈·디스크 부채가 되기 전에 점검·제거. Claude 가 스스로 판단해 발동 — worktree 작업 종료 후, "worktree 정리", "worktrees 폴더 비대", ".claude/worktrees 잔재" 표현 시. 사용 안 함 = 활성 worktree 작업 중.
-when_to_use: |
+description: 머지·완료한 git worktree(고아 폴더 포함)를 안전하게 정리. 트리거 = worktree 작업 종료 후, "worktree 정리", "worktrees 폴더 비대", ".claude/worktrees 잔재". 사용 안 함 = 활성 worktree 작업 중.
+allowed-tools: Bash, Read
+---
+
+## 언제 쓰나 (frontmatter 설명에서 옮김 — 원문 그대로)
+
+git worktree 머지·완료 후 stale worktree(고아 디렉토리 포함)를 안전하게 정리한다. .claude/worktrees/ 의 복제본이 grep 노이즈·디스크 부채가 되기 전에 점검·제거. Claude 가 스스로 판단해 발동 — worktree 작업 종료 후, "worktree 정리", "worktrees 폴더 비대", ".claude/worktrees 잔재" 표현 시. 사용 안 함 = 활성 worktree 작업 중.
+
   Claude 가 자동 판단해 발동:
   - git worktree 로 분리 작업하다 머지/완료한 직후
   - "worktree 정리", "worktrees 폴더", "stale 복제본" 표현
   - .claude/worktrees/ 가 비대해진 정황 (감사·부팅 점검에서 발견)
   사용 안 함:
   - 활성 worktree 에서 작업 중 (제거 금지)
-allowed-tools: Bash, Read
----
 
 `.claude/worktrees/` 의 stale worktree·고아 디렉토리를 안전하게 정리한다. **삭제는 되돌릴 수 없으니** 반드시 아래 안전 점검을 순서대로 거친 뒤, 제거 직전 사용자 승인 1회.
 

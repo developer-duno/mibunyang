@@ -1,15 +1,19 @@
 ---
 name: backlog-archive
-description: BACKLOG.md 가 비대해지면 완료 색인(✅)을 BACKLOG_ARCHIVE 로 옮겨 "할 일"만 남긴다. grep 비용·컨텍스트 부채를 줄인다. Claude 가 스스로 판단해 발동 — BACKLOG 가 100KB+ 또는 완료 색인이 수십 줄 누적됐을 때, "BACKLOG 정리", "백로그 비대" 표현 시. 사용 안 함 = 활성 작업 항목 편집.
-when_to_use: |
+description: BACKLOG.md 의 완료 색인(✅)을 BACKLOG_ARCHIVE 로 옮겨 할 일만 남긴다. 트리거 = BACKLOG 100KB+ 또는 완료 색인 누적, "BACKLOG 정리", "백로그 비대", "백로그 아카이브". 사용 안 함 = 활성 항목 편집.
+allowed-tools: Read, Edit, Bash
+---
+
+## 언제 쓰나 (frontmatter 설명에서 옮김 — 원문 그대로)
+
+BACKLOG.md 가 비대해지면 완료 색인(✅)을 BACKLOG_ARCHIVE 로 옮겨 "할 일"만 남긴다. grep 비용·컨텍스트 부채를 줄인다. Claude 가 스스로 판단해 발동 — BACKLOG 가 100KB+ 또는 완료 색인이 수십 줄 누적됐을 때, "BACKLOG 정리", "백로그 비대" 표현 시. 사용 안 함 = 활성 작업 항목 편집.
+
   Claude 가 자동 판단해 발동:
   - BACKLOG.md 가 비대(100KB+ 또는 완료 색인 과다 누적)
   - "BACKLOG 정리", "백로그 아카이브", "완료 색인 분할" 표현
   - 감사·부팅 점검에서 컨텍스트 부채로 지적됨
   사용 안 함:
   - 활성(미완료) 항목 편집 / 단일 항목 추가
-allowed-tools: Read, Edit, Bash
----
 
 `.claude/BACKLOG.md` 는 **"할 일"만** 유지하는 게 원칙(파일 상단 운영 규칙). 완료(✅) 색인이 누적되면 grep 노이즈·컨텍스트 부채가 된다. 오래된 완료 색인을 `BACKLOG_ARCHIVE.md`(또는 분기별 ARCHIVE)로 옮긴다.
 

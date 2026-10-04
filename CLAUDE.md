@@ -112,6 +112,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 `purge-to-recollect-timing` · `admin-district-code-reform` · `placeholder-coordinates-truth-sources` ·
 `collector-timeout-rootcause-analysis` · `regions-multicollector-recorded-at-lag` ·
 `workflows/*`(4개: secret-naming-audit · workflow-name-hallucination · timeout-rootcause-policy · external-api-outage-policy)
+이 14개는 **핵심(규칙 문장·안티 패턴)만 상시**다 — 표·예시 코드·실측 기록은 `.claude/rules-detail/<같은 경로>` 에 있고(자동 로드 안 됨), 각 규칙 끝 `> 상세 →` 링크로 연다(2026-10-05 다이어트).
 
 > 되돌리기: 해당 파일 맨 앞 `---` `paths:` `---` 블록을 지우면 상시 로드로 복귀.
 > `scripts/*` 8개의 상세 = `scripts/CLAUDE.md`(색인) 참조.

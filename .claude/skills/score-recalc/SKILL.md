@@ -1,15 +1,19 @@
 ---
 name: score-recalc
-description: 스코어링 재계산 + PROFILES 5종 가중치 합계 sanity 를 함께 점검한다. 가중치 합 100/1.0·0~100 클램핑·NaN 혼입을 검증. Claude 가 스스로 판단해 발동 — 사용자 타이핑 불필요. 트리거 = "점수 재계산", "가중치 검증", "PROFILES 합계", "스코어 sanity", src/scoring/ 변경 후. 사용 안 함 = 단순 점수 1건 조회, UI 표시 변경.
-when_to_use: |
+description: 스코어링 재계산 + PROFILES 5종 가중치 합 100·클램핑·NaN sanity 점검. 트리거 = "점수 재계산", "가중치 검증", "PROFILES 합계", "스코어 sanity", src/scoring/ 변경 후. 사용 안 함 = 점수 1건 조회, UI 표시 변경.
+allowed-tools: Bash, Read, Grep
+---
+
+## 언제 쓰나 (frontmatter 설명에서 옮김 — 원문 그대로)
+
+스코어링 재계산 + PROFILES 5종 가중치 합계 sanity 를 함께 점검한다. 가중치 합 100/1.0·0~100 클램핑·NaN 혼입을 검증. Claude 가 스스로 판단해 발동 — 사용자 타이핑 불필요. 트리거 = "점수 재계산", "가중치 검증", "PROFILES 합계", "스코어 sanity", src/scoring/ 변경 후. 사용 안 함 = 단순 점수 1건 조회, UI 표시 변경.
+
   Claude 가 자동 판단해 발동:
   - "점수 재계산", "가중치 검증", "PROFILES 합계", "스코어 sanity" 의도
   - src/scoring/ 또는 src/constants/profiles.js 변경 후 무결성 확인
   사용 안 함:
   - 단일 단지 점수 1건 조회
   - 점수 표시(UI) 변경만 (값 불변)
-allowed-tools: Bash, Read, Grep
----
 
 스코어링 재계산과 가중치 무결성을 함께 확인한다. 깊은 불변식 검증은 `scoring-validator` 서브에이전트와 중복되지 않게 — 본 스킬은 재계산 + sanity, 서브에이전트는 층위별 합계 엄밀 검증.
 

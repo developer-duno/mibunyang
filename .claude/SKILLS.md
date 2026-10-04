@@ -39,8 +39,8 @@
 ## UI / 리뷰 / 마무리
 
 - **`webapp-testing`** — UI 변경 후 브라우저 검증 (Playwright, **필수**)
-- **`frontend-design`** — 새 컴포넌트/섹션 작성 시 자동 발동. Pretendard · C.borderStrong · React.memo 컴포넌트군 구조 일관성(개수는 `src/components/CLAUDE.md` 참조 — 옛 "45개" 는 세션 548 실측 91 파일로 낡음)
-- **`/code-review:code-review`** — GitHub PR 리뷰 (로컬 5교차검증과는 별개)
+- **`frontend-design`** (2026-10-05 전역 플러그인 꺼짐 — 토큰 다이어트) — 새 컴포넌트/섹션 작성 시 필요하면 이 레포 `.claude/settings.json` `enabledPlugins` 에 `frontend-design@claude-plugins-official: true` 로 켠다(30일 사용 0회). Pretendard · C.borderStrong · React.memo 컴포넌트군 구조 일관성(개수는 `src/components/CLAUDE.md` 참조 — 옛 "45개" 는 세션 548 실측 91 파일로 낡음)
+- **내장 `/code-review` 스킬**(플러그인 아님) — GitHub PR 리뷰 (로컬 5교차검증과는 별개)
 - **`db-quality`** — maintenance/builders/benefits 같은 품질 갭 전략 (DB_QUALITY.md 실측 기준)
 - **`simplify` · `commit`** — 커밋 전 자동 (Review 단계에서 호출)
-- **`session-report` + `/claude-md-management:revise-claude-md`** — 세션 마무리 시
+- **`session-report` + 직접 편집(전역 `doc-diet` 스킬)** — 세션 마무리 시 (2026-10-05 전역 플러그인 꺼짐 — 토큰 다이어트)

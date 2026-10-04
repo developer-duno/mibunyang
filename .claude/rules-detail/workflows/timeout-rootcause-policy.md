@@ -1,0 +1,89 @@
+> 핵심 = [../../rules/workflows/timeout-rootcause-policy.md](../../rules/workflows/timeout-rootcause-policy.md) · 이 파일은 필요할 때 Read
+
+---
+title: Collector timeout cancelled 원인 = 큐 막힘 환각 차단
+incident_dates: ["2026-04-06", "2026-05-06", "2026-05-22", "2026-05-23", "2026-05-24"]
+related_workflows:
+  - .github/workflows/collect-trades.yml
+  - .github/workflows/fill-missing-data.yml
+---
+
+# Collector timeout cancelled 원인 진단 — 큐 막힘 환각 차단
+
+> 사건·이력 (세션306 — NEXT_SESSION/BACKLOG "큐 막힘" 박제값을 그대로 답습할 뻔했으나 raw log 답습 4건으로 진짜 원인 확정: 단순 timeout 부족·post-job cleanup cancel·Phase 별 timeout 부족·exit 1 조건. 3건이 큐 막힘과 무관했음) → [rules-history/workflows/timeout-rootcause-policy.md](../../rules-history/workflows/timeout-rootcause-policy.md)
+
+## 근본 원인 = 큐 막힘 가설 환각 진입
+
+plan v1 사고 패턴:
+
+1. **NEXT_SESSION/BACKLOG 박제값 단정** — "18일 미발화 / 9주 stale / 10주 stale" 박제값을 진실의 원천으로 답습. 메모리 룰 §"메모리는 진실의 원천 아님" 답습 미준수
+2. **공통 cancelled 패턴 = 큐 막힘 가설 단정** — 4건 cancelled 보고 `concurrency: group: data-collection` 단일화를 원인으로 추측. raw log 답습 0회
+3. **그룹 분리 = 해결 환각** — 세션 273 `calc-collection` 분리 답습 패턴을 사고 자리 4개 확장 적용. 그러나 raw 답습 결과 cron 시각 충돌 0 + 데이터 stale 0 (3/4건 환각)
+
+→ raw log 답습 1회로 가설 자체 폐기 가능했으나 plan v1 박제 직전 의무 미준수.
+
+## 재발 방지 (3중)
+
+### 1. cancelled run plan 작성 진입 자리 raw log 답습 의무
+
+ETL collector cancelled / failure 진단 plan 작성 시 다음 grep + 1회 raw 답습 의무.
+
+```bash
+# step 1: cancelled run id 추출
+gh run list --workflow=<workflow>.yml --limit 10 --json databaseId,conclusion,createdAt --jq '.[] | select(.conclusion == "cancelled" or .conclusion == "failure") | "\(.createdAt) \(.conclusion) id=\(.databaseId)"'
+
+# step 2: raw log 마지막 30줄 답습 (timeout vs 큐 막힘 vs 코드 결함 진단)
+gh run view <id> --log 2>&1 | tail -30
+
+# step 2-b: step별 정확 타이밍 (--log 텍스트로 못 보는 timeout-minutes 도달 vs 외부 cancel 구분, 세션 344)
+gh api repos/{owner}/{repo}/actions/runs/<id>/jobs --jq '.jobs[] | .name + ": " + .started_at + " ~ " + .completed_at'
+gh run list --workflow=<wf>.yml --status timed_out --limit 5   # 자연 timeout(SIGKILL) vs cancelled(외부, grace) 분리
+
+# step 3: 직전 success run 비교 (4-way §2 답습)
+gh run view <prev_success_id> --log | grep "API.*건\|건 수집\|소요" | tail -10
+```
+
+raw log 답습 결과 박제:
+
+- "정확 60분 cancel" → timeout 부족 (단순 늘리기 정정)
+- "post-job cleanup cancel" → DB 영향 0 (stale 환각, plan 진입 무관)
+- "exit code 1 + failed > 0" → 코드 root fix (별 진단)
+- "API rate limit 429" → 청크 분할 또는 다른 grp
+- "API 응답 지연" → API 자체 사고 (외부 사고, 본인 fix 0)
+
+### 2. plan v1 환각 박제값 grep 의무
+
+NEXT_SESSION + BACKLOG + SESSION_LOG 박제값 ("X 미발화 N일 / Y stale N주") 단정 직전 다음 1회 grep 의무.
+
+```bash
+# DB 자체 stale 검증 (apartments.X 컬럼 updated_at)
+gh run view <마지막 success run id> --log | grep "수집 완료\|upsert\|성공" | tail -10
+
+# 외부 cron 박힌 자매 collector grep (큐 막힘 가설 검증)
+grep -A 3 "concurrency:" .github/workflows/<workflow>.yml
+grep -A 3 "concurrency:" .github/workflows/<같은 그룹 자매>.yml
+```
+
+박제값과 raw log 결과 차이 발견 시 박제값 즉시 폐기 + plan 재설계 진입. 메모리 룰 §"메모리는 진실의 원천 아님" 답습 의무.
+
+### 3. concurrency 그룹 분리 가설 진입 시 cron 충돌 답습 의무
+
+큐 막힘 가설 진입 plan 작성 시 다음 cron 시각 grep 의무.
+
+```bash
+# 같은 그룹 cron 시각 grep
+for wf in $(grep -l "group: <그룹>" .github/workflows/*.yml); do
+  echo "=== $wf ==="
+  grep "cron:" $wf
+done
+```
+
+cron 시각 충돌 (같은 일자 + 같은 시각대 내 ±2h 이내) 박힘 시 = 큐 막힘 정당. 그 외 = 환각 가설 확정 + plan 폐기.
+
+세션 306 fill cron `0 2 * * 0` (일 UTC 02:00) + trades cron `0 20 6 * *` (매월 6일 UTC 20:00) = 14시간 간격 = 충돌 0 = 큐 막힘 환각.
+
+## 안티 패턴 (사고 답습)
+
+- ❌ "NEXT_SESSION 박제 '10주 stale' = 진실의 원천" — DB 자체 갱신 자리 raw log 답습 의무
+
+> 답습 자산·차단 검증·세션307 정정(NEXT_SESSION 박제 6건 vs 실측 11건, audit-fill-matrix.mjs CI 가드 신설) 이력 → [rules-history/workflows/timeout-rootcause-policy.md](../../rules-history/workflows/timeout-rootcause-policy.md)

@@ -1,0 +1,90 @@
+> 핵심 = [../../rules/collectors/purge-to-recollect-timing.md](../../rules/collectors/purge-to-recollect-timing.md) · 이 파일은 필요할 때 Read
+
+# 파생 행을 지워 재수집을 유도할 땐 **화면 재생성 시각과의 순서**를 먼저 본다
+
+## 한 줄
+
+> 사건·이력 (세션539 — 소사역 프라힐스 15곳 좌표 오류 정정 후 파생 45행을 지웠는데, 화면 재생성(03:09)이 재수집(05:33)보다 먼저 일어나 "지하철 없음·병원 0개"라는 더 나쁜 거짓이 하루 동안 노출됨. 입지점수 77→41(정답 79)) → [rules-history/collectors/purge-to-recollect-timing.md](../../rules-history/collectors/purge-to-recollect-timing.md)
+
+## 규칙
+
+### 1. 지우기 전에 **두 시각**을 확인한다
+
+```bash
+# ① 그 파생 행을 다시 채우는 수집기의 발화 시각
+grep -rlE "<수집기명>" .github/workflows/*.yml | xargs grep -hE "cron:"
+# ② 화면 파일을 재생성하는 워크플로의 발화 시각
+grep -nE "cron:" .github/workflows/daily-deploy.yml
+```
+
+**지우기 → 재수집 → 재생성** 순서가 되게 잡는다. 이 저장소 기준(2026-09-09 실측):
+재수집 `collect-naver-listings-incremental` = **05:30 KST 매일** / 재생성 `daily-deploy` = cron `0 18 * * *`
+(= 03:00 KST) **이지만 실제 실행은 03:04~03:10**.
+
+⚠️ **cron 시각을 창의 하한으로 쓰지 마라.** 큐 대기 때문에 실제 발화가 몇 분씩 뒤로 밀리고, 그
+job 이 `apartments_flat`(transport/schools/infra JOIN)을 **한 번 SELECT** 해 정적 JSON 을 만든다 —
+그 SELECT 전에 지우면 빈칸이 그대로 구워진다. `daily-deploy` 최근 8회 실측:
+
+| 실행(UTC) | 18:04:36 · 18:05:12 · 18:05:41 · 18:06:03 · 18:07:19 · 18:08:02 · 18:09:11 · 18:09:47 |
+|---|---|
+| KST | **03:04 ~ 03:10** (cron 03:00 대비 최대 +9분 47초) |
+
+→ 창 = **KST 03:20 ~ 05:00**. 하한은 실행 최대치(03:10)에 여유 10분, 상한은 05:30 재수집이
+**시작 시 대상 목록을 뜨므로** 그 직전을 피해 30분 여유. (세션542 의 03:10 예약은 13초 차이로
+살았다 — 운이었다.) 그 밖의 시각에 지우면 **최대 하루** 동안 "없음"이 화면에 박힌다.
+
+**창만으로는 부족하다 — "오늘 스냅샷" 을 실측한다.** 그날 배포가 03:04 에 끝났는지 03:10 에
+끝났는지는 그때마다 다르므로, 라이브 `https://xn--hg3bi2ac4o1ig57cnoa.com/data/meta.json` 의
+`fetchedAt`(UTC ISO)이 **오늘(KST) 03:00 이후**인지 함께 본다. 못 읽으면 "괜찮다" 가 아니라
+"확인 못 했다" 이므로 **진행하지 않는다**(fail-close).
+
+`fix-placeholder-addresses.mjs` 는 이 둘을 `inSafeWindow()` + `assertDeploySnapshotToday()` 로
+구현하고, **세 purge 경로(레거시 `--apply` · `--ids-file` · `--apply-from`)가 전부 같은 한 자리**를
+지난다(경로별 중복 구현은 한 곳만 고쳐져 드리프트한다). 강행은 `--force-timing`.
+
+### 1-1. 지운 **같은 날 06:00 이전에** 파생표가 다시 채워졌는지 DB 로 확인한다 (세션544 적대검증 M4)
+
+창 안에서 지웠어도 05:30 재수집이 **실패**하면 09-11 03:04~03:10 굽기가 빈칸을 그대로 굽는다 — 그런데 "다음날 화면에서 확인" 은
+굽기보다 **늦다**. 세션544 순천은 05:33~05:35 재수집이 성공해 무사했을 뿐(운). 처방 = purge 뒤 **같은 날 06:00 이전**에 아래를 실행하고,
+하나라도 `updated_at` 이 purge 시각보다 앞이면 §2 의 `daily-deploy` 수동 트리거(사람 확인) 또는 해당 수집기 단독 실행으로 메운다.
+
+```js
+// transport·schools·infra 를 apartment_id 로 조회해 updated_at 이 purge 이후인가 (select("*") + error 출력 — probe 규칙 §4-1)
+for (const t of ["transport", "schools", "infra"]) {
+  const { data, error } = await sb.from(t).select("*").eq("apartment_id", id);
+  console.log(t, error?.code ?? "none", data?.[0]?.updated_at ?? "(행 없음)");
+}
+```
+
+⚠️ 조회에 **없는 컬럼명**을 넣으면 `data` 가 null 이 되어 "행 없음" 으로 오독한다(세션544 실사고 2회) — `select("*")` 로.
+
+### 2. 타이밍을 못 맞추면 **재생성을 앞당긴다**
+
+`daily-deploy.yml` 에는 `workflow_dispatch`(수동 트리거)가 있다. 재수집이 끝난 것을 DB 로 확인한 뒤
+그걸 한 번 돌리면 화면이 즉시 정상화된다. **다만 운영 배포이므로 사람 확인 후.**
+
+### 3. 지우기 전에 **"빈칸이 화면에 어떻게 보이는지"** 를 먼저 확인한다
+
+이 저장소는 필드마다 빈칸 표시가 다르다. `subway_dist` 는 `9999`(sentinel)로 채워져
+**"지하철 없음"** 으로 그려지고, 인프라 개수는 `0` 이라 **"병원 0개"** 로 그려진다 —
+둘 다 "미수집"이라 말하지 않는다. 지우기 전에 그 필드의 표시 경로
+(`fieldMeta.ts` · `score*.ts` 의 `info`/`detail`)를 읽고 **"빈칸일 때 손님이 무슨 글자를 보는가"** 를 확인하라.
+
+**"미수집"이라 정직하게 표시되는 필드만 안심하고 지울 수 있다.**
+
+**그 값의 이력을 그리는 자리도 본다(세션577 검사관 C)**: 값을 비우거나 hold 로 보내도 `unsold_history` 는 남고, 상세 시세 탭 `UnsoldChart`(2행이면 그린다)가 옛 추이(음성아이파크 318→280)를 그대로 보여 준다. 비움·hold 전이표에 **이력 행 처리(삭제 사본 또는 차트 숨김)**를 같이 적는다.
+
+### 4. 지우는 대신 **재수집을 강제**할 수 있는지 먼저 본다
+
+수집기에 `--force` 나 대상 재선정 인자가 있으면 지우지 않고도 다시 채울 수 있다.
+`transport-tago.mjs` 는 `--force` 를 갖고 있다(다만 전 단지 대상이라 비싸다).
+좁게 강제하는 경로가 있으면 그쪽이 언제나 안전하다 — **빈칸 구간이 아예 없다.**
+
+## 안티 패턴
+
+## 관련
+
+- `scripts/fix-sosa-coordinates.mjs` — `--purge-derived` 를 별도 플래그로 분리한 이유가 이것이다.
+  분리는 옳았으나 **실행 시각**을 안 봤다.
+
+> 차단 검증 이력 → [rules-history/collectors/purge-to-recollect-timing.md](../../rules-history/collectors/purge-to-recollect-timing.md)

@@ -1,0 +1,125 @@
+> 핵심 = [../../rules/meta/probe-must-be-self-verified.md](../../rules/meta/probe-must-be-self-verified.md) · 이 파일은 필요할 때 Read
+
+# 측정 도구부터 의심하라 — 탐침에 **양성 대조군**을 붙인다
+
+## 한 줄
+
+**"실측했다"는 그 측정이 옳았다는 뜻이 아니다.** 조회 한 줄, 함수 호출 한 번이 틀리면 결론이
+통째로 뒤집히는데, 결과가 그럴듯해 보이면 아무도 다시 보지 않는다. 세션537은 하루에 **다섯 번**
+틀렸고 원인이 매번 같았다 — **확인하지 않고 추측으로 썼다.**
+
+> 사건·이력 (세션537 — 하루에 5번 같은 원인(확인 없이 추측)으로 틀림: 없는 컬럼 조회·동명 단지 첫 건만·Number(null)===0·함수 시그니처 오추측·같은 함정 재발. 4번은 "채울 곳 0"이라는 조용한 무효 결과라 가장 위험했음) → [rules-history/meta/probe-must-be-self-verified.md](../../rules-history/meta/probe-must-be-self-verified.md)
+
+## 규칙
+
+### 1. 탐침에 **양성 대조군**을 먼저 붙인다 (가장 값싼 방어)
+
+본 측정 전에 "**답이 나와야 하는 입력**"으로 그 도구를 돌려 본다. 결과가 안 나오면 도구가 틀린 것이다.
+
+```js
+// 본 측정: "값이 0 인 단지 중 500m 안에 대체값이 있는 곳"  → 0곳이 나왔다
+// 양성 대조군: "값이 이미 있는 단지 5곳"으로 같은 호출 → 5/5 나와야 정상
+const ctrl = apts.filter(a => a.lat != null && Number(a.x) > 0).slice(0, 5);
+const hit = ctrl.filter(a => (findNearbyComplexes(a, grid, R_KM) ?? []).length).length;
+console.log('[탐침 검증]', hit, hit ? '호출 정상' : '❌ 호출 이상 — 결과 신뢰 불가');
+```
+
+세션537은 이 한 줄로 4번을 잡았다. **없었으면 "0곳"을 그대로 믿었다.**
+
+### 2. `Number(null)` 은 **0** 이다 — 빈칸을 셀 땐 `!= null` 을 먼저
+
+```js
+// 빨강 — null 이 0 으로 집계된다
+const zero = rows.filter(r => Number(r[f]) === 0).length;
+
+// 초록 — null 과 진짜 0 을 가른다
+const nul  = rows.filter(r => r[f] == null).length;
+const zero = rows.filter(r => r[f] != null && Number(r[f]) === 0).length;
+```
+
+⚠️ **한 곳을 고쳤으면 같은 셈을 하는 다른 곳도 고쳤는지 확인하라.** 세션537은
+`apartments` 쪽만 고치고 `complexes` 쪽을 그대로 둔 채 그 수치를 커밋 메시지·코드 주석에
+박았다(5번). "이미 그 함정을 안다"는 것과 "모든 자리에서 피했다"는 다른 일이다.
+
+### 3. 새 함수는 **시그니처를 먼저 읽는다** — 인자 순서·단위를 추측하지 않는다
+
+```bash
+grep -n "export function <이름>" -A 5 <파일>   # 호출 전 1회
+```
+
+특히 **단위**(m vs km), **인자 순서**(객체 먼저 vs 그리드 먼저)는 이름만 봐서 알 수 없다.
+
+### 4. 조회가 `null` 을 돌려주면 **에러를 의심**한다
+
+Supabase 는 데이터가 없으면 `[]` 를 준다. `null` 이면 **쿼리가 실패한 것**이다.
+탐침에는 항상 `.error` 를 찍는다.
+
+```js
+const { data, error } = await sb.from(t).select(cols).eq(...);
+console.log('error:', error?.message ?? 'none', '| rows:', data?.length ?? 'null');
+```
+
+### 4-1. Supabase 탐침 착시 두 가지 (세션544 실사고 — 같은 세션에서 두 번, 검사관까지 한 번)
+
+- **없는 컬럼명이 하나라도 섞이면 `data` 는 null** — `select("apartment_id,hospital,convenience,park")` 처럼 실제 컬럼(`conv`)과 다른
+  이름을 쓰면 PostgREST 가 에러를 주고, `.error` 를 안 찍으면 **"행 없음"** 으로 읽힌다. 세션544는 이걸로 "infra 행 없음"·"재수집 뒤
+  transport 행이 안 생겼다" 를 두 번 잘못 적었다(둘 다 존재). 컬럼을 모르면 `select("*")` 로 먼저 본다.
+- **`select("*", { count: "exact", head: true })` 는 존재하지 않는 표에도 error=none·count=null** 을 돌려준다 — 음성 대조군
+  `definitely_not_a_table_xyz` 로 실증. 검사관이 이 방식으로 "`notification_logs` 표가 존재한다" 고 뒤집었지만 실제
+  `select("*").limit(1)` 은 PGRST205. **"표 없음" 결론은 head 가 아니라 실제 select 의 에러 코드로만.**
+
+```js
+// 탐침 정형 — error 를 반드시 찍고, 있는 표/없는 표 대조군을 같이 돌린다
+for (const t of ["<대상표>", "apartments", "definitely_not_a_table_xyz"]) {
+  const { data, error } = await sb.from(t).select("*").limit(1);
+  console.log(t, "error:", error?.code ?? "none", "| rows:", data?.length ?? "null");
+}
+```
+
+### 4-2. **날짜 문자열을 `new Date()` 에 넘기지 마라** — 서기 20만년이 조용히 통과한다
+
+`"202211"` 에 `"-01"` 을 이어 붙여 `new Date("202211-01")` 하면 **서기 202211년**이 된다.
+에러도 `NaN` 도 아니라서, 그 뒤의 "미래인가" 판정이 **전부 참**이 되고 아무도 모른다.
+
+```js
+// 빨강 — 준공 지난 48곳이 "전부 준공 전" 으로 보고됐다(세션563 실사고)
+const d = new Date(c.length <= 7 ? c + "-01" : c);
+if (d > now) future++;
+
+// 초록 — 정규식으로 형식을 강제하고 **월 단위 정수**로 비교한다(Date 생성자를 안 거친다)
+const m = /^(\d{4})(\d{2})$/.exec(s) ?? /^(\d{4})-(\d{1,2})(?:-\d{1,2})?$/.exec(s);
+if (!m) return false;
+const month = Number(m[2]);
+if (month < 1 || month > 12) return false;   // "202613" 이 2027-01 로 넘어가는 것도 막는다
+return Number(m[1]) * 12 + (month - 1) < now.getFullYear() * 12 + now.getMonth();
+```
+
+⚠️ **이 저장소는 답을 이미 갖고 있었다** — `src/scoring/scorePrice.ts` 의 `parseCompletionMonth`
+가 같은 함정("20266" 이 서기 20266년)을 막아 두었는데, 세션563은 그걸 안 찾고 직접 만들다 틀렸다.
+**날짜·이름·주소처럼 까다로운 판정은 이미 있는 함수를 먼저 찾는다**([[reuse-existing-judgment]]).
+
+**판별 신호**: 어떤 분류가 **한쪽으로 100%** 나오면(56곳 중 56곳이 미래) 그 자체가 의심 신호다.
+실제 값 몇 개를 **눈으로** 찍어 보라 — `console.log(new Date("202211-01").toString())` 한 줄이면 드러난다.
+
+### 5. `.find(name === ...)` 로 단정하지 않는다 — **동명이 흔하다**
+
+이 저장소는 같은 이름의 단지가 여럿이다(회차 분리·동 분리). 첫 건만 보고 "재료 없음"을
+판정하면 틀린다. 이름으로 찾을 땐 **전부 세고**, 필요하면 **좌표까지** 본다.
+
+### 6. 오측정이 의심되면 **결론이 아니라 도구를 먼저 재검한다**
+
+"결과가 이상하다"는 신호가 오면 가설을 바꾸기 전에 탐침을 재검한다. 세션537의 4번은
+"채울 수 있는 곳 0" 이라는 결과가 **직전 실측(85%가 후보)과 모순**됐는데, 그 모순이 도구를
+다시 보게 만든 유일한 단서였다.
+
+### 7. 단지 하나를 조사하면 **신고된 칸만 보지 말고 그 행 전체의 상식**을 한 번 본다 (세션577 검사관 C)
+
+음성아이파크(충북 음성, 773세대)의 미분양 값만 조사하고 hold 로 보냈는데, 같은 행의 분양 정보(네이버 분양 번호·분양가 89,900·"1호선 광운대역 인접"·일반공급 1,856)가 전부 **서울원아이파크** 것이었다. 한 행을 볼 때 **분양 번호가 자기 번호인지(`naver_presale_no` ↔ id)·지역이 맞는지·가격이 그 지역 상식인지** 세 가지를 같이 본다 — 1분이면 되고, 신고된 칸 하나만 고치면 나머지 거짓은 그대로 나간다.
+
+## 적용 시점 (의무)
+
+## 안티 패턴
+
+## 관련
+
+> 차단 검증 이력 → [rules-history/meta/probe-must-be-self-verified.md](../../rules-history/meta/probe-must-be-self-verified.md)
