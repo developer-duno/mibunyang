@@ -8,11 +8,12 @@ vi.mock("@/hooks/useMarketStatsHistory", () => ({
   useMarketStatsHistory: (/** @type {any[]} */ ...args) => mockUseMarketStatsHistory(...args),
 }));
 
-vi.mock("@/components/primitives", () => ({
-  LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
-}));
+import { MarketStatsCharts, baseMonthLabel } from "./MarketStatsCharts";
 
-import { MarketStatsCharts } from "./MarketStatsCharts";
+// 세션591 P4 — 큰 LineChart 5개를 작은 칸 5개(이름·최신 값·작은 추이 선·기준 연월)로 줄였다.
+//   칸 = `[data-metric]`, 추이 선 = role="img"(aria-label "… 추이, 최근 …").
+const tiles = () => document.querySelectorAll("[data-metric]");
+const sparks = () => screen.queryAllByRole("img", { name: /추이, 최근/ });
 
 const makeRows = () => [
   {
@@ -83,7 +84,7 @@ describe("MarketStatsCharts", () => {
     expect(screen.getByRole("status")).toBeTruthy();
   });
 
-  it("정상 데이터면 5개 차트를 렌더링한다", () => {
+  it("정상 데이터면 작은 칸 5개(추이 선 5개)를 렌더링한다", () => {
     mockUseMarketStatsHistory.mockReturnValue({
       data: makeRows(),
       loading: false,
@@ -92,7 +93,68 @@ describe("MarketStatsCharts", () => {
       fallback: false,
     });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
-    expect(screen.getAllByTestId("line-chart")).toHaveLength(5);
+    expect(tiles()).toHaveLength(5);
+    expect(sparks()).toHaveLength(5);
+  });
+
+  // E16 — 옛 x축은 월(두 자리)만 적어 연도가 섞여 읽혔다. 칸마다 최신 값과 그 기준 연·월을 적는다.
+  it("칸마다 이름 · 최신 값 · 단위 · '연.월 기준' 글자를 적는다 (E16)", () => {
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
+    render(<MarketStatsCharts region="서울" gu="강남구" />);
+    const first = /** @type {HTMLElement} */ (document.querySelector('[data-metric="avg_price_sqm"]'));
+    expect(first).toHaveTextContent("평균분양가격");
+    expect(first).toHaveTextContent("110");
+    expect(first).toHaveTextContent("천원/㎡");
+    expect(first).toHaveTextContent("2025.02 기준");
+    expect(screen.getByRole("img", { name: "평균분양가격 추이, 최근 110 천원/㎡ (2025.02 기준)" })).toBeTruthy();
+  });
+
+  it("baseMonthLabel — 월간 '202608' → '2026.08' · 형식 밖(달 13 포함)은 빈 글자", () => {
+    expect(baseMonthLabel("202608")).toBe("2026.08");
+    expect(baseMonthLabel("202608", "M")).toBe("2026.08");
+    expect(baseMonthLabel("202613")).toBe("");
+    expect(baseMonthLabel("2026-08")).toBe("");
+    expect(baseMonthLabel(undefined)).toBe("");
+  });
+
+  // 보완 F1 — 초기분양률(KOSIS DT_41401N_008)은 분기 자료라 base_month 뒤 자리가 분기 번호다(운영 DB: 01~04 뿐).
+  it("baseMonthLabel 분기 — '202602' → '2026년 2분기' · 5자리 '20262' 도 같은 뜻", () => {
+    expect(baseMonthLabel("202602", "Q")).toBe("2026년 2분기");
+    expect(baseMonthLabel("202504", "Q")).toBe("2025년 4분기");
+    expect(baseMonthLabel("20262", "Q")).toBe("2026년 2분기");
+  });
+
+  it("baseMonthLabel 분기인데 뒤 자리가 01~04 가 아니거나 모양을 모르면 생략한다 (틀린 분기를 말하지 않는다)", () => {
+    expect(baseMonthLabel("202607", "Q")).toBe("");
+    expect(baseMonthLabel("20265", "Q")).toBe("");
+    expect(baseMonthLabel("2026Q2", "Q")).toBe("");
+    expect(baseMonthLabel(null, "Q")).toBe("");
+  });
+
+  it("초기분양율 칸은 분기로, 다른 칸은 달로 적는다 (화면 글자·aria 둘 다)", () => {
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: [
+        { base_month: "202601", avg_price_sqm: 100, initial_sale_rate: 50.5 },
+        { base_month: "202602", avg_price_sqm: 110, initial_sale_rate: 80.8 },
+      ],
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
+    render(<MarketStatsCharts region="경기" gu="" />);
+    const rate = /** @type {HTMLElement} */ (document.querySelector('[data-metric="initial_sale_rate"]'));
+    expect(rate).toHaveTextContent("2026년 2분기 기준");
+    expect(rate).not.toHaveTextContent("2026.02");
+    expect(screen.getByRole("img", { name: "초기분양율 추이, 최근 80.8 % (2026년 2분기 기준)" })).toBeTruthy();
+    const price = /** @type {HTMLElement} */ (document.querySelector('[data-metric="avg_price_sqm"]'));
+    expect(price).toHaveTextContent("2026.02 기준");
   });
 
   // 세션 411 — ? 도움말. 차트 5개 + 상단 "지역 시장 추이" = ? 6개. line-chart 개수 불변.
@@ -106,7 +168,7 @@ describe("MarketStatsCharts", () => {
     });
     render(<MarketStatsCharts region="서울" gu="강남구" />);
     expect(screen.getAllByLabelText(/풀이 보기$/)).toHaveLength(6);
-    expect(screen.getAllByTestId("line-chart")).toHaveLength(5); // ? 추가해도 차트 불변
+    expect(sparks()).toHaveLength(5); // ? 추가해도 추이 선 개수 불변
   });
 
   it("초기분양율 ? 클릭 시 '보는 법' 설명(role=tooltip) 표시", () => {
@@ -154,7 +216,8 @@ describe("MarketStatsCharts", () => {
     });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.getByRole("status")).toBeTruthy();
-    expect(screen.queryAllByTestId("line-chart")).toHaveLength(0);
+    expect(tiles()).toHaveLength(0);
+    expect(sparks()).toHaveLength(0);
   });
 
   it("부분 null (1필드만 length>=2) 행이면 그 필드만 차트 렌더", () => {
@@ -185,7 +248,8 @@ describe("MarketStatsCharts", () => {
     });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.queryByRole("status")).toBeNull();
-    expect(screen.getAllByTestId("line-chart")).toHaveLength(1);
+    expect(tiles()).toHaveLength(1);
+    expect(sparks()).toHaveLength(1);
   });
 
   it("fallback=true 시 헤더에 시도 평균 표시", () => {
@@ -228,6 +292,7 @@ describe("MarketStatsCharts", () => {
     });
     render(<MarketStatsCharts region="인천" gu="서구" />);
     expect(screen.getByRole("status")).toBeTruthy();
-    expect(screen.queryAllByTestId("line-chart")).toHaveLength(0);
+    expect(tiles()).toHaveLength(0);
+    expect(sparks()).toHaveLength(0);
   });
 });

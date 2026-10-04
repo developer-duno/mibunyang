@@ -1,6 +1,6 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
-import { LineChart } from "@/components/primitives";
+import { Sparkline } from "@/components/charts/Sparkline";
 import { HelpHint } from "@/components/HelpHint";
 import { useMarketStatsHistory } from "@/hooks/useMarketStatsHistory";
 import type { MarketStatsChartsProps } from "@/types/detail";
@@ -11,6 +11,12 @@ interface MarketMetric {
   unit: string;
   color: string;
   hint: string;
+  /**
+   * 자료 주기 — 없으면 월간. 분기 표(KOSIS DT_41401N_008 초기분양률, `collect-market-stats.mjs:64` prdSe "Q")는
+   * `base_month` 뒤 자리가 달이 아니라 **분기 번호**다(운영 DB 실측 2026-10-04: 초기분양률 행의 뒤 두 자리는 01~04 뿐 —
+   * 202602 = 2026년 2분기). 이 칸이 없으면 "2026.02 기준"(2월)이라 거짓을 적는다.
+   */
+  period?: "M" | "Q";
 }
 interface MarketRow {
   base_month?: string;
@@ -19,7 +25,7 @@ interface MarketRow {
 
 // "지역 시장 추이" 상단 안내 — KOSIS 광역 시도 평균 출처 (세션 411 도움말)
 const SECTION_HINT =
-  "이 지역(시·도) 전체의 분양 시장 흐름이에요. 이 단지 하나가 아니라 주변 평균 추세를 보여줘요. (출처: KOSIS 통계, 매달 갱신)";
+  "이 지역(시·도) 전체의 분양 시장 흐름이에요. 이 단지 하나가 아니라 주변 평균 추세를 보여줘요. (출처: KOSIS 통계 — 초기분양율은 분기마다, 나머지는 매달 갱신)";
 
 // 5지표 메타 정보 — KOSIS 시계열 컬럼 ↔ 한국어 라벨/단위/색/도움말.
 // hint = "보는 법" 쉬운 말 (세션 411 — 단위·scoring 방향 적대검증 정정).
@@ -50,7 +56,8 @@ const METRICS: MarketMetric[] = [
     label: "초기분양율",
     unit: "%",
     color: C.amber,
-    hint: "분양 시작 후 초기에 얼마나 팔렸는지(%)예요. 높을수록 인기 많고 안전, 낮으면 미분양 위험 신호예요.",
+    hint: "분양 시작 후 초기에 얼마나 팔렸는지(%)예요. 높을수록 인기 많고 안전, 낮으면 미분양 위험 신호예요. 이 값은 분기(3개월)마다 나와요.",
+    period: "Q",
   },
   {
     key: "land_cost_ratio",
@@ -61,10 +68,19 @@ const METRICS: MarketMetric[] = [
   },
 ];
 
-// "202503" → "03" (월 2자리 표기)
-const monthLabel = (yyyymm: unknown) => {
-  if (typeof yyyymm !== "string" || yyyymm.length !== 6) return "";
-  return yyyymm.slice(4);
+/**
+ * `base_month` → 기준 시점 글자 (E16 — 연도까지). 모양을 모르면 "" — 틀린 달·분기를 말하지 않고 생략한다.
+ * - 월간: "202608" → "2026.08" (달 01~12 만)
+ * - 분기: "202602" → "2026년 2분기" (뒤 두 자리 01~04 만) · "20262" → 같은 뜻(수집기가 가정하는 KOSIS 5자리 꼴)
+ */
+export const baseMonthLabel = (raw: unknown, period: "M" | "Q" = "M"): string => {
+  if (typeof raw !== "string") return "";
+  if (period === "Q") {
+    const m = /^(\d{4})(?:0([1-4])|([1-4]))$/.exec(raw);
+    return m ? `${m[1]}년 ${m[2] ?? m[3]}분기` : "";
+  }
+  const m = /^(\d{4})(0[1-9]|1[0-2])$/.exec(raw);
+  return m ? `${m[1]}.${m[2]}` : "";
 };
 
 /**
@@ -75,7 +91,8 @@ const monthLabel = (yyyymm: unknown) => {
  *   gu: string — DB 표기 ("강남구") 또는 "" (시도 단위)
  *
  * - 5/5 cron 전 데이터 0건 = amberLight 안내 박스 노출
- * - 정상 시 LineChart 5개를 반응형 grid 배치 (auto-fit minmax 280px — 모바일 1열·PC 이상 2열)
+ * - 정상 시 작은 칸 5개(이름 · 최신 값 · 작은 추이 선 · 기준 연·월)를 grid 배치 (세션591 P4 —
+ *   옛 큰 `LineChart` 5개를 분양 탭 지역 통계 묶음 안에 접힘 없이 넣으려고 줄였다)
  * - region 미설정 / loading / error 시 null (조용한 숨김)
  */
 export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }: MarketStatsChartsProps) {
@@ -86,12 +103,6 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
     retry: () => void;
     fallback: boolean;
   };
-
-  // 모든 차트가 같은 x축 라벨 사용
-  const xLabels = useMemo(
-    () => (Array.isArray(data) ? data.map((d: MarketRow) => monthLabel(d?.base_month)) : []),
-    [data]
-  );
 
   // 각 metric 별로 유효 값이 2개 이상 있어야 차트 렌더 가능. 1개 이상 metric 이 그릴 수
   // 있어야 진짜 데이터 있음. data.length>=2 인데 5필드 모두 null 인 경우 + 1행만 값 있는
@@ -183,49 +194,52 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
   const headerSuffix = fallback ? " 시도 평균" : gu ? ` ${gu}` : "";
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", fontSize: F.md, fontWeight: 700, color: C.text }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div style={{ display: "flex", alignItems: "center", fontSize: F.xs, fontWeight: 700, color: C.sub }}>
         지역 시장 추이 ({region}
         {headerSuffix})
         <HelpHint text={SECTION_HINT} label="지역 시장 추이" />
       </div>
-      {/* 반응형 grid — auto-fit minmax 280px: 모바일 1열, PC 이상 2열 자동. 홀수 마지막 차트는 왼쪽 정렬 */}
+      {/* 작은 칸 5개 (세션591 P4 — 옛 큰 선 그래프 5개[칸마다 120px]를 작은 추이 선으로 줄였다).
+          auto-fill minmax 120px: 휴대폰 390 폭에서 2열, PC(분양 탭 폭 ~690)에서 한 줄 5칸(캡처 실측 — 132px 면 4+1). */}
       <div
         data-testid="market-charts-grid"
-        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 12 }}
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 8 }}
       >
         {METRICS.map((m) => {
-          type ChartPoint = { x: string; y: number; label: string };
-          const chartData: ChartPoint[] = data
-            .map((d: MarketRow, i: number) => {
+          type Point = { month: string | undefined; v: number };
+          const pts: Point[] = data
+            .map((d: MarketRow) => {
               // null/undefined 명시적 제외 — Number(null)=0 + isFinite(0)=true 강제 변환 사고 방지
               const raw = d?.[m.key];
               if (raw == null) return null;
               const v = Number(raw);
               if (!Number.isFinite(v)) return null;
-              return { x: xLabels[i] || "", y: v, label: `${xLabels[i] || ""}: ${v.toLocaleString()} ${m.unit}` };
+              return { month: d?.base_month, v };
             })
-            .filter((x): x is ChartPoint => x !== null);
-          if (chartData.length < 2) return null;
+            .filter((x): x is Point => x !== null);
+          if (pts.length < 2) return null;
+          const last = pts[pts.length - 1];
+          const asOf = baseMonthLabel(last.month, m.period ?? "M");
+          const latest = last.v.toLocaleString("ko-KR");
           return (
-            <div key={m.key}>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  fontSize: F.xs,
-                  color: C.muted,
-                  marginBottom: 4,
-                }}
-              >
-                <span style={{ display: "flex", alignItems: "center", fontWeight: 600 }}>
-                  {m.label}
-                  <HelpHint text={m.hint} label={m.label} />
-                </span>
-                <span>{m.unit}</span>
+            <div key={m.key} data-metric={m.key} style={{ background: C.card, borderRadius: 8, padding: "6px 8px" }}>
+              <div style={{ display: "flex", alignItems: "center", fontSize: F.xs, color: C.muted, fontWeight: 600 }}>
+                {m.label}
+                <HelpHint text={m.hint} label={m.label} />
               </div>
-              <LineChart data={chartData} color={m.color} height={120} yLabel={m.label} />
+              {/* 최신 값 — F.base(세션591 보완 F7). 단위·기준 표기는 보조 글자라 작게 둔다. */}
+              <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, whiteSpace: "nowrap" }}>
+                {latest}
+                <span style={{ fontSize: F.micro, fontWeight: 500, color: C.muted, marginLeft: 3 }}>{m.unit}</span>
+              </div>
+              <Sparkline
+                values={pts.map((p) => p.v)}
+                color={m.color}
+                ariaLabel={`${m.label} 추이, 최근 ${latest} ${m.unit}${asOf ? ` (${asOf} 기준)` : ""}`}
+              />
+              {/* E16 — 옛 x축은 월(두 자리)만 적어 연도가 섞여 읽혔다. 최신 값의 기준 시점을 연·월로 적는다. */}
+              {asOf && <div style={{ fontSize: F.micro, color: C.muted }}>{asOf} 기준</div>}
             </div>
           );
         })}

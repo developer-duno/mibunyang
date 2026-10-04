@@ -194,6 +194,11 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   // ── 세션508 PR-3c C2: 분양 탭 `detail/BuilderCard`(시공사 정보) 3필드. `builder` 는
   // 종합 탭 "단지 기본정보" 격자(OVERVIEW_SECTIONS)에서 뺀 자리 — 표면 중복 차단.
   "builder",
+  // ⚠️ 세션591 사장님 결정: 이 값은 신용평가사 등급이 아니라 부채비율로 계산한 값이라(dart-builders.mjs
+  //   estimateCreditGrade) 분양 탭 시공사 블록에서 칩을 뺐다 — 바로 아래 부채비율 눈금이 같은 내용이다.
+  //   등재는 남긴다(빼면 분양 탭 서랍에 새로 나타난다). 로그인 손님은 점수 탭 "시공사 재무" 줄에서 이 등급을 본다 ·
+  //   비로그인은 점수 탭이 잠겨 이 등급 글자를 어디서도 못 본다(사장님 결정: 분양 탭에서 등급 글자를 뺌 — 같은 내용인
+  //   부채비율 눈금은 분양 탭에서 누구나 본다).
   "builderCreditGrade",
   "builderDebtRatio",
   // ── 세션508 PR-3c C3: 분양 탭 `charts/PresaleTimeline`(분양 진행 그림) 3필드. 옛
@@ -201,6 +206,9 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   "competitionRate",
   "competitionSupply",
   "competitionApplicants",
+  // ── 세션591 P3: 분양 탭 "분양 안전" 접힘(PRESALE_SECTIONS)을 해체하고 `detail/RegionStats` 눈금으로
+  // 옮긴 계약해제율(시·군·구 매매 거래로 잰 값이라 지역 통계 묶음이 제자리).
+  "cancelRatio6m",
   // ── 세션508 PR-3c C4: 종합 탭 `detail/BuildingInfoCard`(건물 정보) 7필드. `heatFuel`·
   // `primaryDirection` 은 종합 탭 "단지 기본정보" 격자(OVERVIEW_SECTIONS)에서 뺀 자리 —
   // 표면 중복 차단. 나머지 5필드는 옛 종합 탭 아코디언(서랍) 소속이었다 — 이 카드가 마저

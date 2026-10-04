@@ -1,34 +1,55 @@
-import { memo, useState } from "react";
+import { memo, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
+import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
+import { PositionGauge, positionPct } from "@/components/charts/PositionGauge";
 import type { Apt } from "@/types/scoring";
 
 /**
- * BuilderCard — 분양 탭 "시공사" 전용 카드 (세션508 PR-3c C2).
+ * BuilderCard — 분양 탭 "시공사" 블록 (세션508 PR-3c C2 · 세션591 P2 접힘 해체).
  *
- * 필드 3개: `builder`·`builderCreditGrade`·`builderDebtRatio`. **`hugGuarantee` 는 뺐다**
- * (사장님 확정 — 수집률 0%, 세션 507 Q6 유지). `builder` 는 종합 탭 "단지 기본정보" 격자
- * (`lib/dataSections.ts` OVERVIEW_SECTIONS)에서 뺀 자리 — 신용등급·부채비율과 한 카드에
- * 모아 "이 시공사를 믿어도 되나"를 한 자리에서 답한다.
+ * 그리는 것 2가지: 시공사 이름 칩(`builder`) · 부채비율 눈금(`builderDebtRatio`).
+ * **`hugGuarantee` 는 뺐다**(사장님 확정 — 수집률 0%, 세션 507 Q6 유지).
  *
- * ## builderCreditGrade — fmt 재사용 (새로 짓지 않는다)
+ * ## 세션591 — 접힘 → 칩 + 부채비율 눈금
  *
- * 라이브 실측: 등급 null 85.3% 중 **48.7%는 "해당없음"**(공기업·신탁·조합 — 신용등급
- * 개념 자체가 없다)이고 **36.5%는 진짜 미수집**(삼성물산·디엘이앤씨 등 대형사 포함).
- * `FIELD_META.builderCreditGrade.fmt` 가 이미 이 둘을 갈라 말한다 — 색만 새로 입히고
- * 문구는 그대로 재사용한다(v1 플랜이 센티널 문구를 새로 지으려다 오류난 것과 같은 함정).
+ * 옛 "시공사 정보" 접힘(3칸 표)을 펼치지 않아도 보이게 바꿨다. **그릴 것(이름 칩 또는 부채비율 눈금)이
+ * 하나도 없으면 블록 자체를 안 그린다**(제목만 남는 빈 블록 금지).
  *
- * ## builderDebtRatio — fmt 를 못 쓰는 이유
+ * ## builderCreditGrade — 분양 탭에서 뺐다 (세션591 사장님 결정)
  *
- * `FIELD_META.builderDebtRatio.fmt` 는 null 을 "—"로만 그려 폴백(`_fallbackBuilderDebt`)을
- * 못 가른다. `scoreRisk.ts:240` 이 이미 쓰는 판정("null 이거나 폴백이면 미수집")을
- * 그대로 이관한다(Track A 와 일관 — #368).
+ * 이 칸의 값은 신용평가사 등급이 아니라 `dart-builders.mjs` `estimateCreditGrade(부채비율)` 로 **부채비율에서
+ * 계산한 값**이다(정적 사본 등급 보유 400곳 전부 계산값과 일치). 바로 아래 부채비율 눈금이 같은 내용을 말하므로
+ * "신용등급" 칩은 뺐다. 점수 탭(`scoreRisk.ts` "시공사 재무")·카드 칩은 그대로다(이름 정리는 따로).
+ *
+ * ## builder — fmt 재사용 (등급 어휘를 새로 짓지 않는다)
+ *
+ * `FIELD_META.builder.fmt` 가 이미 "롯데건설 (1군)" · "OO신탁 (브랜드 해당없음)" · "OO건설 (기타)" 를
+ * 가른다(`BRAND_TIER` + 해당없음 판정). 칩 글자로 그대로 쓴다.
+ *
+ * ## builderDebtRatio — 눈금 (기준선은 `BUILDER_DEBT_TIERS` 에서)
+ *
+ * 폴백(`_fallbackBuilderDebt`)이거나 null 이면 눈금을 안 그린다(`scoreRisk.ts` 의 "미수집" 판정 이관 —
+ * 지역 평균 대체값을 이 시공사 값처럼 그리지 않는다, #368).
+ * 눈금: 가운데 = 첫 경계(150) · 왼쪽 끝 = 둘째 경계(200 — 그 위로는 점수가 더 안 움직인다) · 오른쪽 끝 =
+ * 가운데에서 같은 폭만큼 반대쪽(100). **오른쪽이 유리**(부채가 적다). 끝을 넘는 값(551% 등)은 끝점에 찍힌다.
+ * 실제 값은 제목("부채비율 168.2%")에, 가운데 글자는 "기준 150%" — 가운데 눈금 바로 밑에 실제 값을 찍으면
+ * "150 자리에 168"로 읽힌다(세션591 보완 F2 · 입지 탭 소음 게이지 F4 와 같은 처리).
  */
-const FIELDS = ["builder", "builderCreditGrade", "builderDebtRatio"] as const;
 
-const BC_S: Record<string, import("react").CSSProperties> = {
-  // 옛 TransportCard 의 TC_S.container 와 byte-identical 이었다(같은 탭 형제와 시각 일관). 그 카드는 세션591 에
-  // 해체됐고, 같은 모양은 BuildingInfoCard 가 이어 쓴다.
+/** 부채비율 눈금의 세 점 — 손으로 적지 않고 점수표 경계에서 읽는다 */
+export const DEBT_GAUGE = (() => {
+  const center = BUILDER_DEBT_TIERS[0].max; // 150 — 기준
+  const worst = BUILDER_DEBT_TIERS[1].max; // 200 — 그 위로는 점수가 안 움직인다
+  return { center, worst, best: center - (worst - center) };
+})();
+
+/** 부채비율 → 색. 경계는 `BUILDER_DEBT_TIERS` (≤150 초록 · ≤200 주황 · 그 위 빨강) */
+export function debtColor(d: number): string {
+  return d <= BUILDER_DEBT_TIERS[0].max ? C.green : d <= BUILDER_DEBT_TIERS[1].max ? C.amber : C.red;
+}
+
+const BC_S: Record<string, CSSProperties> = {
   container: {
     background: C.bg,
     borderRadius: 10,
@@ -36,63 +57,60 @@ const BC_S: Record<string, import("react").CSSProperties> = {
     marginBottom: 10,
     border: `1px solid ${C.border}`,
   },
-  head: { display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, cursor: "pointer" },
-  title: { fontSize: F.sm, fontWeight: 700, color: C.sub },
-  arrow: { fontSize: F.sm, color: C.muted, transition: "transform .2s", display: "inline-block" },
-  body: { marginTop: 8 },
-  cell: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" },
-  label: { fontSize: F.xs, color: C.muted },
-  value: { fontSize: F.xs, fontWeight: 600, color: C.text },
+  // 블록 제목 — 입지 탭 '치안 · 환경'·같은 탭 '네이버 분양정보'와 같은 크기·색(세션591 보완 F7)
+  title: { fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 },
+  chips: { display: "flex", flexWrap: "wrap", gap: 6 },
+  chip: {
+    display: "inline-flex",
+    alignItems: "center",
+    fontSize: F.sm,
+    color: C.text,
+    background: C.card,
+    border: `1px solid ${C.border}`,
+    borderRadius: 99,
+    padding: "3px 10px",
+    lineHeight: 1.4,
+  },
+  // 흰 바탕 — 게이지 눈금(slate100)이 회색 바탕(C.bg) 위에선 안 보인다(입지 탭 소음 게이지와 같은 처리)
+  gauge: { marginTop: 10, background: C.card, borderRadius: 8, padding: "6px 10px" },
+  gaugeTitle: { fontSize: F.sm, fontWeight: 700 },
 };
 
-function Field({ field, label, value }: { field: string; label: string; value: string }) {
-  return (
-    <div style={BC_S.cell} data-field={field}>
-      <span style={BC_S.label}>{label}</span>
-      <span style={BC_S.value}>{value}</span>
-    </div>
-  );
-}
-
 export const BuilderCard = memo(function BuilderCard({ apt }: { apt: Apt }) {
-  const [open, setOpen] = useState(false);
-  const hasAny = FIELDS.some((f) => apt[f] != null);
-  if (!hasAny) return null;
+  const builderText = apt.builder != null ? FIELD_META.builder.fmt(apt.builder, apt) : null;
 
-  // scoreRisk.ts:240 이 이미 쓰는 판정을 그대로 이관 — 우리 값이 없어 지역 평균 등으로
-  // 채운 폴백 상태(_fallbackBuilderDebt)면 부채비율을 "미수집"으로 감춘다.
+  // scoreRisk.ts 와 같은 "미수집" 판정 — null 이거나 폴백이면 눈금을 안 그린다.
   const builderDebtRatio = apt.builderDebtRatio as number | null | undefined;
-  const debtText = builderDebtRatio == null || apt._fallbackBuilderDebt ? "미수집" : `${builderDebtRatio}%`;
+  const debt =
+    builderDebtRatio != null && !apt._fallbackBuilderDebt && Number.isFinite(Number(builderDebtRatio))
+      ? Number(builderDebtRatio)
+      : null;
+
+  // 실제로 그릴 것이 있는가로 판정한다(신용등급만 있는 단지는 이제 그릴 것이 없다).
+  if (!builderText && debt == null) return null;
 
   return (
-    <div style={BC_S.container}>
-      <div
-        onClick={() => setOpen((v) => !v)}
-        role="button"
-        tabIndex={0}
-        aria-expanded={open}
-        onKeyDown={(e) => {
-          if (e.key === "Enter" || e.key === " ") {
-            e.preventDefault();
-            setOpen((v) => !v);
-          }
-        }}
-        style={BC_S.head}
-      >
-        <span style={BC_S.title}>시공사 정보</span>
-        <span aria-hidden style={{ ...BC_S.arrow, transform: open ? "rotate(180deg)" : "rotate(0)" }}>
-          ▼
-        </span>
-      </div>
-      {open && (
-        <div style={BC_S.body}>
-          <Field field="builder" label={FIELD_META.builder.label} value={FIELD_META.builder.fmt(apt.builder, apt)} />
-          <Field
-            field="builderCreditGrade"
-            label={FIELD_META.builderCreditGrade.label}
-            value={FIELD_META.builderCreditGrade.fmt(apt.builderCreditGrade, apt)}
+    <div style={BC_S.container} data-testid="builder-block">
+      <div style={BC_S.title}>시공사</div>
+      {builderText && (
+        <div style={BC_S.chips}>
+          <span style={BC_S.chip} data-chip="builder">
+            {builderText}
+          </span>
+        </div>
+      )}
+      {debt != null && (
+        <div style={BC_S.gauge} data-testid="debt-gauge" data-debt={debt}>
+          <div style={{ ...BC_S.gaugeTitle, color: debtColor(debt) }}>
+            부채비율 {FIELD_META.builderDebtRatio.fmt(debt, apt)}
+          </div>
+          <PositionGauge
+            pct={positionPct(debt, DEBT_GAUGE.center, DEBT_GAUGE.best, DEBT_GAUGE.worst)}
+            color={debtColor(debt)}
+            leftLabel={`높음 ${DEBT_GAUGE.worst}%`}
+            centerLabel={`기준 ${DEBT_GAUGE.center}%`}
+            rightLabel={`낮음 ${DEBT_GAUGE.best}%`}
           />
-          <Field field="builderDebtRatio" label={FIELD_META.builderDebtRatio.label} value={debtText} />
         </div>
       )}
     </div>

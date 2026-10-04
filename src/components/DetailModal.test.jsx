@@ -403,8 +403,8 @@ describe("DetailModal StickyJumpNav", () => {
     expect(price?.textContent).not.toContain("네이버 교차검증");
   });
 
-  // 세션 507 PR-2 — 지역 통계 7종은 분양 탭 서랍으로. 닫힌 상태에서 "이 단지 값이 아니다"를 먼저 말한다
-  it("분양 탭에 '이 지역 통계' 서랍이 닫힌 채 보이고, 이 단지 값이 아님을 알린다 (세션 507)", () => {
+  // 세션 507 PR-2 — 지역 통계 7종은 분양 탭으로. 세션591 에 접힘 없는 묶음이 됐다 — 제목 줄이 "이 단지 값이 아니다"를 먼저 말한다
+  it("분양 탭에 '이 지역 통계' 묶음이 보이고, 이 단지 값이 아님을 알린다 (세션 507 · 세션591 접힘 해체)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     fireEvent.click(screen.getByRole("tab", { name: "분양" }));
     const presale = container.querySelector("#sec-presale");
@@ -1058,6 +1058,40 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     it("정상 YYYYMM 은 원문과 어긋나도 정본을 쓴다", () => {
       render(<DetailModal {...makeProps({ item: itemWithApt({ completion: "202812", presaleMoveIn: "2030-05" }) })} />);
       expect(screen.getByText("2028년 12월")).toBeInTheDocument();
+    });
+  });
+
+  // 세션591 보완 H1 — 분양 탭이 PresaleTimeline 에 입주 시기·준공월을 실제로 넘기는지(배선) 지킨다.
+  //   PresaleTimeline 단위 시험만으로는 DetailModal 의 두 prop 을 빼도 초록이었다(재검사 D).
+  //   실제 시각에 기대지 않게 극단값만 쓴다(2020년 = 분명히 지남 · 2099년 = 분명히 앞날).
+  // ⚠️ 뮤테이션 대상: DetailModal 의 `moveIn=`·`completion=` 두 줄을 빼면 red 여야 한다.
+  describe("분양 탭 — 입주 시기가 지난 입주예정은 단계 칸을 안 그린다 (세션591 보완 G1·H1)", () => {
+    /** @param {Record<string, unknown>} aptOver
+     * @returns {any} */
+    const itemWithApt = (aptOver) => ({ ...makeItem(), apt: { ...makeItem().apt, ...aptOver } });
+    /** @param {Record<string, unknown>} aptOver */
+    const presaleText = (aptOver) => {
+      const { container } = render(<DetailModal {...makeProps({ item: itemWithApt(aptOver) })} />);
+      fireEvent.click(screen.getByRole("tab", { name: "분양" }));
+      return container.querySelector("#sec-presale")?.textContent ?? "";
+    };
+
+    it("입주 시기 2020-01(지남) → 단계 칸·'입주를 앞두고 있어요' 없음", () => {
+      const t = presaleText({ presaleStage: "입주예정", presaleMoveIn: "2020-01", completion: null });
+      expect(t).not.toContain("분양계획");
+      expect(t).not.toContain("입주를 앞두고 있어요");
+    });
+
+    it("입주 시기는 없고 준공월 202001(지남) → 단계 칸 없음 (준공월로 대신 판정하는 배선)", () => {
+      const t = presaleText({ presaleStage: "입주예정", presaleMoveIn: null, completion: "202001" });
+      expect(t).not.toContain("분양계획");
+      expect(t).not.toContain("입주를 앞두고 있어요");
+    });
+
+    it("입주 시기 2099-12(앞날) → 단계 칸과 설명 줄이 있다", () => {
+      const t = presaleText({ presaleStage: "입주예정", presaleMoveIn: "2099-12", completion: "209912" });
+      expect(t).toContain("분양계획");
+      expect(t).toContain("입주를 앞두고 있어요");
     });
   });
 

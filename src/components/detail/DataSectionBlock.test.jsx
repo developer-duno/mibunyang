@@ -136,11 +136,11 @@ describe("DataSectionBlock", () => {
   //    PRESALE_SECTIONS.grid 에서 빠지고 청약 진행 그림 아래 실값 병기로 옮겨갔다. 콤마
   //    포맷("437,995 : 1") 검증은 `PresaleTimeline.test.tsx` 가 이미 갖고 있다.
 
-  // 세션 505: 경쟁률이 비어도 계약해제율은 남는다 — hideWhenEmpty 를 뗀 이유가 이것이다
-  it("경쟁률이 비어도 '분양 안전' 섹션은 사라지지 않는다 (계약해제율이 남는다)", () => {
-    const apt = /** @type {any} */ (makeApt({ competitionRate: null, cancelRatio6m: 3.4 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
-    expect(screen.getByText("분양 안전")).toBeTruthy();
+  // 세션591 P3 — 옛 "분양 안전" 접힘(계약해제율 1칸)은 해체됐다. 계약해제율은 시·군·구 값이라
+  //   `detail/RegionStats` 눈금으로 옮겼다(그쪽 도달은 RegionStats.test.jsx · tabExtraFields.test.ts).
+  it("분양 탭 '분양 안전' 표는 되살아나지 않는다 (세션591 — 계약해제율은 지역 통계 눈금으로)", () => {
+    expect(find("분양 안전")).toBeUndefined();
+    expect(PRESALE_SECTIONS).toEqual([]);
   });
 
   // 세션508 PR-3b: 교통 필드 null → "—" 검증은 TransportCard.test.tsx 로 이관했다
@@ -173,23 +173,22 @@ describe("DataSectionBlock", () => {
   });
 
   // 세션 411 — hint 있는 섹션 헤더에 ? 도움말 + 클릭이 섹션 토글과 분리(stopPropagation)
-  it("hint 있는 섹션('분양 안전')은 헤더에 ? 도움말을 표시한다", () => {
-    const apt = /** @type {any} */ (makeApt({ competitionRate: 5.2 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
-    expect(screen.getByLabelText("분양 안전 풀이 보기")).toBeInTheDocument();
+  // ⚠️ 세션591 P3: 옛 대상이던 "분양 안전" 섹션이 해체돼 같은 동작을 주입 섹션(ENV_FIXTURE)으로 이어 간다.
+  it("hint 있는 섹션은 헤더에 ? 도움말을 표시한다", () => {
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
+    expect(screen.getByLabelText("치안/환경 풀이 보기")).toBeInTheDocument();
   });
 
   it("? 클릭은 섹션을 펼치지 않는다 (stopPropagation — 토글과 분리)", () => {
-    const apt = /** @type {any} */ (makeApt({ cancelRatio6m: 3.4 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("분양 안전"))} apt={apt} />);
+    const apt = /** @type {any} */ (makeApt());
+    render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
     // 헤더 토글 button = aria-expanded 보유 (? 트리거도 role=button 이라 expanded 로 특정)
     const toggle = screen.getByRole("button", { expanded: false });
-    fireEvent.click(screen.getByLabelText("분양 안전 풀이 보기"));
+    fireEvent.click(screen.getByLabelText("치안/환경 풀이 보기"));
     // 섹션은 여전히 접힘(? 클릭이 부모 토글로 전파 안 됨), 도움말만 표시
-    // ⚠️ 세션508 PR-3c C3: 청약경쟁 3필드가 그림으로 옮겨가며 hint 문구도 계약해제율
-    //    중심으로 바뀌었다("몇 대 1" 문구는 이제 없다).
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.getByRole("tooltip")).toHaveTextContent(/계약해제율/);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(/치안 안전등급/);
   });
 
   // 세션 412: 모든 실제 섹션이 hint 를 가지므로, hint 없는 섹션 객체를 직접 주입해

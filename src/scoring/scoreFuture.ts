@@ -1,5 +1,8 @@
 import {
   tierMax,
+  tierMin,
+  POP_GROWTH_TIERS,
+  POP_GROWTH_LOW_SCORE,
   TRANSIT_OPEN,
   TRANSIT_CERTAINTY,
   TRANSIT_CERTAINTY_DEFAULT,
@@ -205,23 +208,9 @@ export function scoreFuture(apt: Apt): Res {
   const citySc =
     !cityCoordUnknown && cityMatch ? tierMax(parseFloat(cityMatch[2]), CITY_DIST_TIERS, DEV_DIST_FAR_SCORE) : 0;
 
-  // 인구 (기본 30%) — 한국 현실 기반 7단계
-  let popSc =
-    apt.popGrowth == null
-      ? 35
-      : apt.popGrowth >= 1.0
-        ? 95
-        : apt.popGrowth >= 0.5
-          ? 80
-          : apt.popGrowth >= 0
-            ? 65
-            : apt.popGrowth >= -0.3
-              ? 50
-              : apt.popGrowth >= -0.8
-                ? 35
-                : apt.popGrowth >= -2.0
-                  ? 20
-                  : 10;
+  // 인구 (기본 30%) — 한국 현실 기반 7단계. 경계·점수는 `POP_GROWTH_TIERS`(세션591 — 옛 손글씨 7단
+  //   삼항을 그대로 옮겼다. `tierMin` 은 같은 `>=` 첫 매칭이라 NaN·±Infinity 까지 결과가 같다).
+  let popSc = apt.popGrowth == null ? 35 : tierMin(apt.popGrowth, POP_GROWTH_TIERS, POP_GROWTH_LOW_SCORE);
   if (apt.netMigration != null && apt.netMigration > 0) popSc = Math.min(popSc + 10, 100);
   if (apt.netMigration != null && apt.netMigration <= -5000) popSc = Math.max(popSc - 5, 0);
 

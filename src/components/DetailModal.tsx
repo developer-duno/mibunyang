@@ -33,7 +33,7 @@ import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { BlindScoreBadge, LoginCta, ScoreLockPanel } from "./detail/ScoreBlind";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
-import { OVERVIEW_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
+import { OVERVIEW_SECTIONS, PRICE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { UnsoldEventCard } from "./detail/UnsoldEventCard";
 import { BuilderCard } from "./detail/BuilderCard";
@@ -864,7 +864,8 @@ export const DetailModal = memo(function DetailModal({
                 role="tabpanel"
                 aria-labelledby="tab-sec-presale"
                 data-tab-panel
-                style={panelStyle("sec-presale")}
+                // 첫 블록이 붙박이 탭 줄에 바로 붙지 않게 위 여백을 둔다(세션591 P5 — 입지·시세 탭과 같은 값).
+                style={{ ...panelStyle("sec-presale"), paddingTop: 12 }}
               >
                 <PresaleTimeline
                   stage={(mergedApt ?? apt).presaleStage as string | null}
@@ -874,6 +875,8 @@ export const DetailModal = memo(function DetailModal({
                   competitionRate={(mergedApt ?? apt).competitionRate as number | null}
                   competitionSupply={(mergedApt ?? apt).competitionSupply as number | null}
                   competitionApplicants={(mergedApt ?? apt).competitionApplicants as number | null}
+                  moveIn={(mergedApt ?? apt).presaleMoveIn as string | null}
+                  completion={(mergedApt ?? apt).completion as string | null}
                 />
                 {/* 세션508 PR-3a A5: raw apt → mergedApt ?? apt 통일. ⚠️ 다만 **값이 바뀌지는 않는다** —
                   이 컴포넌트가 읽는 건 presale* 계열인데 detail 버킷(staticDataApi.ts:63-73)엔 그 필드가
@@ -887,20 +890,17 @@ export const DetailModal = memo(function DetailModal({
                 {/* 추가 모집(무순위 공고) 이력 카드 (세션508 PR-3c C1) — ah- 단지만 그린다. */}
                 <UnsoldEventCard apt={mergedApt ?? apt} />
 
-                {/* 시공사 카드 (세션508 PR-3c C2) — builder·builderCreditGrade·builderDebtRatio. */}
+                {/* 시공사 (세션508 PR-3c C2 · 세션591 P2) — 칩(시공사·신용등급) + 부채비율 눈금, 접힘 없음. */}
                 <BuilderCard apt={mergedApt ?? apt} />
 
-                {/* 계약해제율 (세션 408 D2a, 세션508 PR-3c C3: 청약경쟁 3필드는 위 진행 그림으로 이동) */}
-                {PRESALE_SECTIONS.map((s) => (
-                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-                ))}
+                {/* 옛 "분양 안전" 접힘(계약해제율 1칸)은 세션591 P3 에 해체 — 계약해제율은 시·군·구 값이라
+                  아래 "이 지역 통계" 묶음의 눈금으로 옮겼다. */}
                 <AnnouncementLink apt={mergedApt ?? apt} />
 
                 {/* 관리자 인사이트(동/호수·평형 공급)는 세션 409 D2b 로 관리자 탭(sec-admin)으로 이동 */}
 
-                {/* 이 지역 통계 (세션 507 PR-2) — 시세 탭 표에 단지 값과 섞여 있던 인구·의료·
-                  거래량 7종을 지역 시장 추이 그래프와 한 서랍에 모았다. 그래프 자체는
-                  `MarketStatsCharts` 무변경 재사용(RegionStats 안에서 그린다). */}
+                {/* 이 지역 통계 (세션 507 PR-2 · 세션591 P4) — 인구·의료·거래량·계약해제율과 지역 시장 추이를
+                  테두리 묶음 하나에 접힘 없이: 작은 추이 선 5 · 눈금 4 · 작은 글자 한 줄. */}
                 <RegionStats apt={mergedApt ?? apt} />
                 <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-presale" />
               </section>

@@ -34,7 +34,7 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
  * (2026-09-01 03:00 KST 실측: 로컬 UTC 기준 24319=2026-08 vs KST 고정 24320=2026-09).
  * 저장소 워크플로에 TZ 핀이 하나도 없어(`grep -rn "TZ:" .github/workflows/` → 0건) 여기서 고정한다.
  */
-function currentMonthIndexKst(nowMs: number = Date.now()): number {
+export function currentMonthIndexKst(nowMs: number = Date.now()): number {
   const kst = new Date(nowMs + KST_OFFSET_MS);
   return kst.getUTCFullYear() * 12 + kst.getUTCMonth();
 }
@@ -66,7 +66,7 @@ function currentMonthIndexKst(nowMs: number = Date.now()): number {
  * 형식에 안 맞으면 **거부(null)** 한다 — `new Date(s)` 폴백을 두면 "20266"(네이버 "2026.6" 이
  * slice 된 값) 같은 5자리가 서기 20266년으로 조용히 통과한다.
  */
-function parseCompletionMonth(completion: string | null | undefined): number | null {
+export function parseCompletionMonth(completion: string | null | undefined): number | null {
   if (completion == null) return null;
   const s = completion.toString().trim();
   if (!s) return null;

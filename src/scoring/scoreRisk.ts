@@ -13,6 +13,8 @@ import {
   CREDIT_GRADE_SCORES,
   CREDIT_DEFAULT,
   BUILDER_DEBT_UNKNOWN_ADJ,
+  BUILDER_DEBT_TIERS,
+  BUILDER_DEBT_HIGH_ADJ,
   HOUSING_SUPPLY_LEVEL_TIERS,
   HOUSING_SUPPLY_HIGH_SCORE,
   HOUSING_SUPPLY_UNKNOWN_SCORE,
@@ -130,11 +132,11 @@ export function scoreRisk(apt: Apt): Res {
     ((CREDIT_GRADE_SCORES as Record<string, number>)[String(builderCreditGrade)] ?? CREDIT_DEFAULT) +
     (builderDebtRatio == null
       ? BUILDER_DEBT_UNKNOWN_ADJ
-      : builderDebtRatio > 200
-        ? 20
-        : builderDebtRatio > 150
-          ? 10
-          : 0);
+      : builderDebtRatio > BUILDER_DEBT_TIERS[1].max
+        ? BUILDER_DEBT_HIGH_ADJ
+        : builderDebtRatio > BUILDER_DEBT_TIERS[0].max
+          ? BUILDER_DEBT_TIERS[1].score
+          : BUILDER_DEBT_TIERS[0].score);
   // 공공분양 재무안전 보너스
   if (apt.presaleType != null && (apt.presaleType as string).includes("공공")) finSc += PUBLIC_PRESALE_BONUS;
   finSc = Math.max(0, Math.min(finSc, 100));
