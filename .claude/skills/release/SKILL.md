@@ -1,14 +1,18 @@
 ---
 name: release
-description: mibunyang PR 머지 후 배포 확인·production 라이브 검증 절차를 강제한다. Vercel 자동 배포 상태 확인 → production 도메인 라이브 검증 → 잔여(👤 사용자 수동 검증) 정리 → 메모리 기록. Claude 가 스스로 판단해 발동 — PR 머지 직후, "배포 확인", "production 검증", "릴리스" 표현 시. 사용 안 함 = 머지 전, 코드 작성 중.
-when_to_use: |
+description: PR 머지 직후 Vercel 배포 확인 → production 라이브 검증 → 👤 수동 검증 잔여 정리 → 메모리 기록. 트리거 = "배포 확인", "production 검증", "릴리스", "라이브 확인". 사용 안 함 = 머지 전, 코드 작성 중.
+allowed-tools: Bash, Read
+---
+
+## 언제 쓰나 (frontmatter 설명에서 옮김 — 원문 그대로)
+
+mibunyang PR 머지 후 배포 확인·production 라이브 검증 절차를 강제한다. Vercel 자동 배포 상태 확인 → production 도메인 라이브 검증 → 잔여(👤 사용자 수동 검증) 정리 → 메모리 기록. Claude 가 스스로 판단해 발동 — PR 머지 직후, "배포 확인", "production 검증", "릴리스" 표현 시. 사용 안 함 = 머지 전, 코드 작성 중.
+
   Claude 가 자동 판단해 발동:
   - PR squash 머지 직후 (main 갱신됨)
   - "배포 확인", "production 검증", "릴리스", "라이브 확인" 표현
   사용 안 함:
   - 머지 전 / 코드 작성 중 / 단순 조회
-allowed-tools: Bash, Read
----
 
 mibunyang 은 **Vercel git 자동 배포**라 main 머지 = production 배포 자동 트리거. 이 skill 은 "머지 후 검증 누락"을 막는다(머지만 하고 라이브 확인 안 하던 패턴 방지).
 

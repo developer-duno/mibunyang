@@ -1,7 +1,13 @@
 ---
 name: cross-validate
-description: 커밋 직전 mibunyang 도메인 5교차검증 + simplify 를 자동 실행. simplify 이후 5개 축(빌드·스코어링·null안전성·Hook규칙·보안)을 병렬 서브에이전트로 점검한다. Claude 가 스스로 판단해 발동 — 사용자 타이핑 불필요. 트리거 = 코드 변경 후 커밋/PR 직전, "커밋", "검증하고 커밋", "교차검증", "Review 단계". 사용 안 함 = 단순 문서/주석 1줄 변경, 조회만 한 경우.
-when_to_use: |
+description: 커밋·PR 직전 mibunyang 5교차검증(빌드·스코어링·null안전성·Hook규칙·보안) + simplify 자동 실행. 트리거 = 코드 변경 후 "커밋", "검증하고 커밋", "교차검증", "Review 단계". 사용 안 함 = 문서/주석 1줄 변경, 조회만.
+allowed-tools: Task, Bash, Read, Grep, Edit
+---
+
+## 언제 쓰나 (frontmatter 설명에서 옮김 — 원문 그대로)
+
+커밋 직전 mibunyang 도메인 5교차검증 + simplify 를 자동 실행. simplify 이후 5개 축(빌드·스코어링·null안전성·Hook규칙·보안)을 병렬 서브에이전트로 점검한다. Claude 가 스스로 판단해 발동 — 사용자 타이핑 불필요. 트리거 = 코드 변경 후 커밋/PR 직전, "커밋", "검증하고 커밋", "교차검증", "Review 단계". 사용 안 함 = 단순 문서/주석 1줄 변경, 조회만 한 경우.
+
   Claude 가 자동 판단해 발동:
   - 코드 변경(src/·api/·scripts/) 후 커밋·PR 직전 (Review 단계)
   - "커밋", "교차검증", "검증하고 커밋", "Review" 등 마무리 의도
@@ -10,8 +16,6 @@ when_to_use: |
   - 단순 문서/주석 1줄 변경
   - 조회·grep 만 한 경우 (변경 0)
   - 단일 유틸 1개 수정 시 "빌드 + null 안전성" 선별 호출 허용
-allowed-tools: Task, Bash, Read, Grep, Edit
----
 
 CLAUDE.md / [WORK_RULES.md](../../WORK_RULES.md) "Review 단계" 규칙을 자동화한다. simplify 이후 5개 축을 **병렬** 서브에이전트로 점검.
 

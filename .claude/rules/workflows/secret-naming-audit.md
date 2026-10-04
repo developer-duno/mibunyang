@@ -1,73 +1,14 @@
----
-title: ETL 환경변수 이름 동기화 감사
-incident_dates: ["2026-04-15", "2026-05-12", "2026-05-13"]
-related_collectors: ["migration.mjs", "data-fill.mjs", "collect-migration.yml"]
----
-
 # Secret 이름 3-way 동기화 감사 — Code ↔ Workflow ↔ Orchestrator
 
-> 사건·이력 (세션232 — `collect-migration.yml` 이 `MOIS_POP_KEY` 만 주입하는데 `migration.mjs` 는 `KOSIS_MIGRATION_KEY` 만 사용해 1개월 방치. `data-fill.mjs` 도 동일 불일치라 orchestration 사전 validate 무력화) → [rules-history/workflows/secret-naming-audit.md](../../rules-history/workflows/secret-naming-audit.md)
+## 한 줄
 
-## 근본 원인 = 3-way 비동기
-
-3개 위치에 같은 환경변수 이름이 박혀야 하는데 동기화 강제 메커니즘 0:
-
-| 위치 | 역할 | 박제 형식 |
-|---|---|---|
-| `scripts/collectors/<name>.mjs` | 코드가 실제 읽음 | `process.env.X` |
-| `.github/workflows/<name>.yml` | GitHub Actions 가 주입 | `X: ${{ secrets.X }}` (env block) + validate step |
-| `scripts/collectors/data-fill.mjs` (orchestrator) | 사전 사용성 검사 | `envKeys: ["X"]` |
-
-3 군데가 손으로 동기화되어야 함 → 1 군데만 박아도 sub schedule run 1회 통과 → 4xx fail 만 발생 → 사람 못 봄.
+같은 환경변수 이름이 세 곳 — 코드 `process.env.X`(`scripts/collectors/<name>.mjs`) · 워크플로 env block `X: ${{ secrets.X }}` + validate step(`.github/workflows/<name>.yml`) · 오케스트레이터 `envKeys: ["X"]`(`scripts/collectors/data-fill.mjs`) — 에 맞아야 한다. 한 곳만 어긋나도 schedule 이 4xx 로 조용히 실패한다.
 
 ## 재발 방지 (3중)
 
-### 1. 정적 audit 스크립트 (`scripts/audit-env-keys.mjs`)
-
-매 ETL collector 마다 3-way 일치 자동 검출:
-
-```js
-// 의사 코드 (스크립트 본문은 별도 파일)
-// 1. scripts/collectors/*.mjs 파싱 → process.env.X 추출
-// 2. .github/workflows/collect-<name>.yml 파싱 → env block + validate 추출
-// 3. data-fill.mjs 파싱 → envKeys 추출 (해당 scripts: 가 collector 포함 시)
-// 4. mismatch 발견 시 exit 1 + 어느 위치 빠졌는지 표시
-```
-
-#### matrix orchestrator 답습 (세션 304 보강 완료)
-
-세션 232 → 294 동일 사고 (`KOSIS_MIGRATION_KEY` env block 누락) 3년 2회 재발 차단. audit-env-keys.mjs 에 `MATRIX_ORCHESTRATORS` 상수 + `extractMatrixJobs()` 함수 추가. matrix yml 안의 각 script 항목 (예: `{ cmd: "migration" }`) 별 envBlock vs collector codeKeys 교차 검증.
-
-답습 범위:
-- `.github/workflows/fill-missing-data.yml` 의 phase2-calc / phase3-external / phase4-independent matrix
-- `data-fill.mjs` orchestrator envKeys 는 기존 `extractDataFillEnvKeys()` 가 답습 중 (변경 0)
-
-새 matrix orchestrator yml 추가 시: `scripts/audit-env-keys.mjs` 의 `MATRIX_ORCHESTRATORS` 배열에 yml 경로 1줄 추가 (사람 박제).
-
-구현 답습:
-- `js-yaml@4.1.1` (transitive via ESLint, MIT) — 정규식 fragile 회피 (`\Z` JS 미지원 사고 답습), FAILSAFE_SCHEMA 옵션 (strings/arrays/objects 만, GitHub Actions secrets 안전)
-- §15 GitHub 오픈소스 답습 룰 정착 — README/사용설명 답습 후 부분 옵션 답습 (`{ schema: yaml.FAILSAFE_SCHEMA }`)
-
-> 사건·이력 (세션304 재현 시뮬 + 신규 사고 동시 발견·정정) → [rules-history/workflows/secret-naming-audit.md](../../rules-history/workflows/secret-naming-audit.md)
-
-### 2. CI 단계 추가 (`.github/workflows/ci.yml`)
-
-```yaml
-- name: ETL env-key 3-way audit
-  run: node scripts/audit-env-keys.mjs
-```
-
-push 시 자동 검출, fail 시 머지 차단.
-
-### 3. validate secrets step 의무화 (yml 답습)
-
-각 ETL workflow 의 첫 step 으로 `Validate secrets` 추가 — secret 빈 값일 때 즉시 exit. 다른 ETL workflow grep:
-
-```bash
-grep -L "Validate secrets" .github/workflows/collect-*.yml
-```
-
-→ 누락 yml 일괄 보강.
+1. **정적 감사 `scripts/audit-env-keys.mjs`** 가 collector 마다 3-way 일치를 검출(mismatch = exit 1 + 빠진 위치 표시). matrix orchestrator yml(`fill-missing-data.yml` 의 phase matrix 등)도 `MATRIX_ORCHESTRATORS` 로 script 항목별 env block vs collector 코드 키를 교차. **새 matrix orchestrator yml 을 추가하면 `MATRIX_ORCHESTRATORS` 배열에 경로 1줄**(사람 박제). yml 파싱은 `js-yaml` `FAILSAFE_SCHEMA`(정규식 금지).
+2. **CI 단계** `node scripts/audit-env-keys.mjs` — fail 시 머지 차단.
+3. **각 ETL workflow 첫 step = `Validate secrets`**(빈 값이면 즉시 exit). 누락 확인 `grep -L "Validate secrets" .github/workflows/collect-*.yml` → 일괄 보강.
 
 ## 절차 (다음 ETL 추가 시)
 
@@ -84,10 +25,6 @@ grep -L "Validate secrets" .github/workflows/collect-*.yml
 - ❌ "X 가 Y 와 호환되니 secrets.Y 재활용" — KOSIS_MIGRATION_KEY vs KOSIS_KEY 처럼 별도 발급된 별도 인증키일 가능성 (세션 102 박제). 호환 단정 금지, 실제 API 호출 1회 검증
 - ❌ "schedule fail 1회 = 일회성 spike" — schedule 1회 fail 후 다음 발화까지 1주~1개월 공백 (월간 cron). 사람이 못 봄
 
-## 보조 — 운영 모니터링 (월간 schedule)
+보조: 월간 schedule 은 1회 fail 시 다음 발화까지 1개월이 알람 데드 존 — 매월 monitor 가 핵심 컬럼 NULL 비율(예 30%+)을 경보하는 안은 BACKLOG 🟢 후순위.
 
-- 사고 패턴: **월간 schedule** (cron `* * 15 * *` 등) 은 1회 fail 시 다음 발화까지 1개월 = **운영 측 사고 알람 데드 존**
-- 대안: `monitor-db-size.yml` 같은 매월 1일 monitor 가 핵심 컬럼 (`regions.net_migration`, `regions.avg_income` 등) NULL 비율 체크 → 임계값 (예 30%+) 초과 시 alert
-- 트리거 박제: `.claude/BACKLOG.md` 🟢 후순위 monitor 추가
-
-> 답습 자산·차단 검증 이력 → [rules-history/workflows/secret-naming-audit.md](../../rules-history/workflows/secret-naming-audit.md)
+> 상세(표·예시 코드·실측 기록·답습 자산) → [.claude/rules-detail/workflows/secret-naming-audit.md](../../rules-detail/workflows/secret-naming-audit.md)

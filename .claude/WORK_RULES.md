@@ -63,10 +63,10 @@
 
 | 자리 | 자율 도구 |
 |---|---|
-| 코드 변경 + 사용자 "커밋" 표현 | `Skill(commit-commands:commit)` 또는 `Skill(commit-commands:commit-push-pr)` |
+| 코드 변경 + 사용자 "커밋" 표현 | 직접 `git commit -F <파일>` · `gh pr create --body-file`(commit-commands 플러그인 꺼짐 2026-10-05) |
 | 커밋 직전 | `Skill(cross-validate)` (5교차검증 병렬) — Review 절 답습 |
 | PR 직전 | `Skill(code-review medium)` 또는 사용자 명시 시 `ultra` |
-| 머지 직후 | `Skill(claude-md-management:revise-claude-md)` + `Skill(session-report:session-report)` 검토 |
+| 머지 직후 | 직접 편집(전역 `doc-diet`) + `Skill(session-report:session-report)` 검토 |
 
 ### 0-G. 외부 비동기 폴링 자율 발동 (시간 기반 — /loop · Monitor)
 

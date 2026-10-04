@@ -27,6 +27,8 @@ dist/
 !.claude/rules/**
 !.claude/rules-history/
 !.claude/rules-history/**
+!.claude/rules-detail/
+!.claude/rules-detail/**
 !.claude/skills/
 !.claude/skills/**
 !.claude/hooks/
