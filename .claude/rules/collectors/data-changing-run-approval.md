@@ -50,6 +50,7 @@ paths:
 `backfill-*.mjs --plan=` 꼴로 돌릴 수 있게 둔다. "impact 파일이 있으니 되돌릴 수 있다"는 착각이다 — impact 는
 **의도**이지 실제 DB 상태가 아니다.
 적용 = `backfill-unsold-source.mjs --plan=<계획.json>`(행마다 expect 대조 뒤 set, `--apply` 없으면 dry-run). 출처를 applyhome 으로 set 할 땐 `unsold_as_of`(공고일)도 같이 넣는다(세션569 C6).
+조건부 update 의 expect 값이 null 이면 `.is(칸, null)` 로 건다 — `.eq(칸, null)` 은 한 줄도 안 맞아 "0행 반영"이 된다. 반영 **전에** 같은 조건으로 select 해 행 수를 센다(세션591 첨단3지구 `bjd_code`). 미리보기 실행도 사본·역계획 파일을 새로 쓰는 도구면 **되돌림 파일 이름을 기록에 못 박는다** — 반영 뒤에 돌린 미리보기가 만든 "역계획"은 역의 역(앞으로 가는 계획)이다.
 
 ### 4. "조용히 버리던 것"을 고칠 때는 로그가 아니라 **기록**으로
 
