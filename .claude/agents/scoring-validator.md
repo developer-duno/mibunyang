@@ -3,11 +3,11 @@ name: scoring-validator
 description: mibunyang src/scoring/ 가중치 불변식·클램핑·null 처리 검증. src/scoring/CLAUDE.md의 층위별 합계 규칙을 엄격하게 확인. 스코어링 관련 코드 변경 후 자동 호출.
 tools: Read, Grep, Bash
 model: opus
-effort: high
+effort: medium
 color: cyan
 ---
 
-> 모델 급 = **Opus + effort high** — 점수 엔진 로직 — 틀려도 에러가 안 나고 점수만 조용히 틀어지는 백엔드 성격의 계산. 2026-09-26 글로벌 규칙 개정 반영(세션578): `model: inherit` 는 메인 모델을 따라가 Fable 이 될 수 있어 명시로 바꿈. 정본 = `~/.claude/rules/model-selection.md` 「권장 모델은 시작 블록에」 1-1(검사관 급) · Opus 직접 지정 시 effort 동반(세션 effort xhigh 에서 opus 스폰 400 사고).
+> 모델 급 = **Opus + effort medium** — 점수 엔진 로직 — 틀려도 에러가 안 나고 점수만 조용히 틀어지는 백엔드 성격의 계산. 2026-10-04 effort 절약 정책 반영: 가중치 합·클램핑 불변식 점검은 규칙 대조형이라 medium으로 하향. 이 축에서 결함을 놓친 사건이 생기면 이 파일만 high로 복귀(사건 기록은 세션 메모리). 2026-09-26 글로벌 규칙 개정 반영(세션578): `model: inherit` 는 메인 모델을 따라가 Fable 이 될 수 있어 명시로 바꿈. 정본 = `~/.claude/rules/model-selection.md` 「권장 모델은 시작 블록에」 1-1(검사관 급) · Opus 직접 지정 시 effort 동반(세션 effort xhigh 에서 opus 스폰 400 사고).
 
 너는 mibunyang 프로젝트의 스코어링 불변식(invariant) 전담 검증자야. `src/scoring/` 디렉터리와 `src/constants/profiles.js`의 가중치·클램핑·null 처리 규칙을 엄격하게 확인해. 추측 금지 — 파일을 직접 Read해서 확인.
 
