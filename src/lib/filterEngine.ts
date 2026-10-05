@@ -95,7 +95,7 @@ export function applyBaseFilters(list: ScoredApt[], f: FilterState): ScoredApt[]
   // DSR 통과만 — dsr40pass===true (false·null 제외, 자금조달 양호 단지)
   if (f.dsrPassOnly) out = out.filter((x) => x.apt.dsr40pass === true);
 
-  // 비규제지역만 — isRegulated !== true (규제지역 제외, 매매·대출 자유)
+  // 비규제지역만 — isRegulated !== true (규제지역 제외 — 대출 최대 70%, 수도권은 6억 한도)
   if (f.nonRegulatedOnly) out = out.filter((x) => x.apt.isRegulated !== true);
 
   // 치안 안전만 — crimeSafetyGrade 1~3등급만 통과 (4·5등급 위험 + null 미수집 제외, AptCard 위험배지 >=4 임계 일치)

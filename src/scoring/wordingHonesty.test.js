@@ -152,6 +152,24 @@ describe("엔진 문구 정직성 (세션512)", () => {
       expect(i).not.toContain("미수집");
     });
   });
+
+  // 세션593 — 수도권은 비규제여도 주택구입 대출이 최대 6억(2025-06-28 시행)이라 "거래 자유"는 틀린 말이다.
+  describe("규제 — 비규제를 '거래 자유'라 하지 않는다", () => {
+    it("비규제 단지 detail = '비규제 (대출 최대 70%)' (calcCats 경유)", () => {
+      const cats = calcCats(apt({ id: 1, price: 50000, region: "부산", gu: "해운대구", isRegulated: false }), {
+        regionMedians: {},
+      });
+      expect(sub(cats.risk, "규제")?.detail).toBe("비규제 (대출 최대 70%)");
+      expect(sub(cats.risk, "규제")?.detail).not.toMatch(/자유/); // 옛 문구로 되돌아가면 red
+    });
+
+    it("규제지역 detail 은 그대로", () => {
+      const cats = calcCats(apt({ id: 1, price: 50000, region: "서울", gu: "강남구", isRegulated: true }), {
+        regionMedians: {},
+      });
+      expect(sub(cats.risk, "규제")?.detail).toBe("규제지역 (매매·대출 제약)");
+    });
+  });
 });
 
 // ── 괴리도 — 어느 잣대로 잰 값인지 말한다 (세션531) ───────────────────────────
