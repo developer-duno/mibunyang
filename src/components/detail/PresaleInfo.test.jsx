@@ -2,6 +2,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PresaleInfo } from "./PresaleInfo";
+import { PresaleTimeline, RENTAL_STAGE } from "../charts/PresaleTimeline";
 import { usePresaleDetail } from "@/hooks/usePresaleDetail";
 import { makeApt } from "@/__tests__/factories";
 
@@ -226,5 +227,20 @@ describe("PresaleInfo — 입주 시기가 지난 '입주예정' 배지 숨김 (
   it("미분양 + moveIn 2024-05 면 배지는 '미분양' 그대로 (입주예정 전용 판정)", () => {
     render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "미분양", presaleMoveIn: "2024-05" }))} />);
     expect(screen.getByText("미분양")).toBeTruthy();
+  });
+});
+
+// 세션594: '임대모집'은 분양 탭에서 타임라인(PresaleTimeline)이 파랑 배지로 말한다 — 머리 배지는 숨겨 한 번만.
+describe("PresaleInfo — '임대모집' 머리 배지 숨김 (세션594)", () => {
+  it("임대모집 단지: 머리 배지 0 · 같은 탭의 타임라인 임대 배지 1", () => {
+    render(
+      <>
+        <PresaleTimeline stage={RENTAL_STAGE} />
+        <PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: RENTAL_STAGE }))} />
+      </>
+    );
+    expect(screen.getByText("네이버 분양정보")).toBeTruthy();
+    expect(screen.getAllByText(RENTAL_STAGE)).toHaveLength(1);
+    expect(screen.getByTestId("presale-rental-badge")).toHaveTextContent(RENTAL_STAGE);
   });
 });

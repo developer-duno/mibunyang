@@ -39,8 +39,13 @@ import type { Apt } from "@/types/scoring";
 // "이 그림이 이미 보여준 필드"를 세야 하는데, lib 이 components 를 import 하면 방향이 뒤집힌다.
 
 const ROW_H = 22;
-/** 개발 사업지의 이름 줄 높이 */
+/** 개발 사업지의 이름 줄 높이(한 줄) */
 const NAME_H = 16;
+/**
+ * 이름은 2줄까지(세션594 S10) — 옛 한 줄 말줄임은 터치 화면에서 전체 이름을 볼 길이 없었다(title 은 마우스 전용).
+ * 짧은 이름은 한 줄(NAME_H) 그대로라 행 높이가 전과 같다.
+ */
+const NAME_MAX_LINES = 2;
 // 세션 505 에 62 → 84. 라벨이 "병원"에서 "병원 12곳"으로 길어졌다 — 62 로 두면 개수가 잘린다.
 const LABEL_W = 84;
 const VALUE_W = 62;
@@ -150,13 +155,21 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
     const keep = rows.filter((r, i) => r.present || !(ax.onlyWhenPresent || ax.items[i].schoolType));
     return { ...ax, rows: keep };
   }).filter((ax) => ax.rows.length > 0);
-  const total = axes.reduce((s, a) => s + a.rows.length, 0);
   const filled = axes.reduce((s, a) => s + a.rows.filter((r) => r.v != null || r.out != null).length, 0);
+  // 읽어 주는 문장(aria)의 개수는 **시설 줄만** 센다(세션594 S9) — 개발 사업지 줄(onlyWhenPresent 축)은 시설이 아니고,
+  //   "N km 안에 없음" 줄은 거리를 모은 게 아니라 없다는 사실이라 "모았다"에서 뺀다. 빈 그림 판정(filled)은 그대로.
+  const facilityRows = axes.filter((a) => !a.onlyWhenPresent).flatMap((a) => a.rows);
+  const facilityTotal = facilityRows.length;
+  const facilityFilled = facilityRows.filter((r) => r.v != null).length;
 
-  const height = axes.reduce((s, a) => s + 20 + a.rows.reduce((h, r) => h + ROW_H + (r.name ? NAME_H : 0), 0) + 10, 0);
+  const height = axes.reduce(
+    (s, a) => s + 20 + a.rows.reduce((h, r) => h + ROW_H + (r.name ? NAME_H * NAME_MAX_LINES : 0), 0) + 10,
+    0
+  );
 
-  const near = axes
-    .flatMap((a) => a.rows)
+  // 가장 가까운 곳도 시설 줄에서만 고른다(세션594 S9 보완 — 개수는 시설만 세는데 이름엔 개발 사업이 끼어들었다).
+  //   고를 것이 없으면(시설 전부 미수집·"안에 없음") 아래 aria 에서 그 문장을 통째로 뺀다.
+  const near = facilityRows
     .filter((r) => r.v != null)
     .sort((a, b) => (a.v as number) - (b.v as number))
     .slice(0, 3)
@@ -194,7 +207,7 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
       ariaLabel={
         filled === 0
           ? "주변 시설 거리 자료가 아직 없습니다."
-          : `주변 시설 ${total}곳 중 ${filled}곳의 거리를 모았습니다. 가장 가까운 곳은 ${near} 입니다.`
+          : `주변 시설 ${facilityTotal}곳 중 ${facilityFilled}곳의 거리를 모았습니다.${near ? ` 가장 가까운 곳은 ${near} 입니다.` : ""}`
       }
       empty={filled === 0}
       emptyReason="주변 시설 거리를 아직 모으지 못했어요"
@@ -268,14 +281,18 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
                 {r.name && (
                   <div
                     title={r.name}
+                    data-name-row
                     style={{
-                      height: NAME_H,
+                      lineHeight: `${NAME_H}px`,
+                      maxHeight: NAME_H * NAME_MAX_LINES,
                       marginLeft: LABEL_W + 6,
                       fontSize: F.xs,
                       color: C.sub,
-                      whiteSpace: "nowrap",
                       overflow: "hidden",
-                      textOverflow: "ellipsis",
+                      display: "-webkit-box",
+                      WebkitBoxOrient: "vertical",
+                      WebkitLineClamp: NAME_MAX_LINES,
+                      overflowWrap: "anywhere",
                     }}
                   >
                     {r.name}

@@ -9,6 +9,7 @@ import {
   EXCL_RATIO_TIERS,
   NOISE_TIERS,
   CANCEL_RATIO_TIERS,
+  CANCEL_RATIO_HIGH_LABEL,
   BUILDER_DEBT_TIERS,
   liquidityBand,
   schoolGradeLegend,
@@ -390,7 +391,8 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     계약해제율: {
       interpret: (sc) => (sc >= 70 ? "계약 해제 적음" : sc >= 40 ? "해제율 보통" : "계약 해제 주의"),
       // 경계 숫자는 표에서 읽는다(세션565 분위 재절단 — CANCEL_RATIO_TIERS).
-      benchmark: `${CANCEL_RATIO_TIERS[0].max}% 이하 안전`,
+      // 세션594: 판정 글자도 표의 label 에서 — 옛 "0.7% 이하 안전"은 눈금에 없는 말이었다. scoreRisk 상세 글과 같은 꼴.
+      benchmark: `${CANCEL_RATIO_TIERS[1].max}% 이하 ${CANCEL_RATIO_TIERS[1].label} · ${CANCEL_RATIO_TIERS[2].max}% 이하 ${CANCEL_RATIO_TIERS[2].label} · 그 위 ${CANCEL_RATIO_HIGH_LABEL}`,
     },
     "치안 안전": {
       interpret: (sc) => (sc >= 70 ? "치안 우수 지역" : sc >= 40 ? "치안 보통" : "치안 취약 주의"),

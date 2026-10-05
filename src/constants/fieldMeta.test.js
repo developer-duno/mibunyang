@@ -90,16 +90,17 @@ describe("FIELD_META", () => {
   });
 
   // 세션465: KTX/IC 수집 sentinel = 99 (측정 반경 밖) — "99km" 실측치 위장 차단
-  it('ktxDist fmt: sentinel 99 → "반경 밖", 실측치는 km 표시', () => {
-    expect(FIELD_META.ktxDist.fmt(99)).toBe("반경 밖");
+  // 세션594: 상세 거리 그림(DistanceDots)과 같은 말 — "N km 안에 없음"(반경 = sentinels.ts SENTINEL_RADIUS_KM)
+  it('ktxDist fmt: sentinel 99 → "20km 안에 없음", 실측치는 km 표시', () => {
+    expect(FIELD_META.ktxDist.fmt(99)).toBe("20km 안에 없음");
     expect(FIELD_META.ktxDist.fmt(12.5)).toBe("12.5km");
     expect(FIELD_META.ktxDist.fmt(null)).toBe("—");
     expect(FIELD_META.ktxDist.isDefault?.(99)).toBe(true);
     expect(FIELD_META.ktxDist.isDefault?.(12.5)).toBe(false);
   });
 
-  it('icDist fmt: sentinel 99 → "반경 밖", 실측치는 km 표시', () => {
-    expect(FIELD_META.icDist.fmt(99)).toBe("반경 밖");
+  it('icDist fmt: sentinel 99 → "20km 안에 없음", 실측치는 km 표시', () => {
+    expect(FIELD_META.icDist.fmt(99)).toBe("20km 안에 없음");
     expect(FIELD_META.icDist.fmt(2.3)).toBe("2.3km");
     expect(FIELD_META.icDist.fmt(null)).toBe("—");
     expect(FIELD_META.icDist.isDefault?.(99)).toBe(true);

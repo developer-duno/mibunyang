@@ -10,7 +10,15 @@ vi.mock("@/hooks/useUnsoldHistory", () => ({
 
 // LineChart 모킹
 vi.mock("@/components/primitives", () => ({
-  LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
+  // data-x·data-x2 = 두 계열의 x 글자(세션594 — x 축 형식 시험용)
+  LineChart: (/** @type {any} */ props) => (
+    <div
+      data-testid="line-chart"
+      aria-label={props.yLabel}
+      data-x={props.data.map((/** @type {any} */ d) => d.x).join(",")}
+      data-x2={(props.secondaryData ?? []).map((/** @type {any} */ d) => d.x).join(",")}
+    />
+  ),
 }));
 
 import { UnsoldChart } from "./UnsoldChart";
@@ -89,5 +97,42 @@ describe("UnsoldChart", () => {
     mockUseUnsoldHistory.mockReturnValue({ data: makeData(3), loading: false, error: null, retry: vi.fn() });
     render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={0} />);
     expect(screen.getByTestId("line-chart")).toBeTruthy();
+  });
+
+  // 세션594 사장님 결정 — x 글자는 첫 점과 1월 점만 "YY.MM", 나머지는 "MM".
+  //   옛 x = base_month.slice(4) 는 연도가 전혀 없어 해가 바뀌는 자리가 안 보였고, 전부 "YY.MM" 이면 12점에서 이웃 글자와 겹쳤다.
+  it("x 글자 — 첫 점은 연도까지 · 1월 점은 연도까지 · 그 밖은 월만 (두 계열 같은 글자)", () => {
+    const data = [
+      { base_month: "202511", unsold_count: 30, post_completion_unsold: 5 },
+      { base_month: "202512", unsold_count: 20, post_completion_unsold: 4 },
+      { base_month: "202601", unsold_count: 10, post_completion_unsold: 3 },
+      { base_month: "202602", unsold_count: 8, post_completion_unsold: 2 },
+    ];
+    mockUseUnsoldHistory.mockReturnValue({ data, loading: false, error: null, retry: vi.fn() });
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
+    const chart = screen.getByTestId("line-chart");
+    const xs = (chart.getAttribute("data-x") ?? "").split(",");
+    expect(xs[0]).toBe("25.11"); // 첫 점 = 연도까지
+    expect(xs[2]).toBe("26.01"); // 1월 점 = 연도까지
+    expect([xs[1], xs[3]]).toEqual(["12", "02"]); // 그 밖 = 월만
+    expect(chart.getAttribute("data-x2")).toBe("25.11,12,26.01,02");
+  });
+
+  // 세션594 — 분기 꼴("20262")·달 13 처럼 월 형식이 아닌 행은 그 점을 빼고 그린다(두 계열 모두). 옛 코드는 x="2" 를 그렸다.
+  //   맨 앞 행이 빠지면 남은 첫 점이 연도를 단다.
+  it("분기 꼴 등 월 형식이 아닌 base_month 행은 두 계열 모두에서 빠진다", () => {
+    const data = [
+      { base_month: "20261", unsold_count: 777, post_completion_unsold: 77 },
+      { base_month: "202604", unsold_count: 30, post_completion_unsold: 5 },
+      { base_month: "20262", unsold_count: 999, post_completion_unsold: 99 },
+      { base_month: "202605", unsold_count: 20, post_completion_unsold: 4 },
+      { base_month: "202613", unsold_count: 888, post_completion_unsold: 88 },
+      { base_month: "202606", unsold_count: 10, post_completion_unsold: 3 },
+    ];
+    mockUseUnsoldHistory.mockReturnValue({ data, loading: false, error: null, retry: vi.fn() });
+    render(<UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />);
+    const chart = screen.getByTestId("line-chart");
+    expect(chart.getAttribute("data-x")).toBe("26.04,05,06");
+    expect(chart.getAttribute("data-x2")).toBe("26.04,05,06");
   });
 });

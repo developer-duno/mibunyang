@@ -36,6 +36,7 @@ import {
   AIR_O3_DEFAULT,
   AIR_O3_BAD_SCORE,
   AIR_O3_LEGEND,
+  NOISE_LEGEND,
   SCHOOL_WALK_BONUS,
   SCHOOL_WALK_FAR_ADJ,
   schoolGradeLegend,
@@ -290,7 +291,7 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
         //    숨기지 않는다" 원칙과 같은 자리다(세션560 맹점 검사관 적발).
         // 좌표 자리표시 의심(세션568) — 대기질만 측정소가 좌표로 정해지므로 "위치 확인 중"을 덧붙인다.
         //    조망·일조·소음은 좌표와 무관(원본 값 그대로)이라 문구를 바꾸지 않는다.
-        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(50↓우수 60↓양호) 대기질:${
+        detail: `조망:${view || "미확인"}(블루40 그린30 천공20점) 일조:${sunlight || "미확인"}(우수30 양호22점) 소음:${apt._noNoise ? "미수집" : `${noise}dB`}(${NOISE_LEGEND}) 대기질:${
           apt._coordUnknown
             ? `위치 확인 중(중립 ${AIR_QUALITY_DEFAULT}점)`
             : airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`

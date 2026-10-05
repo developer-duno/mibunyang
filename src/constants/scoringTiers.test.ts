@@ -439,6 +439,12 @@ describe("NOISE_TIERS 경계는 세션565 실측 결정값이다 (관측값 앵�
     const at50 = calcCats({ ...base, noise: 50 } as never).location.subs.find((s) => s.name === "자연환경")!.score;
     expect(at50).toBeLessThan(at40);
   });
+
+  it("자연환경 상세 글의 소음 범례가 표의 네 칸을 전부 말한다 (세션594 — 옛 글은 40↓최고 칸을 빠뜨렸다)", () => {
+    const base = { region: "경기", gu: "수원시" };
+    const d = calcCats({ ...base, noise: 45 } as never).location.subs.find((s) => s.name === "자연환경")!.detail;
+    expect(d).toContain("소음:45dB(40↓최고 50↓우수 60↓양호 70↓보통)");
+  });
 });
 
 describe("CANCEL_RATIO_TIERS 경계는 세션565 실측 결정값이다 (분위 재절단, 관측값 앵커)", () => {
@@ -520,7 +526,8 @@ describe("문구는 경계 숫자를 표에서 읽는다 — 표만 바꾸고 �
 
   it("점수 탭 기준 문구(소음·계약해제율)가 표의 첫 경계를 그대로 말한다", () => {
     expect(SUB_CONTEXT.location["자연환경"].benchmark).toContain(`소음은 ${NOISE_TIERS[0].max}dB 이하 최고점`);
-    expect(SUB_CONTEXT.risk["계약해제율"].benchmark).toBe(`${CANCEL_RATIO_TIERS[0].max}% 이하 안전`);
+    // 세션594: 옛 "0.7% 이하 안전"은 눈금에 없는 말 — 표의 label 로 조립한다(사장님 결정 문장, 리터럴 고정).
+    expect(SUB_CONTEXT.risk["계약해제율"].benchmark).toBe("1.2% 이하 적음 · 1.6% 이하 보통 · 그 위 많음");
   });
 
   it("계약해제율 설명(detail)이 표의 경계를 그대로 말한다 (calcCats 경유)", () => {

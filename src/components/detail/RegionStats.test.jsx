@@ -221,6 +221,13 @@ describe("RegionStats — 색 (보완 F3·F5)", () => {
     expect(titleColor("cancelRatio6m", 6)).toBe(RED);
     expect(dotLeft("cancelRatio6m", 6)).toBe(0);
   });
+
+  // 세션594 — 계약해제율 '보통'도 6개월 거래 '보통'과 같은 중립 파랑(옛 주황은 같은 말을 다른 색으로 칠했다).
+  it("계약해제율 색 — 1.0 '적음' 초록 · 1.4 '보통' 파랑 · 2.0 '많음' 빨강", () => {
+    expect(titleColor("cancelRatio6m", 1.0)).toBe(GREEN);
+    expect(titleColor("cancelRatio6m", 1.4)).toBe(BLUE);
+    expect(titleColor("cancelRatio6m", 2.0)).toBe(RED);
+  });
 });
 
 describe("RegionStats — 작은 글자 줄 · 값 없음", () => {

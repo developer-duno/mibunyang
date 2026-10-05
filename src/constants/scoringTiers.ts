@@ -228,12 +228,16 @@ export const SUNLIGHT_DIRECTION_MAX = 38; // 일조(30) + 방향 보너스(8) �
 // (docs/whitepaper/judgments.md "죽은 칸" 절, 세션562 전수조사). 칸을 실제 값에 맞췄다 —
 // 80.8%가 40, 23.7%는 미측정(NOISE_UNKNOWN_SCORE). 50dB 는 30→22, 60dB 는 22→15 로 내려가고
 // (영향 210곳), 40·70dB 는 그대로다. 사장님 결정 2026-09-23("셋 다 고치기").
+// label(세션594 — 사장님 결정 10-05): 입지 탭 자연환경 상세 글(`scoreLocation` "소음:…") 이 이 표에서 조립한다.
+// 옛 글 "(50↓우수 60↓양호)"는 최고점 칸(40↓)을 빠뜨렸다. 점수는 안 바뀐다.
 export const NOISE_TIERS: Tier[] = [
-  { max: 40, score: 30 },
-  { max: 50, score: 22 },
-  { max: 60, score: 15 },
-  { max: 70, score: 8 },
+  { max: 40, score: 30, label: "최고" },
+  { max: 50, score: 22, label: "우수" },
+  { max: 60, score: 15, label: "양호" },
+  { max: 70, score: 8, label: "보통" },
 ];
+/** 소음 상세 글 범례 — "40↓최고 50↓우수 60↓양호 70↓보통"(숫자·글자 전부 위 표에서) */
+export const NOISE_LEGEND: string = NOISE_TIERS.map((t) => `${t.max}↓${t.label}`).join(" ");
 // 소음 미측정(null) 시 중립값 (세션508 — "모르는 것을 나쁘게 단정하는" 기본값 정정).
 // 채움 1,371/2,043(33% 미측정). 미측정 사유는 좌표·도로주소 부재로 **소음 자체와 무관**.
 // 실측 분포(채워진 것): 40dB 1,042건(76%)·50dB 250·60dB 74·70dB 5건 — 중앙값 40, 평균 43.

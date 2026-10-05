@@ -72,7 +72,8 @@ describe("MarketStatsCharts", () => {
     expect(retry).toHaveBeenCalledOnce();
   });
 
-  it("data가 부족하면 안내 상태를 표시한다", () => {
+  // 세션594: 옛 "수집·누적 중" 안내 상자는 우리 수집 상태를 손님에게 말하는 글이라 지웠다 — 그릴 것이 없으면 렌더 없음.
+  it("data가 부족하면 아무것도 그리지 않는다 (세션594 — 안내 상자 삭제)", () => {
     mockUseMarketStatsHistory.mockReturnValue({
       data: [],
       loading: false,
@@ -80,8 +81,9 @@ describe("MarketStatsCharts", () => {
       retry: vi.fn(),
       fallback: false,
     });
-    render(<MarketStatsCharts region="서울" gu="강남구" />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    const { container } = render(<MarketStatsCharts region="서울" gu="강남구" />);
+    expect(container).toBeEmptyDOMElement();
+    expect(screen.queryByRole("status")).toBeNull();
   });
 
   // 세션592: 분양가격지수 칸을 뺐다(원천 2025-10 멈춤) — 5 → 4. 응답에 price_index 가 있어도 안 그린다.
@@ -118,7 +120,7 @@ describe("MarketStatsCharts", () => {
     expect(grid.style.gridTemplateColumns).toBe("repeat(auto-fit, minmax(120px, 1fr))");
   });
 
-  it("price_index 만 값이 있으면 그릴 것이 없어 안내 박스 (세션592)", () => {
+  it("price_index 만 값이 있으면 그릴 것이 없어 렌더 없음 (세션592 · 세션594)", () => {
     const rows = makeRows().map((r) => ({
       ...r,
       avg_price_sqm: null,
@@ -133,8 +135,8 @@ describe("MarketStatsCharts", () => {
       retry: vi.fn(),
       fallback: false,
     });
-    render(<MarketStatsCharts region="서울" gu="강남구" />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    const { container } = render(<MarketStatsCharts region="서울" gu="강남구" />);
+    expect(container).toBeEmptyDOMElement();
     expect(tiles()).toHaveLength(0);
   });
 
@@ -239,7 +241,7 @@ describe("MarketStatsCharts", () => {
     expect(grid.style.gridTemplateColumns).toContain("minmax");
   });
 
-  it("18행 모두 null 값만 있으면 안내 박스만 표시한다", () => {
+  it("18행 모두 null 값만 있으면 아무것도 그리지 않는다 (세션594)", () => {
     const nullRows = Array.from({ length: 18 }, (_, i) => ({
       base_month: `2024${String(i + 1).padStart(2, "0")}`,
       avg_price_sqm: null,
@@ -255,8 +257,8 @@ describe("MarketStatsCharts", () => {
       retry: vi.fn(),
       fallback: false,
     });
-    render(<MarketStatsCharts region="인천" gu="서구" />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    const { container } = render(<MarketStatsCharts region="인천" gu="서구" />);
+    expect(container).toBeEmptyDOMElement();
     expect(tiles()).toHaveLength(0);
     expect(sparks()).toHaveLength(0);
   });
@@ -305,7 +307,7 @@ describe("MarketStatsCharts", () => {
     expect(screen.getByText(/인천.*시도 평균/)).toBeTruthy();
   });
 
-  it("corner case — 18행 null + 1행만 모든 값 (chartData.length<2) 시 안내 박스", () => {
+  it("corner case — 18행 null + 1행만 모든 값 (chartData.length<2) 시 렌더 없음 (세션594)", () => {
     const cornerRows = [
       ...Array.from({ length: 18 }, (_, i) => ({
         base_month: `2024${String(i + 1).padStart(2, "0")}`,
@@ -331,8 +333,8 @@ describe("MarketStatsCharts", () => {
       retry: vi.fn(),
       fallback: false,
     });
-    render(<MarketStatsCharts region="인천" gu="서구" />);
-    expect(screen.getByRole("status")).toBeTruthy();
+    const { container } = render(<MarketStatsCharts region="인천" gu="서구" />);
+    expect(container).toBeEmptyDOMElement();
     expect(tiles()).toHaveLength(0);
     expect(sparks()).toHaveLength(0);
   });
