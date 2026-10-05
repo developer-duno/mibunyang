@@ -1,5 +1,5 @@
 // @ts-check
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { PresaleInfo } from "./PresaleInfo";
 import { usePresaleDetail } from "@/hooks/usePresaleDetail";
@@ -184,5 +184,47 @@ describe("PresaleInfo — 주차대수 0(미기재)은 줄을 숨긴다 (D5)", (
     unmount();
     render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "분양중", presaleParking: 1543 }))} />);
     expect(screen.getByText("1,543대")).toBeTruthy();
+  });
+});
+
+// 세션593 사장님 결정: '입주예정'인데 입주 시기가 이미 지났으면 단계 배지를 숨긴다.
+// isMoveInPast(PresaleTimeline.tsx G1)와 같은 판정 — 시각은 실제 날짜에 기대지 않게 고정.
+describe("PresaleInfo — 입주 시기가 지난 '입주예정' 배지 숨김 (세션593)", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-10-15T00:00:00+09:00"));
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("입주예정 + moveIn 2024-05(지남) 이면 배지가 없다", () => {
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "입주예정", presaleMoveIn: "2024-05" }))} />);
+    expect(screen.getByText("네이버 분양정보")).toBeTruthy();
+    expect(screen.queryByText("입주예정")).toBeNull();
+  });
+
+  it("입주예정 + moveIn 2027-06(안 지남) 이면 배지가 그대로 있다", () => {
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "입주예정", presaleMoveIn: "2027-06" }))} />);
+    expect(screen.getByText("입주예정")).toBeTruthy();
+  });
+
+  it("입주예정 + moveIn 2026-10(같은 달) 이면 배지가 있다 (같은 달은 지난 게 아니다)", () => {
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "입주예정", presaleMoveIn: "2026-10" }))} />);
+    expect(screen.getByText("입주예정")).toBeTruthy();
+  });
+
+  it("입주예정 + moveIn '2030 미정'(못 읽음) 이면 배지가 있다 (모르면 지났다고 안 함)", () => {
+    render(
+      <PresaleInfo
+        apt={/** @type {any} */ (makeApt({ presaleStage: "입주예정", presaleMoveIn: "2030 미정", completion: null }))}
+      />
+    );
+    expect(screen.getByText("입주예정")).toBeTruthy();
+  });
+
+  it("미분양 + moveIn 2024-05 면 배지는 '미분양' 그대로 (입주예정 전용 판정)", () => {
+    render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: "미분양", presaleMoveIn: "2024-05" }))} />);
+    expect(screen.getByText("미분양")).toBeTruthy();
   });
 });
