@@ -15,13 +15,14 @@ const RATES = [
 ];
 
 describe("MonthlyPaymentBlock — 한 달에 갚을 돈 (세션593 D2)", () => {
-  it("대표 단지 대출 2억 1,208만 · 사본 → 104만 원/월 · 4.2% · 공시월", () => {
+  // ⚠️ 변이 대상(세션593 후속 F4): toFixed(2) 를 빼면 "4.2%" 가 되어 빨강 — 은행 막대 "4.20%"와 자릿수를 맞춘다.
+  it("대표 단지 대출 2억 1,208만 · 사본 → 104만 원/월 · 4.20% · 공시월", () => {
     render(<MonthlyPaymentBlock loan={21208} rates={RATES} disclosureMonth="202609" />);
     const block = screen.getByTestId("monthly-payment");
     expect(block.textContent).toContain("한 달에 갚을 돈");
     expect(block.textContent).toContain("104만 원/월");
     expect(block.textContent).toContain(
-      "대출 2억 1,208만 · 30년 · 아파트·분할상환 최저 금리 4.2% 기준 · 2026년 9월 공시"
+      "대출 2억 1,208만 · 30년 · 아파트·분할상환 최저 금리 4.20% 기준 · 2026년 9월 공시"
     );
     expect(block.textContent).not.toContain("3.7%");
   });
@@ -32,7 +33,7 @@ describe("MonthlyPaymentBlock — 한 달에 갚을 돈 (세션593 D2)", () => {
     const t = screen.getByTestId("monthly-payment").textContent ?? "";
     expect(t).toContain("104만 원/월");
     expect(t).not.toContain("공시");
-    expect(t.endsWith("4.2% 기준")).toBe(true);
+    expect(t.endsWith("4.20% 기준")).toBe(true);
   });
 
   it("아파트·분할상환 상품이 없거나 응답이 비면 그리지 않는다", () => {
@@ -90,5 +91,45 @@ describe("BankRateBars — 은행 범위 막대 5줄 (세션593 D3)", () => {
   it("0줄이면 블록을 그리지 않는다", () => {
     const { container } = render(<BankRateBars rates={[RATES[0]]} disclosureMonth="202609" />);
     expect(container.innerHTML).toBe("");
+  });
+
+  // ⚠️ 변이 대상(세션593 후속 F3): 이름 칸 말줄임을 빼면 긴 이름이 72px 칸을 넘어 금리 글자를 덮는다.
+  it("긴 은행 이름은 72px 칸 안에서 한 줄 말줄임 · title 에 전체 이름", () => {
+    render(
+      <BankRateBars
+        rates={[{ ...base, bank: "한국스탠다드차타드은행", rateMin: 4.3, rateMax: 6.2 }]}
+        disclosureMonth="202609"
+      />
+    );
+    const label = screen.getByText("한국스탠다드차타드은행");
+    expect(label.style.width).toBe("72px");
+    expect(label.style.whiteSpace).toBe("nowrap");
+    expect(label.style.overflow).toBe("hidden");
+    expect(label.style.textOverflow).toBe("ellipsis");
+    expect(label.getAttribute("title")).toBe("한국스탠다드차타드은행");
+  });
+});
+
+describe("큰 숫자 금리 = 은행 막대 맨 위 최저 (세션593 후속 F1)", () => {
+  // 최고 금리가 빈 4.1% 상품 — 옛 판은 큰 숫자만 4.1 을 쓰고 막대는 4.20 에서 시작해 어긋났다.
+  const MIXED = [
+    { ...base, bank: "가은행", rateMin: 4.1, rateMax: undefined },
+    { ...base, bank: "나은행", rateMin: 4.2, rateMax: 6.5 },
+  ];
+  it("최고 금리가 빈 상품은 양쪽 다 안 쓴다 — 큰 숫자 4.20% · 막대 맨 위 4.20%", () => {
+    render(
+      <>
+        <MonthlyPaymentBlock loan={21208} rates={MIXED} disclosureMonth="202609" />
+        <BankRateBars rates={MIXED} disclosureMonth="202609" />
+      </>
+    );
+    const big = screen.getByTestId("monthly-payment").textContent ?? "";
+    expect(big).toContain("최저 금리 4.20% 기준");
+    expect(big).not.toContain("4.10%");
+    const rows = screen.getAllByTestId("bank-rate-row");
+    expect(rows).toHaveLength(1);
+    const first = rows[0].querySelector('[data-band="rate"]')?.firstElementChild?.textContent;
+    expect(first).toBe("4.20%");
+    expect(big).toContain(`최저 금리 ${first} 기준`);
   });
 });
