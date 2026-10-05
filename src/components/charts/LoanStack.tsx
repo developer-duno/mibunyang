@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
 import { zoneOf, calcLTV, ZONE_TYPE, METRO_LOAN_CAP } from "@/constants/regulations";
+import { fmtPrice } from "@/lib/format";
 
 /**
  * 이 집을 사려면 돈이 어떻게 나뉘나 — 대출 가능액 / 내 돈, 두 조각.
@@ -18,17 +19,19 @@ import { zoneOf, calcLTV, ZONE_TYPE, METRO_LOAN_CAP } from "@/constants/regulati
  *
  * DSR 는 조각이 아니라 **한 줄 안내**로 붙인다. 소득을 모르면 계산할 수 없는 값이라
  * 막대에 섞으면 정확한 금액처럼 보인다.
+ *
+ * ## 금액은 만원까지 (세션593 D1)
+ *
+ * 옛 금융 탭은 이 막대 아래에 숫자 3칸(분양가·LTV 대출한도·필요 자기자본)을 따로 두었다. 막대가
+ * "2.1억"처럼 반올림한 금액을, 3칸이 "2억 1,208만"을 보여 같은 돈이 두 번 다른 꼴로 나왔다.
+ * 3칸을 지우고 막대가 만원까지(`fmtPrice`) 적는다. 분양가는 막대 아래 글에 적는다.
  */
 
-const MAN = 10000; // 만원 → 억
-
-export function fmtEok(man: number): string {
-  if (man >= MAN) {
-    const eok = man / MAN;
-    return `${eok >= 10 ? Math.round(eok) : Math.round(eok * 10) / 10}억`;
-  }
-  return `${Math.round(man).toLocaleString("ko-KR")}만`;
-}
+/**
+ * 막대 조각 안에 금액 글자를 넣는 최소 비중(%) — "대출 2억 1,208만"(10px 글자 약 85px)이
+ * 휴대폰 폭(본문 약 330px)의 조각에 들어가는 자리. 더 좁으면 조각 안은 비우고 아래 줄 금액만 남긴다.
+ */
+const INNER_LABEL_MIN_PCT = 30;
 
 export const LoanStack = memo(function LoanStack({
   price,
@@ -56,7 +59,7 @@ export const LoanStack = memo(function LoanStack({
   }, [price, region, gu, isRegulated]);
 
   const aria = calc
-    ? `분양가 ${fmtEok(price as number)} 중 대출 가능액 ${fmtEok(calc.loan)}, 직접 준비할 돈 ${fmtEok(calc.own)}. ` +
+    ? `분양가 ${fmtPrice(price as number)} 중 대출 가능액 ${fmtPrice(calc.loan)}, 직접 준비할 돈 ${fmtPrice(calc.own)}. ` +
       `대출 비중 ${calc.loanPct} 퍼센트.` +
       (dsr40pass === true ? " 소득 기준 대출 규제를 통과할 가능성이 높습니다." : "")
     : "분양가가 없어 자금 구성을 계산할 수 없습니다.";
@@ -87,9 +90,11 @@ export const LoanStack = memo(function LoanStack({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
               }}
             >
-              {calc.loanPct >= 18 ? `대출 ${fmtEok(calc.loan)}` : ""}
+              {calc.loanPct >= INNER_LABEL_MIN_PCT ? `대출 ${fmtPrice(calc.loan)}` : ""}
             </div>
             <div
               style={{
@@ -101,18 +106,21 @@ export const LoanStack = memo(function LoanStack({
                 display: "flex",
                 alignItems: "center",
                 justifyContent: "center",
+                whiteSpace: "nowrap",
+                overflow: "hidden",
               }}
             >
-              {100 - calc.loanPct >= 18 ? `내 돈 ${fmtEok(calc.own)}` : ""}
+              {100 - calc.loanPct >= INNER_LABEL_MIN_PCT ? `내 돈 ${fmtPrice(calc.own)}` : ""}
             </div>
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: F.xs }}>
-            <span style={{ color: C.blue, fontWeight: 700 }}>빌릴 수 있는 돈 {fmtEok(calc.loan)}</span>
-            <span style={{ color: C.amber, fontWeight: 700 }}>직접 준비할 돈 {fmtEok(calc.own)}</span>
+            <span style={{ color: C.blue, fontWeight: 700 }}>빌릴 수 있는 돈 {fmtPrice(calc.loan)}</span>
+            <span style={{ color: C.amber, fontWeight: 700 }}>직접 준비할 돈 {fmtPrice(calc.own)}</span>
           </div>
           <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
+            {`분양가 ${fmtPrice(price as number)} · `}
             {calc.metroCapped
-              ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 최대 ${fmtEok(METRO_LOAN_CAP)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
+              ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 최대 ${fmtPrice(METRO_LOAN_CAP)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
               : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
             {dsr40pass === true && (
               <span style={{ color: C.green }}> 소득 대비 상환 부담(DSR) 기준도 통과할 만해요.</span>

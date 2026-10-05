@@ -3,6 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LoanAnalysis } from "./LoanAnalysis";
 import { makeApt } from "@/__tests__/factories";
+import { useLoanRates } from "@/hooks/useLoanRates";
 
 // useRentLoanRates 모킹
 vi.mock("@/hooks/useRentLoanRates", () => ({
@@ -13,19 +14,43 @@ vi.mock("@/hooks/useRentLoanRates", () => ({
   })),
 }));
 
+// 주담대 은행권 금리 — LoanAnalysis 가 한 번 받아 "한 달에 갚을 돈"·은행 막대가 같이 쓴다(세션593 D2·D3).
+// 아파트·분할상환 4.2% 하나만 두면 월 상환액 줄 "대출 X · 30년 …" 에서 대출액(= 위 대출 막대와 같은 값)을 읽을 수 있다.
+vi.mock("@/hooks/useLoanRates", () => ({
+  useLoanRates: vi.fn(() => ({
+    rates: [
+      {
+        bank: "아이엠뱅크",
+        product: "p",
+        mortgageType: "아파트",
+        repayType: "분할상환방식",
+        rateMin: 4.2,
+        rateMax: 6.51,
+      },
+    ],
+    disclosureMonth: "202609",
+    loading: false,
+    error: null,
+  })),
+}));
+
 // LoanRatesSection 모킹 (단위 테스트 격리)
 vi.mock("./LoanRatesSection", () => ({
   LoanRatesSection: vi.fn(() => <div data-testid="loan-rates-section" />),
 }));
 
+/** 월 상환액 블록의 작은 글 "대출 X · 30년 · …" 에서 대출액 X 를 찾는다 */
+const loanLine = (/** @type {string} */ amount) => screen.getByText(new RegExp(`^대출 ${amount} · 30년 · `));
+
 describe("LoanAnalysis", () => {
-  // 기본 렌더링 — 분양가, LTV, 자기자본 카드 표시
-  it("분양가, LTV 대출한도, 필요 자기자본을 표시한다", () => {
+  // 세션593 D1 — 숫자 3칸(분양가·LTV 대출한도·필요 자기자본)은 위 대출 막대로 합쳤다.
+  // ⚠️ 변이 대상: 3칸을 되살리면 빨강.
+  it("숫자 3칸(분양가·LTV 대출한도·필요 자기자본)이 없다", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000, region: "경기", gu: "수원시" }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("분양가")).toBeTruthy();
-    expect(screen.getByText("LTV 대출한도")).toBeTruthy();
-    expect(screen.getByText("필요 자기자본")).toBeTruthy();
+    expect(screen.queryByText("분양가")).toBeNull();
+    expect(screen.queryByText("LTV 대출한도")).toBeNull();
+    expect(screen.queryByText("필요 자기자본")).toBeNull();
   });
 
   // 비규제지역 존 표시 (현재 ZONE_MAP 비어있으므로 모든 지역 = normal)
@@ -35,25 +60,25 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("비규제지역")).toBeTruthy();
   });
 
-  // LTV 계산 검증 — 비규제 9억 이하 70%
-  it("비규제지역 9억 이하 LTV 70%를 올바르게 계산한다", () => {
+  // LTV 계산 검증 — 비규제 70% (월 상환액 블록의 대출액으로 읽는다)
+  it("비규제지역 LTV 70%를 올바르게 계산한다", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000, region: "강원", gu: "춘천시" }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("3억 5,000만")).toBeTruthy();
+    expect(loanLine("3억 5,000만")).toBeTruthy();
   });
 
   // 세션592 규정 정정 — 비규제 70% 하나 · 수도권 최대 6억 · DB 규제 표시 우선
   it("지방 비규제 10억 → 대출한도 7억 (옛 9억 나눔이면 6.9억)", () => {
     const apt = /** @type {any} */ (makeApt({ price: 100000, region: "부산", gu: "해운대구", isRegulated: false }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("7억")).toBeTruthy();
+    expect(loanLine("7억")).toBeTruthy();
     expect(screen.getByText("LTV: 70% (무주택자 기준)")).toBeTruthy();
   });
 
   it("경기 비규제 10억 → 대출한도 6억 (수도권 주택구입 대출 최대 6억) + 요약에 한도 문장", () => {
     const apt = /** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "평택시", isRegulated: false }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getAllByText("6억").length).toBeGreaterThan(0);
+    expect(loanLine("6억")).toBeTruthy();
     expect(screen.getByText("LTV: 70% (무주택자 기준) · 수도권 대출한도 최대 6억")).toBeTruthy();
   });
 
@@ -61,7 +86,7 @@ describe("LoanAnalysis", () => {
     const apt = /** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "화성시", isRegulated: true }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("규제지역")).toBeTruthy();
-    expect(screen.getByText("4억")).toBeTruthy();
+    expect(loanLine("4억")).toBeTruthy();
     expect(
       screen.getByText(/정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요\(2026년 10월 기준\)/)
     ).toBeTruthy();
@@ -78,7 +103,7 @@ describe("LoanAnalysis", () => {
       />
     );
     expect(reg.container.textContent).toContain(line);
-    expect(reg.container.textContent).toContain("4억"); // 금액은 그대로 40%
+    expect(reg.container.textContent).toContain("대출 4억 · "); // 금액은 그대로 40%
     reg.unmount();
     const normal = render(
       <LoanAnalysis
@@ -109,12 +134,33 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("비규제지역")).toBeTruthy();
   });
 
-  // price가 0인 경우
-  it("price가 0이면 분양가에 '-'을 표시한다", () => {
+  // price가 0인 경우 — 대출액이 0 이라 월 상환액 블록을 그리지 않는다(은행 막대는 단지와 무관하게 그린다)
+  it("price가 0이면 한 달에 갚을 돈을 그리지 않는다", () => {
     const apt = /** @type {any} */ (makeApt({ price: 0 }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    const dashes = screen.getAllByText("-");
-    expect(dashes.length).toBeGreaterThan(0);
+    expect(screen.queryByText("한 달에 갚을 돈")).toBeNull();
+    expect(screen.getByText("은행별 금리")).toBeTruthy();
+  });
+
+  // 세션593 D2 — 한 달에 갚을 돈이 본문(맨 위)에 있고 은행 막대가 그 아래
+  it("한 달에 갚을 돈과 은행별 금리가 접힘 없이 본문에 있다 (대출 5억 비규제 = 3.5억 · 4.2%)", () => {
+    const apt = /** @type {any} */ (makeApt({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false }));
+    const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    const block = screen.getByTestId("monthly-payment");
+    // 35,000만 · 4.2% · 30년 원리금균등 = 171.15 → "171만"
+    expect(block.textContent).toContain("171만 원/월");
+    expect(block.textContent).toContain("2026년 9월 공시");
+    const order = [...container.querySelectorAll("[data-testid]")].map((e) => e.getAttribute("data-testid"));
+    expect(order.indexOf("monthly-payment")).toBeLessThan(order.indexOf("bank-rate-bars"));
+    expect(order.indexOf("bank-rate-bars")).toBeLessThan(order.indexOf("loan-rates-section"));
+  });
+
+  // D2·D3 같은 응답 공유 — 주담대 은행권 훅은 한 번(권역 020000)만 부른다
+  it("주담대 금리는 은행권(020000) 한 가지로만 부른다", () => {
+    vi.mocked(useLoanRates).mockClear();
+    render(<LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 50000 }))} />);
+    const groups = new Set(vi.mocked(useLoanRates).mock.calls.map((c) => c[0]));
+    expect([...groups]).toEqual(["020000"]);
   });
 
   // 관련 법률 토글
@@ -139,22 +185,26 @@ describe("LoanAnalysis", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
-  // priceByArea가 있으면 상세 테이블 표시 (월이자 열 포함)
-  it("priceByArea가 있으면 면적별 테이블에 월이자 열을 표시한다", () => {
+  // priceByArea가 있으면 상세 테이블 표시 (월이자 열 포함) — 세션593 D5: 갭투자액 칸은 뺐다(6칸)
+  // ⚠️ 변이 대상: 갭투자액 칸을 되살리면 빨강.
+  it("priceByArea가 있으면 면적별 표 6칸(면적·최저매매·전세평균·월이자·거래·LTV한도), 갭투자액 칸 없음", () => {
     const apt = makeApt({
       price: 50000,
       area: 84,
       priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
       rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
     });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("최저매매")).toBeTruthy();
-    expect(screen.getByText("갭투자액")).toBeTruthy();
-    expect(screen.getByText("월이자")).toBeTruthy();
-    expect(screen.getByText("LTV한도")).toBeTruthy();
+    const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    const heads = [...container.querySelectorAll("th")].map((th) => th.textContent);
+    expect(heads).toEqual(["면적", "최저매매", "전세평균", "월이자", "거래", "LTV한도"]);
+    expect(screen.queryByText("갭투자액")).toBeNull();
+    expect(container.querySelectorAll("tbody tr td")).toHaveLength(6);
+    expect(container.textContent).not.toContain("갭투자");
+    // 옛 갭 칸 값(48,000−25,000 = +2억 3,000만)이 줄에 남지 않는다
+    expect(container.textContent).not.toContain("+2억 3,000만");
   });
 
-  // 거래 건수 노출 (세션554) — 갭투자액·월이자는 이 건수 위에서 계산된다.
+  // 거래 건수 노출 (세션554) — 월이자는 이 건수 위에서 계산된다.
   // 실측(2026-09-21, apartments_flat 2,458행): 면적 구간의 8.8%가 거래 1건, 21.4%가 5건 미만.
   // 형제 화면 PriceTable 은 이미 "건수" 열을 보여주는데 여기만 숨겨 한 모달이 서로 다른 말을 했다.
   it("면적별 표에 거래 건수를 함께 보여준다", () => {
@@ -199,7 +249,7 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText(/LTV \(담보인정비율\)/)).toBeTruthy();
   });
 
-  // LoanRatesSection이 렌더링된다
+  // LoanRatesSection(다른 금융권 더 보기)이 렌더링된다
   it("LoanRatesSection을 렌더링한다", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000 }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
@@ -215,12 +265,12 @@ describe("LoanAnalysis", () => {
       rentByArea: null,
     });
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText(/전세 시세 데이터가 없어/)).toBeTruthy();
+    expect(screen.getByText("전세 시세 데이터가 없어 월이자를 계산할 수 없습니다")).toBeTruthy();
   });
 
-  // 갭투자액이 양수이고 전세대출 금리가 있으면 월이자 계산
-  it("갭투자액 양수 + 전세대출 금리 시 월이자를 계산한다", () => {
-    // gap = 48000 - 25000 = 23000만원, rate = 3.8%
+  // 최저매매 − 전세평균이 양수이고 전세대출 금리가 있으면 월이자 계산
+  it("최저매매가 전세평균보다 높고 전세대출 금리가 있으면 월이자를 계산한다", () => {
+    // 차액 = 48000 - 25000 = 23000만원, rate = 3.8%
     // 월이자 = 23000 * 3.8 / 100 / 12 = 72.8 → 73만원
     const apt = makeApt({
       price: 50000,
@@ -229,7 +279,7 @@ describe("LoanAnalysis", () => {
       rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
     });
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText(/\/월/)).toBeTruthy();
+    expect(screen.getByText("73만/월")).toBeTruthy();
   });
 
   // 세션576 D2 — 면적이 없는(null) 단지도 면적별 표가 뜬다. 옛 코드는 null 을 0㎡ 로 바꿔

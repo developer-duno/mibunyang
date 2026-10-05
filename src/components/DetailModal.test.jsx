@@ -1114,15 +1114,28 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
       expect(t).toContain("빌릴 수 있는 돈 2억");
     });
 
-    it("부산 5억(비규제) → 빌릴 수 있는 돈 3.5억", () => {
+    it("부산 5억(비규제) → 빌릴 수 있는 돈 3억 5,000만", () => {
       const t = financeText({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false });
-      expect(t).toContain("빌릴 수 있는 돈 3.5억");
+      expect(t).toContain("빌릴 수 있는 돈 3억 5,000만");
     });
 
     it("화성시 5억 + DB 규제 표시 참(동탄구) → 이름은 비규제여도 2억", () => {
       const t = financeText({ price: 50000, region: "경기", gu: "화성시", isRegulated: true });
       expect(t).toContain("빌릴 수 있는 돈 2억");
-      expect(t).not.toContain("빌릴 수 있는 돈 3.5억");
+      expect(t).not.toContain("빌릴 수 있는 돈 3억 5,000만");
+    });
+
+    // 세션593 D1 — 막대 금액은 만원까지, 숫자 3칸은 없다, 아래 글에 분양가.
+    // ⚠️ 뮤테이션 대상: DetailModal 의 LoanStack `price=` 를 빼면 막대가 "계산할 수 없어요"가 되어 빨강.
+    it("규제 5억 3,020만 → 막대 '대출 2억 1,208만 · 내 돈 3억 1,812만' · 분양가 글 · 숫자 3칸 없음", () => {
+      const t = financeText({ price: 53020, region: "서울", gu: "강남구", isRegulated: true });
+      expect(t).toContain("대출 2억 1,208만");
+      expect(t).toContain("내 돈 3억 1,812만");
+      expect(t).toContain("분양가 5억 3,020만 · 규제지역 기준 최대 40%");
+      expect(t).not.toContain("LTV 대출한도");
+      expect(t).not.toContain("필요 자기자본");
+      expect(t).not.toContain("은행별 금리 비교");
+      expect(t).toContain("저축은행 · 여신전문 · 보험 금리 보기");
     });
   });
 

@@ -36,8 +36,26 @@ type FetchFinlifeParams = {
 };
 
 type FetchFinlifeResult =
-  | { data: FinlifeProduct[]; count: number; message?: string }
+  | { data: FinlifeProduct[]; count: number; message?: string; disclosureMonth?: string | null }
   | { error: string; status: number };
+
+/**
+ * 공시월(`dcls_month`) 중 가장 최근 값 하나 — finlife 오픈API 명세: baseList·optionList 의
+ * `dcls_month` = "공시 제출월 [YYYYMM]". 6자리 숫자·월 1~12 가 아니면 버리고, 맞는 값이 없으면 null
+ * (화면은 그 글자만 뺀다). 상품마다 공시월이 다를 수 있어 가장 최근 값을 고른다(세션593 D4).
+ */
+export function pickDisclosureMonth(list: ReadonlyArray<{ dcls_month?: unknown }>): string | null {
+  let best: string | null = null;
+  for (const b of list) {
+    const s = String(b?.dcls_month ?? "").trim();
+    const m = /^(\d{4})(\d{2})$/.exec(s);
+    if (!m) continue;
+    const month = Number(m[2]);
+    if (month < 1 || month > 12) continue;
+    if (best == null || s > best) best = s;
+  }
+  return best;
+}
 
 /**
  * finlife API 상품 조회 공통 로직
@@ -60,7 +78,7 @@ export async function fetchFinlifeProducts({
     return { data: [], count: 0, message: result?.err_msg || "데이터 없음" };
   }
 
-  const baseList = (result.baseList ?? []) as Array<{ fin_co_no?: string; fin_prdt_cd?: string; kor_co_nm?: string; fin_prdt_nm?: string; join_way?: string; loan_lmt?: string }>;
+  const baseList = (result.baseList ?? []) as Array<{ fin_co_no?: string; fin_prdt_cd?: string; kor_co_nm?: string; fin_prdt_nm?: string; join_way?: string; loan_lmt?: string; dcls_month?: string }>;
   const optionList = (result.optionList ?? []) as FinlifeOption[];
 
   // baseList → 상품 기본정보 맵
@@ -86,5 +104,5 @@ export async function fetchFinlifeProducts({
   // 금리 낮은 순 정렬
   products.sort((a, b) => (a.rateMin ?? 99) - (b.rateMin ?? 99));
 
-  return { data: products, count: products.length };
+  return { data: products, count: products.length, disclosureMonth: pickDisclosureMonth(baseList) };
 }

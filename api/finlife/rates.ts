@@ -66,7 +66,8 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
     }
 
     res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate=1800");
-    res.json({ ok: true, data: result.data, count: result.count });
+    // disclosureMonth = 금리 공시월 "YYYYMM"(없으면 null) — 화면이 "N년 M월 공시" 로 적는다(세션593 D4).
+    res.json({ ok: true, data: result.data, count: result.count, disclosureMonth: result.disclosureMonth ?? null });
   } catch (err) {
     console.error("[finlife/rates] error:", err instanceof Error ? err.message : String(err));
     res.status(502).json({ ok: false, error: "외부 API 연동 중 오류가 발생했습니다" });

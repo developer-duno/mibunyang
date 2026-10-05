@@ -13,7 +13,10 @@ import { fmtPrice } from "@/lib/format";
 import { hasKnownArea } from "@/lib/area";
 import { thStyle, tdStyle } from "./tableStyles";
 import { useRentLoanRates } from "@/hooks/useRentLoanRates";
+import { useLoanRates } from "@/hooks/useLoanRates";
+import { DEFAULT_GROUP } from "@/constants/loanGroups";
 import { LoanRatesSection } from "./LoanRatesSection";
+import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
 import type { PriceAreaRow } from "@/types/detail";
 
@@ -32,6 +35,9 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
     rates: Array<{ rateMin?: number | null }>;
     loading: boolean;
   };
+  // 주담대 은행권 금리 — 여기서 한 번 받아 "한 달에 갚을 돈"·은행 범위 막대가 같이 쓴다(세션593 D2·D3).
+  // 다른 금융권은 아래 접힘을 펼칠 때만 부른다(D6) → 첫 진입 호출 = 전세 1 + 주담대 은행권 1.
+  const { rates: bankRates, disclosureMonth } = useLoanRates(DEFAULT_GROUP);
 
   // DB 규제 표시 우선(zoneOf) — 점수·대출 막대와 같은 판정.
   const zone = zoneOf({
@@ -59,8 +65,8 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
   // 면적을 모르면 면적별 표를 거르지 않는다 — 0㎡ 로 두면 "0㎡ ±20㎡" 에 걸리는 행이 없어 표가 통째로 사라진다(세션576 D2).
   const areaKnown = hasKnownArea(apt.area);
   const aptArea = areaKnown ? Number(apt.area) : 0;
+  // 대출액 — 위 대출 막대(LoanStack)와 같은 계산·같은 행(DetailModal 이 둘 다 mergedApt ?? apt 를 넘긴다)
   const ltvBase = calcLTV(aptPrice, zone, apt.region);
-  const needCash = aptPrice - ltvBase;
   const allLoan = (apt.priceByArea as PriceAreaRow[] | undefined) ?? [];
   const narrowLoan = allLoan.filter((p) => Math.abs(p.area - aptArea) <= 10);
   const loanSrc = !areaKnown
@@ -75,16 +81,20 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
   const rows = hasDetail
     ? loanSrc.map((p) => {
         const rent = allRent.find((r) => r.area === p.area);
-        const gap = rent ? p.min - rent.avg : null;
+        // 월이자 = (최저매매 − 전세평균) × 전세대출 최저 금리 ÷ 12. 그 차액 칸("갭투자액")은 세션593 D5 에 표에서 뺐다
+        // (사장님 결정 — 칸만 빼고 월이자는 그대로). 두 값 나란히 보여 주기는 시세 범위 좁히기 뒤로.
+        const diff = rent ? p.min - rent.avg : null;
         const ltv = calcLTV(p.min, zone, apt.region);
         const monthlyInterest =
-          gap != null && gap > 0 && rentMinRate ? Math.round((gap * rentMinRate) / 100 / 12) : null;
-        return { area: p.area, min: p.min, rentAvg: rent?.avg, gap, ltv, monthlyInterest, count: p.count };
+          diff != null && diff > 0 && rentMinRate ? Math.round((diff * rentMinRate) / 100 / 12) : null;
+        return { area: p.area, min: p.min, rentAvg: rent?.avg, ltv, monthlyInterest, count: p.count };
       })
     : [];
 
   return (
     <>
+      <MonthlyPaymentBlock loan={ltvBase} rates={bankRates} disclosureMonth={disclosureMonth} />
+      <BankRateBars rates={bankRates} disclosureMonth={disclosureMonth} />
       <div
         style={{
           background: C.bg,
@@ -122,47 +132,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
             </div>
           </div>
         )}
-        <div style={{ display: "flex", gap: 8, marginBottom: hasDetail ? 10 : 0 }}>
-          <div
-            style={{
-              flex: 1,
-              background: C.card,
-              borderRadius: 8,
-              padding: "8px 10px",
-              textAlign: "center",
-              border: `1px solid ${C.border}`,
-            }}
-          >
-            <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>분양가</div>
-            <div style={{ fontSize: F.base, fontWeight: 800, color: C.text }}>{fmtPrice(aptPrice)}</div>
-          </div>
-          <div
-            style={{
-              flex: 1,
-              background: C.card,
-              borderRadius: 8,
-              padding: "8px 10px",
-              textAlign: "center",
-              border: `1px solid ${C.border}`,
-            }}
-          >
-            <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>LTV 대출한도</div>
-            <div style={{ fontSize: F.base, fontWeight: 800, color: C.blue }}>{fmtPrice(ltvBase)}</div>
-          </div>
-          <div
-            style={{
-              flex: 1,
-              background: C.card,
-              borderRadius: 8,
-              padding: "8px 10px",
-              textAlign: "center",
-              border: `1px solid ${C.border}`,
-            }}
-          >
-            <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 2 }}>필요 자기자본</div>
-            <div style={{ fontSize: F.base, fontWeight: 800, color: C.red }}>{fmtPrice(needCash)}</div>
-          </div>
-        </div>
+        {/* 옛 숫자 3칸(분양가·LTV 대출한도·필요 자기자본)은 세션593 D1 에 위 대출 막대로 합쳤다 — 같은 금액이 두 번 나왔다. */}
         {!hasDetail && isLoading && (
           <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>가격 정보를 불러오는 중…</div>
         )}
@@ -179,7 +149,6 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
                   <th style={thStyle}>면적</th>
                   <th style={thStyle}>최저매매</th>
                   <th style={thStyle}>전세평균</th>
-                  <th style={thStyle}>갭투자액</th>
                   <th style={thStyle}>월이자</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>거래</th>
                   <th style={{ ...thStyle, textAlign: "right" }}>LTV한도</th>
@@ -191,17 +160,10 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
                     <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
                     <td style={tdStyle}>{fmtPrice(r.min)}</td>
                     <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
-                    <td style={{ ...tdStyle, color: r.gap != null ? (r.gap > 0 ? C.red : C.green) : C.muted }}>
-                      {r.gap != null
-                        ? r.gap === 0
-                          ? "0만"
-                          : (r.gap > 0 ? "+" : "-") + fmtPrice(Math.abs(r.gap))
-                        : "-"}
-                    </td>
                     <td style={{ ...tdStyle, color: r.monthlyInterest != null ? C.amber : C.muted }}>
                       {r.monthlyInterest != null ? `${fmtPrice(r.monthlyInterest)}/월` : rentLoading ? "…" : "-"}
                     </td>
-                    {/* 거래 건수 — 위 갭투자액·월이자가 "몇 건으로 낸 값"인지 말해 준다.
+                    {/* 거래 건수 — 위 최저매매·월이자가 "몇 건으로 낸 값"인지 말해 준다.
                         실측(2026-09-21, apartments_flat 2,458행): 8.8%가 1건, 21.4%가 5건 미만이라
                         건수를 숨기면 한 건짜리 시세가 확정값처럼 보인다. 형제 표(PriceTable)와 같은 표기.
                         FEW_TRADES_MAX 미만은 경고색 — 색만으로 뜻이 갈리지 않게 title 도 함께 둔다. */}
@@ -236,7 +198,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
             )}
             {!hasRentData && (
               <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4 }}>
-                전세 시세 데이터가 없어 갭투자 월이자를 계산할 수 없습니다
+                전세 시세 데이터가 없어 월이자를 계산할 수 없습니다
               </div>
             )}
           </>
@@ -309,7 +271,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         )}
       </div>
 
-      <LoanRatesSection apt={{ ...apt, _ltvBase: ltvBase }} />
+      <LoanRatesSection />
     </>
   );
 });

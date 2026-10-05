@@ -91,13 +91,6 @@ export interface PriceTableProps {
 }
 
 /**
- * LoanRatesSection props (96줄, useLoanRates 호출).
- */
-export interface LoanRatesSectionProps {
-  apt: Apt;
-}
-
-/**
  * MarketStatsCharts props (99줄, 지역 + 구 차트).
  */
 export interface MarketStatsChartsProps {
