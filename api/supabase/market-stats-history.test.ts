@@ -9,8 +9,8 @@ vi.mock("../_lib/rateLimit.js", () => ({
 }));
 
 const mockData = [
-  { region: "서울", gu: "강남구", base_month: "202503", price_index: 105.2, avg_price_sqm: 12500, new_supply: 320, initial_sale_rate: 92.5, land_cost_ratio: 35.1 },
-  { region: "서울", gu: "강남구", base_month: "202504", price_index: 106.1, avg_price_sqm: 12700, new_supply: 280, initial_sale_rate: 95.3, land_cost_ratio: 35.8 },
+  { region: "서울", gu: "강남구", base_month: "202503", avg_price_sqm: 12500, new_supply: 320, initial_sale_rate: 92.5, land_cost_ratio: 35.1 },
+  { region: "서울", gu: "강남구", base_month: "202504", avg_price_sqm: 12700, new_supply: 280, initial_sale_rate: 95.3, land_cost_ratio: 35.8 },
 ];
 
 const mockOrder = vi.fn().mockResolvedValue({ data: mockData, error: null });
@@ -86,8 +86,8 @@ describe("supabase/market-stats-history handler", () => {
 
   it("gu='서구' 빈 응답 → gu='' 시도 폴백 + fallback:true", async () => {
     const fallbackRows = [
-      { region: "인천", gu: "", base_month: "202501", price_index: null, avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
-      { region: "인천", gu: "", base_month: "202502", price_index: null, avg_price_sqm: 110, new_supply: 30, initial_sale_rate: null, land_cost_ratio: 36 },
+      { region: "인천", gu: "", base_month: "202501", avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
+      { region: "인천", gu: "", base_month: "202502", avg_price_sqm: 110, new_supply: 30, initial_sale_rate: null, land_cost_ratio: 36 },
     ];
     // 1차 (gu="서구"): 빈 응답 → 2차 (gu=""): 시도 데이터
     mockOrder
@@ -111,11 +111,11 @@ describe("supabase/market-stats-history handler", () => {
     const nullRows = Array.from({ length: 18 }, (_, i) => ({
       region: "인천", gu: "서구",
       base_month: `2024${String(i + 1).padStart(2, "0")}`,
-      price_index: null, avg_price_sqm: null, new_supply: null,
+      avg_price_sqm: null, new_supply: null,
       initial_sale_rate: null, land_cost_ratio: null,
     }));
     const fallbackRows = [
-      { region: "인천", gu: "", base_month: "202501", price_index: null, avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
+      { region: "인천", gu: "", base_month: "202501", avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
     ];
     mockOrder
       .mockResolvedValueOnce({ data: nullRows, error: null })
@@ -142,6 +142,35 @@ describe("supabase/market-stats-history handler", () => {
     // 폴백 발동 안 함 → eq("gu", ...) 호출 1회만 (1차 gu="")
     const guCalls = mockQuery.eq.mock.calls.filter((c: any[]) => c[0] === "gu");
     expect(guCalls).toHaveLength(1);
+  });
+
+  // 세션593 — 분양가격지수(price_index)는 화면에서 뺐다(세션592). 읽는 곳이 없으니 가져오지도 않는다.
+  // ⚠️ 변이 대상: SELECT 에 price_index 를 되돌리면 빨강.
+  it("SELECT 는 4지표만 — price_index 를 가져오지 않는다 (세션593)", async () => {
+    const res = makeRes();
+    await handler({ method: "GET", query: { region: "서울", gu: "강남구" }, headers: {} }, res);
+    expect(mockQuery.select).toHaveBeenCalledWith(
+      "region,gu,base_month,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio"
+    );
+    for (const c of mockQuery.select.mock.calls) expect(String(c[0])).not.toContain("price_index");
+  });
+
+  // 세션593 — 폴백 판정 변화 고정: 시군구 행에 price_index 만 값이 있고 4지표가 전부 비면 이제 시도로 폴백한다
+  // (옛 판정은 price_index 도 "값 있음"으로 쳐서 폴백하지 않고 빈 그림을 보냈다).
+  // ⚠️ 변이 대상: METRIC_FIELDS 에 price_index 를 되돌리면 빨강.
+  it("gu 행에 price_index 만 값이 있으면 시도 폴백 (세션593 판정 변화)", async () => {
+    const guRows = [
+      { region: "인천", gu: "서구", base_month: "202501", price_index: 101.5, avg_price_sqm: null, new_supply: null, initial_sale_rate: null, land_cost_ratio: null },
+    ];
+    const fallbackRows = [
+      { region: "인천", gu: "", base_month: "202501", avg_price_sqm: 100, new_supply: 20, initial_sale_rate: null, land_cost_ratio: 35 },
+    ];
+    mockOrder
+      .mockResolvedValueOnce({ data: guRows, error: null })
+      .mockResolvedValueOnce({ data: fallbackRows, error: null });
+    const res = makeRes();
+    await handler({ method: "GET", query: { region: "인천", gu: "서구" }, headers: {} }, res);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ data: fallbackRows, fallback: true }));
   });
 
   it("Supabase error → 500 시장통계 메시지", async () => {

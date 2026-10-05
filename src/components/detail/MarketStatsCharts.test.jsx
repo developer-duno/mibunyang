@@ -101,6 +101,23 @@ describe("MarketStatsCharts", () => {
       expect(screen.getByText(label)).toBeTruthy();
   });
 
+  // 세션593 — 세션592 검사관 변이 M14(auto-fit → auto-fill)가 살아남았던 자리.
+  // auto-fill 이면 PC 폭에서 5칸 자리를 잡아 오른쪽에 빈 칸 하나 폭이 남는다(세션592 캡처).
+  // ⚠️ 변이 대상: auto-fill 로 바꾸면 빨강.
+  it("칸 배치는 auto-fit — 4칸이 한 줄을 채운다 (세션593)", () => {
+    mockUseMarketStatsHistory.mockReturnValue({
+      data: makeRows(),
+      loading: false,
+      error: null,
+      retry: vi.fn(),
+      fallback: false,
+    });
+    render(<MarketStatsCharts region="서울" gu="강남구" />);
+    const grid = /** @type {HTMLElement} */ (screen.getByTestId("market-charts-grid"));
+    expect(grid.style.display).toBe("grid");
+    expect(grid.style.gridTemplateColumns).toBe("repeat(auto-fit, minmax(120px, 1fr))");
+  });
+
   it("price_index 만 값이 있으면 그릴 것이 없어 안내 박스 (세션592)", () => {
     const rows = makeRows().map((r) => ({
       ...r,

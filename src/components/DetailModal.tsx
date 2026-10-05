@@ -890,7 +890,8 @@ export const DetailModal = memo(function DetailModal({
                 {/* 추가 모집(무순위 공고) 이력 카드 (세션508 PR-3c C1) — ah- 단지만 그린다. */}
                 <UnsoldEventCard apt={mergedApt ?? apt} />
 
-                {/* 시공사 (세션508 PR-3c C2 · 세션591 P2) — 칩(시공사·신용등급) + 부채비율 눈금, 접힘 없음. */}
+                {/* 시공사 (세션508 PR-3c C2 · 세션591 P2) — 시공사 이름 칩 + 부채비율 눈금, 접힘 없음.
+                  신용등급 칩은 세션592 에 뺐다(부채비율에서 계산한 값이라 눈금과 같은 말). */}
                 <BuilderCard apt={mergedApt ?? apt} />
 
                 {/* 옛 "분양 안전" 접힘(계약해제율 1칸)은 세션591 P3 에 해체 — 계약해제율은 시·군·구 값이라

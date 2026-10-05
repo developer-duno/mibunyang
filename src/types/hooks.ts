@@ -237,7 +237,7 @@ export interface UseRecentlyViewedReturn {
 }
 
 /**
- * 시장 통계 시계열 1행 — KOSIS 컬럼 동적 (avg_price_sqm/price_index/...).
+ * 시장 통계 시계열 1행 — KOSIS 컬럼 동적 (avg_price_sqm/new_supply/...). price_index 는 세션593 에 API 에서 뺐다.
  */
 export interface MarketStatsRow {
   base_month?: string;

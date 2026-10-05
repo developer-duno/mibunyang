@@ -525,8 +525,17 @@ describe("문구는 경계 숫자를 표에서 읽는다 — 표만 바꾸고 �
 
   it("계약해제율 설명(detail)이 표의 경계를 그대로 말한다 (calcCats 경유)", () => {
     const d = calcCats({ ...base, cancelRatio6m: 1.3 } as never).risk.subs.find((s) => s.name === "계약해제율")!.detail;
-    expect(d).toContain(`안전 ${CANCEL_RATIO_TIERS[0].max}%↓`);
-    expect(d).toContain(`위험 ${CANCEL_RATIO_TIERS[3].max}%↑`);
+    expect(d).toContain(`${CANCEL_RATIO_TIERS[1].max}% 이하 ${CANCEL_RATIO_TIERS[1].label}`);
+    expect(d).toContain(`${CANCEL_RATIO_TIERS[2].max}% 이하 ${CANCEL_RATIO_TIERS[2].label}`);
+  });
+
+  // 세션593 — 상세 글의 판정 글자를 분양 탭 눈금 글자(적음·보통·많음)와 같은 말로. 옛 문장은 1.2~1.6 을 "주의"라 했다.
+  // 기대 문장은 리터럴로 못 박는다(표에서 읽으면 표가 밀릴 때 같이 밀린다).
+  // ⚠️ 변이 대상: 옛 "안전…↓, 주의…, 위험…↑" 문장으로 되돌리면 빨강.
+  it("계약해제율 상세 글 = 눈금 글자와 같은 말 (세션593, calcCats 경유)", () => {
+    const d = calcCats({ ...base, cancelRatio6m: 1.4 } as never).risk.subs.find((s) => s.name === "계약해제율")!.detail;
+    expect(d).toBe("1.4% (1.2% 이하 적음 · 1.6% 이하 보통 · 그 위 많음)");
+    expect(d).not.toContain("주의");
   });
 
   it("택지비비율 설명(detail)이 표의 경계를 그대로 말한다 (calcCats 경유)", () => {
