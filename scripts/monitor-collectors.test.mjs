@@ -188,12 +188,20 @@ describe("checkEmptyRuns — ② 데이터 0건", () => {
     expect(issues[0].collector).toBe("molit-units");
   });
 
-  // 세션594 — school-walk 는 전수 재계산 뒤 바뀐 행만 센다(0건 = 정상). 10/04 run(직접 계산 3,052 + 재탐색 195,
-  //   갱신 0)을 ② 가 "데이터 0건"으로 울렸다(10/05 10:04 오탐). 실제 daily 배선과 같은 집합(idempotentCollectorSet)으로 본다.
-  it("school-walk 0건은 멱등 집합으로 ② 미발화 — 같은 집합에서 일반 수집기 0건은 그대로 발화(양성 대조)", () => {
+  // 세션594 에 school-walk 를 멱등 집합에 임시로 넣었다(10/04 run: 직접 계산 3,052 + 재탐색 195, 갱신 0 → 10/05 10:04
+  //   ② "데이터 0건" 오탐). 세션595 에 근본 처방 — school-walk 가 안 바뀐 행을 skip 으로 기록한다(calc-school-walk
+  //   recordUnchangedSkips). 그래서 집합에서 뺐다: 재계산만 한 회차(ok 0·skip 3,052)는 안 울리고, 계산 자체가 없었던
+  //   진짜 0건(ok 0·skip 0)은 다시 ② 로 잡힌다. 실제 daily 배선과 같은 집합(idempotentCollectorSet)으로 본다.
+  it("school-walk 는 멱등 집합에 없다 — skip 3,052 는 미발화 · ok 0·skip 0 은 발화(양성)", () => {
     const set = idempotentCollectorSet();
-    expect(set.has("school-walk")).toBe(true);
-    expect(set.has("calc-floors")).toBe(false); // 양성 대조 — 집합 밖 일반 수집기
+    expect(set.has("school-walk")).toBe(false);
+    expect(set.has("calc-floors")).toBe(false); // 대조 — 집합 밖 일반 수집기
+    const quiet = checkEmptyRuns(
+      [{ collector: "school-walk", status: "success", ok_count: 0, skip_count: 3052, fail_count: 0 }],
+      {},
+      { externalApiCollectors: set },
+    );
+    expect(quiet).toEqual([]);
     const issues = checkEmptyRuns(
       [
         { collector: "school-walk", status: "success", ok_count: 0, skip_count: 0, fail_count: 0 },
@@ -202,7 +210,7 @@ describe("checkEmptyRuns — ② 데이터 0건", () => {
       {},
       { externalApiCollectors: set },
     );
-    expect(issues.map((i) => i.collector)).toEqual(["calc-floors"]);
+    expect(issues.map((i) => i.collector)).toEqual(["school-walk", "calc-floors"]);
   });
 });
 

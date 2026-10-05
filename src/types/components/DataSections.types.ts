@@ -8,8 +8,7 @@ export interface DataSection {
   title: string;
   highlight?: readonly string[];
   grid?: readonly string[];
-  /** true면 섹션의 모든 필드가 null일 때 "데이터 수집 중..." 대신 섹션 자체를 숨김 (청약 경쟁률 등 부분 보유 필드용) */
-  hideWhenEmpty?: boolean;
+  // 옛 `hideWhenEmpty` 칸은 뺐다 — 필드 전부 null 이면 섹션 자체를 안 그린다(세션595, 전 섹션 기본 · `DataSectionBlock`).
   /** 섹션 제목 옆 ? 도움말 "보는 법" 카피 (세션 411). 채운 섹션만 HelpHint 노출 — 다른 탭 섹션도 hint만 추가하면 자동 적용. */
   hint?: string;
 }

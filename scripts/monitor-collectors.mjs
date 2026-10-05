@@ -3476,12 +3476,12 @@ async function clearAlertKeysByPrefix(prefix) {
 /**
  * ok=0 이 정상인(멱등/삭제형) 수집기 집합 — ② 제외 + 브리핑 "갱신 없음(정상)" 표기에 공용.
  * EXTERNAL_API_COLLECTORS(데이터 부재가 흔한 외부 API 의존) + purge-consults(삭제 대상 0 흔함)
- * + school-walk(세션594 — 전수 재계산 뒤 **바뀐 행만** 세므로 0건이 정상. 10/04 run: 직접 계산 3,052 + 재탐색 195,
- *   갱신 0 → 10/05 ② "데이터 0건" 오탐).
+ * ⚠️ school-walk 는 넣지 않는다 — 세션594 에 임시로 넣었으나(10/05 ② "데이터 0건" 오탐), school-walk 는 세션595 부터
+ *   안 바뀐 행을 skip 으로 기록 → ② 가 자연히 안 울린다(ok 0·skip 0 = 진짜 0건 고장만 잡힘).
  * @returns {Set<string>}
  */
 export function idempotentCollectorSet() {
-  return new Set([...EXTERNAL_API_COLLECTORS.map((c) => c.collector), "purge-consults", "school-walk"]);
+  return new Set([...EXTERNAL_API_COLLECTORS.map((c) => c.collector), "purge-consults"]);
 }
 
 /**

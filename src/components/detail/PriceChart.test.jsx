@@ -66,6 +66,18 @@ describe("PriceChart", () => {
     expect(screen.getByTestId("line-chart")).toBeTruthy();
   });
 
+  // 세션595 D2 — 점이 6개 미만일 때 붙던 "데이터 N개 · 매주 자동 수집 누적 중" 줄은 우리 수집 상태를 손님에게
+  //   말하는 글이라 지웠다. 그림은 그대로 그린다.
+  it("점 2~5개여도 '수집 누적 중' 글자는 없다 — 그림은 그린다", () => {
+    for (const n of [2, 5]) {
+      mockUsePriceHistory.mockReturnValue({ data: makeData(n), loading: false, error: null, retry: vi.fn() });
+      const { container, unmount } = render(<PriceChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+      expect(screen.getByTestId("line-chart")).toBeTruthy(); // 양성 앵커
+      expect(container.textContent).not.toMatch(/수집|누적/);
+      unmount();
+    }
+  });
+
   // ? 도움말 노출
   it("정상 렌더 시 제목 옆 ? 도움말이 보인다", () => {
     mockUsePriceHistory.mockReturnValue({ data: makeData(3), loading: false, error: null, retry: vi.fn() });

@@ -96,6 +96,24 @@ describe("findViolations — 무엇을 잡고 무엇을 넘기나", () => {
     }
   });
 
+  // 세션595 — 우리 수집 상태를 손님에게 말하는 꼴(옛 UnsoldChart·PriceChart·DataSectionBlock 빈 자리 글).
+  it("'수집 누적 중'·'데이터 수집 중...' 을 잡는다 · '수집 중단'은 잡지 않는다", () => {
+    for (const t of [
+      "<div>데이터 3개 · 매월 자동 수집 누적 중</div>",
+      "<div>데이터 {chartData.length}개 · 매주 자동 수집 누적 중</div>",
+      "<div>데이터 수집 중...</div>",
+    ]) {
+      const hits = findViolations(F, t);
+      expect(hits.length, t).toBeGreaterThan(0);
+      expect(hits[0].why).toMatch(/수집 상태/);
+    }
+    // 음성 — 주석이 아닌 문자열 안의 "수집 중단기"(사실 서술)는 통과. ⚠️ 면제어(국토부·통계 등)를 넣지 않는다 —
+    //   넣으면 `(?!단)` 이 없어도 면제로 통과해 이 시험이 껍데기가 된다(변이 시험에서 실제로 초록이 났다).
+    const neg = 'export const NOTE = "6·7월은 수집 중단기라 빠져 있다";';
+    expect(findViolations(F, neg)).toEqual([]);
+    expect(findViolations(F, neg.replace("중단기", "중")).length).toBeGreaterThan(0); // 같은 문장, 양성 대조
+  });
+
   it("위반 보고에 이유가 함께 온다", () => {
     const [h] = findViolations(F, "<div>참고로만 봐 주세요</div>");
     expect(h.why).toMatch(/떠넘/);

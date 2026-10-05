@@ -99,6 +99,20 @@ describe("UnsoldChart", () => {
     expect(screen.getByTestId("line-chart")).toBeTruthy();
   });
 
+  // 세션595 D2 — 점이 6개 미만일 때 붙던 "데이터 N개 · 매월 자동 수집 누적 중" 줄은 우리 수집 상태를 손님에게
+  //   말하는 글이라 지웠다(MarketStatsCharts 세션594 와 같은 꼴). 그림은 그대로 그린다.
+  it("점 2~5개여도 '수집 누적 중' 글자는 없다 — 그림은 그린다", () => {
+    for (const n of [2, 5]) {
+      mockUseUnsoldHistory.mockReturnValue({ data: makeData(n), loading: false, error: null, retry: vi.fn() });
+      const { container, unmount } = render(
+        <UnsoldChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} unsold={10} />
+      );
+      expect(screen.getByTestId("line-chart")).toBeTruthy(); // 양성 앵커
+      expect(container.textContent).not.toMatch(/수집|누적/);
+      unmount();
+    }
+  });
+
   // 세션594 사장님 결정 — x 글자는 첫 점과 1월 점만 "YY.MM", 나머지는 "MM".
   //   옛 x = base_month.slice(4) 는 연도가 전혀 없어 해가 바뀌는 자리가 안 보였고, 전부 "YY.MM" 이면 12점에서 이웃 글자와 겹쳤다.
   it("x 글자 — 첫 점은 연도까지 · 1월 점은 연도까지 · 그 밖은 월만 (두 계열 같은 글자)", () => {

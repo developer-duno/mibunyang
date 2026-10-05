@@ -35,6 +35,8 @@ const {
   calcWalkingMinutes,
   nearestElemFromKakaoDocs,
   planWalkUpdates,
+  diffWalkUpdates,
+  recordUnchangedSkips,
   isSchoolPlace,
   SCHOOL_WALK_BONUS_MIRROR,
   SCHOOL_WALK_FAR_ADJ_MIRROR,
@@ -303,6 +305,70 @@ describe("planWalkUpdates", () => {
       expect(needLookup.map(n => n.id)).toEqual(["n1"]);
       expect(clear.map(c => c.id)).toEqual(["cs1"]);
     });
+  });
+});
+
+// ── 세션595 S2a: 안 바뀐 행은 skip 으로 기록 ─────────────────────────────
+// 옛 판은 바뀐 행만 rpt.success 로 세서, 전수 재계산 결과가 전부 DB 와 같으면 ok 0·skip 0 →
+// 감시 ② "데이터 0건" 오탐(10/05). 이제 안 바뀐 계산 행 + 이미 null 인 좌표불명 행을 skip 으로 센다.
+describe("안 바뀐 행은 skip 으로 기록한다 (세션595 S2a)", () => {
+  const fakeRpt = () => ({ skip: vi.fn(), success: vi.fn() });
+  /** @param {number} n */
+  const computed = (n) => Array.from({ length: n }, (_, i) => ({ id: `a${i}`, walkMin: 5, minDist: 300 }));
+
+  it("전부 같은 값 → rpt.skip(n) · UPDATE 0건(dry-run success 수 = 0)", () => {
+    const allComputed = computed(4);
+    const curById = new Map(allComputed.map((u) => [u.id, /** @type {number|null} */ (5)]));
+    const { updates, clearUpdates } = diffWalkUpdates(curById, allComputed, []);
+    const rpt = fakeRpt();
+    const r = recordUnchangedSkips(rpt, { allComputed, updates, clear: [], clearUpdates });
+    expect(rpt.skip).toHaveBeenCalledTimes(1);
+    expect(rpt.skip).toHaveBeenCalledWith(4);
+    expect(rpt.success).not.toHaveBeenCalled();
+    expect(updates.length + clearUpdates.length).toBe(0); // main 의 dry-run 분기가 success 로 넘기는 수
+    expect(r).toEqual({ unchanged: 4, clearSkipped: 0 });
+  });
+
+  it("한 건만 다름 → skip n−1 · UPDATE 1건(success 1)", () => {
+    const allComputed = computed(4);
+    /** @type {Map<string, number|null>} */
+    const curById = new Map(allComputed.map((u) => [u.id, 5]));
+    curById.set("a2", 9); // DB 값이 다르다 → UPDATE 대상
+    const { updates, clearUpdates } = diffWalkUpdates(curById, allComputed, []);
+    const rpt = fakeRpt();
+    recordUnchangedSkips(rpt, { allComputed, updates, clear: [], clearUpdates });
+    expect(updates.map((u) => u.id)).toEqual(["a2"]);
+    expect(rpt.skip).toHaveBeenCalledWith(3);
+    expect(updates.length + clearUpdates.length).toBe(1);
+  });
+
+  it("좌표불명 중 이미 null 인 행도 skip 에 더한다 · null 이 아닌 행은 비움 대상", () => {
+    /** @type {Map<string, number|null>} */
+    const curById = new Map([["c1", null], ["c2", 7]]);
+    const clear = [{ id: "c1" }, { id: "c2" }];
+    const { updates, clearUpdates } = diffWalkUpdates(curById, [], clear);
+    const rpt = fakeRpt();
+    const r = recordUnchangedSkips(rpt, { allComputed: [], updates, clear, clearUpdates });
+    expect(clearUpdates).toEqual([{ id: "c2" }]);
+    expect(rpt.skip).toHaveBeenCalledWith(1);
+    expect(r).toEqual({ unchanged: 0, clearSkipped: 1 });
+  });
+
+  it("모두 바뀌었으면 skip 을 부르지 않는다 (0 을 기록하지 않음)", () => {
+    const allComputed = computed(2);
+    const { updates, clearUpdates } = diffWalkUpdates(new Map(), allComputed, []);
+    const rpt = fakeRpt();
+    recordUnchangedSkips(rpt, { allComputed, updates, clear: [], clearUpdates });
+    expect(rpt.skip).not.toHaveBeenCalled();
+  });
+
+  // 배선 — main 이 이 함수를 실제로 부르는가(함수만 옳고 호출이 빠지면 위 시험은 초록이다).
+  //   좌변까지 고정해 export 선언부에 걸리지 않게 한다(guards-must-be-mutation-tested 세션491).
+  it("main 이 diffWalkUpdates → recordUnchangedSkips 를 분기 전에 부른다", () => {
+    const body = COLLECTOR_SRC.slice(COLLECTOR_SRC.indexOf("async function main()"));
+    expect(body).toMatch(/const \{ updates, clearUpdates \} = diffWalkUpdates\(curById, allComputed, clear\);/);
+    expect(body).toMatch(/const \{ unchanged, clearSkipped \} = recordUnchangedSkips\(rpt, \{/);
+    expect(body.indexOf("recordUnchangedSkips(rpt")).toBeLessThan(body.indexOf("if (dryRun) {"));
   });
 });
 

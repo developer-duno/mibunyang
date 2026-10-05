@@ -71,12 +71,28 @@ export function noiseScale() {
   return { quiet, loud, center };
 }
 
-/** 소음 칸 색 — 가장 조용한 칸은 초록, 가장 시끄러운 칸은 빨강, 그 사이는 주황 */
-function noiseColor(db: number): string {
+/** 소음 값이 든 `NOISE_TIERS` 칸 번호 — 마지막 경계(70dB)보다 시끄러우면 마지막 칸으로 본다 */
+function noiseTierIndex(db: number): number {
   const i = NOISE_TIERS.findIndex((t) => db <= (t.max ?? Infinity));
-  if (i === 0) return C.green;
-  if (i === -1 || i === NOISE_TIERS.length - 1) return C.red;
-  return C.amber;
+  return i === -1 ? NOISE_TIERS.length - 1 : i;
+}
+
+/** 칸 번호 순서의 색 — 첫 칸 초록 · 둘째 파랑 · 셋째 주황 (마지막 칸은 칸 수와 무관하게 아래에서 빨강) */
+const NOISE_TIER_COLORS = [C.green, C.blue, C.amber];
+
+/**
+ * 소음 칸 색 — 제목 글자(`noiseLabel`)와 **같은 칸**에서 읽는다(세션595 사장님 결정 D1).
+ * 옛 판은 색을 칸 순서로만 정해(첫 칸 초록·마지막 빨강·사이 주황) 50dB '우수' 가 주황으로 보였다.
+ */
+export function noiseColor(db: number): string {
+  const i = noiseTierIndex(db);
+  if (i === NOISE_TIERS.length - 1) return C.red;
+  return NOISE_TIER_COLORS[Math.min(i, NOISE_TIER_COLORS.length - 1)];
+}
+
+/** 소음 칸 글자 — `NOISE_TIERS` 의 label(최고·우수·양호·보통). 경계 밖은 마지막 칸 글자 */
+export function noiseLabel(db: number): string {
+  return NOISE_TIERS[noiseTierIndex(db)].label ?? "";
 }
 
 export const LocationEnvBlock = memo(function LocationEnvBlock({ apt }: { apt: Apt }) {
@@ -173,7 +189,9 @@ export const LocationEnvBlock = memo(function LocationEnvBlock({ apt }: { apt: A
         >
           {/* 값은 제목에 적고 게이지 가운데 글자는 비운다(세션591 보완 F4) — 가운데 글자가 가운데 눈금(50dB)
               바로 밑에 찍혀 "50dB 눈금 = 40dB" 처럼 읽혔고, 오른쪽 끝 "조용함 40dB" 와 숫자가 두 번 나왔다. */}
-          <div style={{ fontSize: F.sm, fontWeight: 700, color: noiseColor(noise) }}>소음 {noise}dB</div>
+          <div style={{ fontSize: F.sm, fontWeight: 700, color: noiseColor(noise) }} data-testid="noise-title">
+            소음 {noise}dB · {noiseLabel(noise)}
+          </div>
           <PositionGauge
             pct={positionPct(noise, sc.center, sc.quiet, sc.loud)}
             color={noiseColor(noise)}
