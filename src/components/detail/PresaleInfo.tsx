@@ -3,7 +3,7 @@ import { C, F } from "@/theme";
 import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
 import { usePresaleDetail, type PresaleScheduleOfficial } from "@/hooks/usePresaleDetail";
-import { isMoveInPast } from "../charts/PresaleTimeline";
+import { isMoveInPast, RENTAL_STAGE } from "../charts/PresaleTimeline";
 import { activeRegulations, formatAnnouncementBasis, REGULATION_HINT } from "@/constants/regulationFlags";
 import { HelpHint } from "../HelpHint";
 import type { PresaleInfoProps } from "@/types/components/PresaleInfo.types";
@@ -154,9 +154,12 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
   const stageStyle = STAGE_COLORS[String(apt.presaleStage)] ?? { bg: C.purpleLight, color: C.purple };
   // 세션593 사장님 결정: '입주예정'인데 입주 시기가 이미 지났으면 단계 배지를 숨긴다.
   // PresaleTimeline.tsx 의 isMoveInPast(G1)와 같은 판정 — 새로 적지 않고 그대로 import 해 쓴다.
+  // 세션594: '임대모집'은 바로 위 타임라인(PresaleTimeline `presale-rental-badge`)이 파랑 배지로 이미 말한다 —
+  //   여기서 보라 배지로 한 번 더 띄우면 같은 말이 두 번, 색도 둘이다. 타임라인 배지만 남긴다.
   const hideStageBadge =
-    apt.presaleStage === "입주예정" &&
-    isMoveInPast(apt.presaleMoveIn as string | null, apt.completion as string | null);
+    apt.presaleStage === RENTAL_STAGE ||
+    (apt.presaleStage === "입주예정" &&
+      isMoveInPast(apt.presaleMoveIn as string | null, apt.completion as string | null));
   const presaleUrl =
     apt.naverPresaleNo && apt.naverPresaleSeq
       ? `https://pre.land.naver.com/complexes/${apt.naverPresaleNo}/${apt.naverPresaleSeq}`

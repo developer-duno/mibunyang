@@ -1267,3 +1267,34 @@ describe("DetailModal 헤더 면적 토큰", () => {
     expect(screen.getByText("경기 수원시 영통동 · 84㎡ · 5억")).toBeTruthy();
   });
 });
+
+// 세션594 S6·S7 — 휴대폰 '문의' 버튼 여백 · 입지·분양 탭 위 여백
+describe("DetailModal — 문의 버튼 아래 여백 · 탭 위 여백 (세션594)", () => {
+  it("fabOverlaps=true(휴대폰·문의 버튼 보임)면 CTA 바 바로 앞에 버튼 높이+12 = 64px 빈 칸", () => {
+    render(<DetailModal {...makeProps({ fabOverlaps: true })} />);
+    const spacer = /** @type {HTMLElement} */ (screen.getByTestId("detail-fab-spacer"));
+    expect(spacer.style.height).toBe("64px");
+    expect(spacer.getAttribute("aria-hidden")).toBe("true");
+    expect(spacer.nextElementSibling).toBe(screen.getByTestId("detail-cta-bar"));
+  });
+
+  it("fabOverlaps 미전달(PC·지도·관리자 탭)이면 빈 칸이 없다 — 변화 0", () => {
+    render(<DetailModal {...makeProps()} />);
+    expect(screen.queryByTestId("detail-fab-spacer")).toBeNull();
+  });
+
+  // 첫 블록이 붙박이 탭 줄에 붙지 않게 하는 위 여백(세션591 L8) — 지키는 시험이 없었다.
+  it("입지 탭 패널은 위 여백 12px", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "입지" }));
+    const loc = /** @type {HTMLElement} */ (container.querySelector("#sec-location"));
+    expect(loc.style.paddingTop).toBe("12px");
+  });
+
+  it("분양 탭 패널은 위 여백 12px", () => {
+    const { container } = render(<DetailModal {...makeProps()} />);
+    fireEvent.click(screen.getByRole("tab", { name: "분양" }));
+    const presale = /** @type {HTMLElement} */ (container.querySelector("#sec-presale"));
+    expect(presale.style.paddingTop).toBe("12px");
+  });
+});

@@ -1,5 +1,6 @@
 import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "./brands";
 import { estimateParkingRatio } from "./parkingEstimate";
+import { SENTINEL_RADIUS_KM } from "./sentinels";
 import { fmtPrice, fmtMoveIn, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
@@ -352,15 +353,16 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     unit: "km",
     // 수집 sentinel = 99 (측정 반경 밖, devDist 패턴) — scoreLocation 도 90 이상을 미실측 취급
     // ⚠️ 세션591: 손님 입지 탭은 이 fmt 를 더는 안 쓴다(옛 "교통 상세" 카드 해체) — 거리 점 그림이
-    //   99 를 "20km 안에 없음"(sentinels.ts SENTINEL_RADIUS_KM)으로 그린다. 이 "반경 밖" 문구는 관리자 전수 표 등 몫.
-    fmt: (v) => (v == null ? "—" : v >= 90 ? "반경 밖" : `${v}km`),
+    //   99 를 "20km 안에 없음"(sentinels.ts SENTINEL_RADIUS_KM)으로 그린다. 세션594: 이 fmt(관리자 전수 표 등)도
+    //   같은 말 — 옛 "반경 밖"은 상세 그림과 다른 말이었다.
+    fmt: (v) => (v == null ? "—" : v >= 90 ? `${SENTINEL_RADIUS_KM.icDist}km 안에 없음` : `${v}km`),
     isDefault: (v) => v === 99,
   },
   ktxDist: {
     label: "KTX 거리",
     section: "입지",
     unit: "km",
-    fmt: (v) => (v == null ? "—" : v >= 90 ? "반경 밖" : `${v}km`),
+    fmt: (v) => (v == null ? "—" : v >= 90 ? `${SENTINEL_RADIUS_KM.ktxDist}km 안에 없음` : `${v}km`),
     isDefault: (v) => v === 99,
   },
   schoolScore: { label: "학군 점수", section: "입지", fmt: (v) => n(v, "점") },

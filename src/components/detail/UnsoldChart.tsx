@@ -67,18 +67,32 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds, 
     unsold_count?: number | null;
     post_completion_unsold?: number | null;
   }
-  const rows = data as UnsoldRow[];
-  const chartData = rows.slice(-24).map((row: UnsoldRow) => ({
-    x: (row.base_month || "").slice(4),
+  // 월 형식(YYYYMM, 달 01~12)이 아닌 행은 그 점을 그리지 않는다(두 계열 모두) — MarketStatsCharts baseMonthLabel 과 같은 검사.
+  //   (세션594 — 옛 `.slice(4)` 는 분기 꼴 "20262" 가 섞이면 x 가 "2" 인 가짜 점을 그렸다.)
+  const parseMonth = (raw: string | undefined): { yy: string; mm: string } | null => {
+    const m = /^(\d{4})(0[1-9]|1[0-2])$/.exec(raw ?? "");
+    return m ? { yy: m[1].slice(2), mm: m[2] } : null;
+  };
+  const rows = (data as UnsoldRow[]).slice(-24).filter((row) => parseMonth(row.base_month) != null);
+  // x 글자(세션594 사장님 결정): **첫 점과 1월 점만** "26.01"(연도 두 자리.월), 나머지는 "02"처럼 월만 —
+  //   해가 바뀌는 자리가 보이고, 12점이 다 그려져도(LineChart 는 12점 이하일 때 x 글자를 전부 그린다) 안 겹친다.
+  //   전부 "YY.MM" 이면 12점에서 휴대폰·PC 모두 이웃 글자와 겹쳤다(세션594 캡처).
+  const xOf = new Map(
+    rows.map((row, i) => {
+      const { yy, mm } = parseMonth(row.base_month) as { yy: string; mm: string };
+      return [row, i === 0 || mm === "01" ? `${yy}.${mm}` : mm] as const;
+    })
+  );
+  const chartData = rows.map((row: UnsoldRow) => ({
+    x: xOf.get(row) as string,
     y: row.unsold_count ?? 0,
     label: `${row.base_month}: 미분양 ${(row.unsold_count ?? 0).toLocaleString()}세대`,
   }));
 
   const secondaryData = rows
-    .slice(-24)
     .filter((row: UnsoldRow) => row.post_completion_unsold != null)
     .map((row: UnsoldRow) => ({
-      x: (row.base_month || "").slice(4),
+      x: xOf.get(row) as string,
       y: row.post_completion_unsold ?? 0,
     }));
 

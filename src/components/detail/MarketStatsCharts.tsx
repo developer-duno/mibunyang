@@ -85,7 +85,7 @@ export const baseMonthLabel = (raw: unknown, period: "M" | "Q" = "M"): string =>
  *   region: string — DB 짧은 이름 ("서울"·"경기")
  *   gu: string — DB 표기 ("강남구") 또는 "" (시도 단위)
  *
- * - 5/5 cron 전 데이터 0건 = amberLight 안내 박스 노출
+ * - 그릴 자료 없음(행 2건 미만·그릴 지표 0) = null (세션594 — 옛 안내 상자 삭제)
  * - 정상 시 작은 칸 4개(이름 · 최신 값 · 작은 추이 선 · 기준 연·월)를 grid 배치 (세션591 P4 —
  *   옛 큰 `LineChart` 5개를 분양 탭 지역 통계 묶음 안에 접힘 없이 넣으려고 줄였다)
  * - region 미설정 / loading / error 시 null (조용한 숨김)
@@ -101,7 +101,7 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
 
   // 각 metric 별로 유효 값이 2개 이상 있어야 차트 렌더 가능. 1개 이상 metric 이 그릴 수
   // 있어야 진짜 데이터 있음. data.length>=2 인데 4필드 모두 null 인 경우 + 1행만 값 있는
-  // corner case (chartData.length<2 → 미렌더) 모두 안내 박스로 분기.
+  // corner case (chartData.length<2 → 미렌더) 모두 렌더 없음으로 분기.
   // null/undefined 명시적 제외 — Number(null)=0 강제 변환 + isFinite(0)=true 통과 사고 방지.
   const hasRenderableMetric = useMemo(() => {
     if (!Array.isArray(data)) return false;
@@ -114,24 +114,6 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
       return cnt >= 2;
     });
   }, [data]);
-
-  const guideBox = (
-    <div
-      role="status"
-      style={{
-        marginTop: 16,
-        padding: "12px 14px",
-        background: C.amberLight,
-        border: `1px solid ${C.amberBorder}`,
-        borderRadius: 8,
-        fontSize: F.xs,
-        color: C.amber,
-        lineHeight: 1.5,
-      }}
-    >
-      📊 지역 시장 추이 — 매월 5일 KOSIS 통계 자동 수집·누적 중
-    </div>
-  );
 
   if (!region) return null;
   if (loading)
@@ -181,9 +163,10 @@ export const MarketStatsCharts = memo(function MarketStatsCharts({ region, gu }:
       </div>
     );
 
-  // 데이터 0건 (5/5 cron 전) + 행 있지만 모든 metric 미렌더 corner case 모두 안내 박스
-  if (!Array.isArray(data) || data.length < 2) return guideBox;
-  if (!hasRenderableMetric) return guideBox;
+  // 그릴 자료가 없으면(행 2건 미만 · 행은 있어도 그릴 지표 0) 아무것도 안 그린다 — 세션594: 옛 안내 상자는
+  //   우리 수집 상태를 손님에게 말하는 글이었다(our-defect-is-not-customer-warning).
+  if (!Array.isArray(data) || data.length < 2) return null;
+  if (!hasRenderableMetric) return null;
 
   // 폴백 응답 (API 가 gu="" 시도 자동 폴백) 시 헤더에 "시도 평균" 명시
   const headerSuffix = fallback ? " 시도 평균" : gu ? ` ${gu}` : "";

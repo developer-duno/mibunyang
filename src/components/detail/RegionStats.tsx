@@ -93,7 +93,8 @@ export const REGION_GAUGES: readonly GaugeSpec[] = [
       const verdict = tierMaxLabel(v, CANCEL_RATIO_TIERS, CANCEL_RATIO_HIGH_LABEL);
       return {
         pct: positionPct(v, center, best, worst),
-        color: verdict === "적음" ? C.green : verdict === "보통" ? C.amber : C.red,
+        // '보통' = 중립 파랑 — 같은 묶음 6개월 거래의 "보통"과 같은 색(위 popGrowthColor 주석, 세션594)
+        color: verdict === "적음" ? C.green : verdict === "보통" ? C.blue : C.red,
         valueText: pctText(v),
         verdict,
         leftLabel: `많음 ${worst}%`,

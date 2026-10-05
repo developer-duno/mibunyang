@@ -25,7 +25,7 @@ const {
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
   checkOrphanGuPairs, GU_JOIN_COLUMNS, fetchGuPairStats,
   checkTradeMonthGaps, TRADE_GAP_LOOKBACK, TRADE_GAP_MIN_BASELINE,
-  dedupKey, filterUnsent, hasGithubApiAuth,
+  dedupKey, filterUnsent, hasGithubApiAuth, idempotentCollectorSet,
 } = await import("./monitor-collectors.mjs");
 const { AUDIT_FIELDS } = await import("./collectors/data-audit.mjs");
 // 세션 517: 크론(로컬 러너 DAY_TABLE) ↔ 감시(EXTERNAL_API_COLLECTORS) 를 한 테스트로 묶기 위해 함께 읽는다.
@@ -186,6 +186,23 @@ describe("checkEmptyRuns — ② 데이터 0건", () => {
     );
     expect(issues).toHaveLength(1);
     expect(issues[0].collector).toBe("molit-units");
+  });
+
+  // 세션594 — school-walk 는 전수 재계산 뒤 바뀐 행만 센다(0건 = 정상). 10/04 run(직접 계산 3,052 + 재탐색 195,
+  //   갱신 0)을 ② 가 "데이터 0건"으로 울렸다(10/05 10:04 오탐). 실제 daily 배선과 같은 집합(idempotentCollectorSet)으로 본다.
+  it("school-walk 0건은 멱등 집합으로 ② 미발화 — 같은 집합에서 일반 수집기 0건은 그대로 발화(양성 대조)", () => {
+    const set = idempotentCollectorSet();
+    expect(set.has("school-walk")).toBe(true);
+    expect(set.has("calc-floors")).toBe(false); // 양성 대조 — 집합 밖 일반 수집기
+    const issues = checkEmptyRuns(
+      [
+        { collector: "school-walk", status: "success", ok_count: 0, skip_count: 0, fail_count: 0 },
+        { collector: "calc-floors", status: "success", ok_count: 0, skip_count: 0 },
+      ],
+      {},
+      { externalApiCollectors: set },
+    );
+    expect(issues.map((i) => i.collector)).toEqual(["calc-floors"]);
   });
 });
 

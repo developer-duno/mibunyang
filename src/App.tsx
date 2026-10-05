@@ -436,6 +436,10 @@ export default function App() {
     showToast,
   });
 
+  // 문의 버튼(FeedbackFab)을 그리는 조건 — 관리자 대시보드·지도 탭에서는 숨김(세션574 사장님 결정).
+  // 휴대폰 상세 모달도 같은 변수로 "버튼이 위에 떠 있나"를 판단해 맨 아래 여백을 둔다(세션594 S6).
+  const fabVisible = tab !== "admin" && tab !== "map";
+
   // ── JSX ──
   return (
     <div
@@ -844,6 +848,7 @@ export default function App() {
                 onShare={handleShareDetail}
                 isPC={isPC}
                 isDesktop={isDesktop}
+                fabOverlaps={fabVisible && !isPC}
                 onConsult={feedback.openFeedback}
                 profile={profile}
                 adminLoggedIn={admin.adminLoggedIn}
@@ -858,7 +863,7 @@ export default function App() {
         })()}
 
       {/* 문의 버튼 — 관리자 대시보드·지도 탭에서는 숨김(지도는 현위치·선택 단지 카드와 겹침, 사장님 결정) (세션574) */}
-      {tab !== "admin" && tab !== "map" && (
+      {fabVisible && (
         <FeedbackFab
           onClick={feedback.openFeedback}
           isDesktop={isDesktop}

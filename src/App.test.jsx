@@ -176,9 +176,10 @@ vi.mock("@/hooks/useShare", () => ({
   }),
 }));
 
-// useResponsive: PC 모드 고정
+// useResponsive: 기본 PC 모드 — 세션594 S6 시험만 휴대폰 폭(isPC:false)으로 바꾼다(beforeEach 가 PC 로 되돌림)
+const responsive = vi.hoisted(() => ({ isPC: true }));
 vi.mock("@/hooks/useResponsive", () => ({
-  useResponsive: () => ({ isPC: true }),
+  useResponsive: () => ({ isPC: responsive.isPC }),
 }));
 
 // ShareSheet 컴포넌트 스텁
@@ -194,6 +195,7 @@ const mockFetch = /** @type {import('vitest').Mock} */ (fetchStaticApartments);
 describe("App 통합 테스트", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    responsive.isPC = true;
     // localStorage/sessionStorage 초기화
     try {
       localStorage.clear();
@@ -588,6 +590,33 @@ describe("App 통합 테스트", () => {
       });
       expect(screen.getByTestId("feedback-context").textContent).toMatch(/^현재 화면: /);
       expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
+    });
+
+    // 세션594 S6 — 문의 버튼이 상세 위에 뜨는 조건(fabVisible && !isPC)을 App 이 DetailModal 에 넘기는지(fabOverlaps).
+    //   빈 칸(detail-fab-spacer)은 휴대폰 폭에서만 1개, PC 폭에서는 0개. DetailModal 은 lazy → 넉넉히 기다린다.
+    describe("상세 맨 아래 빈 칸 (세션594 S6)", () => {
+      afterEach(() => {
+        window.history.replaceState(null, "", "/");
+      });
+
+      it("휴대폰 폭에서 상세를 열면 문의 버튼 높이만큼 빈 칸이 1개 생긴다", async () => {
+        responsive.isPC = false;
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        window.history.replaceState(null, "", "/?detail=apt1");
+        render(<App />);
+        await waitFor(() => expect(screen.getByTestId("detail-cta-bar")).toBeInTheDocument(), { timeout: 5000 });
+        expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
+        expect(screen.getAllByTestId("detail-fab-spacer")).toHaveLength(1);
+      });
+
+      it("PC 폭에서 상세를 열면 빈 칸이 없다 (문의 버튼이 모달과 겹치지 않음)", async () => {
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        window.history.replaceState(null, "", "/?detail=apt1");
+        render(<App />);
+        await waitFor(() => expect(screen.getByTestId("detail-cta-bar")).toBeInTheDocument(), { timeout: 5000 });
+        expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
+        expect(screen.queryAllByTestId("detail-fab-spacer")).toHaveLength(0);
+      });
     });
   });
 });

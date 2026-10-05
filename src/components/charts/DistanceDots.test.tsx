@@ -271,6 +271,51 @@ describe("DistanceDots — 스크린리더", () => {
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
     expect(label).toContain("편의점 12곳");
   });
+
+  // 세션594 S9 — 옛 문장은 개발 사업지 줄을 "시설"에 세고, "20km 안에 없음" 줄을 "거리를 모았다"에 셌다.
+  //   시설 줄 14(편의점·카페·약국 / 어린이집~마트 6 / 지하철·경찰·응급 / IC·KTX) 중 KTX 가 99(안에 없음) → 13곳.
+  //   개발 사업지 2줄은 세지 않는다. 옛 코드 = "16곳 중 16곳".
+  it("시설 줄만 세고, '안에 없음' 줄은 모은 개수에서 뺀다", () => {
+    render(
+      <DistanceDots apt={apt({ ktxDist: 99, transitDev: "인덕원동탄선", devDist: 1.6, cityDev: "의왕내손 0.7km" })} />
+    );
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toContain("주변 시설 14곳 중 13곳의 거리를 모았습니다.");
+  });
+
+  // 세션594 S9 보완 — "가장 가까운 곳"도 시설 줄에서만. 개발 사업(50m)이 편의점(100m)보다 가까워도 편의점을 말한다.
+  it("가장 가까운 곳은 시설 중에서 고른다 — 더 가까운 개발 사업지는 넣지 않는다", () => {
+    render(<DistanceDots apt={apt({ transitDev: "인덕원동탄선", devDist: 0.05 })} />);
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toContain("가장 가까운 곳은 편의점 100m,");
+    expect(label).not.toContain("교통 개발");
+  });
+
+  // 시설이 전부 미수집·"안에 없음"이면 고를 이름이 없다 — "가장 가까운 곳은  입니다" 같은 빈 문장 대신 그 문장을 뺀다.
+  it("시설 거리가 하나도 없으면(전부 '안에 없음') 가장 가까운 곳 문장을 통째로 뺀다", () => {
+    const none = Object.fromEntries(DISTANCE_AXES.flatMap((a) => a.items.map((i) => [i.field, null])));
+    render(
+      <DistanceDots
+        apt={{ ...none, subwayDist: 9999, icDist: 99, ktxDist: 99, cityDev: "의왕내손 0.3km" } as unknown as Apt}
+      />
+    );
+    const label = screen.getByRole("img").getAttribute("aria-label") || "";
+    expect(label).toBe("주변 시설 14곳 중 0곳의 거리를 모았습니다.");
+  });
+});
+
+describe("DistanceDots — 개발 사업지 이름 2줄 (세션594 S10)", () => {
+  // 옛 이름 줄은 한 줄 말줄임(nowrap) — 터치 화면에선 title 을 볼 수 없어 긴 이름의 뒤가 영영 안 보였다.
+  it("이름 줄은 2줄까지(줄 높이 16px · 최대 32px) — 한 줄 말줄임(nowrap)이 아니다", () => {
+    const long = "고양덕은 도시개발사업 2단계 공동주택용지 및 복합커뮤니티 조성";
+    const { container } = render(<DistanceDots apt={apt({ cityDev: `${long} 0.3km` })} />);
+    const name = container.querySelector("[data-name-row]") as HTMLElement;
+    expect(name.textContent).toBe(long);
+    expect(name.style.whiteSpace).not.toBe("nowrap");
+    expect(name.style.lineHeight).toBe("16px");
+    expect(name.style.maxHeight).toBe("32px");
+    expect(name.style.height).toBe(""); // 고정 높이(한 줄)를 두지 않는다 — 짧은 이름은 한 줄 높이 그대로
+  });
 });
 
 describe("parseKmText — 글자 끝 'N km' 읽기", () => {

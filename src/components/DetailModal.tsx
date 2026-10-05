@@ -145,6 +145,7 @@ export const DetailModal = memo(function DetailModal({
   onShare,
   isPC,
   isDesktop,
+  fabOverlaps = false,
   onConsult,
   profile,
   adminLoggedIn = false,
@@ -1004,6 +1005,10 @@ export const DetailModal = memo(function DetailModal({
             {/* 데스크톱은 같은 버튼이 오른쪽 레일에 있다 — 한 화면에 두 번 뜨면
               손님이 어느 쪽이 진짜인지 헷갈리므로 여기서는 감춘다.
               모바일·태블릿은 레일이 없으니 이 sticky 바가 그대로 유일한 CTA 다. */}
+            {/* 세션594 S6 — 휴대폰에서 떠 있는 '문의' 버튼(FeedbackFab 52×52, 이 바 바로 위)이 탭 맨 아래 줄 오른쪽 끝을
+                덮었다. 버튼 높이 + 여백 12 만큼 빈 칸을 바 **앞**에 둔다 — 스크롤러 paddingBottom 으로 주면 sticky 바
+                아래에 빈칸이 생긴다. 버튼이 없는 화면(PC·지도·관리자 탭)은 fabOverlaps=false 라 변화 0. */}
+            {fabOverlaps && <div aria-hidden="true" data-testid="detail-fab-spacer" style={{ height: 52 + 12 }} />}
             {!isDesktop && (
               <div
                 data-testid="detail-cta-bar"

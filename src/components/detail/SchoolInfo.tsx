@@ -154,7 +154,8 @@ export const SchoolInfo = memo(function SchoolInfo({ apt }: SchoolInfoProps) {
                 fontWeight: 600,
               }}
             >
-              {expanded ? "접기" : `전체 ${schools.length}개 학교 보기`}
+              {/* 1곳이면 "전체 1개"가 어색하다(세션594 사장님 결정) */}
+              {expanded ? "접기" : schools.length === 1 ? "학교 정보 보기" : `전체 ${schools.length}개 학교 보기`}
             </button>
           )}
         </>

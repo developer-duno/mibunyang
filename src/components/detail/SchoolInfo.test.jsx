@@ -138,7 +138,7 @@ describe("SchoolInfo", () => {
       nearbySchools: [{ name: "영재고등학교", type: "고", highSchoolType: "과학고", distance: 600 }],
     });
     render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
-    fireEvent.click(screen.getByText(/전체.*학교 보기/));
+    fireEvent.click(screen.getByText("학교 정보 보기")); // 1곳 — 세션594 문장
     expect(screen.getByText("고(과학고)")).toBeTruthy();
   });
 
@@ -164,7 +164,9 @@ describe("SchoolInfo", () => {
       ],
     });
     render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("전체 1개 학교 보기")).toBeTruthy();
+    // 1곳이면 "전체 1개" 대신 "학교 정보 보기"(세션594 사장님 결정) — 2곳 이상 문장은 위 시험이 지킨다
+    expect(screen.getByText("학교 정보 보기")).toBeTruthy();
+    expect(screen.queryByText(/전체 1개/)).toBeNull();
   });
 
   it("정류장 칩 — 앞 3개 + '외 N', '미정차' 정류장은 빼고 센다 (옛 '교통 상세' 카드에서 합류, 세션591 L3 · 보완 F7)", () => {
@@ -268,7 +270,7 @@ describe("SchoolInfo", () => {
       });
       render(<SchoolInfo apt={/** @type {any} */ (apt)} />);
       expect(screen.getByText("A")).toBeTruthy();
-      fireEvent.click(screen.getByText(/전체.*학교 보기/));
+      fireEvent.click(screen.getByText("학교 정보 보기")); // 1곳 — 세션594 문장
       expect(screen.getByText("영통초등학교")).toBeTruthy();
       expect(screen.queryByText("위치 확인 중")).toBeNull();
     });
