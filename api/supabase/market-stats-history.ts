@@ -2,8 +2,10 @@
  * GET /api/supabase/market-stats-history?region=서울&gu=강남구
  * GET /api/supabase/market-stats-history?region=서울&gu= (시도 단위, gu 빈 문자열)
  *
- * market_stats_history 테이블에서 region+gu 조합의 5지표 시계열 반환.
- * 5지표: price_index / avg_price_sqm / new_supply / initial_sale_rate / land_cost_ratio.
+ * market_stats_history 테이블에서 region+gu 조합의 4지표 시계열 반환.
+ * 4지표: avg_price_sqm / new_supply / initial_sale_rate / land_cost_ratio.
+ * price_index(분양가격지수)는 세션593 에 뺐다 — 세션592 에 화면 그림을 뺐고(원천 2025-10 멈춤) 읽는 곳이 없다.
+ *   시도 폴백 판정(hasAnyMetricValue)도 이제 4필드만 본다 — 시군구 행에 price_index 만 있으면 폴백한다.
  * 응답: { ok: true, data: [...], count: N, fallback: boolean, fetchedAt: "..." }
  *
  * KOSIS DT_41401N_005~009 5지표는 시도 단위만 제공 (collect-market-stats.mjs L161:
@@ -13,13 +15,13 @@
 import { withHandler } from "../_lib/handler.js";
 import { getSupabase } from "../_lib/supabase.js";
 
-const SELECT = "region,gu,base_month,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio";
+const SELECT = "region,gu,base_month,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio";
 const REGION_MAX = 20;
 const GU_MAX = 30;
-const METRIC_FIELDS = ["price_index", "avg_price_sqm", "new_supply", "initial_sale_rate", "land_cost_ratio"];
+const METRIC_FIELDS = ["avg_price_sqm", "new_supply", "initial_sale_rate", "land_cost_ratio"];
 
 /**
- * 응답 행 중 5필드가 하나라도 유효 값을 가진 행이 있는지 검사.
+ * 응답 행 중 4필드가 하나라도 유효 값을 가진 행이 있는지 검사.
  * 시군구 쿼리가 행은 있으나 모두 NULL 인 경우 시도 폴백 트리거.
  */
 function hasAnyMetricValue(rows: Array<Record<string, unknown>> | null | undefined): boolean {
@@ -59,7 +61,7 @@ export default withHandler({
       let fallback = false;
 
       // 시도 폴백 — KOSIS 통계 시도 단위 한계로 시군구 쿼리 (1) 빈 응답 또는 (2) 행은
-      // 있지만 5필드 모두 NULL 인 경우 gu="" 자동 조회. (2) 케이스 = collector 가
+      // 있지만 4필드 모두 NULL 인 경우 gu="" 자동 조회. (2) 케이스 = collector 가
       // base_month 별 wide row 만들면서 시군구는 행만 채우고 값은 비워두는 사고.
       if (!error && gu && !hasAnyMetricValue(data)) {
         const fb = await runQuery("");

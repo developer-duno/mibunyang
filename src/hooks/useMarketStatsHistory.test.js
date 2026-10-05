@@ -4,8 +4,8 @@ import { renderHook, waitFor, act } from "@testing-library/react";
 import { useMarketStatsHistory, _clearMarketStatsCache } from "./useMarketStatsHistory";
 
 const SAMPLE = [
-  { region: "서울", gu: "강남구", base_month: "202503", price_index: 105.2 },
-  { region: "서울", gu: "강남구", base_month: "202504", price_index: 106.1 },
+  { region: "서울", gu: "강남구", base_month: "202503", avg_price_sqm: 12500 },
+  { region: "서울", gu: "강남구", base_month: "202504", avg_price_sqm: 12700 },
 ];
 
 describe("useMarketStatsHistory", () => {

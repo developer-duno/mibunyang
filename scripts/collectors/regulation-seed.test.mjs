@@ -196,6 +196,34 @@ describe("buildBjdPrefixRules · isRegulatedApt — 실제 regulation-zones.json
     );
   });
 
+  // 세션593 — 세션592 검사관 변이 M18(startsWith → includes)이 살아남았던 자리.
+  // ⚠️ 변이 대상: 동 이름 비교를 "들어 있으면"으로 넓히면 빨강.
+  it("코드가 없을 때 동 이름은 머리로 시작해야만 맞다 — 가운데 '동탄'이 들어 있으면 비규제", () => {
+    for (const dong of ["신동탄동", "남동탄1동", "봉담읍 동탄로"]) {
+      expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: null, dong })).toBe(false);
+    }
+    // 대조군: 머리로 시작하면 규제
+    expect(isRegulatedApt(regulated, rules, { region: "경기", gu: "화성시", bjd_code: null, dong: "동탄1동" })).toBe(
+      true
+    );
+  });
+
+  // 세션593 — 세션592 검사관 변이 M19(`r.dongPrefix !== ""` 삭제)가 살아남았던 자리.
+  // 지정 이름이 "시도 시" 두 낱말뿐이면 동 이름 머리가 빈 규칙이 생긴다 — 빈 머리는 아무 동에도 맞지 않아야 한다.
+  // ⚠️ 변이 대상: 빈 머리 보호를 지우면 ""로 시작하는 모든 동이 규제가 되어 빨강.
+  it("동 이름 머리가 빈 규칙은 코드 없는 행의 어떤 동에도 맞지 않는다", () => {
+    const emptyRule = [{ prefix: "41590", region: "경기", city: "화성시", dongPrefix: "" }];
+    for (const dong of ["동탄1동", "남양읍", ""]) {
+      expect(isRegulatedApt(regulated, emptyRule, { region: "경기", gu: "화성시", bjd_code: null, dong })).toBe(
+        false
+      );
+    }
+    // 코드가 있으면 코드 규칙은 그대로 산다(빈 머리 보호가 코드 판정까지 끄지 않는다)
+    expect(
+      isRegulatedApt(regulated, emptyRule, { region: "경기", gu: "화성시", bjd_code: "4159012000", dong: "남양읍" })
+    ).toBe(true);
+  });
+
   it("_bjdPrefixZones 가 없거나 배열이면 규칙 0", () => {
     expect(buildBjdPrefixRules({}, regulated)).toEqual([]);
     expect(buildBjdPrefixRules({ _bjdPrefixZones: ["41597"] }, regulated)).toEqual([]);

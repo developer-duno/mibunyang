@@ -24,6 +24,7 @@ import {
   PERMIT_RATIO_LOW_ADJ,
   CANCEL_RATIO_TIERS,
   CANCEL_RATIO_HIGH_SCORE,
+  CANCEL_RATIO_HIGH_LABEL,
   CANCEL_RATIO_NULL_SCORE,
   CRIME_SAFETY_SCORES,
   CRIME_SAFETY_NULL_SCORE,
@@ -322,7 +323,9 @@ export function scoreRisk(apt: Apt): Res {
         detail:
           apt.cancelRatio6m != null
             ? // 경계 숫자는 표에서 읽는다 — 표만 바꾸고 문구를 잊는 사고 방지(세션565)
-              `${apt.cancelRatio6m}% (안전 ${CANCEL_RATIO_TIERS[0].max}%↓, 주의 ${CANCEL_RATIO_TIERS[1].max}~${CANCEL_RATIO_TIERS[2].max}%, 위험 ${CANCEL_RATIO_TIERS[3].max}%↑)`
+              // 세션593: 판정 글자도 표의 label(분양 탭 계약해제율 눈금과 같은 말)에서 읽는다 — 옛 문장은 1.2~1.6 을
+              //   "주의"라 했는데 눈금은 "보통"이라 같은 값을 두 말로 불렀다. 형식은 위 "시공사 재무" 문장과 같다.
+              `${apt.cancelRatio6m}% (${CANCEL_RATIO_TIERS[1].max}% 이하 ${CANCEL_RATIO_TIERS[1].label} · ${CANCEL_RATIO_TIERS[2].max}% 이하 ${CANCEL_RATIO_TIERS[2].label} · 그 위 ${CANCEL_RATIO_HIGH_LABEL})`
             : "계약해제율 데이터 없음 (중립 35점)",
       },
       {
