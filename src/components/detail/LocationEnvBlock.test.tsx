@@ -1,7 +1,16 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { LocationEnvBlock, crimeDots, airAnnualText, airTodayText, noiseScale } from "./LocationEnvBlock";
+import {
+  LocationEnvBlock,
+  crimeDots,
+  airAnnualText,
+  airTodayText,
+  noiseScale,
+  noiseColor,
+  noiseLabel,
+} from "./LocationEnvBlock";
 import { positionPct } from "@/components/charts/PositionGauge";
+import { C } from "@/theme";
 import { makeApt } from "@/__tests__/factories";
 import type { Apt } from "@/types/scoring";
 
@@ -92,10 +101,10 @@ describe("LocationEnvBlock — 소음 게이지 (경계는 NOISE_TIERS 에서)",
     expect(positionPct(50, sc.center, sc.quiet, sc.loud)).toBe(50);
   });
 
-  it("측정값이 있으면 게이지 + 값이 든 제목 '소음 40dB', 가운데 값 글자는 비운다 (보완 F4) · 없으면 게이지 없음", () => {
+  it("측정값이 있으면 게이지 + 값이 든 제목 '소음 40dB · 최고', 가운데 값 글자는 비운다 (보완 F4) · 없으면 게이지 없음", () => {
     const { unmount } = render(<LocationEnvBlock apt={apt({ ...MOCKUP, noise: 40 })} />);
     const g = screen.getByTestId("noise-gauge");
-    expect(screen.getByText("소음 40dB")).toBeInTheDocument();
+    expect(screen.getByText("소음 40dB · 최고")).toBeInTheDocument();
     expect(screen.getByText("조용함 40dB")).toBeInTheDocument();
     expect(screen.getByText("시끄러움 70dB")).toBeInTheDocument();
     // "40" 이 들어간 글자는 제목 하나 + 오른쪽 끝 하나뿐 — 가운데 눈금 밑에 값이 또 찍히지 않는다
@@ -119,6 +128,42 @@ describe("LocationEnvBlock — 소음 게이지 (경계는 NOISE_TIERS 에서)",
     expect(leftOf(40)).toBeGreaterThanOrEqual(90);
     expect(leftOf(70)).toBeLessThanOrEqual(10);
     expect(leftOf(60)).toBeLessThan(leftOf(50)); // 시끄러울수록 왼쪽
+  });
+
+  // 세션595 D1(사장님 결정 10-05) — 제목 글자와 색을 같은 NOISE_TIERS 칸에서 읽는다. 옛 판은 색을 칸 순서로만 정해
+  //   50dB '우수' 가 주황이었다. 기대값(글자·색)은 사장님이 고른 짝을 **리터럴로** 적는다 — 표에서 읽으면 표가
+  //   밀릴 때 같이 밀린다(guards-must-be-mutation-tested "표에서 읽는 가드").
+  const norm = (prop: "color" | "background", c: string) => {
+    const d = document.createElement("div");
+    d.style[prop] = c;
+    return d.style[prop];
+  };
+  const NOISE_CASES: [number, string, string][] = [
+    [40, "소음 40dB · 최고", C.green],
+    [50, "소음 50dB · 우수", C.blue],
+    [60, "소음 60dB · 양호", C.amber],
+    [70, "소음 70dB · 보통", C.red],
+    [75, "소음 75dB · 보통", C.red], // 경계 밖(70 초과) → 마지막 칸
+  ];
+  it.each(NOISE_CASES)("소음 %sdB → 제목 '%s' · 제목·점 색이 그 칸 색", (db, title, color) => {
+    const { container, unmount } = render(<LocationEnvBlock apt={apt({ ...MOCKUP, noise: db })} />);
+    const t = screen.getByTestId("noise-title");
+    expect(t.textContent).toBe(title);
+    expect(t.style.color).toBe(norm("color", color));
+    const g = container.querySelector('[data-testid="noise-gauge"]');
+    const dot = [...(g?.querySelectorAll<HTMLElement>("div") ?? [])].find((d) => d.style.borderRadius === "50%");
+    expect(dot?.style.background).toBe(norm("background", color));
+    unmount();
+  });
+
+  it("noiseColor·noiseLabel 순수 함수 — 네 칸이 서로 다른 색, 경계 밖은 마지막 칸", () => {
+    expect([40, 50, 60, 70].map(noiseColor)).toEqual([C.green, C.blue, C.amber, C.red]);
+    expect([40, 50, 60, 70].map(noiseLabel)).toEqual(["최고", "우수", "양호", "보통"]);
+    expect(new Set([40, 50, 60, 70].map(noiseColor)).size).toBe(4);
+    expect(noiseColor(75)).toBe(C.red);
+    expect(noiseLabel(75)).toBe("보통");
+    expect(noiseColor(45)).toBe(C.blue); // 칸 사이 값은 위쪽 칸(≤50)
+    expect(noiseLabel(45)).toBe("우수");
   });
 });
 

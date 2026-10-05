@@ -32,7 +32,6 @@ const DSB_S: Record<string, import("react").CSSProperties> = {
   gridCell: { display: "flex", justifyContent: "space-between", alignItems: "center", padding: "3px 0" },
   gridLabel: { fontSize: F.xs, color: C.muted },
   gridValueBase: { fontSize: F.xs, fontWeight: 600 },
-  emptyText: { fontSize: F.xs, color: C.muted, padding: "6px 0" },
   subSectionTitle: {
     fontSize: F.sm,
     fontWeight: 700,
@@ -56,9 +55,10 @@ export const DataSectionBlock = memo(function DataSectionBlock({
   const [open, setOpen] = useState(defaultOpen);
   const allFields = fieldsOf(section);
   const hasAny = allFields.some((f) => apt[f] != null);
-  // hideWhenEmpty 섹션(청약 경쟁)은 데이터 없으면 컴포넌트 자체 미렌더 (구 L234 게이트 byte 이전)
-  if (section.hideWhenEmpty && !hasAny) return null;
-  const sectionPct = hasAny ? computeCompleteness(allFields, apt).pct : null;
+  // 필드 전부 null 이면 섹션 자체를 안 그린다(세션595 D3) — 옛 판은 펼친 자리에 "데이터 수집 중..."을 띄웠다.
+  //   우리 수집 상태를 손님에게 말하는 글이라 지웠다(옛 hideWhenEmpty 섹션만 숨기던 것을 전 섹션 기본으로).
+  if (!hasAny) return null;
+  const sectionPct = computeCompleteness(allFields, apt).pct;
 
   return (
     <div style={DSB_S.container}>
@@ -80,7 +80,7 @@ export const DataSectionBlock = memo(function DataSectionBlock({
             {section.title}
             {section.hint && <HelpHint text={section.hint} label={section.title} />}
           </span>
-          {sectionPct != null && <CompletenessDonut pct={sectionPct} size={40} label={section.title} />}
+          <CompletenessDonut pct={sectionPct} size={40} label={section.title} />
         </div>
         <span
           style={{
@@ -96,37 +96,31 @@ export const DataSectionBlock = memo(function DataSectionBlock({
       </div>
       {open && (
         <div style={DSB_S.body}>
-          {hasAny ? (
-            <>
-              {section.highlight && (
-                <div style={{ ...DSB_S.highlightRowBase, marginBottom: section.grid ? 6 : 0 }}>
-                  {section.highlight.map((f) => (
-                    <HighlightField key={f} field={f} apt={apt} dataValueColor={dataValueColor} />
-                  ))}
-                </div>
-              )}
-              {section.grid && (
-                <div style={DSB_S.grid}>
-                  {section.grid.map((f) => {
-                    const meta = (
-                      FIELD_META as Record<string, { label: string; fmt?: (_v: unknown, _apt: unknown) => unknown }>
-                    )[f];
-                    if (!meta) return null;
-                    const val = apt[f];
-                    return (
-                      <div key={f} style={DSB_S.gridCell}>
-                        <span style={DSB_S.gridLabel}>{meta.label}</span>
-                        <span style={{ ...DSB_S.gridValueBase, color: dataValueColor(f, val) }}>
-                          {String(meta.fmt ? meta.fmt(val, apt) : (val ?? ""))}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={DSB_S.emptyText}>데이터 수집 중...</div>
+          {section.highlight && (
+            <div style={{ ...DSB_S.highlightRowBase, marginBottom: section.grid ? 6 : 0 }}>
+              {section.highlight.map((f) => (
+                <HighlightField key={f} field={f} apt={apt} dataValueColor={dataValueColor} />
+              ))}
+            </div>
+          )}
+          {section.grid && (
+            <div style={DSB_S.grid}>
+              {section.grid.map((f) => {
+                const meta = (
+                  FIELD_META as Record<string, { label: string; fmt?: (_v: unknown, _apt: unknown) => unknown }>
+                )[f];
+                if (!meta) return null;
+                const val = apt[f];
+                return (
+                  <div key={f} style={DSB_S.gridCell}>
+                    <span style={DSB_S.gridLabel}>{meta.label}</span>
+                    <span style={{ ...DSB_S.gridValueBase, color: dataValueColor(f, val) }}>
+                      {String(meta.fmt ? meta.fmt(val, apt) : (val ?? ""))}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
       )}

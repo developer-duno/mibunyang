@@ -166,6 +166,35 @@ export function planWalkUpdates({ apartments, schoolsById }) {
 }
 
 /**
+ * 계산값 중 DB 값과 다른 것만 UPDATE 대상으로 고른다(기존 동작 그대로 함수로 뺌 — 세션595 시험용).
+ * coord_shared 단지 중 이미 null 인 것은 UPDATE 할 필요가 없다(세션567).
+ * @param {Map<string, number|null>} curById 단지 id → 지금 DB 의 naver_school_walk_min
+ * @param {Array<{ id: string, walkMin: number, minDist: number }>} allComputed direct + 재탐색 결과
+ * @param {Array<{ id: string }>} clear 좌표불명(비움 대상)
+ */
+export function diffWalkUpdates(curById, allComputed, clear) {
+  const updates = allComputed.filter(u => curById.get(u.id) !== u.walkMin);
+  const clearUpdates = clear.filter(c => curById.get(c.id) != null);
+  return { updates, clearUpdates };
+}
+
+/**
+ * 전수 재계산했지만 DB 값과 같아 UPDATE 하지 않은 행을 skip 으로 기록한다(세션595 S2a).
+ * 옛 판은 바뀐 행만 rpt.success 로 세서, 재계산 3,052건이 전부 같으면 ok 0·skip 0 → 감시 ②
+ * "데이터 0건"이 울렸다(10/05 오탐 — 세션594 는 멱등 집합으로 임시로 막았다). skip 으로 남기면
+ * ② 는 진짜 0건(ok 0·skip 0 — 계산 자체가 없었던 고장)만 잡는다. dry-run·실행 두 모드 공통.
+ * @param {{ skip: (n?: number) => void }} rpt
+ * @param {{ allComputed: unknown[], updates: unknown[], clear: unknown[], clearUpdates: unknown[] }} plan
+ * @returns {{ unchanged: number, clearSkipped: number }}
+ */
+export function recordUnchangedSkips(rpt, { allComputed, updates, clear, clearUpdates }) {
+  const unchanged = allComputed.length - updates.length;
+  const clearSkipped = clear.length - clearUpdates.length;
+  if (unchanged + clearSkipped > 0) rpt.skip(unchanged + clearSkipped);
+  return { unchanged, clearSkipped };
+}
+
+/**
  * 좌표 주변 5km 안에서 카카오로 초등학교를 재탐색해 도보분을 구한다.
  * @param {number} lat
  * @param {number} lng
@@ -238,9 +267,10 @@ async function main() {
   // ── 변경분만 UPDATE 대상으로 (기존 값과 다른 것만) ──────────
   const curById = new Map(apts.map(a => [a.id, a.naver_school_walk_min]));
   const allComputed = [...direct, ...lookupResults];
-  const updates = allComputed.filter(u => curById.get(u.id) !== u.walkMin);
-  // coord_shared 단지 중 이미 null 인 것은 UPDATE 할 필요가 없다(세션567).
-  const clearUpdates = clear.filter(c => curById.get(c.id) != null);
+  const { updates, clearUpdates } = diffWalkUpdates(curById, allComputed, clear);
+  // 안 바뀐 행은 skip 으로 남긴다(세션595) — dry-run·실행 두 분기 모두 이 한 자리를 지난다.
+  const { unchanged, clearSkipped } = recordUnchangedSkips(rpt, { allComputed, updates, clear, clearUpdates });
+  log(PHASE, `변경 없음(skip): 계산값 같음 ${unchanged} · 좌표불명 이미 null ${clearSkipped}`);
 
   if (dryRun) {
     log(PHASE, `변경 대상: ${updates.length}건 (직접 ${direct.length} + 재탐색 ${lookupResults.length} 중 기존값과 다른 것), 좌표불명 비움: ${clearUpdates.length}건`);

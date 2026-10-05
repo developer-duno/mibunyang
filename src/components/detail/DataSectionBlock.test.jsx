@@ -15,7 +15,7 @@ const find = (title) =>
  *
  * 세션591 L5 에 그 실제 섹션이 `detail/LocationEnvBlock` 칩으로 해체돼 `LOCATION_SECTIONS` 가 비었다.
  * 이 컴포넌트는 종합("단지 기본정보")·시세("이 동네 거래 시세")·분양("분양 안전") 탭이 여전히 쓰므로,
- * 동작 시험은 지우지 않고 같은 모양의 섹션 객체를 직접 주입해 이어 간다(아래 hideWhenEmpty 시험과 같은 방식).
+ * 동작 시험은 지우지 않고 같은 모양의 섹션 객체를 직접 주입해 이어 간다.
  */
 const ENV_FIXTURE = {
   title: "치안/환경",
@@ -88,26 +88,30 @@ describe("DataSectionBlock", () => {
     expect(screen.getByRole("img", { name: /치안\/환경.*채움률/ })).toBeTruthy();
   });
 
-  // 빈 섹션 — 도넛 없음 + 펼치면 "데이터 수집 중..."
-  // ⚠️ 세션 507: 옛 대상이던 "네이버 교차검증" 섹션은 사라졌다(두 출처 대조표가 대체).
-  //    분기 자체는 그대로라 잔존 섹션("치안/환경")으로 옮겨 검증한다.
-  it("모든 필드가 null인 섹션은 도넛이 없고, 펼치면 '데이터 수집 중...'만 표시한다", () => {
-    const apt = /** @type {any} */ (
-      makeApt({
-        crimeSafetyGrade: null,
-        airQuality: null,
-        noxious: null,
-        noxiousDist: null,
-        view: null,
-        noise: null,
-      })
-    );
+  // 빈 섹션 — 세션595 D3: 옛 판은 제목 상자를 그리고 펼치면 "데이터 수집 중..."을 띄웠다(우리 수집 상태를 손님에게
+  //   말하는 글). 이제 필드가 전부 null 이면 섹션 자체를 안 그린다 — 전 섹션 기본(옛 hideWhenEmpty 칸은 뺐다).
+  const ALL_NULL_ENV = {
+    crimeSafetyGrade: null,
+    airQuality: null,
+    noxious: null,
+    noxiousDist: null,
+    view: null,
+    noise: null,
+  };
+  it("모든 필드가 null인 섹션은 렌더 없음 — 제목·도넛·'수집 중' 글자 0", () => {
+    const apt = /** @type {any} */ (makeApt(ALL_NULL_ENV));
+    const { container } = render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
+    expect(container.firstChild).toBeNull();
+    expect(screen.queryByText("치안/환경")).toBeNull();
+    expect(container.textContent).not.toMatch(/수집/);
+  });
+
+  it("필드가 하나라도 있으면 그린다 (양성 대조 — 소음만 있는 섹션)", () => {
+    const apt = /** @type {any} */ (makeApt({ ...ALL_NULL_ENV, noise: 55 }));
     render(<DataSectionBlock section={/** @type {any} */ (ENV_FIXTURE)} apt={apt} />);
-    // 도넛 없음
-    expect(screen.queryByRole("img", { name: /치안\/환경.*채움률/ })).toBeNull();
-    // 펼치면 "데이터 수집 중..."
+    expect(screen.getByText("치안/환경")).toBeTruthy();
     fireEvent.click(screen.getByText("치안/환경"));
-    expect(screen.getByText("데이터 수집 중...")).toBeTruthy();
+    expect(screen.getByText("55dB")).toBeTruthy();
   });
 
   // 세션 507 Q6 — 일조는 전 단지 "양호"(변별력 0)라 표에서 뺐다. 세션591 에 그 실제 섹션이 없어졌으므로
@@ -117,18 +121,14 @@ describe("DataSectionBlock", () => {
     expect(LOCATION_SECTIONS.flatMap((s) => s.grid ?? [])).not.toContain("sunlight");
   });
 
-  // hideWhenEmpty — 세션 505 로 실제 섹션에서는 사라졌지만(청약 경쟁이 "분양 안전"에 합쳐지며
-  // 게이트를 뗐다) 컴포넌트 분기는 남아 있다. 섹션 객체를 직접 주입해 정직하게 검증한다.
-  it("hideWhenEmpty 섹션은 데이터 없으면 렌더하지 않는다", () => {
-    const apt = /** @type {any} */ (makeApt()); // competitionRate 미설정
-    const section = /** @type {any} */ ({
-      title: "가상 섹션",
-      grid: ["competitionRate"],
-      hideWhenEmpty: true,
-    });
-    const { container } = render(<DataSectionBlock section={section} apt={apt} />);
+  // 옛 hideWhenEmpty 시험(세션 505)은 세션595 에 칸이 빠지며 위 "모든 필드가 null 이면 렌더 없음" 시험으로 합쳤다 —
+  //   플래그 없이도(전 섹션 기본) 같은 결과다. 실제 섹션 하나로도 확인한다.
+  it("실제 섹션('이 동네 거래 시세')도 값이 전부 없으면 렌더하지 않는다 (라이브 5곳 자리)", () => {
+    const section = find("이 동네 거래 시세");
+    expect(section).toBeTruthy();
+    const apt = /** @type {any} */ (makeApt({ pir: null, psr: null, housingPrice: null }));
+    const { container } = render(<DataSectionBlock section={/** @type {any} */ (section)} apt={apt} />);
     expect(container.firstChild).toBeNull();
-    expect(screen.queryByText("가상 섹션")).toBeNull();
   });
 
   // ⚠️ 세션508 PR-3c C3: 옛 대상이던 경쟁률 콤마 포맷 2건은 그림(`charts/PresaleTimeline`)

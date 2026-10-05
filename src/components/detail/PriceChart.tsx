@@ -96,11 +96,6 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: 
         <HelpHint text={PRICE_CHART_HINT} label="분양가 추이" />
       </div>
       <LineChart data={chartData} color={C.green} height={160} yLabel="분양가 추이" />
-      {chartData.length < 6 && (
-        <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4, textAlign: "center" }}>
-          데이터 {chartData.length}개 · 매주 자동 수집 누적 중
-        </div>
-      )}
     </div>
   );
 });
