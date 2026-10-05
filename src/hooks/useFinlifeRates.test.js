@@ -59,19 +59,46 @@ describe("useFinlifeRates", () => {
     renderHook(() => useFinlifeRates("/api/x", "02", c.ref, c.get, c.set));
 
     await waitFor(() => {
-      expect(c.ref.current).toEqual(SAMPLE);
+      // 금리 목록과 공시월을 함께 담는다(세션593 D4) — 공시월 없는 응답이면 null
+      expect(c.ref.current).toEqual({ data: SAMPLE, disclosureMonth: null });
     });
   });
 
-  // 캐시가 있으면 fetch 미호출
+  // 캐시가 있으면 fetch 미호출 — 공시월도 캐시에서 되살린다
   it("cacheRef 에 데이터가 있으면 fetch 하지 않는다", async () => {
-    const c = makeCacheRef(SAMPLE);
+    const c = makeCacheRef({ data: SAMPLE, disclosureMonth: "202609" });
     const { result } = renderHook(() => useFinlifeRates("/api/x", "02", c.ref, c.get, c.set));
 
     await waitFor(() => {
       expect(result.current.rates).toEqual(SAMPLE);
     });
+    expect(result.current.disclosureMonth).toBe("202609");
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  // 공시월 전달 (세션593 D4)
+  it("응답의 disclosureMonth 를 돌려준다 · 글자가 아니면 null", async () => {
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, data: SAMPLE, disclosureMonth: "202609" }),
+    });
+    const c = makeCacheRef();
+    const { result } = renderHook(() => useFinlifeRates("/api/x", "02", c.ref, c.get, c.set));
+    await waitFor(() => {
+      expect(result.current.disclosureMonth).toBe("202609");
+    });
+
+    /** @type {import('vitest').Mock} */ (fetch).mockResolvedValueOnce({
+      ok: true,
+      json: async () => ({ ok: true, data: SAMPLE, disclosureMonth: 202609 }),
+    });
+    const c2 = makeCacheRef();
+    const r2 = renderHook(() => useFinlifeRates("/api/x", "03", c2.ref, c2.get, c2.set));
+    await waitFor(() => {
+      expect(r2.result.current.loading).toBe(false);
+      expect(r2.result.current.rates).toEqual(SAMPLE);
+    });
+    expect(r2.result.current.disclosureMonth).toBeNull();
   });
 
   // HTTP 오류 → error 세팅

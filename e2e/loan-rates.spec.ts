@@ -1,73 +1,85 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
+import { stubApartments } from "./helpers";
 
-// 금리비교 섹션 E2E 테스트
-test.describe("금리비교 기능", () => {
-  test.beforeEach(async ({ page }) => {
+// 금융 탭 금리 블록 E2E (세션593 D7).
+//
+// 옛 spec 은 금융 탭을 누르지 않은 채 "[aria-expanded] 안의 '금리' 글자" 를 찾다가 못 찾으면
+// test.skip 으로 조용히 꺼졌다(금융 패널은 탭을 눌러야 마운트된다 — 실제로는 늘 건너뛰었다).
+// 이제는 ① 단지 목록을 고정 픽스처로 ② 금리 응답을 가짜로 바꿔치기해 외부 상태와 무관하게
+// 반드시 돌고, 못 찾으면 **실패**한다.
+
+/** 은행권 주담대 가짜 응답 — 10/02 사본에서 뽑은 줄(값 그대로) + 공시월 */
+const BANK_RATES = {
+  ok: true,
+  disclosureMonth: "202609",
+  data: [
+    { bank: "경남은행", mortgageType: "아파트외", repayType: "만기일시상환방식", rateMin: 3.7, rateMax: 5.51 },
+    { bank: "아이엠뱅크", mortgageType: "아파트", repayType: "분할상환방식", rateMin: 4.2, rateMax: 6.51 },
+    { bank: "신한은행", mortgageType: "아파트", repayType: "분할상환방식", rateMin: 4.29, rateMax: 6.37 },
+    { bank: "우리은행", mortgageType: "아파트", repayType: "분할상환방식", rateMin: 4.41, rateMax: 6.91 },
+    { bank: "농협은행주식회사", mortgageType: "아파트", repayType: "분할상환방식", rateMin: 4.49, rateMax: 7.71 },
+    { bank: "주식회사 하나은행", mortgageType: "아파트", repayType: "분할상환방식", rateMin: 4.5, rateMax: 6.5 },
+    { bank: "주식회사 카카오뱅크", mortgageType: "아파트", repayType: "분할상환방식", rateMin: 4.51, rateMax: 6.07 },
+  ],
+};
+
+/** 우리 금리 API 를 가짜로 — 부른 권역을 기록한다 */
+async function stubRates(page: Page, calls: string[]) {
+  await page.route("**/api/finlife/rates**", (route) => {
+    const url = new URL(route.request().url());
+    const type = url.searchParams.get("type");
+    const grp = url.searchParams.get("topFinGrpNo") ?? "";
+    calls.push(`${type}:${grp}`);
+    const body =
+      type === "mortgage" && grp === "020000"
+        ? BANK_RATES
+        : {
+            ok: true,
+            disclosureMonth: "202609",
+            data: [{ bank: `가짜${grp}`, product: "상품", rateMin: 5.5, rateMax: 7.2 }],
+          };
+    return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+  });
+}
+
+test.describe("금융 탭 금리 블록", () => {
+  test("한 달에 갚을 돈 · 은행 5줄 · 다른 금융권은 펼칠 때만 부른다", async ({ page }) => {
+    const calls: string[] = [];
+    await stubApartments(page);
+    await stubRates(page, calls);
     await page.goto("/");
-    const hasCards = await page.locator('[role="button"]').first().isVisible({ timeout: 15000 }).catch(() => false);
-    if (!hasCards) {
-      test.skip(true, "카드 데이터 없음 — 빈 DB");
-      return;
-    }
-  });
 
-  test("상세 모달 내 금리비교 섹션 렌더링", async ({ page }) => {
-    const detailBtn = page.locator('[role="button"]').first().locator("button", { hasText: "상세보기" });
-    if (!(await detailBtn.isVisible())) {
-      test.skip(true, "상세보기 버튼 미존재");
-      return;
-    }
-    await detailBtn.click();
+    const listTab = page.getByRole("button", { name: "목록" });
+    if (await listTab.isVisible().catch(() => false)) await listTab.click();
 
-    // 모달이 열리면 금리비교 섹션 찾기
-    const loanSection = page.locator("text=금리비교").or(page.locator("text=주택담보대출"));
-    const hasLoan = await loanSection.first().isVisible({ timeout: 5000 }).catch(() => false);
-
-    // finlife API 미등록이면 섹션이 없을 수 있음 — 모달 자체가 열리면 통과
+    await page.locator('[role="button"]').filter({ hasText: "㎡" }).first().click();
     const modal = page.locator('[role="dialog"]');
-    await expect(modal).toBeVisible({ timeout: 3000 });
+    await expect(modal).toBeVisible({ timeout: 10000 });
+    await modal.getByRole("tab", { name: "금융" }).click();
 
-    if (hasLoan) {
-      await expect(loanSection.first()).toBeVisible();
-    }
-  });
+    const panel = modal.locator("#sec-finance");
+    await expect(panel.getByText("한 달에 갚을 돈")).toBeVisible({ timeout: 10000 });
+    await expect(panel.getByText(/아파트·분할상환 최저 금리 4\.2% 기준 · 2026년 9월 공시/)).toBeVisible();
+    await expect(panel.getByTestId("bank-rate-row")).toHaveCount(5);
+    await expect(panel.getByTestId("bank-rate-row").nth(3)).toHaveAttribute("aria-label", "농협은행 4.49% ~ 7.71%");
+    await expect(panel.getByText("은행별 금리 비교")).toHaveCount(0);
 
-  test("금융권역 탭 전환", async ({ page }) => {
-    const detailBtn = page.locator('[role="button"]').first().locator("button", { hasText: "상세보기" });
-    if (!(await detailBtn.isVisible())) {
-      test.skip(true, "상세보기 버튼 미존재");
-      return;
-    }
-    await detailBtn.click();
+    // 닫힌 채로는 다른 권역을 부르지 않는다 — 첫 진입 = 전세 1 + 주담대 은행권 1
+    expect(calls.filter((c) => c.startsWith("mortgage:") && !c.endsWith(":020000"))).toEqual([]);
 
-    // 금리비교 접기/펼치기 토글 찾기
-    const toggle = page.locator('[role="button"][aria-expanded]').filter({ hasText: /금리/ });
-    const hasToggle = await toggle.isVisible({ timeout: 5000 }).catch(() => false);
-    if (!hasToggle) {
-      test.skip(true, "금리비교 토글 미존재 — finlife API 미등록");
-      return;
-    }
+    const toggle = panel.getByRole("button", { name: "저축은행 · 여신전문 · 보험 금리 보기" });
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
 
-    // 펼치기
-    const expanded = await toggle.getAttribute("aria-expanded");
-    if (expanded === "false") {
-      await toggle.click();
-    }
-
-    // 권역 탭 확인 — 세션 410 D3: StickyJumpNav 도 role=tablist 라 무스코프 셀렉터는 2개 매칭.
-    // aria-label="금융권역" 으로 은행권역 tablist 만 명시 타겟(StickyJumpNav="상세 분석 카테고리"와 분리).
-    const tablist = page.getByRole("tablist", { name: "금융권역" });
-    const hasTabs = await tablist.isVisible({ timeout: 3000 }).catch(() => false);
-    if (hasTabs) {
-      const tabs = tablist.locator('[role="tab"]');
-      const tabCount = await tabs.count();
-      expect(tabCount).toBeGreaterThan(0);
-
-      // 두 번째 탭 클릭 (있으면)
-      if (tabCount >= 2) {
-        await tabs.nth(1).click();
-        await expect(tabs.nth(1)).toHaveAttribute("aria-selected", "true");
-      }
-    }
+    // 권역 탭 — StickyJumpNav 도 role=tablist 라 aria-label="금융권역" 으로 좁힌다(세션 410 D3).
+    const tabs = panel.getByRole("tablist", { name: "금융권역" }).getByRole("tab");
+    await expect(tabs).toHaveText(["저축은행", "여신전문", "보험"]);
+    await expect(panel.getByText("가짜030300")).toBeVisible();
+    await tabs.nth(2).click();
+    await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
+    await expect(panel.getByText("가짜050000")).toBeVisible();
+    expect(calls).toContain("mortgage:030300");
+    expect(calls).toContain("mortgage:050000");
   });
 });

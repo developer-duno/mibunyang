@@ -915,10 +915,12 @@ export const DetailModal = memo(function DetailModal({
                 data-tab-panel
                 style={panelStyle("sec-finance")}
               >
+                {/* 출처 통일(세션593 D1) — 분양가·시도·구도 규제 표시·DSR 과 같은 병합본에서. 아래 LoanAnalysis 의
+                  월 상환액이 같은 대출액을 쓰려면 두 곳이 같은 행을 봐야 한다. */}
                 <LoanStack
-                  price={(apt.price as number | null) ?? null}
-                  region={apt.region as string | null}
-                  gu={apt.gu as string | null}
+                  price={((mergedApt ?? apt).price as number | null) ?? null}
+                  region={(mergedApt ?? apt).region as string | null}
+                  gu={(mergedApt ?? apt).gu as string | null}
                   isRegulated={(mergedApt ?? apt).isRegulated as boolean | null}
                   dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
                 />

@@ -1,19 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { LoanStack, fmtEok } from "./LoanStack";
+import { LoanStack } from "./LoanStack";
 import { calcLTV, getZone } from "@/constants/regulations";
-
-describe("fmtEok — 억/만원 표기", () => {
-  it("1억 미만은 만원, 넘으면 억", () => {
-    expect(fmtEok(5000)).toBe("5,000만");
-    expect(fmtEok(9999)).toBe("9,999만");
-    expect(fmtEok(10000)).toBe("1억");
-    expect(fmtEok(45000)).toBe("4.5억");
-  });
-  it("10억 이상은 소수점을 버린다 (자릿수가 길어 읽기 나쁨)", () => {
-    expect(fmtEok(123456)).toBe("12억");
-  });
-});
+import { fmtPrice } from "@/lib/format";
 
 describe("LoanStack — 분양가가 없으면 계산하지 않는다", () => {
   it.each([null, undefined, 0, -1, NaN])("price=%s 면 이유를 적고 안 그린다", (p) => {
@@ -30,15 +19,42 @@ describe("LoanStack — 두 조각이 분양가와 정확히 맞는다", () => {
     const loan = calcLTV(price, zone, "서울");
     render(<LoanStack price={price} region="서울" gu="강남구" />);
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
-    expect(label).toContain(fmtEok(loan));
-    expect(label).toContain(fmtEok(price - loan));
+    expect(label).toContain(fmtPrice(loan));
+    expect(label).toContain(fmtPrice(price - loan));
   });
 
   it("비싼 구간도 기존 calcLTV 규칙을 그대로 쓴다 (규칙을 새로 쓰지 않는다)", () => {
     const price = 150000; // 15억
     const zone = getZone("서울", "강남구");
     render(<LoanStack price={price} region="서울" gu="강남구" />);
-    expect(screen.getByText(new RegExp(`빌릴 수 있는 돈 ${fmtEok(calcLTV(price, zone, "서울"))}`))).toBeInTheDocument();
+    expect(screen.getByText(`빌릴 수 있는 돈 ${fmtPrice(calcLTV(price, zone, "서울"))}`)).toBeInTheDocument();
+  });
+});
+
+// 세션593 D1 — 숫자 3칸을 막대로 합치며 금액을 만원까지(fmtPrice). 목업: 대출 2억 1,208만 · 내 돈 3억 1,812만.
+describe("LoanStack — 금액은 만원까지 (세션593 D1)", () => {
+  // ⚠️ 변이 대상: 막대 금액을 옛 억 반올림("2.1억")으로 되돌리면 빨강.
+  it("규제지역 분양가 5억 3,020만 → 막대 안 '대출 2억 1,208만'·'내 돈 3억 1,812만' + 아래 글에 분양가", () => {
+    const { container } = render(<LoanStack price={53020} region="서울" gu="강남구" isRegulated />);
+    const bar = screen.getByRole("img").firstElementChild?.firstElementChild as HTMLElement;
+    const [loanSeg, ownSeg] = [...bar.children] as HTMLElement[];
+    expect(loanSeg.textContent).toBe("대출 2억 1,208만");
+    expect(ownSeg.textContent).toBe("내 돈 3억 1,812만");
+    expect(screen.getByText("빌릴 수 있는 돈 2억 1,208만")).toBeInTheDocument();
+    expect(screen.getByText("직접 준비할 돈 3억 1,812만")).toBeInTheDocument();
+    expect(screen.getByText(/^분양가 5억 3,020만 · 규제지역 기준 최대 40%까지 빌릴 수 있어요\./)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/\d\.\d억/);
+  });
+
+  it("조각이 30% 보다 좁으면 그 조각 안 글자는 비우고 아래 줄에만 금액 (넘침 방지)", () => {
+    // 경기 비규제 30억 → 수도권 최대 6억 = 20% 조각
+    render(<LoanStack price={300000} region="경기" gu="평택시" isRegulated={false} />);
+    const [loanSeg, ownSeg] = [
+      ...(screen.getByRole("img").firstElementChild?.firstElementChild as HTMLElement).children,
+    ] as HTMLElement[];
+    expect(loanSeg.textContent).toBe("");
+    expect(ownSeg.textContent).toBe("내 돈 24억");
+    expect(screen.getByText("빌릴 수 있는 돈 6억")).toBeInTheDocument();
   });
 });
 
@@ -71,17 +87,17 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
 
   it("DB 거짓이면 이름이 규제여도 비규제 — 서울 + isRegulated 거짓 → 70%(서울이라 6억 한도)", () => {
     render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated={false} />);
-    expect(screen.getByText("빌릴 수 있는 돈 3.5억")).toBeInTheDocument();
+    expect(screen.getByText("빌릴 수 있는 돈 3억 5,000만")).toBeInTheDocument();
   });
 
   // 세션592 보완 F2 — 같은 집값·시도에서 DB 표시만 바뀌어도 다시 계산해야 한다.
-  // ⚠️ 변이 대상: useMemo 의존 배열에서 isRegulated 를 빼면 옛 금액(3.5억)이 남아 빨강.
+  // ⚠️ 변이 대상: useMemo 의존 배열에서 isRegulated 를 빼면 옛 금액(3억 5,000만)이 남아 빨강.
   it("isRegulated 가 거짓 → 참으로 바뀌어 다시 그리면 금액이 바뀐다 (메모 키에 DB 표시가 들어 있다)", () => {
     const { rerender } = render(<LoanStack price={50000} region="경기" gu="화성시" isRegulated={false} />);
-    expect(screen.getByText("빌릴 수 있는 돈 3.5억")).toBeInTheDocument();
+    expect(screen.getByText("빌릴 수 있는 돈 3억 5,000만")).toBeInTheDocument();
     rerender(<LoanStack price={50000} region="경기" gu="화성시" isRegulated />);
     expect(screen.getByText("빌릴 수 있는 돈 2억")).toBeInTheDocument();
-    expect(screen.queryByText("빌릴 수 있는 돈 3.5억")).toBeNull();
+    expect(screen.queryByText("빌릴 수 있는 돈 3억 5,000만")).toBeNull();
   });
 
   it("DB 값이 비었으면 이름 조회 — 구리시(2026-07-01 지정) → 40%", () => {

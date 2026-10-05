@@ -15,9 +15,14 @@ export interface FinlifeRate {
 
 interface UseFinlifeRatesReturn {
   rates: FinlifeRate[];
+  /** 금리 공시월 "YYYYMM" — 서버가 못 주면 null (세션593 D4) */
+  disclosureMonth: string | null;
   loading: boolean;
   error: string | null;
 }
+
+/** 캐시에 담는 꼴 — 금리 목록과 공시월을 함께 둔다(공시월만 빠진 캐시 적중이 없게). */
+type CachedRates = { data: FinlifeRate[]; disclosureMonth: string | null };
 
 /**
  * finlife 금리 데이터 페칭 공통 팩토리.
@@ -32,6 +37,7 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
   setCached: (_ref: R, _data: unknown) => void
 ): UseFinlifeRatesReturn {
   const [rates, setRates] = useState<FinlifeRate[]>([]);
+  const [disclosureMonth, setDisclosureMonth] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -41,9 +47,10 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
       //    **각자 자기 cacheRef 를 만들고** apiPath 를 상수로 고정하므로 캐시 범위 자체가 갈린다.
       //    그러나 호출자가 apiPath 를 인자로 열거나 cacheRef 를 공유하는 순간 **다른 종류의 금리가
       //    섞인다**(세션562 전수검사에서 확인한 잠재 결함). 그때는 키에 apiPath 를 넣어야 한다.
-      const cached = getCached(cacheRef);
+      const cached = getCached(cacheRef) as CachedRates | null | undefined;
       if (cached) {
-        setRates(cached as FinlifeRate[]);
+        setRates(cached.data);
+        setDisclosureMonth(cached.disclosureMonth);
         return;
       }
       setLoading(true);
@@ -53,11 +60,18 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
         const res = await fetch(`${apiPath}${sep}topFinGrpNo=${topFinGrpNo}`, { signal });
         if (signal?.aborted) return;
         if (!res.ok) throw new Error(`API 오류 (${res.status})`);
-        const json = (await res.json()) as { ok?: boolean; data?: FinlifeRate[]; error?: string };
+        const json = (await res.json()) as {
+          ok?: boolean;
+          data?: FinlifeRate[];
+          error?: string;
+          disclosureMonth?: string | null;
+        };
         if (!json.ok) throw new Error(json.error || "금리 데이터 조회 실패");
         const data = json.data ?? [];
-        setCached(cacheRef, data);
+        const month = typeof json.disclosureMonth === "string" ? json.disclosureMonth : null;
+        setCached(cacheRef, { data, disclosureMonth: month } satisfies CachedRates);
         setRates(data);
+        setDisclosureMonth(month);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         if (err instanceof Error) setError(err.message);
@@ -74,5 +88,5 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
     return () => ac.abort();
   }, [load]);
 
-  return { rates, loading, error };
+  return { rates, disclosureMonth, loading, error };
 }
