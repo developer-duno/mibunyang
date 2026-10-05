@@ -42,23 +42,18 @@ export const NAVER_MIN_NAME_SIM = 0.75;
 
 /**
  * R3 — 자매 레포(naver-estate-web, 2u)가 K-apt 를 쓰는 창(KST, 분 단위, 양끝 포함).
- * `dayOfMonth` 가 있으면 매월 그 날(KST)에만 해당한다. `from`·`until`(KST 날짜 "YYYY-MM-DD", 양끝 포함)이
- * 있으면 그 기간에만 해당한다(임시 창).
+ * `dayOfMonth` 가 있으면 매월 그 날(KST)에만 해당한다.
  * 같은 열쇠라 둘이 겹치면 합계가 K-apt 한계(약 0.9콜/초)를 넘어 약 10분간 전부 04 가 된다.
  *
  * 출처·확인일(자매 레포 일정은 우리 코드가 모르는 채 바뀐다 — 인계를 받을 때마다 이 상수를 grep 해 맞춘다):
  *   - 06:20~08:25 · 12:40~15:15 — 2u 인계 2026-10-01(메모리 `handoff_from_2u_2026-10-01_kapt_rate_limit.md`), 확인 2026-10-02
  *   - 21:00~23:30(관리비 세 번째 회차 신설) · 매월 21일 14:50~21:00(21일 매칭) — 같은 인계의 2026-10-02 추가분, 확인 2026-10-02
- *   - 임시 15:00~20:45(2026-10-02~10-08) — 2u 세션427 회신 2026-10-02: 관리비 옛 행 재수집 일회성 스크립트(약 52,605콜),
- *     "오늘(10-02)부터 나흘 안팎, 끝나면 다시 알림". 나흘에 여유를 두어 10-08 까지. **만료 뒤 지워도 된다**
- *     (끝났다는 알림을 받거나 10-08 이 지나면 이 줄과 시험의 임시 창 칸을 함께 지운다).
  */
 export const SIBLING_KAPT_WINDOWS_KST = Object.freeze([
   Object.freeze({ start: "06:20", end: "08:25" }),
   Object.freeze({ start: "12:40", end: "15:15" }),
   Object.freeze({ start: "21:00", end: "23:30" }),
   Object.freeze({ start: "14:50", end: "21:00", dayOfMonth: 21 }),
-  Object.freeze({ start: "15:00", end: "20:45", from: "2026-10-02", until: "2026-10-08" }),
 ]);
 /**
  * 창 시작 몇 분 전부터 "곧 창"으로 볼지(`nearSiblingKaptWindow`). 단지 하나에 K-apt 6콜(1.5초 간격 약 9초,
@@ -393,8 +388,7 @@ function minutesOf(hhmm) {
 }
 
 /**
- * 지금(KST)이 창 시작 `leadMin` 분 전 ~ 창 끝(양끝 포함) 안인가. `dayOfMonth` 가 있는 창은 그 날만,
- * `from`·`until` 이 있는 창은 그 KST 날짜 기간(양끝 포함)만.
+ * 지금(KST)이 창 시작 `leadMin` 분 전 ~ 창 끝(양끝 포함) 안인가. `dayOfMonth` 가 있는 창은 그 날만.
  * @param {Date} now
  * @param {number} leadMin
  * @returns {boolean}
@@ -403,11 +397,8 @@ function inWindowWithLead(now, leadMin) {
   const kst = new Date(now.getTime() + KST_OFFSET_MS);
   const m = kst.getUTCHours() * 60 + kst.getUTCMinutes();
   const day = kst.getUTCDate();
-  const date = kst.toISOString().slice(0, 10); // KST 날짜 "YYYY-MM-DD" — 같은 꼴이라 글자 비교 = 날짜 비교
   return SIBLING_KAPT_WINDOWS_KST.some((w) =>
     ("dayOfMonth" in w ? w.dayOfMonth === day : true) &&
-    ("from" in w ? date >= w.from : true) &&
-    ("until" in w ? date <= w.until : true) &&
     m >= minutesOf(w.start) - leadMin && m <= minutesOf(w.end));
 }
 
@@ -439,7 +430,6 @@ export function nearSiblingKaptWindow(now, leadMin = SIBLING_KAPT_LEAD_MIN) {
 export function siblingKaptWindowText() {
   return SIBLING_KAPT_WINDOWS_KST
     .map((w) =>
-      `${"dayOfMonth" in w ? `매월 ${w.dayOfMonth}일 ` : ""}${w.start}~${w.end}` +
-      ("from" in w && "until" in w ? `(임시 ${w.from.slice(5)}~${w.until.slice(5)})` : ""))
+      `${"dayOfMonth" in w ? `매월 ${w.dayOfMonth}일 ` : ""}${w.start}~${w.end}`)
     .join("·");
 }
