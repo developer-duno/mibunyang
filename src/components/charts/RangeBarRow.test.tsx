@@ -131,4 +131,16 @@ describe("RangeBarRow — 선택 칸 (세션593)", () => {
     expect(draw().getByText("84㎡").style.width).toBe("54px");
     expect(draw({ label: "농협은행", labelWidth: 72, testId: "row2" }).getByText("농협은행").style.width).toBe("72px");
   });
+
+  // ⚠️ 변이 대상(세션593 후속 F3): 말줄임을 빼면 긴 이름이 칸 밖으로 넘쳐 띠 왼쪽 글자를 덮는다.
+  it("이름 칸은 한 줄 · 넘치면 '…' · title 에 전체 이름 (폭·정렬·굵기는 그대로)", () => {
+    const label = draw({ label: "한국스탠다드차타드은행", labelWidth: 72 }).getByText("한국스탠다드차타드은행");
+    expect(label.style.width).toBe("72px");
+    expect(label.style.whiteSpace).toBe("nowrap");
+    expect(label.style.overflow).toBe("hidden");
+    expect(label.style.textOverflow).toBe("ellipsis");
+    expect(label.getAttribute("title")).toBe("한국스탠다드차타드은행");
+    expect(label.style.textAlign).toBe("right");
+    expect(label.style.flexShrink).toBe("0");
+  });
 });

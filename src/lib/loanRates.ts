@@ -14,27 +14,38 @@ type RateLike = {
   rateMax?: number | null;
 };
 
-/** 아파트 담보 + 분할상환 상품인가 — 월 상환액·은행 막대 공통 거름 */
-export function isApartmentAmortizing(r: RateLike): boolean {
-  return r.mortgageType === "아파트" && String(r.repayType ?? "").startsWith("분할상환");
-}
-
 /** 0·NaN·빈 금리는 버린다 — "가장 싼 상품"으로 뽑히면 월 상환액이 0 이 된다(세션592 F3) */
 function validRate(v: number | null | undefined): v is number {
   return v != null && Number.isFinite(v) && v > 0;
 }
 
 /**
- * 월 상환액에 쓸 금리 — **아파트 담보 + 분할상환** 상품 중 최저 `rateMin`.
- * 그런 상품이 없으면 null(블록을 그리지 않는다).
+ * 월 상환액·은행 막대가 **같이 쓰는 상품 하나 판정** — 이 함수 하나로만 거른다(세션593 후속 F1).
+ * 아파트 담보 + 분할상환 **이고** `rateMin`·`rateMax` 둘 다 유효(0·NaN·빈 값 아님) **이고** `rateMin ≤ rateMax`.
+ *
+ * 왜 최고 금리까지 보나 — 최고 금리가 빈 상품을 월 상환액만 쓰고 은행 막대는 버리면, 큰 숫자 금리(4.1%)와
+ * 막대 맨 위(4.20%)가 어긋난다. 한 은행에서 최저만 있는 상품과 최고만 있는 상품이 묶이면 "5.00% ~ 4.00%"
+ * 처럼 거꾸로 된 줄이 나온다. 두 값이 다 있고 순서가 맞는 상품만 쓰면 둘 다 생기지 않는다.
+ */
+export function isUsableMortgageRate(r: RateLike): r is RateLike & { rateMin: number; rateMax: number } {
+  return (
+    r.mortgageType === "아파트" &&
+    String(r.repayType ?? "").startsWith("분할상환") &&
+    validRate(r.rateMin) &&
+    validRate(r.rateMax) &&
+    r.rateMin <= r.rateMax
+  );
+}
+
+/**
+ * 월 상환액에 쓸 금리 — `isUsableMortgageRate` 를 지난 상품 중 최저 `rateMin`.
+ * 은행 막대 맨 위 줄의 최저와 늘 같다(같은 거름·같은 최솟값). 그런 상품이 없으면 null(블록을 그리지 않는다).
  */
 export function pickMonthlyRate(rates: ReadonlyArray<RateLike>): number | null {
   let best: number | null = null;
   for (const r of rates) {
-    if (!isApartmentAmortizing(r)) continue;
-    const v = r.rateMin;
-    if (!validRate(v)) continue;
-    if (best == null || v < best) best = v;
+    if (!isUsableMortgageRate(r)) continue;
+    if (best == null || r.rateMin < best) best = r.rateMin;
   }
   return best;
 }
@@ -60,26 +71,25 @@ export type BankRange = {
 export const BANK_RANGE_LIMIT = 5;
 
 /**
- * 은행 범위 막대 재료 — 아파트·분할상환 상품만 은행별로 묶어 최저(`rateMin` 최솟값)~최고(`rateMax` 최댓값)
- * 한 줄씩, 최저 낮은 순으로 `limit` 줄. 0·NaN·빈 금리는 빼고, 최저·최고 중 하나라도 없는 은행은 줄을 만들지 않는다.
+ * 은행 범위 막대 재료 — `isUsableMortgageRate` 를 지난 상품만 은행별로 묶어 최저(`rateMin` 최솟값)~최고(`rateMax` 최댓값)
+ * 한 줄씩, 최저 낮은 순으로 `limit` 줄. 상품마다 최저 ≤ 최고이므로 묶음도 늘 최저 ≤ 최고다.
  * 평균은 만들지 않는다 — 응답엔 은행 평균이 없고 상품 평균은 은행 최저보다 낮기도 하다(부산 4.11 < 5.15).
  */
 export function groupBankRanges(rates: ReadonlyArray<RateLike>, limit = BANK_RANGE_LIMIT): BankRange[] {
-  const byBank = new Map<string, { min: number | null; max: number | null }>();
+  const byBank = new Map<string, BankRange>();
   for (const r of rates) {
-    if (!isApartmentAmortizing(r)) continue;
+    if (!isUsableMortgageRate(r)) continue;
     const bank = r.bank ?? "";
     if (!bank) continue;
-    const cur = byBank.get(bank) ?? { min: null, max: null };
-    if (validRate(r.rateMin) && (cur.min == null || r.rateMin < cur.min)) cur.min = r.rateMin;
-    if (validRate(r.rateMax) && (cur.max == null || r.rateMax > cur.max)) cur.max = r.rateMax;
-    byBank.set(bank, cur);
+    const cur = byBank.get(bank);
+    if (!cur) {
+      byBank.set(bank, { bank, min: r.rateMin, max: r.rateMax });
+      continue;
+    }
+    if (r.rateMin < cur.min) cur.min = r.rateMin;
+    if (r.rateMax > cur.max) cur.max = r.rateMax;
   }
-  const out: BankRange[] = [];
-  for (const [bank, v] of byBank) {
-    if (v.min == null || v.max == null) continue;
-    out.push({ bank, min: v.min, max: v.max });
-  }
+  const out = [...byBank.values()];
   out.sort((a, b) => a.min - b.min);
   return out.slice(0, limit);
 }

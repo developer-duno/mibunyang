@@ -9,8 +9,8 @@ import { SkeletonText } from "@/components/primitives";
  * 다른 금융권 금리 "더 보기" (세션593 D6) — 은행권은 본문(월 상환액 큰 숫자 · 은행 범위 막대)으로 올라갔고,
  * 이 접힘에는 저축은행·여신전문·보험 권역 탭과 상품 표만 남는다.
  *
- * ⚠️ 닫힌 동안 금리를 부르지 않는다 — 권역 금리를 부르는 훅은 펼쳐야 마운트되는 `OtherGroupRates` 안에만
- * 있다. 금융 탭 첫 진입 호출 수 = 전세·주담대 은행권 2회(옛날과 같다).
+ * ⚠️ 처음 펼치기 전에는 금리를 부르지 않는다 — 권역 금리를 부르는 훅은 처음 펼쳐야 마운트되는 `OtherGroupRates`
+ * 안에만 있다. 금융 탭 첫 진입 호출 수 = 전세·주담대 은행권 2회(옛날과 같다). 한 번 펼친 뒤 접으면 숨기기만 한다.
  */
 
 /** 은행권(본문에 있음)을 뺀 권역 탭 */
@@ -18,6 +18,13 @@ const OTHER_GROUPS = LOAN_GROUPS.filter((g) => g.code !== DEFAULT_GROUP);
 
 export const LoanRatesSection = memo(function LoanRatesSection() {
   const [showRates, setShowRates] = useState(false);
+  // 한 번이라도 펼쳤나 — 펼친 뒤로는 접어도 내용을 내리지 않고 숨기기만 한다(세션593 후속 F2).
+  // 내리면 `useLoanRates` 의 권역별 기억이 같이 사라져 다시 펼칠 때마다 우리 API 를 또 부른다.
+  const [everOpened, setEverOpened] = useState(false);
+  const toggle = () => {
+    setShowRates((v) => !v);
+    setEverOpened(true);
+  };
 
   return (
     <div
@@ -30,14 +37,14 @@ export const LoanRatesSection = memo(function LoanRatesSection() {
       }}
     >
       <div
-        onClick={() => setShowRates((v) => !v)}
+        onClick={toggle}
         role="button"
         tabIndex={0}
         aria-expanded={showRates}
         onKeyDown={(e) => {
           if (e.key === "Enter" || e.key === " ") {
             e.preventDefault();
-            setShowRates((v) => !v);
+            toggle();
           }
         }}
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
@@ -55,18 +62,21 @@ export const LoanRatesSection = memo(function LoanRatesSection() {
           ▼
         </span>
       </div>
-      {showRates && <OtherGroupRates />}
+      {everOpened && <OtherGroupRates hidden={!showRates} />}
     </div>
   );
 });
 
-/** 펼쳤을 때만 마운트 — 이 안의 `useLoanRates` 가 고른 권역 금리를 부른다 */
-function OtherGroupRates() {
+/**
+ * 처음 펼칠 때 마운트 — 이 안의 `useLoanRates` 가 고른 권역 금리를 부른다.
+ * 접으면 `hidden`(화면·화면 읽기 둘 다에서 빠진다)으로 숨기기만 하므로 다시 펼쳐도 같은 권역은 다시 부르지 않는다.
+ */
+function OtherGroupRates({ hidden }: { hidden: boolean }) {
   const [selectedGroup, setSelectedGroup] = useState(OTHER_GROUPS[0]?.code ?? DEFAULT_GROUP);
   const { rates: loanRates, loading: ratesLoading, error: ratesError } = useLoanRates(selectedGroup);
 
   return (
-    <div style={{ marginTop: 8 }}>
+    <div hidden={hidden} style={{ marginTop: 8 }}>
       {/* 금융권역 탭 */}
       <div role="tablist" aria-label="금융권역" style={{ display: "flex", gap: 4, marginBottom: 8 }}>
         {OTHER_GROUPS.map((g) => (

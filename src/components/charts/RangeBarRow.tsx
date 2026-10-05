@@ -100,7 +100,10 @@ export const RangeBarRow = memo(function RangeBarRow({
         background: emphasized ? C.indigoLight : "transparent",
       }}
     >
+      {/* 이름이 칸보다 길면 한 줄 그대로 "…" 로 자르고 전체 이름은 title 에 (세션593 후속 F3 —
+          "한국스탠다드차타드은행"이 72px 칸을 넘어 금리 글자를 덮었다). 짧은 이름은 모양 그대로. */}
       <span
+        title={label}
         style={{
           width: labelWidth,
           flexShrink: 0,
@@ -109,6 +112,8 @@ export const RangeBarRow = memo(function RangeBarRow({
           fontWeight: emphasized ? 700 : 400,
           color: emphasized ? C.blue : C.muted,
           whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
         }}
       >
         {label}

@@ -58,7 +58,8 @@ export const MonthlyPaymentBlock = memo(function MonthlyPaymentBlock({
       <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>한 달에 갚을 돈</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: C.blue, marginTop: 2 }}>{fmtPrice(pay)} 원/월</div>
       <div style={{ fontSize: F.micro, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>
-        {`대출 ${fmtPrice(loan)} · ${LOAN_YEARS}년 · 아파트·분할상환 최저 금리 ${rate}% 기준`}
+        {/* 소수 둘째 자리 — 아래 은행 막대("4.20%")와 같은 자릿수(세션593 후속 F4) */}
+        {`대출 ${fmtPrice(loan)} · ${LOAN_YEARS}년 · 아파트·분할상환 최저 금리 ${rate.toFixed(2)}% 기준`}
         {month && ` · ${month}`}
       </div>
     </div>
