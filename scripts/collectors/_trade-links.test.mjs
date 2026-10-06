@@ -274,7 +274,10 @@ describe("사람 판정 파일(B4)", () => {
 
   it("parseLinkDecisions — 빈 파일 · 형식 오류 · 같은 줄 두 번은 던진다", () => {
     expect(parseLinkDecisions({ decisions: [] })).toEqual([]);
-    expect(parseLinkDecisions(JSON.parse(readFileSync(path.join(DIR, "..", "..", "..", "..", "docs", "audits", "trade-link-decisions.json"), "utf8")))).toEqual([]);
+    // 운영 판정 파일은 모양만 검사한다(내용은 못 박는다 — 세션600 첫 판정 77줄)
+    const live = parseLinkDecisions(JSON.parse(readFileSync(path.join(DIR, "..", "..", "..", "..", "docs", "audits", "trade-link-decisions.json"), "utf8")));
+    expect(Array.isArray(live)).toBe(true);
+    expect(live.every((d) => d.status === "active" || d.status === "rejected")).toBe(true);
     expect(() => parseLinkDecisions({})).toThrow(/decisions/);
     expect(() => parseLinkDecisions({ decisions: [{ apartment_id: "a", link_kind: "x", link_key: "k", status: "active" }] })).toThrow(/link_kind/);
     expect(() => parseLinkDecisions({ decisions: [{ apartment_id: "a", link_kind: "apt_seq", link_key: "k", status: "hold" }] })).toThrow(/status/);
