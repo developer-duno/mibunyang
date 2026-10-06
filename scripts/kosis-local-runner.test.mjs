@@ -42,8 +42,8 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     expect(collectorsDueOn(at(2026, 7, 9))).toEqual(["collect-unsold-kosis.mjs"]);
   });
 
-  it("매월 10일(토요일 아님)은 출산율 + 건축물상세가 due 다", () => {
-    // 2026-07-10 = 금요일 → skipIfDow(토) 게이트 통과
+  it("매월 10일은 출산율 + 건축물상세가 due 다", () => {
+    // 2026-07-10 = 금요일
     expect(collectorsDueOn(at(2026, 7, 10))).toEqual([
       "collect-fertility-rate.mjs",
       "molit-building-info.mjs",
@@ -142,19 +142,18 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
     ]);
   });
 
-  it("10일이 토요일이면 건축물상세를 건너뛴다 (자매 레포 public_data 와 쿼터 충돌)", () => {
+  // 세션603: 토요일 건너뛰기 제거 — 한도는 창구별이라 2u 토요일 실거래(RTMS)와 합산되지 않는다.
+  it("10일이 토요일이어도 건축물상세가 그날 돈다", () => {
     // 2026-10-10 = 토요일
-    expect(collectorsDueOn(at(2026, 10, 10))).not.toContain("molit-building-info.mjs");
-    expect(collectorsDueOn(at(2026, 10, 10))).toContain("collect-fertility-rate.mjs");
-  });
-
-  it("11일은 전날(10일)이 토요일일 때만 건축물상세를 보충 실행한다", () => {
-    // 2026-10-11 = 일요일, 전날 10-10 = 토요일 → 보충 실행
-    expect(collectorsDueOn(at(2026, 10, 11))).toEqual([
-      "housing-permits.mjs",
+    expect(collectorsDueOn(at(2026, 10, 10))).toEqual([
+      "collect-fertility-rate.mjs",
       "molit-building-info.mjs",
     ]);
-    // 2026-09-11 = 금요일, 전날 09-10 = 목요일 → 10일에 이미 돌았으므로 보충 없음
+  });
+
+  it("11일에는 건축물상세 보충 실행이 없다 (10일에 이미 돌았으므로)", () => {
+    // 2026-10-11 = 일요일, 전날 10-10 = 토요일 — 옛 보충 줄이 남아 있으면 두 번 돈다
+    expect(collectorsDueOn(at(2026, 10, 11))).toEqual(["housing-permits.mjs"]);
     expect(collectorsDueOn(at(2026, 9, 11))).toEqual(["housing-permits.mjs"]);
   });
 
@@ -202,12 +201,7 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
       expect(e, `${day}일 ${script} 항목이 매핑표에 없음`).toBeTruthy();
       return describeEntry(/** @type {(typeof DAY_TABLE)[number]} */ (e));
     };
-    expect(byDay(10, "molit-building-info.mjs")).toBe(
-      "매월 10일 (토요일 제외): molit-building-info.mjs",
-    );
-    expect(byDay(11, "molit-building-info.mjs")).toBe(
-      "매월 11일 (전날이 토요일일 때만): molit-building-info.mjs",
-    );
+    expect(byDay(10, "molit-building-info.mjs")).toBe("매월 10일: molit-building-info.mjs");
     expect(byDay(15, "collect-maintenance.mjs")).toBe(
       "매월 15일: collect-maintenance.mjs --limit=300 --budget-min=40",
     );

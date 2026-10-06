@@ -953,6 +953,17 @@ export default function App() {
           letterSpacing: -0.2,
         }}
       >
+        {/* 자매 사이트 링크 — 사장님 결정 2026-10-05(2u 세션432 인계, 문구 그대로) */}
+        <nav aria-label="함께 보면 좋은 사이트" style={{ marginBottom: 6 }}>
+          함께 보면 좋은 사이트{" "}
+          <a href="https://2u.pe.kr" target="_blank" rel="noopener noreferrer" style={{ color: C.muted }}>
+            2u부동산(아파트 매물·시세)
+          </a>
+          {" | "}
+          <a href="https://sangga-one.vercel.app" target="_blank" rel="noopener noreferrer" style={{ color: C.muted }}>
+            상가 공간분석(준비 중)
+          </a>
+        </nav>
         이로움기획 | 대표 김상원 | 사업자등록번호 267-02-01775
         <br />
         대전광역시 유성구 계룡로38번길 92, 201호 (구암동, 황제빌라)

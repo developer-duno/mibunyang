@@ -131,7 +131,8 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 | **공용** | complex_price_history | 양쪽 upsert |
 | **공용 (컬럼 분리)** | **infra** | **양쪽 쓰기.** mibunyang = kakao 계열 17컬럼(8종×2 + `subway_dist`) + `updated_at` / 자매 = `air_*`·`crime_*`·`childcare_*`·`emergency_*` (`env_air.py`·`env_crime.py`·`env_childcare.py`·`env_emergency.py` 가 `db.add(infra)`) |
 | **공용** | air_quality_stations | **자매만 쓴다**(`env_air.py`). mibunyang 은 안 건드린다 |
-| **공용** | presale_schedule_official, applyhome_unit_supply, rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | **양쪽 쓰기** — 자매 `service_applyhome_officetel.py`·`service_applyhome_rental.py` 가 오피스텔·임대를 넣는다 |
+| **mibunyang 쓰기 · 자매 읽기** | presale_schedule_official, applyhome_unit_supply | 아파트 청약 전용 — 자매는 V045(2026-08)부터 오피스텔을 아래 독립 표로 옮겨 이 두 표에 안 쓴다(세션603 확인: 자매 `V045__officetel_presale_own_table.sql`) |
+| **자매 쓰기 · mibunyang 안 씀** | rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | 자매 `service_applyhome_rental.py`(V041·V042)·`service_applyhome_officetel.py`(V045) 전용 독립 표 |
 | **mibunyang 쓰기 · 자매 읽기** | apartments, prices, unsold_history, schools, transport, builders, regions, trades, trade_stats | 쓰기는 mibunyang 만. **자매가 `mb_models.py` 로 읽으므로 컬럼 삭제·이름 변경 금지** |
 | **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs, trade_deals, apartment_trade_links 등 | mibunyang만 |
 | **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details, crawl_jobs, payments, billing_keys 등 | naver-estate-web만 |

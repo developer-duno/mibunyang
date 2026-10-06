@@ -360,7 +360,7 @@ export const EXTERNAL_API_COLLECTORS = [
   //    GH 워크플로가 없어(로컬 러너 매월 21일) ①③ 이 못 본다 — collector_runs 신선도가 유일한
   //    "안 돌면 알림". 월간이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100).
   { collector: "lhzone-status",   stale_days: 38, owner: "택지정보시스템 지구단계정보 (로컬 매월 21일)" },
-  { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일·토요일이면 11일)" },
+  { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일)" },
   // molit-units 만 14 인 이유 = 월간 cron 외에 네이버 로컬 파이프라인(월/목 08:00, run-naver-local)
   // 4/6 단계가 같은 수집기를 돌린다. 정상 최대 간격이 4일이라 월간 38 을 쓰면 정지를 늦게 잡는다.
   { collector: "molit-units",     stale_days: 14, owner: "MOLIT 세대수 보정 (로컬 매월 6일 + 네이버 파이프라인 월/목)" },

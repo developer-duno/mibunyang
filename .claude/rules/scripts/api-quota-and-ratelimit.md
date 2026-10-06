@@ -22,14 +22,14 @@ paths:
 | 매월 5일 | population + population-sex-age (로컬 러너, 세션550 이전), market-stats(로컬 러너 6일) | ~100 |
 | 매월 6일 | collect-trades (로컬 러너) | 1,500~3,500 (세션92: 지방 8개 region 확장 시 +500~1,500) |
 | 매월 6일 + 월/목 08:00 후 | molit-units (로컬 러너 + 네이버 파이프라인) | 50~300 (+post-naver-collect 시 추가) |
-| **매월 10일** | **building-info (로컬 러너)** | 옛 표기 ~8,500 은 **낡은 숫자** — 2u 인계 실측 **366콜**(`kosis-local.log:1386`, 옛 코드 값). 세션589 부터 강원·전북이 처음 들어와 최대 약 +218콜 |
+| **매월 10일** | **building-info (로컬 러너)** | 옛 표기 ~8,500 은 **낡은 숫자** — 2u 인계 실측 **366콜**(`kosis-local.log` 2026-09-10 회차, 옛 코드 값). 세션589 부터 강원·전북이 처음 들어와 최대 약 +218콜 |
 | 매월 11일 | housing-permits (로컬 러너, KOSIS) | ~100 |
 | 매월 15~19일 | maintenance (로컬 러너, `--limit=300 --budget-min=40` — `--limit` 은 짝이 붙은 단지 수, 2u 창 5분 전부터 멈춤, 세션589) | 최대 ~1,800/회차(K-apt 1.5초 간격이라 40분이면 약 1,600콜) |
 | **토요일** | naver-estate-web public_data | ~3,600 |
 
 **위험일**:
-- 매월 10일이 토요일 → 12,100 > 10,000. 로컬 러너 매핑표의 `skipIfDow: 6`(10일) + `onlyIfPrevDayDow: 6`(11일)로 fallback 구현됨(옛 collect-building-info.yml 의 셸 분기를 이식).
-- 매월 10일이 월/목 → building-info 8,500 + post-naver-collect molit-units 300 = ~8,800~9,100(한도의 88~91%). 여유 900~1,200회. 모니터링 필요(세션89).
+- ~~매월 10일이 토요일 → 12,100 > 10,000~~ — **세션603 폐기.** data.go.kr 한도는 서비스(창구)별 10,000 이고(2u 인계 09-27, 응답 헤더 `x-ratelimit-*` 실측), 2u 토요일 실거래가는 RTMS 창구, building-info 는 K-apt 단지 창구(`AptListService4`·`AptBasisInfoServiceV5`)라 합산되지 않는다. 러너의 `skipIfDow: 6`(10일)·11일 보충 줄 삭제.
+- ~~매월 10일이 월/목 → ~8,800~9,100~~ — **낡음.** building-info 실측 366회(2026-09-10 회차, `kosis-local.log`) — 전 단지 재조회가 아니라 빈 칸만 채우는 지금 구조에선 수백 회 수준. 다만 K-apt 창구는 속도 제한(0.3초 간격 33콜째부터 약 10분 04)이 있다 — 2u 인계 10-01 · `collect-maintenance` 1.5초 간격 참고.
 - **매월 6일 (세션92 이후)**: 지방 8개 region(강원/충북/충남/전북/전남/경북/경남/제주) 확장으로 collect-trades 최대 ~5,000회 가능. 여전히 10일보다 여유 있음 — 단 dry-run 실측 후 9,000 초과 시 `kosis-local-runner.mjs` DAY_TABLE 2분할 고려(metro 6일 / rural 20일).
 
 ### 쿼터 로깅
