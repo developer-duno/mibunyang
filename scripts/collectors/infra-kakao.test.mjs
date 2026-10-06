@@ -5,6 +5,7 @@
  * 대상: createSemaphore
  */
 import { describe, it, expect, vi } from "vitest";
+import { readFileSync } from "node:fs";
 
 // _shared.mjs 모킹
 vi.mock("./_shared.mjs", async (importOriginal) => {
@@ -27,7 +28,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 // KAKAO_KEY 설정 — 모듈 로드 시 process.exit 방지
 process.env.KAKAO_KEY = "test-key";
 
-const { createSemaphore, buildFreshIds, FRESH_DAYS, REQUIRED_KEYS, searchKakao } = await import("./infra-kakao.mjs");
+const { createSemaphore, buildFreshIds, FRESH_DAYS, REQUIRED_KEYS, searchKakao, errorFailCount } = await import("./infra-kakao.mjs");
 const shared = await import("./_shared.mjs");
 
 // ── 개수는 meta.total_count 로 센다 (세션511) ─────────────────────────────
@@ -206,5 +207,37 @@ describe("buildFreshIds — 완결 + 신선 둘 다 만족해야 건너뜀", () 
     ];
     const fresh = buildFreshIds(rows, NOW);
     expect([...fresh]).toEqual(["ap-fresh"]);
+  });
+});
+
+// ── 세션599: 카카오·upsert 오류를 비율 기준으로 실패로 센다 ──────────────
+// 옛 판은 catch·upsert 오류에서 skipped++ 라 카카오가 하루 종일 고장이어도 success("갱신 없음(정상)").
+// 이제 시도(갱신+오류) 중 오류가 절반 이상이면 fail(→ exit 1), 그 아래는 옛 동작대로 skip.
+const COLLECTOR_SRC = readFileSync(new URL("./infra-kakao.mjs", import.meta.url), "utf-8");
+
+describe("단지 처리 오류 — 절반 이상이면 실패로 센다 (세션599)", () => {
+  it("시도 10 · 오류 5(경계, 정확히 절반) → fail 5", () => {
+    expect(errorFailCount({ ok: 5, err: 5 })).toBe(5);
+  });
+
+  it("시도 10 · 오류 4(절반 미만) → fail 0 (skip 으로)", () => {
+    expect(errorFailCount({ ok: 6, err: 4 })).toBe(0);
+  });
+
+  it("시도 0 → fail 0", () => {
+    expect(errorFailCount({ ok: 0, err: 0 })).toBe(0);
+  });
+
+  it("갱신 0 · 오류 3(카카오 전부 고장) → fail 3", () => {
+    expect(errorFailCount({ ok: 0, err: 3 })).toBe(3);
+  });
+
+  // 배선 — 함수만 옳고 main 이 안 부르면 위 시험은 초록이다(guards-must-be-mutation-tested).
+  it("main 이 오류를 errored 로 세고, 판정 결과를 rpt.fail 로 넘기며 0 이면 rpt.skip 으로", () => {
+    const body = COLLECTOR_SRC.slice(COLLECTOR_SRC.indexOf("async function main()"));
+    expect(body).toMatch(/const errFailN = errorFailCount\(\{ ok: updated, err: errored \}\);\s*if \(errFailN > 0\) rpt\.fail\(errFailN\);\s*else rpt\.skip\(errored\);/);
+    // catch·upsert 오류 둘 다 errored 로(skipped 칸이 되살아나면 red)
+    expect(body.match(/errored\+\+;/g)?.length).toBe(2);
+    expect(body).not.toMatch(/skipped\+\+/);
   });
 });
