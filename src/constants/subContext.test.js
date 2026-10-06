@@ -293,6 +293,12 @@ describe("PRODUCT_MAX", () => {
       expect(SUB_CONTEXT.price.PIR.benchmark).not.toMatch(/^3배/); // 옛 값(가구소득 시절)
     });
 
+    // 세션589 V9 — 값은 "38%"(scorePrice info)인데 기준만 "0.85 이하" 라 한 줄 안에서 단위가 달랐다.
+    it("PSR 기준선은 % 로 적는다 — 값(%)과 같은 단위", () => {
+      expect(SUB_CONTEXT.price.PSR.benchmark).toBe("85% 이하 우수");
+      expect(SUB_CONTEXT.price.PSR.benchmark).not.toMatch(/0\.85/);
+    });
+
     it("택지비비율: 단지 원가가 아니라 시도 값임을 밝힌다", () => {
       expect(say("price", "택지비비율", 90)).toContain("시도");
       expect(say("price", "택지비비율", 90)).not.toMatch(/가격 안정/); // 재지 않은 인과

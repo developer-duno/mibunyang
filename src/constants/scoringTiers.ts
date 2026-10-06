@@ -819,6 +819,40 @@ export const PIR_SCORE_TIERS: {
   BURDEN_PENALTY: 2, // PIR 초과 1당 감점 (30→35일 때 -10, 30→60일 때 -60)
 };
 
+// === Price: PSR (분양가 ㎡당 ÷ 이 구 실거래 ㎡당) 점수 구간 ===
+// 세션589: `scorePrice.ts` 에 숫자로 박혀 있던 경계(0.85·1.0·0.15·0.2)를 **값 그대로** 옮겼다 — 점수 변화 0.
+// 시세 탭 PSR 게이지(눈금 끝·색 3단)와 점수 탭 기준 글이 이 표를 같이 읽는다
+// (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md — 경계를 화면에 손으로 적지 않는다).
+// 구조: <0.85 저평가(85→100 선형, 0.70 에서 만점) · 0.85~1.0 적정(50→85 선형) · >1.0 고평가(50→0 선형, 1.2 에서 0점).
+// ⚠️ SPAN 을 `PAR_MAX - UNDERVALUED_BELOW` 로 계산하지 않는다 — 부동소수 오차(0.15000000000000002)로 점수가 달라진다.
+export const PSR_SCORE_TIERS: {
+  UNDERVALUED_BELOW: number;
+  PAR_MAX: number;
+  UNDERVALUED_BASE: number;
+  UNDERVALUED_RANGE: number;
+  UNDERVALUED_SPAN: number;
+  PAR_BASE: number;
+  PAR_RANGE: number;
+  PAR_SPAN: number;
+  OVER_SPAN: number;
+} = {
+  UNDERVALUED_BELOW: 0.85, // 이 미만 = 저평가 구간
+  PAR_MAX: 1.0, // 이하 = 적정 구간, 초과 = 고평가 구간
+  UNDERVALUED_BASE: 85, // 저평가 구간 시작 점수
+  UNDERVALUED_RANGE: 15, // 저평가 구간에서 더 오르는 점수(85 → 100)
+  UNDERVALUED_SPAN: 0.15, // 0.85 에서 이만큼 더 낮으면 만점
+  PAR_BASE: 50, // 적정 구간 시작 점수(= 고평가 구간이 깎이기 시작하는 점수)
+  PAR_RANGE: 35, // 적정 구간에서 오르는 점수(50 → 85)
+  PAR_SPAN: 0.15, // 적정 구간 폭
+  OVER_SPAN: 0.2, // 1.0 에서 이만큼 넘으면 0점
+};
+
+/** PSR 만점(100)에 닿는 비율 — 표에서 읽는다(0.70). 시세 탭 게이지 오른쪽 끝. */
+export const PSR_FULL_AT = PSR_SCORE_TIERS.UNDERVALUED_BELOW - PSR_SCORE_TIERS.UNDERVALUED_SPAN;
+
+/** PSR 0점에 닿는 비율 — 표에서 읽는다(1.2). 시세 탭 게이지 왼쪽 끝. */
+export const PSR_ZERO_AT = PSR_SCORE_TIERS.PAR_MAX + PSR_SCORE_TIERS.OVER_SPAN;
+
 // === Future: 동적 가중치 룩업 테이블 (Q-4) ===
 // 키: "${hasTr},${hasCity},${hasInd}" (1=있음, 0=없음) → 합계 항상 1.00
 // === Price: 괴리도 점수 임계값 ===

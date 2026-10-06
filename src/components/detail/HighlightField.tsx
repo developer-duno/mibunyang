@@ -10,7 +10,7 @@ import type { HighlightFieldProps } from "@/types/detail";
 //    설명 취지는 그 서랍의 ? 도움말이 이어받았다(`detail/RegionStats` SECTION_HINT).
 const HIGHLIGHT_DESC: Record<string, string> = {
   pir: "연소득 대비 분양가 비율. 낮을수록 부담 적음",
-  psr: "주변 시세 대비 분양가 비율. 1 미만이면 저평가",
+  psr: "주변 시세 대비 분양가 비율. 100% 미만이면 저평가",
   unsoldRate: "총 세대 중 미분양 비율. 낮을수록 인기",
   dataReliability: "핵심 데이터 수집 완성도",
 };

@@ -16,6 +16,9 @@ import {
   FUTURE_AXIS_MAX,
   FUTURE_RAW_MAX,
   PRICE_NO_DATA_DEFAULTS,
+  PSR_SCORE_TIERS,
+  PSR_FULL_AT,
+  PSR_ZERO_AT,
   tierMax,
   tierMin,
   SUBWAY_DIST_TIERS,
@@ -100,6 +103,45 @@ describe("FUTURE_WEIGHTS (고정 가중치)", () => {
     // 어느 축이든 상한이 100 미만이 되면 여기가 100 아래로 떨어지고 정규화가 실제로 일을 한다.
     expect(FUTURE_RAW_MAX).toBeLessThanOrEqual(100);
     expect(FUTURE_RAW_MAX).toBeGreaterThan(0);
+  });
+});
+
+// 세션589 — `scorePrice.ts` 에 숫자로 박혀 있던 PSR 경계를 상수로 옮겼다(점수 변화 0).
+// 시세 탭 PSR 게이지(눈금 끝 70%·120%, 색 경계 85%·100%)와 점수 탭 기준 글("85% 이하 우수")이 이 표를 읽는다.
+// ⚠️ 값을 **리터럴로 못 박는다** — 이 표를 읽는 쪽(게이지·문구·점수)은 전부 파생이라, 표를 잘못 바꾸면
+//    함께 따라가 초록으로 남는다(.claude/rules/meta/guards-must-be-mutation-tested.md "파생 가드").
+//    점수 쪽 리터럴 가드는 `scoring/engine.test.js` "PSR %p → %p점".
+describe("PSR_SCORE_TIERS", () => {
+  it("경계·폭·점수가 옮기기 전 리터럴과 같다", () => {
+    expect(PSR_SCORE_TIERS).toEqual({
+      UNDERVALUED_BELOW: 0.85,
+      PAR_MAX: 1.0,
+      UNDERVALUED_BASE: 85,
+      UNDERVALUED_RANGE: 15,
+      UNDERVALUED_SPAN: 0.15,
+      PAR_BASE: 50,
+      PAR_RANGE: 35,
+      PAR_SPAN: 0.15,
+      OVER_SPAN: 0.2,
+    });
+  });
+
+  it("만점 지점은 70%, 0점 지점은 120% 다 (게이지 양 끝)", () => {
+    expect(PSR_FULL_AT).toBeCloseTo(0.7, 10);
+    expect(PSR_ZERO_AT).toBeCloseTo(1.2, 10);
+    // 화면 글자("70% 이하"·"120% 이상")가 되는 꼴
+    expect((PSR_FULL_AT * 100).toFixed(0)).toBe("70");
+    expect((PSR_ZERO_AT * 100).toFixed(0)).toBe("120");
+  });
+
+  it("세 구간이 경계에서 이어진다 (점수가 뛰지 않는다)", () => {
+    const T = PSR_SCORE_TIERS;
+    // 저평가 구간의 시작 점수 = 적정 구간의 끝 점수
+    expect(T.PAR_BASE + T.PAR_RANGE).toBe(T.UNDERVALUED_BASE);
+    // 저평가 구간의 끝 = 100점
+    expect(T.UNDERVALUED_BASE + T.UNDERVALUED_RANGE).toBe(100);
+    // 적정 구간의 폭 = 두 경계 사이
+    expect(T.PAR_MAX - T.UNDERVALUED_BELOW).toBeCloseTo(T.PAR_SPAN, 10);
   });
 });
 

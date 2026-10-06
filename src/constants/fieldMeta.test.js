@@ -149,8 +149,12 @@ describe("FIELD_META", () => {
     expect(FIELD_META.builderCreditGrade.fmt("A", { builder: "부산도시공사" })).toBe("A");
   });
 
-  it("psr fmt: 숫자 → toFixed(2)", () => {
-    expect(FIELD_META.psr.fmt(0.85)).toBe("0.85");
+  // 세션589 V9 — PSR 표기는 % 로 통일한다(점수 탭 "38%" · 시세 탭 게이지와 같은 꼴). 옛 기대는 "0.85".
+  it("psr fmt: 비율 → % (0.85 → '85%')", () => {
+    expect(FIELD_META.psr.fmt(0.85)).toBe("85%");
+    expect(FIELD_META.psr.fmt(0.38)).toBe("38%");
+    expect(FIELD_META.psr.fmt(1.2)).toBe("120%");
+    expect(FIELD_META.psr.fmt(null)).toBe("—");
   });
 
   // 분양정보 필드 테스트

@@ -56,6 +56,13 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   // 보여줄 자리가 없어 손님 화면에서 뺐다.
   naverAvgFloor: "짝(avgFloor)이 계단 카드로 승격해 단독 비교값이 됨 — 새 자리 없음 (세션508 PR-3b B3)",
   floors: "maxFloor 에서 파생되는 구간 문자열인데 재계산이 안 돼 최고층과 어긋난다(306곳/18.1%). 관리자 표에만 남긴다.",
+  // 세션589 (사장님 결정 V10·V11) — 시세 탭 "접힘 없이 한눈에". 관리자 표·DB 에는 그대로 있다.
+  housingPrice: "공시가격 — 시군구 평균·세금 기준값, 점수 미사용. 시세 탭 접힘과 함께 손님 화면에서 뺐다 (V11)",
+  nearbyMedian: "구 전체 12개월 매매 중위(면적 무관) — 두 출처 대조표와 함께 뺐다 (V10)",
+  naverNearbyMedian: "〃 네이버 주변 중위(면적 무관) (V10)",
+  naverJeonseRate: "전세가율은 면적별 막대(PriceTable)가 면적마다 말한다 — 대조 줄을 뺐다 (V10)",
+  nearbyBuildYear: "대조 줄이 없어져 우리측 건축연도는 짝을 잃었다 — 한 줄에는 네이버 값만 남는다 (V10)",
+  naverNearbyCount: "대조표 각주('주변 N개 단지 기준')였다 — 표와 함께 빠졌다 (V10)",
 };
 
 /**
@@ -196,18 +203,29 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
    * ⚠️ 정규식 좌변을 `ours:`/`theirs:`/`field:` 같은 **키까지** 고정한다 — 그냥 필드명만
    *    찾으면 파일 위쪽 주석·타입 선언에도 걸려 실제로 안 그려도 통과한다(가짜 초록불).
    */
-  const SOURCE_COMPARISON = "../components/detail/SourceComparison.tsx";
-  for (const f of ["nearbyMedian", "nearbyBuildYear"])
-    CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`ours: "${f}"`), why: "두 출처 대조표 — 우리측 열" }];
-  for (const f of ["naverNearbyMedian", "naverJeonseRate", "naverBuildYear"])
-    CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`theirs: "${f}"`), why: "두 출처 대조표 — 네이버 열" }];
+  //
+  // ⚠️ 세션589: 그 대조표는 `detail/NaverListingLine`(네이버 매물 현황 한 줄)로 바뀌었다(사장님 결정
+  //    V10). 10필드 중 5필드만 남고, 나머지 5필드는 `INTERNAL_ONLY_FIELDS` 로 내려갔다(위
+  //    INTENTIONALLY_UNRENDERED). 매물 수는 여전히 정의 상수의 `field: "…"` 로 읽는다.
+  const NAVER_LISTING_LINE = "../components/detail/NaverListingLine.tsx";
   for (const f of ["naverSellCount", "naverJeonseCount", "naverWolseCount"])
-    CARD_SOURCE[f] = [{ file: SOURCE_COMPARISON, re: new RegExp(`field: "${f}"`), why: "두 출처 대조표 — 매물 칩" }];
-  CARD_SOURCE.naverNearbyCount = [
-    { file: SOURCE_COMPARISON, re: /apt\.naverNearbyCount\b/, why: "두 출처 대조표 — 각주 '주변 N개 단지'" },
+    CARD_SOURCE[f] = [{ file: NAVER_LISTING_LINE, re: new RegExp(`field: "${f}"`), why: "네이버 매물 현황 — 매물 수" }];
+  CARD_SOURCE.naverBuildYear = [
+    { file: NAVER_LISTING_LINE, re: /apt\.naverBuildYear\b/, why: "네이버 매물 현황 — 주변 단지 평균 건축연도" },
   ];
   CARD_SOURCE.naverFetchedAt = [
-    { file: SOURCE_COMPARISON, re: /apt\.naverFetchedAt\b/, why: "두 출처 대조표 — 각주 수집 시점" },
+    { file: NAVER_LISTING_LINE, re: /apt\.naverFetchedAt\b/, why: "네이버 매물 현황 — 수집 시점" },
+  ];
+
+  // 세션589 — 시세 탭 맨 위 PSR 게이지 줄. 옛 자리는 "이 동네 거래 시세" 접힘의 강조줄이었다.
+  // 모달이 상자에 apt 를 넘기고(배선), 상자가 `apt.psr` 을 읽어 그린다 — 두 파일을 다 본다.
+  CARD_SOURCE.psr = [
+    {
+      file: "../components/DetailModal.tsx",
+      re: /<PricePositionBox\s+priceCat=\{res\.cats\.price\}\s+apt=\{mergedApt \?\? apt\}/,
+      why: "시세 탭이 위치 상자에 넘긴다",
+    },
+    { file: "../components/detail/PricePositionBox.tsx", re: /const psrRaw = apt\.psr\b/, why: "PSR 게이지 줄" },
   ];
 
   // 세션508 PR-3b B3 — 시세 탭 층별가 계단 카드(`detail/DataSectionBlock` PriceByFloorBlock)가
@@ -540,8 +558,11 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "floorAreaRatio",
       "buildingCoverageRatio",
       "layout",
+      // ── 세션589 ── 시세 탭 접힘 "이 동네 거래 시세"를 없앤 자리. 세 필드가 서랍으로 흘러들면
+      // 시세 탭에 "아직 안 보여드린 자료 N개" 접힘이 되살아난다(pir 은 위 편차 스트립 줄에 이미 있다).
+      "psr", // 시세 탭 맨 위 게이지 줄(PricePositionBox)
+      "housingPrice", // 손님 화면에서 뺐다(V11)
       // ⚠️ 여기 **넣으면 안 되는 것들**:
-      //   pir·psr·housingPrice = 시세 탭 "이 동네 거래 시세" 표에 그대로 남는다.
       //   cancelRatio6m = "분양 안전" 표에 그대로 남는다(C3 은 청약경쟁 3필드만 옮겼다).
       //   units·unsold·heating = 종합 탭 "단지 기본정보" 격자에 그대로 남는다(C4 는 heatFuel·
       //   primaryDirection 두 필드만 옮겼다).

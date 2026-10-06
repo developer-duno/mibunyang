@@ -10,6 +10,7 @@ import {
   LAND_COST_NULL,
   PRICE_NO_DATA_DEFAULTS,
   PIR_SCORE_TIERS,
+  PSR_SCORE_TIERS,
   PRICE_INDEX_HOT,
   PRICE_INDEX_WARM,
   PRICE_INDEX_HOT_BONUS,
@@ -345,15 +346,18 @@ export function scorePrice(apt: Apt): Res {
             ? 60 + ((MODERATE_MAX - pir) / (MODERATE_MAX - GOOD_MAX)) * 20
             : Math.max(0, 60 - (pir - MODERATE_MAX) * BURDEN_PENALTY);
   const psr = apt.psr;
+  // 경계는 `PSR_SCORE_TIERS` 에서 읽는다(세션589 — 값은 옛 리터럴 그대로, 점수 변화 0).
+  // 시세 탭 PSR 게이지가 같은 표로 눈금 끝·색을 그린다.
+  const T = PSR_SCORE_TIERS;
   const psrSc =
     psr == null
       ? PRICE_NO_DATA_DEFAULTS.psr
       : Math.min(
-          psr < 0.85
-            ? 85 + ((0.85 - psr) / 0.15) * 15
-            : psr <= 1.0
-              ? 50 + ((1.0 - psr) / 0.15) * 35
-              : Math.max(0, 50 - ((psr - 1.0) / 0.2) * 50),
+          psr < T.UNDERVALUED_BELOW
+            ? T.UNDERVALUED_BASE + ((T.UNDERVALUED_BELOW - psr) / T.UNDERVALUED_SPAN) * T.UNDERVALUED_RANGE
+            : psr <= T.PAR_MAX
+              ? T.PAR_BASE + ((T.PAR_MAX - psr) / T.PAR_SPAN) * T.PAR_RANGE
+              : Math.max(0, T.PAR_BASE - ((psr - T.PAR_MAX) / T.OVER_SPAN) * T.PAR_BASE),
           100
         );
   const total = devSc * 0.3 + jrSc * 0.2 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;

@@ -7,7 +7,8 @@ import { catVerdict } from "@/constants/catVerdict";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
-import { DEV_FULL_MIN_PCT, DEV_ZERO_AT_PCT, DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
+import { DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
+import { PricePositionBox } from "./detail/PricePositionBox";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
@@ -32,14 +33,14 @@ import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { BlindScoreBadge, LoginCta, ScoreLockPanel } from "./detail/ScoreBlind";
 import { AdminDataAudit } from "./detail/AdminDataAudit";
-import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
+import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRESALE_SECTIONS } from "@/lib/dataSections";
 import { PresaleInfo } from "./detail/PresaleInfo";
 import { UnsoldEventCard } from "./detail/UnsoldEventCard";
 import { BuilderCard } from "./detail/BuilderCard";
 import { BuildingInfoCard } from "./detail/BuildingInfoCard";
 import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
-import { SourceComparison } from "./detail/SourceComparison";
+import { NaverListingLine } from "./detail/NaverListingLine";
 import { RegionStats } from "./detail/RegionStats";
 import { HelpHint } from "./HelpHint";
 import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
@@ -672,94 +673,13 @@ export const DetailModal = memo(function DetailModal({
                 role="tabpanel"
                 aria-labelledby="tab-sec-price"
                 data-tab-panel
-                style={panelStyle("sec-price")}
+                // 첫 블록이 붙박이 탭 줄에 바로 붙지 않게 위 여백을 둔다(세션589 — 다른 탭은 각자의 PR 에서).
+                style={{ ...panelStyle("sec-price"), paddingTop: 12 }}
               >
-                {/* 적정가 대비 위치 게이지 (세션 430) — deviation 양수=저렴(scorePrice.ts 진실원천), 0 중앙.
-                  ⚠️ 옛 이름 "주변 시세 대비"는 거짓이었다 — 이 값은 `scorePrice.ts` 가 낸 **적정가와의 괴리**이지
-                  주변 단지 비교가 아니다(세션 487 에 카드 배지는 정정했는데 이 게이지만 옛 이름이 남아 있었다).
-                  ⚠️ 눈금 끝을 손으로 ±30 에 박아 두었더니 **점수가 이미 만점·최하인 지점과 어긋났다**(세션531).
-                  이제 양 끝 = 점수가 더는 안 움직이는 지점(만점 경계 / 0점 도달 지점)이라, 게이지가 꽉 찼다는 건
-                  "이 축에서 더 좋아질 게 없다"는 뜻이 된다. 상수를 바꾸면 눈금이 따라온다. */}
-                {/* ⚠️ `fairPrice > 0` 게이트 — 데이터 부재(fairPrice=0 + deviation="0.0")면 게이지를 아예
-                  안 그린다. 그리면 부재가 "적정가와 비슷"(한가운데 마커)으로 둔갑한다(SC1). */}
-                {Number(res.cats.price?.fairPrice) > 0 &&
-                  res.cats.price?.deviation != null &&
-                  (() => {
-                    const dev = Number(res.cats.price.deviation);
-                    if (!Number.isFinite(dev)) return null;
-                    const pct =
-                      dev >= 0
-                        ? 50 + (Math.min(dev, DEV_FULL_MIN_PCT) / DEV_FULL_MIN_PCT) * 50
-                        : 50 - (Math.min(-dev, DEV_ZERO_AT_PCT) / DEV_ZERO_AT_PCT) * 50;
-                    // 색·문구는 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기(SC0) — 추정 오차보다
-                    // 작은 차이로 "저렴/비쌈"을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
-                    // ⚠️ pct(마커 위치) 계산은 손대지 않는다 — 색·문구만 밴드 기준으로 바꾼다.
-                    const tone =
-                      dev > DEV_NEUTRAL_BAND_PCT ? "cheap" : dev < -DEV_NEUTRAL_BAND_PCT ? "expensive" : "fair";
-                    const toneColor = tone === "cheap" ? C.green : tone === "expensive" ? C.red : C.muted;
-                    return (
-                      <div
-                        style={{
-                          background: C.bg,
-                          borderRadius: 10,
-                          padding: "12px 14px",
-                          marginBottom: 10,
-                          border: `1px solid ${C.border}`,
-                        }}
-                      >
-                        <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>
-                          적정가 대비 위치
-                        </div>
-                        <div
-                          style={{
-                            position: "relative",
-                            height: 12,
-                            background: C.slate100,
-                            borderRadius: 6,
-                            margin: "4px 0 6px",
-                          }}
-                        >
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: "50%",
-                              top: 0,
-                              width: 2,
-                              height: "100%",
-                              background: C.muted,
-                              transform: "translateX(-1px)",
-                            }}
-                          />
-                          <div
-                            style={{
-                              position: "absolute",
-                              left: `${pct}%`,
-                              top: "50%",
-                              width: 14,
-                              height: 14,
-                              borderRadius: "50%",
-                              background: toneColor,
-                              border: `2px solid ${C.card}`,
-                              transform: "translate(-50%,-50%)",
-                            }}
-                          />
-                        </div>
-                        <div
-                          style={{ display: "flex", justifyContent: "space-between", fontSize: F.xs, color: C.muted }}
-                        >
-                          <span>{DEV_ZERO_AT_PCT}% 비쌈</span>
-                          <span style={{ fontWeight: 700, color: toneColor }}>
-                            {tone === "cheap"
-                              ? `+${Math.round(dev)}% 저렴`
-                              : tone === "expensive"
-                                ? `${Math.abs(Math.round(dev))}% 비쌈`
-                                : "적정가와 비슷"}
-                          </span>
-                          <span>{DEV_FULL_MIN_PCT}% 저렴</span>
-                        </div>
-                      </div>
-                    );
-                  })()}
+                {/* 적정가 대비 위치 + 구 실거래가 대비 분양가(PSR) — 같은 눈금 두 줄 (세션 430 · 531 · 589).
+                  게이트(`fairPrice > 0`)·경계(점수 상수)·색 3단의 근거는 `detail/PricePositionBox` 머리 주석.
+                  둘 다 점수가 아니라 값이라 비로그인에게도 공개다. */}
+                <PricePositionBox priceCat={res.cats.price} apt={mergedApt ?? apt} />
                 {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
                   유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
                 <AreaPriceScatter
@@ -769,23 +689,32 @@ export const DetailModal = memo(function DetailModal({
                 />
                 <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
                 <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
-                <UnsoldChart
-                  apartmentId={apt.id as string}
-                  siblingIds={apt.siblingIds as string[] | undefined}
-                  unsold={(apt.unsold as number | null | undefined) ?? null}
-                />
+                {/* 미분양 추이 + 층별 매매가 — 넓으면(PC) 2열로 나란히, 좁으면(휴대폰) 위아래.
+                  상세 안 부품은 화면 폭을 모르므로 격자가 스스로 접힌다(한 칸 최소 280px).
+                  한쪽이 안 그려지면(미분양 값 없음 · 층별 자료 없음) 남은 쪽이 전체 폭을 쓴다. */}
+                <div
+                  data-testid="price-two-col"
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+                    gap: "0 16px",
+                    alignItems: "start",
+                    marginTop: 4,
+                  }}
+                >
+                  <UnsoldChart
+                    apartmentId={apt.id as string}
+                    siblingIds={apt.siblingIds as string[] | undefined}
+                    unsold={(apt.unsold as number | null | undefined) ?? null}
+                  />
+                  <PriceByFloorBlock apt={mergedApt ?? apt} />
+                </div>
 
-                {/* 두 출처 대조 (세션 507 PR-2) — 옛 "네이버 교차검증" 표를 대체한다.
-                  우리 값과 네이버 값이 다른 표 두 개에 흩어져 있어 정작 비교가 안 되던 자리라,
-                  같은 줄에 나란히 놓고 폴백(우리 값이 없어 네이버 값을 빌려 쓴 경우)은
-                  "미수집"으로 갈라 거짓 상호검증을 막는다. */}
-                <SourceComparison apt={mergedApt ?? apt} />
-
-                {/* 이 동네 거래 시세 + 층별가 (세션 408 D2a, 세션 507 에 섹션 1개로 축소) */}
-                {PRICE_SECTIONS.map((s) => (
-                  <DataSectionBlock key={s.title} section={s} apt={mergedApt ?? apt} />
-                ))}
-                <PriceByFloorBlock apt={mergedApt ?? apt} />
+                {/* 네이버 매물 현황 한 줄 (세션589 V10) — 옛 두 출처 대조표("같은 값을 두 곳에서 재봤어요")를
+                  대체한다. 면적이 섞인 '주변 시세' 비교와 위 막대가 이미 말하는 '전세가율'은 걷어내고
+                  매물 개수·주변 건축연도 사실만 남겼다. 옛 접힘 "이 동네 거래 시세"(PIR·PSR·공시가격)도
+                  없앴다 — PIR 은 종합 탭 편차 줄, PSR 은 맨 위 게이지, 공시가격은 손님 화면에서 뺐다(V11). */}
+                <NaverListingLine apt={mergedApt ?? apt} />
                 <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-price" />
               </section>
             )}

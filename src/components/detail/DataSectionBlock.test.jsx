@@ -2,13 +2,13 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DataSectionBlock, NearbyFacilitiesBlock, PriceByFloorBlock, AnnouncementLink } from "./DataSectionBlock";
-import { LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, OVERVIEW_SECTIONS } from "@/lib/dataSections";
+import { LOCATION_SECTIONS, PRESALE_SECTIONS, OVERVIEW_SECTIONS } from "@/lib/dataSections";
 import { makeApt } from "@/__tests__/factories";
 
 // 그룹 상수에서 제목으로 섹션 찾기 (구 DATA_SECTIONS 단언을 섹션 단위로 이전)
 /** @param {string} title */
 const find = (title) =>
-  [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
+  [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
 
 describe("DataSectionBlock", () => {
   // ⚠️ 세션508 PR-3b B1: 옛 대상이던 "교통 상세" 섹션은 `LOCATION_SECTIONS` 에서 완전히
@@ -134,23 +134,21 @@ describe("DataSectionBlock", () => {
   // 세션508 PR-3b: 교통 필드 null → "—" 검증은 TransportCard.test.tsx 로 이관했다
   // (subwayName·subwayLines·busStopNames 는 이제 LOCATION_SECTIONS 를 안 거친다).
 
-  // 이 동네 거래 시세 — highlight 섹션 (세션 507: 옛 "시장/투자 지표" 를 갈아 낀 이름)
-  it("'이 동네 거래 시세' 섹션은 펼치면 PIR 등 강조 필드를 표시한다", () => {
+  // highlight 섹션 — 강조줄 분기 검증.
+  // ⚠️ 세션589: 옛 대상이던 시세 탭 "이 동네 거래 시세"(PIR·PSR 강조줄)는 접힘째 없앴다
+  //    (PSR 은 시세 탭 맨 위 게이지, PIR 은 종합 탭 편차 줄). 강조줄 분기 자체는 그대로라
+  //    남은 highlight 섹션("단지 기본정보" — 데이터 신뢰도)으로 옮겨 검증한다.
+  it("'단지 기본정보' 섹션은 펼치면 강조 필드(데이터 신뢰도)를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("이 동네 거래 시세"))} apt={apt} />);
-    fireEvent.click(screen.getByText("이 동네 거래 시세"));
-    // pir=5 (HighlightField 도메인 설명 포함)
-    expect(screen.getByText(/연소득 대비 분양가/)).toBeTruthy();
+    render(<DataSectionBlock section={/** @type {any} */ (find("단지 기본정보"))} apt={apt} />);
+    fireEvent.click(screen.getByText("단지 기본정보"));
+    // HighlightField 도메인 설명 포함
+    expect(screen.getByText(/핵심 데이터 수집 완성도/)).toBeTruthy();
   });
 
-  // 세션 507 — 인구증감률은 이 단지 값이 아니라 시·도 통계라 이 표에서 내려갔다.
-  // 강조줄에 되돌아오면 다시 단지 값처럼 읽히므로 그 자리를 잠근다.
-  it("'이 동네 거래 시세' 강조줄에 인구증감률이 없다 (지역 통계로 이동)", () => {
-    const apt = /** @type {any} */ (makeApt({ popGrowth: 0.3 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("이 동네 거래 시세"))} apt={apt} />);
-    fireEvent.click(screen.getByText("이 동네 거래 시세"));
-    expect(screen.queryByText("인구증감률")).toBeNull();
-    expect(screen.queryByText(/양수면 유입 지역/)).toBeNull();
+  // 세션589 — 그 접힘이 섹션 목록으로 되돌아오면(= 시세 탭에 접힘이 되살아나면) red.
+  it("'이 동네 거래 시세' 섹션은 더는 없다 (시세 탭 접힘 삭제, 세션589)", () => {
+    expect(find("이 동네 거래 시세")).toBeUndefined();
   });
 
   // defaultOpen=true 면 처음부터 펼침

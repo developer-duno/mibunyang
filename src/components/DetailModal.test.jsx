@@ -348,28 +348,83 @@ describe("DetailModal StickyJumpNav", () => {
     expect(loc?.textContent).not.toContain("생활인프라");
   });
 
-  it("시세 탭에 '이 동네 거래 시세' 데이터 섹션 헤더가 보인다 (D2a, 세션 507 개명)", () => {
-    const { container } = render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    const price = container.querySelector("#sec-price");
-    expect(price?.textContent).toContain("이 동네 거래 시세");
-    // 옛 이름은 세 가지 성격(단지 파생값·동네 값·지역 통계)을 한 표에 섞어 부르던 이름이다
-    expect(price?.textContent).not.toContain("시장/투자 지표");
-  });
-
-  // 세션 507 PR-2 — 우리 값과 네이버 값을 같은 줄에 놓는 대조표가 옛 "네이버 교차검증" 표를 대체
-  it("시세 탭에 두 출처 대조표가 보이고 '네이버 교차검증' 표는 없다 (세션 507)", () => {
-    // 네이버 값이 하나도 없으면 대조 자체가 성립하지 않아 컴포넌트가 null 이다
-    // (기본 팩토리에는 naver* 가 없다) — 대조가 성립하는 단지로 연다.
+  // ── 세션589 "접힘 없이 한눈에" — 시세 탭 ─────────────────────────────────────────────
+  // 접힘 "이 동네 거래 시세"(PIR·PSR·공시가격)와 두 출처 대조표를 없앴다. 아래 시험들은 세션 408·507 의
+  // "그 접힘/표가 보인다" 를 뒤집은 것이다 — 되살아나면 red.
+  /** 값이 다 있는 단지로 시세 탭을 연다 (매물 수·건축연도·공시가격·PIR·PSR·주변 시세)
+   * @param {Record<string, unknown>} [aptOver] */
+  const openPriceTab = (aptOver = {}) => {
     const item = makeScoredItem(
-      { naverNearbyMedian: 55000, naverJeonseRate: 68, naverBuildYear: 2012, naverAvgFloor: 11 },
+      {
+        naverNearbyMedian: 55000,
+        naverJeonseRate: 68,
+        naverBuildYear: 2012,
+        naverSellCount: 12,
+        naverJeonseCount: 5,
+        naverWolseCount: 3,
+        naverFetchedAt: "2026-08-01T00:00:00Z",
+        housingPrice: 570,
+        ...aptOver,
+      },
       { cats: makeItem().res.cats }
     );
     const { container } = render(<DetailModal {...makeProps({ item })} />);
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    const price = container.querySelector("#sec-price");
-    expect(price?.textContent).toContain("같은 값을 두 곳에서 재봤어요");
-    expect(price?.textContent).not.toContain("네이버 교차검증");
+    return /** @type {HTMLElement} */ (container.querySelector("#sec-price"));
+  };
+
+  it("시세 탭에 접힘이 하나도 없다 — '이 동네 거래 시세' 접힘 삭제 (세션589)", () => {
+    const price = openPriceTab();
+    expect(price.textContent).not.toContain("이 동네 거래 시세");
+    expect(price.textContent).not.toContain("시장/투자 지표");
+    // 접힘 단추(aria-expanded)가 0 — 서랍("아직 안 보여드린 자료")이 되살아나도 여기서 잡힌다
+    expect(price.querySelectorAll("[aria-expanded]").length).toBe(0);
+  });
+
+  it("시세 탭에 공시가격이 없다 — 값이 있어도 손님 화면에서 뺐다 (V11)", () => {
+    const price = openPriceTab();
+    expect(price.textContent).not.toContain("공시가격");
+    expect(price.textContent).not.toContain("570만원/㎡");
+  });
+
+  it("시세 탭 맨 위에 PSR 게이지 줄이 % 로 보인다 (V9)", () => {
+    const price = openPriceTab({ psr: 0.38 });
+    expect(price.textContent).toContain("구 실거래가 대비 분양가(㎡당)");
+    expect(price.textContent).toContain("구 실거래가의 38%");
+    expect(price.textContent, "소수 표기(0.38)가 남았다").not.toContain("0.38");
+  });
+
+  it("psr 이 없으면 PSR 줄이 없다 (없는 값을 가운데 점으로 그리지 않는다)", () => {
+    const price = openPriceTab({ psr: null });
+    expect(price.textContent).not.toContain("구 실거래가");
+    expect(price.querySelector('[data-testid="psr-gauge"]')).toBeNull();
+    // 적정가 줄은 그대로다
+    expect(price.textContent).toContain("적정가 대비 위치");
+  });
+
+  it("시세 탭에 네이버 매물 현황 한 줄이 보이고 두 출처 대조표는 없다 (V10)", () => {
+    const price = openPriceTab();
+    expect(price.textContent).toContain("네이버 매물 현황");
+    expect(price.textContent).toContain("매매 12건 · 전세 5건 · 월세 3건");
+    expect(price.textContent).not.toContain("같은 값을 두 곳에서 재봤어요");
+    expect(price.textContent).not.toContain("네이버 교차검증");
+    // 대조표의 '주변 시세'·'전세가율' 줄과 열 머리가 되살아나면 red
+    expect(price.textContent).not.toContain("주변 시세");
+    expect(price.textContent).not.toContain("공공데이터");
+    expect(price.querySelector("table")).toBeNull();
+  });
+
+  it("시세 탭 첫 블록이 붙박이 탭 줄에 붙지 않게 위 여백이 있다", () => {
+    const price = openPriceTab();
+    expect(price.style.paddingTop).toBe("12px");
+  });
+
+  it("미분양 추이와 층별 매매가가 한 격자에 들어 있다 (PC 2열 · 좁으면 위아래)", () => {
+    const price = openPriceTab({ priceByFloor: [{ group: "저층", avg: 50000, count: 3 }] });
+    const grid = /** @type {HTMLElement} */ (price.querySelector('[data-testid="price-two-col"]'));
+    expect(grid).not.toBeNull();
+    expect(grid.style.gridTemplateColumns).toContain("auto-fit");
+    expect(grid.textContent).toContain("층별 매매가");
   });
 
   // 세션 507 PR-2 — 지역 통계 7종은 분양 탭 서랍으로. 닫힌 상태에서 "이 단지 값이 아니다"를 먼저 말한다
@@ -991,7 +1046,10 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     expect(screen.getByText("핵심 지표")).toBeVisible();
     expect(container.textContent).toContain("경기 수원시 영통동");
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    expect(container.querySelector("#sec-price")?.textContent).toContain("이 동네 거래 시세");
+    // 시세 탭의 두 게이지는 점수가 아니라 값이라 비로그인에게도 그대로 보인다(세션589 — PSR 줄 포함).
+    const price = container.querySelector("#sec-price");
+    expect(price?.textContent).toContain("적정가 대비 위치");
+    expect(price?.textContent).toContain("구 실거래가의 90%");
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     expect(container.querySelector("#sec-location")?.textContent).toContain("교통 상세");
   });

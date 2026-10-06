@@ -2,6 +2,7 @@ import {
   PRODUCT_MAX as _PM,
   TRANSIT_OPEN,
   PIR_SCORE_TIERS,
+  PSR_SCORE_TIERS,
   LIQUIDITY_TIERS,
   LIQUIDITY_LABELS,
   LIQUIDITY_AREA_UNIT,
@@ -143,9 +144,11 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       interpret: (sc) => (sc >= 70 ? "소득 대비 부담 적음" : sc >= 40 ? "보통 부담" : "소득 대비 부담 큼"),
       benchmark: `${PIR_SCORE_TIERS.EXCELLENT_MAX}배 이하 우수 (1인당 개인소득 기준)`,
     },
+    // ⚠️ benchmark 는 `PSR_SCORE_TIERS` 에서 만들고 **% 로 적는다**(세션589, 사장님 결정 V9).
+    //    값은 "38%"(scorePrice info)인데 기준만 "0.85 이하" 라 한 줄 안에서 단위가 달랐다.
     PSR: {
       interpret: (sc) => (sc >= 70 ? "주변 대비 합리적" : sc >= 40 ? "시세 수준" : "주변 대비 고가"),
-      benchmark: "0.85 이하 우수",
+      benchmark: `${(PSR_SCORE_TIERS.UNDERVALUED_BELOW * 100).toFixed(0)}% 이하 우수`,
     },
     "데이터 신뢰도": {
       interpret: (sc) => (sc >= 70 ? "데이터 충분" : sc >= 40 ? "일부 추정치 포함" : "데이터 부족"),

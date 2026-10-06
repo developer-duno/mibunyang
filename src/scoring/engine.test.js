@@ -33,6 +33,7 @@ import {
   COORD_UNKNOWN_TRANSPORT_SCORE,
   COORD_UNKNOWN_INFRA_SCORE,
   POLICE_DIST_NULL_SCORE,
+  PSR_SCORE_TIERS,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -412,6 +413,46 @@ describe("scorePrice", () => {
   });
   it("PSR 점수 100 초과 불가 (클램핑)", () => {
     expect(scorePrice(makeApt({ psr: 0.5 })).subs.find((s) => s.name === "PSR")?.score ?? 0).toBeLessThanOrEqual(100);
+  });
+
+  // 세션589 — PSR 경계(0.85·1.0·0.15·0.2)를 `scorePrice.ts` 리터럴에서 `PSR_SCORE_TIERS` 상수로 옮겼다.
+  // **점수 변화 0** 이어야 한다. 기대 점수는 옮기기 **전** 식으로 낸 값이다(리터럴 — 상수에서 읽지 않는다:
+  // 읽으면 상수를 잘못 바꿔도 같이 따라가 통과한다). 시세 탭 PSR 게이지의 눈금 끝(70%·120%)·색 경계
+  // (85%·100%)가 이 표와 한 쌍이다.
+  // ⚠️ 뮤테이션 대상: PSR_SCORE_TIERS 의 어느 값을 바꿔도 아래 중 하나가 red.
+  it.each([
+    [0.38, 100], // 만점 지점(0.70)보다 낮음 — 100 에 고정
+    [0.7, 100], // 만점 지점
+    [0.71, 99],
+    [0.8, 90],
+    [0.84, 86],
+    [0.85, 85], // 저평가 경계 — 양쪽 식이 만나는 점
+    [0.86, 83],
+    [0.9, 73],
+    [0.99, 52],
+    [1.0, 50], // 구 실거래가와 같음
+    [1.1, 25],
+    [1.2, 0], // 0점 지점
+    [1.5, 0],
+  ])("PSR %p → %p점 (상수 이동 전과 같은 점수)", (psr, expected) => {
+    expect(scorePrice(makeApt({ psr })).subs.find((s) => s.name === "PSR")?.score).toBe(expected);
+  });
+
+  it("PSR 점수는 sanitize 를 지나도 같다 — calcCats 경유(화면이 실제로 지나는 경로)", () => {
+    const sub = (/** @type {number | null} */ psr) =>
+      calcCats(makeApt({ psr })).price.subs.find((/** @type {any} */ s) => s.name === "PSR");
+    expect(sub(0.86)?.score).toBe(83);
+    expect(sub(1.1)?.score).toBe(25);
+    expect(sub(0.86)?.info).toBe("86%");
+    // 없으면 중립 50 + "데이터 부재" — 다른 값으로 눌러 그리지 않는다
+    expect(sub(null)?.score).toBe(50);
+    expect(sub(null)?.info).toBe("데이터 부재");
+  });
+
+  it("PSR 기준 글자(85%·100%)가 점수 경계 상수와 한 쌍이다", () => {
+    const detail = scorePrice(makeApt({ psr: 0.9 })).subs.find((s) => s.name === "PSR")?.detail ?? "";
+    expect(detail).toContain(`저평가 ${(PSR_SCORE_TIERS.UNDERVALUED_BELOW * 100).toFixed(0)}%↓`);
+    expect(detail).toContain(`적정 ${(PSR_SCORE_TIERS.PAR_MAX * 100).toFixed(0)}%↓`);
   });
 });
 

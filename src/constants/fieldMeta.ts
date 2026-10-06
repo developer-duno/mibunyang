@@ -153,10 +153,11 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     fmt: (v) => n(v, "배"),
     isEstimated: (v, apt) => apt?._fallbackPir,
   },
+  // 표기는 % 로 통일한다(세션589 V9) — 점수 탭 info("38%")·시세 탭 게이지와 같은 꼴. DB 값은 비율(0.38) 그대로다.
   psr: {
     label: "PSR (주변대비)",
     section: "가격",
-    fmt: (v) => (typeof v === "number" ? v.toFixed(2) : "—"),
+    fmt: (v) => (typeof v === "number" ? `${(v * 100).toFixed(0)}%` : "—"),
     isEstimated: (v, apt) => apt?._fallbackPsr,
   },
   dataReliability: {
