@@ -21,10 +21,12 @@ vi.mock("./notify-telegram.mjs", () => ({ sendTelegram: vi.fn() }));
 import { CHILDCARE_COLLECTORS } from "./childcare-local-runner.mjs";
 
 describe("CHILDCARE_COLLECTORS — 대상 배열 무결성", () => {
-  it("이전 대상 3종(detail/info/jeju)을 정확히 담는다", () => {
+  // 세션603: childcare-detail 은 빈 응답 재호출 결함으로 일시 제외 — 고친 PR 에서 3종으로 되돌린다.
+  it("대상 2종(info/jeju)을 정확히 담고 detail 은 일시 제외한다", () => {
     expect([...CHILDCARE_COLLECTORS].sort()).toEqual(
-      ["childcare-detail.mjs", "childcare-info.mjs", "childcare-info-jeju.mjs"].sort(),
+      ["childcare-info.mjs", "childcare-info-jeju.mjs"].sort(),
     );
+    expect(CHILDCARE_COLLECTORS).not.toContain("childcare-detail.mjs");
   });
 
   it("중복 항목이 없다", () => {

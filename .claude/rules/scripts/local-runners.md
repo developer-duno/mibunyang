@@ -95,7 +95,7 @@ monitor NULL 급증 경보가 영구화되고 있었다. **처방은 감시를 �
 
 | 구분 | 방식 | 실행 |
 |------|------|------|
-| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 매일 04:30 KST (3종 전부: childcare-detail/info/info-jeju) |
+| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 매일 04:30 KST (info/info-jeju — ⚠️ childcare-detail 은 세션603(2026-10-06)부터 일시 제외: 빈 응답 재호출로 하루 한도 헛씀, 고친 PR 에서 복귀) |
 | 수동/보충 | `node scripts/childcare-local-runner.mjs` | 필요시 |
 | 대상 확인 | `node scripts/childcare-local-runner.mjs --list` | - |
 
