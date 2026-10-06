@@ -263,6 +263,10 @@ export const NOISE_UNKNOWN_SCORE = 15;
 // ⚠️ 첫 경계 15 는 **국가 대기환경기준**이다. 우리 편의로 옮기지 않는다.
 // ⚠️ 최고점 20 은 유지해야 한다 — `ENV_MAX` 가 이 표의 최댓값에서 파생되므로(아래 참조),
 //    바꾸면 자연환경 축 **전체**의 척도가 조용히 이동한다.
+// ⚠️ 짝꿍(세션604): 2u(naver-estate-web) `backend/routers/mb_air_annual.py` 가 이 표와 `AIR_PM10_TIERS`·
+//    `AIR_O3_TIERS` 의 경계(max)와 `AIR_ANNUAL_LABELS`·`buildAnnualLegend` 문구 규칙을 **복제**해 같은 3년 평균
+//    표(`air_station_annual`)를 손님에게 보여 준다. 경계·라벨을 바꾸면 **같은 날 그 파일도 같이** 바꾼다
+//    (두 레포를 잇는 자동 가드는 없다 — 2u 쪽 주석에 이 파일 줄 번호가 적혀 있다).
 export const AIR_QUALITY_TIERS: Tier[] = [
   { max: 15, score: 20 }, // 좋음 — 국가 대기환경기준 이하
   { max: 19, score: 14 }, // 보통
