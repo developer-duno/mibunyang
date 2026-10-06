@@ -280,13 +280,14 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     // ⚠️ **두 시간축을 섞지 않는다**(세션560). 채점에 쓰는 건 3년 평균이고, `grade`/`pm25` 최상위
     //    키는 오늘 한 시점 값이다. 옛 표기는 오늘 값만 보여줘, 옆에 놓인 점수(3년 평균 기준)와
     //    손님이 맞대면 앞뒤가 안 맞았다([[score-meaning-and-wording-are-a-pair]] §1).
+    // ⚠️ 세션603: 옛 "오늘: grade" 칸을 지웠다 — 실시간 수집을 멈췄고(사장님 결정), 주 1회 값을 "오늘"로
+    //    보여 온 것 자체가 거짓이었다. 전환 기간에 옛 grade 가 남아 있어도 그리지 않는다.
     fmt: (v) => {
       const parts: string[] = [];
       if (v?.annual?.pm25 != null) {
         parts.push(`3년평균 PM2.5: ${v.annual.pm25}`);
         if (v.annual.pm10 != null) parts.push(`PM10: ${v.annual.pm10}`);
       }
-      if (v?.grade) parts.push(`오늘: ${v.grade}`);
       return parts.length ? parts.join(" / ") : "미수집";
     },
   },

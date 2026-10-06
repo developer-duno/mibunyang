@@ -244,6 +244,16 @@ describe("data.go.kr 2종 이전 (세션 519)", () => {
     expect(describeEntry(/** @type {any} */ (air))).toContain("매주 화요일");
   });
 
+  // 세션603(사장님 결정 "대기질 실시간 멈춤"): 측정소 배정만. 인자가 빠지면 실시간 17회 호출이 되살아나고
+  // 주 1회 값이 다시 "오늘 대기질"로 저장된다. 3년 평균 재부착은 그대로 같은 화요일에 남아야 한다.
+  it("대기질은 --station-only 로 돈다 · air-annual-attach 는 --apply 그대로 (세션603)", () => {
+    const air = DAY_TABLE.find((e) => e.script === "collect-air-quality.mjs");
+    expect(air?.args).toEqual(["--station-only"]);
+    const attach = DAY_TABLE.find((e) => e.script === "air-annual-attach.mjs");
+    expect(attach?.args).toEqual(["--apply"]);
+    expect(attach?.dow).toBe(air?.dow);
+  });
+
   // 로컬 러너로 옮긴 수집기는 GH run 이 없어 monitor ①③ 대상에서 빠진다 →
   // collector_runs 신선도(⑤)가 유일한 "안 돌면 알림" 이다. 등재를 잊으면 조용히 죽는다.
   it("옮긴 2종이 monitor ⑤ EXTERNAL_API_COLLECTORS 에 등재돼 있다", () => {

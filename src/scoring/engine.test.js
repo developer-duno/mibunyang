@@ -1625,9 +1625,12 @@ describe("대기질 3년 평균 경계·문구 (세션560)", () => {
     expect(env?.info).toContain("대기:좋음"); // 3년 평균 12 → 좋음
     expect(env?.info).not.toContain("대기:매우나쁨"); // 오늘 등급이 새면 안 된다
   });
-  it("오늘 실시간 값은 상세에 '오늘:' 로 남는다", () => {
+  // 세션603: 기대값 바뀜 — 옛 "오늘:나쁨(참고)" 상세 글자를 지웠다(실시간 수집 멈춤 — 사장님 결정).
+  it("옛 오늘 값(grade)이 남아 있어도 상세에 '오늘' 은 없다 (세션603)", () => {
     const r = scoreLocation(makeApt({ airQuality: { grade: "나쁨", annual: { pm25: 12 } } }));
-    expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain("오늘:나쁨");
+    const detail = r.subs.find((s) => s.name === "자연환경")?.detail;
+    expect(detail).toContain("대기질:좋음"); // 양성 앵커 — 3년 평균 12 → 좋음
+    expect(detail).not.toContain("오늘");
   });
   it("3년 평균이 없으면 등급을 '미수집' 으로 — 오늘 값으로 메우지 않는다", () => {
     const r = scoreLocation(makeApt({ airQuality: { grade: "좋음", pm25: 5 } }));
@@ -1638,10 +1641,6 @@ describe("대기질 3년 평균 경계·문구 (세션560)", () => {
     // 숨기면 손님은 "미수집인데 왜 점수가 있지?"를 본다(FieldTable 의 "추정값을 숨기지 않는다"와 같은 자리).
     const r = scoreLocation(makeApt({ airQuality: { grade: "좋음", pm25: 5 } }));
     expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain(`중립 ${AIR_QUALITY_DEFAULT}점`);
-  });
-  it("오늘 값에는 '참고' 를 붙인다 — 채점에 안 쓰인다는 뜻", () => {
-    const r = scoreLocation(makeApt({ airQuality: { grade: "나쁨", annual: { pm25: 12 } } }));
-    expect(r.subs.find((s) => s.name === "자연환경")?.detail).toContain("오늘:나쁨(참고)");
   });
 });
 

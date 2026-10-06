@@ -11,15 +11,15 @@ import type { Apt } from "@/types/scoring";
  * 칩 + 소음 게이지로 올렸다(목업). 6칸이 전부 여기 있다:
  * - 치안 등급 · 대기 3년 평균(등급 + PM2.5) · 조망 · 혐오시설(이름 + 거리) → 칩
  * - 소음 → 눈금 게이지(`charts/PositionGauge` — 경계는 `NOISE_TIERS` 에서 읽는다)
- * - 오늘 대기질 → 작은 글씨 한 줄로 **따로**. 3년 평균(채점 기준)과 오늘(실시간 통합지수)은 다른 값이라
- *   한 줄에 섞지 않는다(세션560 E15/S7 · `fieldMeta.ts` airQuality 주석).
+ * - 옛 "오늘 대기질" 작은 글씨 줄은 지웠다(세션603) — 실시간 수집을 멈췄고(사장님 결정), 주 1회 값을
+ *   "오늘"로 보여 온 것 자체가 거짓이었다. 대기는 3년 평균(채점 기준) 칩 하나뿐이다.
  *
  * 전부 원자료라 비로그인에도 보인다. **점수 낱말은 쓰지 않는다** — 목업의 "감점 대상 아님" 같은 말은
  * 점수 정보라 비로그인 가림 정책과 부딪힌다. 값의 사실(이름·거리·등급)만 적는다.
  *
  * 좌표 공유 단지(세션568-3 · L7 · 세션591 보완 F1·F6) — 혐오시설 이름·거리는 이 단지 좌표 반경으로 찾은 값이고,
  * 대기질은 측정소를 이 단지 좌표로 고른 값이라(scoreLocation 도 좌표 공유면 대기 등급 글자를 안 낸다) 둘 다 이 단지
- * 것이 아니다. 두 칩을 "위치 확인 중" 사실로 바꾸고(혐오시설 칩은 목록 유무와 상관없이 늘), 오늘 대기질 줄은 숨긴다.
+ * 것이 아니다. 두 칩을 "위치 확인 중" 사실로 바꾼다(혐오시설 칩은 목록 유무와 상관없이 늘).
  * 치안 등급·조망·소음은 그대로.
  */
 
@@ -46,18 +46,13 @@ export function crimeDots(grade: unknown): string | null {
   return "●".repeat(6 - g) + "○".repeat(g - 1);
 }
 
-type AirQuality = { grade?: unknown; annual?: { pm25?: unknown } | null } | null | undefined;
+type AirQuality = { annual?: { pm25?: unknown } | null } | null | undefined;
 
 /** 3년 평균 PM2.5 칩 글자 — "대기 3년 평균 나쁨 · PM2.5 19.6". 값이 없으면 null */
 export function airAnnualText(v: AirQuality): string | null {
   const pm = Number(v?.annual?.pm25);
   if (v?.annual?.pm25 == null || !Number.isFinite(pm)) return null;
   return `대기 3년 평균 ${airAnnualBand(pm)} · PM2.5 ${Math.round(pm * 10) / 10}`;
-}
-
-/** 오늘 대기질 글자 — "오늘 대기질 좋음". 3년 평균과 다른 값이라 따로 적는다 */
-export function airTodayText(v: AirQuality): string | null {
-  return typeof v?.grade === "string" && v.grade.trim() ? `오늘 대기질 ${v.grade.trim()}` : null;
 }
 
 /**
@@ -115,10 +110,9 @@ export const LocationEnvBlock = memo(function LocationEnvBlock({ apt }: { apt: A
     });
   }
   // 대기질 — 측정소를 이 단지 **좌표**로 고르므로(scoreLocation 의 세션568 결정: 좌표 공유면 대기 등급 글자를
-  // 안 낸다) 좌표 공유 단지는 3년 평균 칩을 "위치 확인 중" 사실로 바꾸고 오늘 대기질 줄은 숨긴다(세션591 보완 F1).
+  // 안 낸다) 좌표 공유 단지는 3년 평균 칩을 "위치 확인 중" 사실로 바꾼다(세션591 보완 F1).
   const airText = airAnnualText(air);
-  const todayRaw = airTodayText(air);
-  if (coordUnknown && (airText || todayRaw)) {
+  if (coordUnknown && airText) {
     chips.push({
       key: "air",
       node: (
@@ -153,9 +147,8 @@ export const LocationEnvBlock = memo(function LocationEnvBlock({ apt }: { apt: A
   }
 
   const noise = apt.noise != null && Number.isFinite(Number(apt.noise)) ? Number(apt.noise) : null;
-  const today = coordUnknown ? null : todayRaw;
 
-  if (chips.length === 0 && noise == null && !today) return null;
+  if (chips.length === 0 && noise == null) return null;
 
   const sc = noiseScale();
 
@@ -201,7 +194,6 @@ export const LocationEnvBlock = memo(function LocationEnvBlock({ apt }: { apt: A
           />
         </div>
       )}
-      {today && <div style={{ marginTop: 8, fontSize: F.xs, color: C.muted }}>{today}</div>}
     </div>
   );
 });

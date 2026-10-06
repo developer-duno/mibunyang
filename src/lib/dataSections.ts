@@ -72,8 +72,8 @@ export const OVERVIEW_SECTIONS: DataSection[] = [
 //   (등재는 `lib/tabExtraFields.ts` FIELDS_SHOWN_IN_DETAIL_CARDS). 남는 건 치안/환경 하나뿐이다.
 //   (세션591 에 그 카드도 해체 — 역·버스는 판정 줄·학군 칩 글자, IC·KTX 는 거리 점 그림으로 갔다.)
 // ⚠️ 세션591(입지 탭 "접힘 없이 한눈에" L5): 마지막 남은 "치안/환경" 접힘 표(6칸)도 해체했다 —
-//   `detail/LocationEnvBlock` 이 칩(치안 등급·대기 3년 평균·조망·혐오시설 이름+거리) + 소음 게이지 +
-//   오늘 대기질 작은 글씨로 펼치지 않아도 보이게 그린다(등재는 `lib/tabExtraFields.ts`
+//   `detail/LocationEnvBlock` 이 칩(치안 등급·대기 3년 평균·조망·혐오시설 이름+거리) + 소음 게이지로
+//   펼치지 않아도 보이게 그린다(옛 오늘 대기질 작은 글씨는 세션603 에 지움 · 등재는 `lib/tabExtraFields.ts`
 //   FIELDS_SHOWN_IN_DETAIL_CARDS). 그래서 입지 탭 세부 섹션은 이제 비어 있다.
 //   (세션 507 `sunlight`(일조) 제외 결정은 그대로 — 2,043단지 전부 "양호"라 변별력 0, 그 칩도 없다.)
 export const LOCATION_SECTIONS: DataSection[] = [];

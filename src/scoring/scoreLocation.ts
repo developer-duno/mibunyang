@@ -139,7 +139,7 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
   // ⚠️ 채점은 **3년 평균**(`annual`)으로 한다 (세션560). `pm25`/`pm10`/`o3` 최상위 키는
   //    `collect-air-quality.mjs` 가 넣는 **오늘 한 시점** 값이라, 집을 고르는 잣대로 쓰면
   //    어제와 오늘의 점수가 달라진다([[time-varying-value-in-score]]).
-  //    실시간 값은 화면의 "오늘" 참고로만 남는다(아래 info/detail).
+  //    옛 "오늘:grade(참고)" 상세 글자는 세션603 에 지웠다(실시간 수집 멈춤 — 사장님 결정).
   //
   // ⚠️ 세 항목을 **한 묶음으로** 갈아끼운다. PM2.5 만 3년 평균을 쓰고 PM10·O3 는 오늘 값을
   //    쓰면 한 점수 안에 시간축이 둘 섞인다 — 3년 평균 표는 세 항목을 모두 갖고 있다.
@@ -295,7 +295,7 @@ export function scoreLocation(apt: Apt, locW: LocationSubWeights = LOCATION_SUB_
           apt._coordUnknown
             ? `위치 확인 중(중립 ${AIR_QUALITY_DEFAULT}점)`
             : airBand || `미수집(중립 ${AIR_QUALITY_DEFAULT}점)`
-        }(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? ` /PM10 ${AIR_PM10_LEGEND}` : ` /PM10 미수집(중립 ${AIR_PM10_DEFAULT}점)`}${o3Sc != null ? ` /O3 ${AIR_O3_LEGEND}` : ` /O3 미수집(중립 ${AIR_O3_DEFAULT}점)`})${!apt._coordUnknown && airQuality?.grade ? ` 오늘:${airQuality.grade}(참고)` : ""}`,
+        }(PM2.5 3년평균 ${AIR_ANNUAL_LEGEND}${pm10Sc != null ? ` /PM10 ${AIR_PM10_LEGEND}` : ` /PM10 미수집(중립 ${AIR_PM10_DEFAULT}점)`}${o3Sc != null ? ` /O3 ${AIR_O3_LEGEND}` : ` /O3 미수집(중립 ${AIR_O3_DEFAULT}점)`})`,
       },
       {
         name: "혐오시설",
