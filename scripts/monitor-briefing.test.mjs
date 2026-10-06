@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { splitRuns, buildBriefing, extractWarnRuns } from "./monitor-briefing.mjs";
+import { splitRuns, buildBriefing, extractWarnRuns, extractInfraMissingRuns } from "./monitor-briefing.mjs";
 
 const IDEM = new Set(["childcare-detail", "purge-consults"]);
 
@@ -208,7 +208,79 @@ describe("경고 단계 완주 한 줄 (세션571 — WARN_STEPS 마커)", () =>
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(new URL("./monitor-collectors.mjs", import.meta.url), "utf8");
     // 세션598: skip_count 를 안 가져오면 splitRuns 의 "skip 만 있는 성공 = 갱신 없음(정상)" 이 운영에서 영영 안 켜진다
-    expect(src).toContain('.select("collector,status,ok_count,skip_count,error_message")');
+    // 세션605: finished_at 이 없으면 infra 행 없음의 "최신 1건" 이 배열 순서에만 기댄다
+    expect(src).toContain('.select("collector,status,ok_count,skip_count,error_message,finished_at")');
     expect(src).toContain("warnRuns: extractWarnRuns(runs24h ?? [])");
+    expect(src).toContain("infraMissingRuns: extractInfraMissingRuns(runs24h ?? [])");
+  });
+});
+
+// 세션605: collect-air-quality 가 남기는 `INFRA_ROW_MISSING=N` 은 옛 판에선 브리핑에 안 나왔다(WARN_STEPS 만 읽음).
+describe("infra 행 없음 한 줄 (세션605 — INFRA_ROW_MISSING 마커)", () => {
+  const runs = [{ collector: "sync-naver", status: "success", ok_count: 10 }];
+
+  it("extractInfraMissingRuns — success + 마커만 뽑는다(failure·다른 마커·null 은 뺀다)", () => {
+    const got = extractInfraMissingRuns([
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=2" },
+      { collector: "air-quality-x", status: "failure", error_message: "INFRA_ROW_MISSING=9" },
+      { collector: "naver-pipeline", status: "success", error_message: "WARN_STEPS: molit-units" },
+      { collector: "x", status: "success", error_message: null },
+    ]);
+    expect(got).toEqual([{ collector: "air-quality", n: 2 }]);
+  });
+
+  it("같은 수집기 여러 번이면 finished_at 이 가장 늦은 1건(배열 순서와 무관)", () => {
+    const got = extractInfraMissingRuns([
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=5", finished_at: "2026-10-08T20:31:00Z" },
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=3", finished_at: "2026-10-07T20:31:00Z" },
+    ]);
+    expect(got).toEqual([{ collector: "air-quality", n: 5 }]);
+  });
+
+  it("finished_at 이 없으면 마지막 행이 최신", () => {
+    const got = extractInfraMissingRuns([
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=5" },
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=3" },
+    ]);
+    expect(got).toEqual([{ collector: "air-quality", n: 3 }]);
+  });
+
+  it("최신 성공 행에 마커가 없으면 표시하지 않는다(옛 회차 마커는 이미 풀린 일 — 세션605 보완)", () => {
+    const got = extractInfraMissingRuns([
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=2", finished_at: "2026-10-07T20:31:00Z" },
+      { collector: "air-quality", status: "success", error_message: null, finished_at: "2026-10-08T20:31:00Z" },
+    ]);
+    expect(got).toEqual([]);
+  });
+
+  it("옛 행 마커 2 · 최신 행 마커 5 → 5", () => {
+    const got = extractInfraMissingRuns([
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=2", finished_at: "2026-10-07T20:31:00Z" },
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=5", finished_at: "2026-10-08T20:31:00Z" },
+    ]);
+    expect(got).toEqual([{ collector: "air-quality", n: 5 }]);
+  });
+
+  it("최신 판정은 성공 행끼리 — 더 늦은 실패 행은 최신 성공 행을 가리지 않는다", () => {
+    const got = extractInfraMissingRuns([
+      { collector: "air-quality", status: "success", error_message: "INFRA_ROW_MISSING=2", finished_at: "2026-10-07T20:31:00Z" },
+      { collector: "air-quality", status: "failure", error_message: null, finished_at: "2026-10-08T20:31:00Z" },
+    ]);
+    expect(got).toEqual([{ collector: "air-quality", n: 2 }]);
+  });
+
+  it("buildBriefing — 줄에 'air-quality 2건'", () => {
+    const runs24h = [{ collector: "air-quality", status: "success", ok_count: 0, skip_count: 2, error_message: "INFRA_ROW_MISSING=2" }];
+    const msg = buildBriefing({
+      runs24h,
+      idempotentCollectors: IDEM,
+      infraMissingRuns: extractInfraMissingRuns(runs24h),
+    });
+    expect(msg).toContain("ℹ️ infra 행 없음(0행 갱신, 다음 날 회차가 다시 채움): air-quality 2건");
+  });
+
+  it("infraMissingRuns 없음/빈 배열 → 'infra 행 없음' 문구 없음 (기존 호출 불변)", () => {
+    expect(buildBriefing({ runs24h: runs, idempotentCollectors: IDEM })).not.toContain("infra 행 없음");
+    expect(buildBriefing({ runs24h: runs, idempotentCollectors: IDEM, infraMissingRuns: [] })).not.toContain("infra 행 없음");
   });
 });

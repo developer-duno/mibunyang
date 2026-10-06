@@ -17,7 +17,7 @@
 2. monitor-collectors.mjs 점검 ⑤ 발화 확인
 3. 첫 monitor 발화 1회 dry-run 답습
 
-**stale_days 최종 기준 = 일일=14 / 주간=14 / 월간=38 / 분기=100**(전부 "발화주기 + 여유 1주기", cron yml grep 후 정한다). 진실의 원천 = `scripts/monitor-collectors.mjs` 의 `EXTERNAL_API_COLLECTORS` 배열 — drift 시 코드 우선.
+**stale_days 최종 기준 = 일일=14 / 주간=14 / 월간=38 / 분기=100**(전부 "발화주기 + 여유 1주기", cron yml grep 후 정한다). 예외 = 로컬 러너의 **매일** 항목 하나(세션605 `air-quality` = 3)는 러너 생존 신호로 쓰므로 짧게 둔다 — 러너가 죽으면 3일 안에 ⑤-b. 진실의 원천 = `scripts/monitor-collectors.mjs` 의 `EXTERNAL_API_COLLECTORS` 배열 — drift 시 코드 우선.
 
 ## 안티 패턴 (사고 답습)
 

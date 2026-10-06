@@ -1284,6 +1284,13 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(entry?.stale_days).toBe(4);
   });
 
+  // 세션605: 대기질이 매일 러너로 바뀌어 이 행이 러너의 생존 신호가 됐다 — 일일 기준표(14)의 예외.
+  it("air-quality 는 stale 3 으로 등재돼 있다 — 매일 러너가 죽으면 3일 안에 ⑤-b (세션605)", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "air-quality");
+    expect(entry, "air-quality 미등재").toBeTruthy();
+    expect(entry?.stale_days).toBe(3);
+  });
+
   it("naver-pipeline — 목요일 회차가 끊기면 금 09:00 은 침묵, 토 09:00 에 울린다 / 정상 목→월은 침묵", () => {
     const target = EXTERNAL_API_COLLECTORS.filter((c) => c.collector === "naver-pipeline");
     // 월 2026-09-28 12:00 KST(=03:00Z) 완주, 목 10/01 은 재시작으로 행 없음

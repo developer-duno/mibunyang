@@ -615,6 +615,40 @@ export function joinRunMessage(errorMessage, marker) {
   return errorMessage || marker || undefined;
 }
 
+// ── infra 행 없음 마커 (세션605) ──
+// 수집기(collect-air-quality)가 infra 행이 없어 0행 갱신된 단지 수를 남기고, 아침 브리핑
+// (monitor-briefing extractInfraMissingRuns)이 **이 상수·함수 한 쌍**으로 읽는다 —
+// 한쪽만 바꾸면 기록은 되는데 브리핑이 못 읽어 조용히 사라진다(#703 때 실제로 그랬다).
+export const INFRA_ROW_MISSING_MARKER = "INFRA_ROW_MISSING=";
+
+/**
+ * @param {number} n infra 행이 없어 0행 갱신된 단지 수
+ * @returns {string} 예: `INFRA_ROW_MISSING=3`
+ */
+export function formatInfraRowMissing(n) {
+  return `${INFRA_ROW_MISSING_MARKER}${n}`;
+}
+
+/**
+ * error_message 에서 infra 행 없음 수를 읽는다. 앞뒤에 ` | ` 로 다른 사유가 붙어 있어도 찾는다.
+ * 마커가 없거나·숫자 형식이 아니거나·0 이하면 null.
+ * @param {string | null | undefined} message
+ * @returns {number | null}
+ */
+export function parseInfraRowMissing(message) {
+  if (typeof message !== "string") return null;
+  // `joinRunMessage` 가 ` | ` 로 이어 붙인 조각마다 본다 — 조각 전체가 `마커 + 숫자` 일 때만 인정.
+  for (const part of message.split(" | ")) {
+    const s = part.trim();
+    if (!s.startsWith(INFRA_ROW_MISSING_MARKER)) continue;
+    const digits = s.slice(INFRA_ROW_MISSING_MARKER.length);
+    if (!/^[0-9]+$/.test(digits)) continue; // 형식 불량 조각은 건너뛰고 다음 조각을 본다(세션605 보완)
+    const n = Number(digits);
+    if (Number.isSafeInteger(n) && n > 0) return n;
+  }
+  return null;
+}
+
 // ── 청약홈(applyhome) 출처 미분양 값의 만료 기준 C6 (세션569, 사장님 결정 2026-09-24 🟡8) ──
 // 수집기(collect-unsold-kosis)와 감시(monitor-collectors ⑫)가 **이 함수 하나**를 같이 쓴다 —
 // 한쪽만 기간을 바꾸면 수집기는 덮는데 감시는 "아직 유효"라고 보거나 그 반대가 된다.

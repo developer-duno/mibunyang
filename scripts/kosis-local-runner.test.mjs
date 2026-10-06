@@ -37,9 +37,15 @@ import {
 /** @param {number} y @param {number} m @param {number} d */
 const at = (y, m, d) => new Date(y, m - 1, d);
 
+/**
+ * 매일 도는 항목(세션605 — 대기질 측정소 배정 + 3년 평균 재부착). 표 맨 뒤에 있어 그 날의 월간 항목 **뒤에** 붙는다.
+ * 날짜별 목록 단언은 이 꼬리까지 맞대 "매일 돈다"를 날마다 같이 확인한다.
+ */
+const DAILY = ["collect-air-quality.mjs", "air-annual-attach.mjs"];
+
 describe("collectorsDueOn — 일자 디스패치", () => {
   it("매월 9일은 미분양(unsold) 수집기가 due 다", () => {
-    expect(collectorsDueOn(at(2026, 7, 9))).toEqual(["collect-unsold-kosis.mjs"]);
+    expect(collectorsDueOn(at(2026, 7, 9))).toEqual(["collect-unsold-kosis.mjs", ...DAILY]);
   });
 
   it("매월 10일은 출산율 + 건축물상세가 due 다", () => {
@@ -47,16 +53,17 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     expect(collectorsDueOn(at(2026, 7, 10))).toEqual([
       "collect-fertility-rate.mjs",
       "molit-building-info.mjs",
+      ...DAILY,
     ]);
   });
 
-  it("due 없는 날짜는 빈 배열", () => {
+  it("day 항목이 없는 날짜는 매일 항목만 남는다", () => {
     // ⚠️ 세션550 정정: 옛 표본이던 5일은 이제 인구 2종이 차지했다(행 생성자라 KST 6일 → 5일).
     // 그 전 세션525 정정은 3일(응급의료)에서 5일로 옮긴 것이었다 — 빈 날 표본은 이 표가
     // 채워질수록 계속 밀린다.
-    // 4일은 어느 `day` 항목도 없고, 2026-07-04 는 토요일이라 `dow` 항목(화요일 air-quality)에도
-    // 안 걸린다 — 빈 날 표본은 **두 축을 모두** 피해야 한다.
-    expect(collectorsDueOn(at(2026, 7, 4))).toEqual([]);
+    // 4일은 어느 `day` 항목도 없고, 2026-07-04 는 토요일이라 `dow` 항목에도 안 걸린다.
+    // 세션605: 대기질 2종이 매일(daily)이 되어 이제 "빈 날"은 없다 — 매일 항목만 남는다.
+    expect(collectorsDueOn(at(2026, 7, 4))).toEqual(DAILY);
   });
 
   it("분기 수집기(sale-price)는 1·4·7·10월 17일에만 due 다", () => {
@@ -65,11 +72,13 @@ describe("collectorsDueOn — 일자 디스패치", () => {
       "collect-maintenance.mjs",
       "collect-sale-price-index.mjs",
       "collect-housing-price.mjs",
+      ...DAILY,
     ]);
     // 비분기 월(6월)의 17일은 관리비 + 공시가격
     expect(collectorsDueOn(at(2026, 6, 17))).toEqual([
       "collect-maintenance.mjs",
       "collect-housing-price.mjs",
+      ...DAILY,
     ]);
   });
 
@@ -104,7 +113,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         // 여기 없으면 아예 안 돈다.
         "collect-air-quality.mjs",
         // 세션 561: 위 수집기가 `air_quality` 를 통째로 교체할 때 3년 평균(`annual`)이 날아가면
-        // 되돌릴 사람이 없었다(적대검증 🔴). 같은 화요일에 이어 붙여 멱등 재부착한다 —
+        // 되돌릴 사람이 없었다(적대검증 🔴). 같은 날(세션605 부터 매일) 이어 붙여 멱등 재부착한다 —
         // 평소엔 "붙일 대상 0곳", 유실이 생긴 회차에만 되살린다.
         "air-annual-attach.mjs",
         "collect-housing-price.mjs",
@@ -139,6 +148,7 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
       "collect-market-stats.mjs",
       "molit-units.mjs",
       "collect-trades.mjs",
+      ...DAILY,
     ]);
   });
 
@@ -148,22 +158,24 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
     expect(collectorsDueOn(at(2026, 10, 10))).toEqual([
       "collect-fertility-rate.mjs",
       "molit-building-info.mjs",
+      ...DAILY,
     ]);
   });
 
   it("11일에는 건축물상세 보충 실행이 없다 (10일에 이미 돌았으므로)", () => {
     // 2026-10-11 = 일요일, 전날 10-10 = 토요일 — 옛 보충 줄이 남아 있으면 두 번 돈다
-    expect(collectorsDueOn(at(2026, 10, 11))).toEqual(["housing-permits.mjs"]);
-    expect(collectorsDueOn(at(2026, 9, 11))).toEqual(["housing-permits.mjs"]);
+    expect(collectorsDueOn(at(2026, 10, 11))).toEqual(["housing-permits.mjs", ...DAILY]);
+    expect(collectorsDueOn(at(2026, 9, 11))).toEqual(["housing-permits.mjs", ...DAILY]);
   });
 
   it("15일은 관리비 + (분기월에만) 건축HUB 다", () => {
     // 2026-08-15 = 비분기 월
-    expect(collectorsDueOn(at(2026, 8, 15))).toEqual(["collect-maintenance.mjs"]);
+    expect(collectorsDueOn(at(2026, 8, 15))).toEqual(["collect-maintenance.mjs", ...DAILY]);
     // 2026-07-15 = 분기 월(1·4·7·10)
     expect(collectorsDueOn(at(2026, 7, 15))).toEqual([
       "collect-maintenance.mjs",
       "collect-building-hub.mjs",
+      ...DAILY,
     ]);
   });
 
@@ -219,39 +231,65 @@ describe("data.go.kr 2종 이전 (세션 519)", () => {
     expect(collectorsDueOn(at(2026, 9, 16))).not.toContain("collect-housing-price.mjs");
   });
 
-  // 옛 cron `0 15 * * 1`(UTC 월요일 15시)은 KST 로 **화요일** 00시다.
-  it("대기질은 매주 화요일에 due 다 (옛 cron 은 UTC 월 = KST 화)", () => {
-    // 2026-09-01 은 화요일, 08-31 은 월요일
-    expect(collectorsDueOn(at(2026, 9, 1))).toContain("collect-air-quality.mjs");
-    expect(collectorsDueOn(at(2026, 8, 31))).not.toContain("collect-air-quality.mjs");
-  });
-
-  it("주간(dow) 항목은 날짜와 무관하게 그 요일마다 due 다", () => {
-    // 2026-09 의 화요일: 1·8·15·22·29
-    for (const d of [1, 8, 15, 22, 29]) {
-      expect(collectorsDueOn(at(2026, 9, d)), `9/${d}`).toContain("collect-air-quality.mjs");
+  // 세션605(사장님 결정 2026-10-06 "새 단지 공백 7~14일 → 하루"): 매주 화요일 → 매일.
+  it("대기질 2종은 요일·날짜와 무관하게 매일 due 다 (세션605)", () => {
+    // 2026-10-05 월 · 10-07 수 · 10-08 목 · 10-09 금 · 10-13 화 · 10-31(월말, 토)
+    for (const [m, d] of [
+      [10, 5],
+      [10, 7],
+      [10, 8],
+      [10, 9],
+      [10, 13],
+      [10, 31],
+    ]) {
+      const due = collectorsDueOn(at(2026, m, d));
+      expect(due, `${m}/${d}`).toContain("collect-air-quality.mjs");
+      expect(due, `${m}/${d}`).toContain("air-annual-attach.mjs");
     }
   });
 
-  it("dow 항목은 day 필터에 걸리지 않는다 (배타 — day 없는 항목이 매일 돌면 안 된다)", () => {
-    // 2026-09-02 는 수요일 → 대기질은 due 아님
-    expect(collectorsDueOn(at(2026, 9, 2))).not.toContain("collect-air-quality.mjs");
+  // 세션605 보완: entriesDueOn 은 daily 를 먼저 보므로 daily+dow 를 같이 적으면 dow 가 조용히 무시된다.
+  it("DAY_TABLE 의 어떤 항목도 daily 와 dow/day 를 같이 갖지 않는다 (배타)", () => {
+    const mixed = DAY_TABLE.filter((e) => e.daily === true && (e.dow !== undefined || e.day !== undefined));
+    expect(mixed.map((e) => e.script), "daily 와 dow/day 를 같이 가진 항목").toEqual([]);
   });
 
-  it("--list 는 주간 항목을 '매주 N요일' 로 표기한다", () => {
+  it("대기질 2종은 매핑표에 daily 로 한 줄씩만 있고 dow·day 가 없다", () => {
+    for (const s of DAILY) {
+      const rows = DAY_TABLE.filter((e) => e.script === s);
+      expect(rows, `${s} 는 1줄이어야 한다`).toHaveLength(1);
+      expect(rows[0].daily, s).toBe(true);
+      expect(rows[0].dow, s).toBeUndefined();
+      expect(rows[0].day, s).toBeUndefined();
+    }
+  });
+
+  // 회귀: daily 분기가 dow/day 항목까지 매일 돌리면 안 된다(10일 출산율이 매일 돌면 쿼터만 탄다).
+  it("daily 가 없는 day 항목은 매일 돌지 않는다", () => {
+    expect(collectorsDueOn(at(2026, 10, 10))).toContain("collect-fertility-rate.mjs");
+    expect(collectorsDueOn(at(2026, 10, 7))).not.toContain("collect-fertility-rate.mjs");
+  });
+
+  it("--list 는 매일 항목을 '매일' 로 표기한다", () => {
     const air = DAY_TABLE.find((e) => e.script === "collect-air-quality.mjs");
     expect(air, "대기질 항목이 매핑표에 없음").toBeTruthy();
-    expect(describeEntry(/** @type {any} */ (air))).toContain("매주 화요일");
+    expect(describeEntry(/** @type {any} */ (air))).toBe("매일: collect-air-quality.mjs --station-only");
+    const attach = DAY_TABLE.find((e) => e.script === "air-annual-attach.mjs");
+    expect(describeEntry(/** @type {any} */ (attach))).toBe("매일: air-annual-attach.mjs --apply");
   });
 
   // 세션603(사장님 결정 "대기질 실시간 멈춤"): 측정소 배정만. 인자가 빠지면 실시간 17회 호출이 되살아나고
-  // 주 1회 값이 다시 "오늘 대기질"로 저장된다. 3년 평균 재부착은 그대로 같은 화요일에 남아야 한다.
-  it("대기질은 --station-only 로 돈다 · air-annual-attach 는 --apply 그대로 (세션603)", () => {
+  // 주 1회 값이 다시 "오늘 대기질"로 저장된다. 3년 평균 재부착은 같은 날(매일) 수집기 **뒤**에 있어야 한다.
+  it("대기질은 --station-only 로 돈다 · air-annual-attach 는 --apply 그대로 · attach 가 air 뒤 (세션603·605)", () => {
     const air = DAY_TABLE.find((e) => e.script === "collect-air-quality.mjs");
     expect(air?.args).toEqual(["--station-only"]);
     const attach = DAY_TABLE.find((e) => e.script === "air-annual-attach.mjs");
     expect(attach?.args).toEqual(["--apply"]);
-    expect(attach?.dow).toBe(air?.dow);
+    expect(attach?.daily).toBe(true);
+    expect(air?.daily).toBe(true);
+    const iAir = DAY_TABLE.findIndex((e) => e.script === "collect-air-quality.mjs");
+    const iAttach = DAY_TABLE.findIndex((e) => e.script === "air-annual-attach.mjs");
+    expect(iAttach, "attach 가 air 보다 앞이면 유실을 되살리지 못한다").toBeGreaterThan(iAir);
   });
 
   // 로컬 러너로 옮긴 수집기는 GH run 이 없어 monitor ①③ 대상에서 빠진다 →
@@ -284,8 +322,8 @@ describe("응급의료 이전 (세션 525)", () => {
   });
 
   it("3일에는 응급의료만 due 다 (2일 housing-supply 와 겹치지 않는다)", () => {
-    expect(collectorsDueOn(at(2026, 9, 3))).toEqual([SCRIPT]);
-    expect(collectorsDueOn(at(2026, 9, 2))).toEqual(["collect-housing-supply-ratio.mjs"]);
+    expect(collectorsDueOn(at(2026, 9, 3))).toEqual([SCRIPT, ...DAILY]);
+    expect(collectorsDueOn(at(2026, 9, 2))).toEqual(["collect-housing-supply-ratio.mjs", ...DAILY]);
   });
 
   it("매핑표에 매월 3일 1회로만 있다 (중복 등재는 가드를 무력화한다 — 세션519 실증)", () => {
@@ -343,7 +381,7 @@ describe("행안부 인구 2종 이전 (세션 550)", () => {
   // 대상 월은 `new Date(now.getFullYear(), now.getMonth() - 2, 1)` 로 정해져 **일(day)을
   // 아예 안 보므로**(population.mjs:589 / population-sex-age.mjs:238) 5일과 6일은 같은 달이다.
   it("인구 2종은 매월 5일에, yml 이 돌리던 순서(인구 → 성별·연령) 그대로 due 다", () => {
-    expect(collectorsDueOn(at(2026, 9, 5))).toEqual([POP, SEX_AGE]);
+    expect(collectorsDueOn(at(2026, 9, 5))).toEqual([POP, SEX_AGE, ...DAILY]);
     // 옛 cron 의 KST 날짜였던 6일에는 없다 — 있으면 하루 늦어 행 생성자가 후행보다 뒤로 간다.
     expect(collectorsDueOn(at(2026, 9, 6))).not.toContain(POP);
     expect(collectorsDueOn(at(2026, 9, 6))).not.toContain(SEX_AGE);
@@ -366,6 +404,7 @@ describe("행안부 인구 2종 이전 (세션 550)", () => {
       "collect-market-stats.mjs",
       "molit-units.mjs",
       "collect-trades.mjs",
+      ...DAILY,
     ]);
   });
 

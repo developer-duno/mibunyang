@@ -8,6 +8,7 @@
  * 이 모듈은 부작용 없는 순수 함수만 — DB/텔레그램 I/O 는 호출자(monitor-collectors.mjs)가 한다.
  * 그래서 fake 입력으로 테스트 가능하고, 문구 조립 로직이 격리된다.
  */
+import { parseInfraRowMissing } from "./collectors/_shared.mjs";
 import { toKst } from "./notify-telegram.mjs";
 
 /**
@@ -73,6 +74,35 @@ export function extractWarnRuns(runs24h) {
 }
 
 /**
+ * 지난 24h collector_runs 중 "성공했지만 infra 행이 없어 0행 갱신된 단지가 있던" 실행(세션605).
+ * 수집기마다 **최신 성공 1건**(finished_at 이 가장 늦은 행, 시각이 없으면 배열의 마지막 행)을 먼저 고르고,
+ * 그 행의 error_message 에 `INFRA_ROW_MISSING=N`(`_shared.mjs parseInfraRowMissing`) 이 있을 때만 낸다 —
+ * 최신 회차가 다 채웠으면(마커 없음) 옛 회차의 마커는 이미 풀린 일이라 표시하지 않는다.
+ * @param {Array<{ collector?: string|null, status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs24h
+ * @returns {Array<{ collector: string, n: number }>}
+ */
+export function extractInfraMissingRuns(runs24h) {
+  /** @type {Map<string, { msg: string | null | undefined, at: number, idx: number }>} */
+  const latest = new Map();
+  runs24h.forEach((r, idx) => {
+    if (r.status !== "success") return;
+    const name = r.collector ?? "(이름 없음)";
+    const t = r.finished_at ? Date.parse(r.finished_at) : NaN;
+    const at = Number.isFinite(t) ? t : -Infinity;
+    const prev = latest.get(name);
+    // 시각이 더 늦거나, 시각이 같으면(둘 다 없음 포함) 배열에서 뒤에 온 행이 이긴다.
+    if (!prev || at > prev.at || (at === prev.at && idx > prev.idx)) latest.set(name, { msg: r.error_message, at, idx });
+  });
+  /** @type {Array<{ collector: string, n: number }>} */
+  const out = [];
+  for (const [collector, v] of latest) {
+    const n = parseInfraRowMissing(v.msg);
+    if (n != null) out.push({ collector, n });
+  }
+  return out;
+}
+
+/**
  * 매일 아침 현황 브리핑 텍스트 1통을 만든다 (정상이어도 발송 — 빈 브리핑 아님).
  * @param {object} input
  * @param {Array<{ collector?: string|null, status?: string|null, ok_count?: number|null }>} input.runs24h
@@ -83,6 +113,7 @@ export function extractWarnRuns(runs24h) {
  * @param {number} [input.issueCount] 오늘 이상(경보) 건수 — 상세는 기존 buildMessages 가 별도 통으로
  * @param {string[]} [input.staleCollectors] 장기 미발화(⑤ stale) 판정된 collector 목록
  * @param {Array<{ collector: string, steps: string[] }>} [input.warnRuns] 경고 단계가 있던 완주(extractWarnRuns, 세션571)
+ * @param {Array<{ collector: string, n: number }>} [input.infraMissingRuns] infra 행 없음(extractInfraMissingRuns, 세션605)
  * @param {string} [input.nowIso] 기준 시각 ISO (표시용, 미지정 시 생략)
  * @returns {string} 텔레그램 HTML 메시지
  */
@@ -95,6 +126,7 @@ export function buildBriefing(input) {
     issueCount = 0,
     staleCollectors = [],
     warnRuns = [],
+    infraMissingRuns = [],
     nowIso,
   } = input;
 
@@ -140,6 +172,13 @@ export function buildBriefing(input) {
   // ⑤ 경고 단계가 있던 완주(세션571) — success 라 ①·⑬ 은 안 울리지만 일부 단계가 비었다
   if (warnRuns.length > 0) {
     out.push(`⚠️ 경고 단계 완주: ${warnRuns.map((w) => `${w.collector}(${w.steps.join(", ")})`).join(" · ")}`);
+  }
+
+  // ⑥ infra 행 없음(세션605) — success 라 다른 점검은 안 울리고, 다음 날 회차가 다시 채우므로 경고가 아니라 안내(ℹ️)
+  if (infraMissingRuns.length > 0) {
+    out.push(
+      `ℹ️ infra 행 없음(0행 갱신, 다음 날 회차가 다시 채움): ${infraMissingRuns.map((r) => `${r.collector} ${r.n}건`).join(" · ")}`,
+    );
   }
 
   return out.join("\n");
