@@ -45,6 +45,39 @@ describe("splitRuns — 24h runs 를 정상수집/갱신없음/총합 으로 가
     expect(idle).toEqual([]);
     expect(totalOk).toBe(0);
   });
+
+  // 세션598: 멱등 집합 밖이어도 "전부 봤는데 안 바뀜(skip>0)" 인 성공 실행은 갱신 없음(정상)으로 보인다.
+  //   이름은 collector_runs.collector 실제 값(PHASE 상수 "school-walk" — calc-school-walk.mjs:65).
+  it("멱등 밖 · success · ok 0 · skip>0 → idle (school-walk 가 브리핑에 보인다)", () => {
+    const runs = [{ collector: "school-walk", status: "success", ok_count: 0, skip_count: 1900 }];
+    const { active, idle, totalOk } = splitRuns(runs, IDEM);
+    expect(active).toEqual([]);
+    expect(idle).toEqual(["school-walk"]);
+    expect(totalOk).toBe(0);
+    expect(buildBriefing({ runs24h: runs, idempotentCollectors: IDEM })).toContain("갱신 없음(정상): school-walk");
+  });
+
+  it("멱등 밖 · success · ok 0 · skip 0(또는 null) → 지금처럼 표시 안 함", () => {
+    const runs = [
+      { collector: "zero-a", status: "success", ok_count: 0, skip_count: 0 },
+      { collector: "zero-b", status: "success", ok_count: 0, skip_count: null },
+    ];
+    expect(splitRuns(runs, IDEM).idle).toEqual([]);
+  });
+
+  // 검사관 M2(세션598): skip 조건이 ok>0 분기보다 앞서면 정상 수집 실행을 idle 로 빼앗는다.
+  it("ok>0 · skip>0 → active 그대로 (totalOk 에 더함, idle 아님)", () => {
+    const runs = [{ collector: "infra", status: "success", ok_count: 10, skip_count: 5 }];
+    const { active, idle, totalOk } = splitRuns(runs, IDEM);
+    expect(active).toEqual([{ collector: "infra", ok: 10 }]);
+    expect(idle).toEqual([]);
+    expect(totalOk).toBe(10);
+  });
+
+  it("status failure · ok 0 · skip>0 → idle 아님 (실패는 ① 소관)", () => {
+    const runs = [{ collector: "school-walk", status: "failure", ok_count: 0, skip_count: 1900 }];
+    expect(splitRuns(runs, IDEM).idle).toEqual([]);
+  });
 });
 
 describe("buildBriefing — 매일 아침 현황 브리핑 (정상이어도 발송)", () => {
@@ -171,10 +204,11 @@ describe("경고 단계 완주 한 줄 (세션571 — WARN_STEPS 마커)", () =>
     expect(buildBriefing({ runs24h: runs, idempotentCollectors: IDEM, warnRuns: [] })).not.toContain("경고 단계");
   });
 
-  it("sendDailyBriefing 이 error_message 를 조회하고 extractWarnRuns 결과를 넘긴다 (소스 가드)", async () => {
+  it("sendDailyBriefing 이 error_message·skip_count 를 조회하고 extractWarnRuns 결과를 넘긴다 (소스 가드)", async () => {
     const { readFileSync } = await import("node:fs");
     const src = readFileSync(new URL("./monitor-collectors.mjs", import.meta.url), "utf8");
-    expect(src).toContain('.select("collector,status,ok_count,error_message")');
+    // 세션598: skip_count 를 안 가져오면 splitRuns 의 "skip 만 있는 성공 = 갱신 없음(정상)" 이 운영에서 영영 안 켜진다
+    expect(src).toContain('.select("collector,status,ok_count,skip_count,error_message")');
     expect(src).toContain("warnRuns: extractWarnRuns(runs24h ?? [])");
   });
 });

@@ -37,6 +37,7 @@ const {
   planWalkUpdates,
   diffWalkUpdates,
   recordUnchangedSkips,
+  lookupErrorFailCount,
   isSchoolPlace,
   SCHOOL_WALK_BONUS_MIRROR,
   SCHOOL_WALK_FAR_ADJ_MIRROR,
@@ -369,6 +370,46 @@ describe("안 바뀐 행은 skip 으로 기록한다 (세션595 S2a)", () => {
     expect(body).toMatch(/const \{ updates, clearUpdates \} = diffWalkUpdates\(curById, allComputed, clear\);/);
     expect(body).toMatch(/const \{ unchanged, clearSkipped \} = recordUnchangedSkips\(rpt, \{/);
     expect(body.indexOf("recordUnchangedSkips(rpt")).toBeLessThan(body.indexOf("if (dryRun) {"));
+  });
+});
+
+// ── 세션598: 카카오 재탐색 오류를 비율 기준으로 실패로 센다 ──────────────
+// 옛 판은 catch 에서 lookupNone++ 라 카카오가 전부 실패해도 success. 이제 시도 중 오류가 절반 이상이면 fail.
+describe("카카오 재탐색 오류 — 절반 이상이면 실패로 센다 (세션598)", () => {
+  it("시도 10 · 오류 5(경계, 정확히 절반) → fail 5", () => {
+    expect(lookupErrorFailCount({ found: 3, none: 2, err: 5 })).toBe(5);
+  });
+
+  it("시도 10 · 오류 4(절반 미만) → fail 0 (로그만)", () => {
+    expect(lookupErrorFailCount({ found: 4, none: 2, err: 4 })).toBe(0);
+  });
+
+  it("시도 0 → fail 0", () => {
+    expect(lookupErrorFailCount({ found: 0, none: 0, err: 0 })).toBe(0);
+  });
+
+  it("시도 1 · 오류 1 → fail 1", () => {
+    expect(lookupErrorFailCount({ found: 0, none: 0, err: 1 })).toBe(1);
+  });
+
+  // 배선 — 함수만 옳고 main 이 안 부르면 위 시험은 초록이다. 좌변까지 고정(guards-must-be-mutation-tested 세션491).
+  it("main 이 catch 에서 lookupErr 를 따로 세고, 판정 결과를 rpt.fail 로 넘긴다", () => {
+    const body = COLLECTOR_SRC.slice(COLLECTOR_SRC.indexOf("async function main()"));
+    expect(body).toMatch(/lookupErr\+\+;/);
+    expect(body).toMatch(
+      /const lookupFailN = lookupErrorFailCount\(\{ found: lookupFound, none: lookupNone, err: lookupErr \}\);\s*if \(lookupFailN > 0\) rpt\.fail\(lookupFailN\);/,
+    );
+  });
+
+  // 검사관 M1(세션598): catch 가 lookupNone 도 같이 올리면 시도 수가 부풀어 기준선이 밀린다(10중 5 오류 → fail 0).
+  it("catch 블록은 lookupNone 을 올리지 않는다", () => {
+    const start = COLLECTOR_SRC.indexOf("카카오 조회 실패");
+    const end = COLLECTOR_SRC.indexOf("await sleep(LOOKUP_SLEEP_MS)", start);
+    expect(start).toBeGreaterThan(-1);
+    expect(end).toBeGreaterThan(start);
+    const catchBlock = COLLECTOR_SRC.slice(start, end);
+    expect(catchBlock).toContain("lookupErr++");
+    expect(catchBlock).not.toContain("lookupNone++");
   });
 });
 

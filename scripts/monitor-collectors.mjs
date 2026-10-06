@@ -3499,7 +3499,7 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
     const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
     const { data: runs24h } = await sb
       .from("collector_runs")
-      .select("collector,status,ok_count,error_message")
+      .select("collector,status,ok_count,skip_count,error_message")
       .gte("finished_at", since);
 
     const todayUtc = now.toISOString().slice(0, 10);
