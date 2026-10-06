@@ -195,6 +195,19 @@ export function recordUnchangedSkips(rpt, { allComputed, updates, clear, clearUp
 }
 
 /**
+ * 카카오 재탐색 오류 중 "실패"로 셀 수를 정한다(세션598). 옛 판은 오류를 "못 찾음"과 같은 칸에 넣어
+ * 카카오가 전부 실패해도 조용히 success 였다. 한두 번 일시 오류로 경보가 울리지 않게 비율로 판정한다:
+ * 시도(찾음+없음+오류) 중 오류가 절반 이상이고 오류 ≥1 이면 오류 수 전부를 실패로, 아니면 0(로그만).
+ * @param {{ found: number, none: number, err: number }} counts
+ * @returns {number} rpt.fail 에 넘길 수(0 이면 부르지 않는다)
+ */
+export function lookupErrorFailCount({ found, none, err }) {
+  const attempted = found + none + err;
+  if (attempted === 0 || err < 1) return 0;
+  return err * 2 >= attempted ? err : 0;
+}
+
+/**
  * 좌표 주변 5km 안에서 카카오로 초등학교를 재탐색해 도보분을 구한다.
  * @param {number} lat
  * @param {number} lng
@@ -243,7 +256,7 @@ async function main() {
   // ── 재탐색(Kakao) ──────────────────────────────────────────
   /** @type {Array<{ id: string, walkMin: number, minDist: number }>} */
   const lookupResults = [];
-  let lookupFound = 0, lookupNone = 0;
+  let lookupFound = 0, lookupNone = 0, lookupErr = 0;
   if (KAKAO_KEY) {
     for (const apt of needLookup) {
       if (rpt.interrupted()) break;
@@ -257,12 +270,15 @@ async function main() {
         }
       } catch (err) {
         logError(PHASE, `${apt.id} 카카오 조회 실패: ${err instanceof Error ? err.message : String(err)}`);
-        lookupNone++;
+        lookupErr++; // 세션598: "못 찾음"과 분리해 센다
       }
       await sleep(LOOKUP_SLEEP_MS);
     }
   }
-  log(PHASE, `재탐색 결과: 찾음 ${lookupFound}건, 없음 ${lookupNone}건`);
+  log(PHASE, `재탐색 결과: 찾음 ${lookupFound}건, 없음 ${lookupNone}건, 오류 ${lookupErr}건`);
+  // 오류가 시도의 절반 이상이면 실패로 센다(→ status failure · 감시 ①). 그 아래는 로그만(세션598).
+  const lookupFailN = lookupErrorFailCount({ found: lookupFound, none: lookupNone, err: lookupErr });
+  if (lookupFailN > 0) rpt.fail(lookupFailN);
 
   // ── 변경분만 UPDATE 대상으로 (기존 값과 다른 것만) ──────────
   const curById = new Map(apts.map(a => [a.id, a.naver_school_walk_min]));

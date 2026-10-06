@@ -15,7 +15,9 @@ import { toKst } from "./notify-telegram.mjs";
  * ⚠️ ok=0 이 정상인 수집기(childcare-detail 멱등·purge-consults 삭제형 등)를 "고장" 으로 오인
  * 표시하면 안 된다. 멱등/삭제형 집합(idempotentCollectors)에 든 ok=0 은 "갱신 없음(정상)" 으로,
  * 그 집합 밖의 ok=0 은 브리핑에서 표시하지 않는다 (진짜 이상은 ②③⑤ 가 별도로 잡아 이상 요약줄로).
- * @param {Array<{ collector?: string|null, status?: string|null, ok_count?: number|null }>} runs24h
+ * 세션598: 멱등 집합 밖이어도 ok=0 · skip_count>0 인 성공 실행은 "다 봤는데 바뀐 게 없음"이므로 idle 로 보인다
+ *   (예: calc-school-walk 가 안 바뀐 행을 skip 으로 기록 — 세션595. 옛 판은 브리핑에서 아예 안 보였다).
+ * @param {Array<{ collector?: string|null, status?: string|null, ok_count?: number|null, skip_count?: number|null }>} runs24h
  * @param {Set<string>} idempotentCollectors ok=0 이 정상인 수집기 이름 집합
  * @returns {{ active: Array<{ collector: string, ok: number }>, idle: string[], totalOk: number }}
  */
@@ -32,10 +34,10 @@ export function splitRuns(runs24h, idempotentCollectors) {
     if (ok > 0) {
       active.push({ collector: name, ok });
       totalOk += ok;
-    } else if (idempotentCollectors.has(name)) {
-      idle.push(name); // ok=0 이지만 멱등/삭제형이라 정상
+    } else if (idempotentCollectors.has(name) || (r.skip_count ?? 0) > 0) {
+      idle.push(name); // ok=0 이지만 멱등/삭제형이거나, 전부 확인했는데 안 바뀜(skip>0)이라 정상
     }
-    // 그 외 ok=0 (멱등 목록 밖) 은 표시 안 함 — 진짜 이상은 별도 점검이 처리
+    // 그 외 ok=0 · skip=0 (멱등 목록 밖) 은 표시 안 함 — 진짜 이상은 별도 점검이 처리
   }
   active.sort((a, b) => b.ok - a.ok); // 많이 수집한 순
   return { active, idle, totalOk };
