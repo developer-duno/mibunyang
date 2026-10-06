@@ -165,7 +165,7 @@
 |--------|------|------|
 | `SUPABASE_URL` | Supabase 프로젝트 URL | O |
 | `SUPABASE_SERVICE_KEY` | service_role 키 (쓰기) | O |
-| `SUPABASE_ANON_KEY` | 공개 키 (E2E CI용) | O |
+| `SUPABASE_ANON_KEY` | 공개 키 (daily-deploy 정적 JSON 생성용 — E2E 는 세션598 부터 안 씀) | O |
 | `MOLIT_KEY` | 국토부 + 주택인허가 + 공동주택 (data.go.kr) | O |
 | `MOIS_POP_KEY` | 행안부 인구/전입전출 (data.go.kr) | O |
 | `KAKAO_KEY` | Kakao REST API (인프라/역지오코딩) | O |
