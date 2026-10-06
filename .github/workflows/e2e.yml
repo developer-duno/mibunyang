@@ -48,14 +48,13 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps chromium webkit
 
-      # SUPABASE_ANON_KEY는 공개 키 — GitHub Secrets에 등록 필요
+      # 세션598: VITE_SUPABASE_URL·ANON_KEY 주입을 뺐다 — src/·e2e/ 에 읽는 코드 0곳
+      # (USE_SUPABASE=true 면 /api/supabase/apartments 를 vite 프록시로 부를 뿐). 로봇 PR 은 비밀값을 못 받아도 같다.
       - name: Run E2E tests
         run: npx playwright test
         env:
           CI: true
           VITE_USE_SUPABASE: "true"
-          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
           VITE_FEATURE_UPCOMING: "true"
 
       - uses: actions/upload-artifact@v7

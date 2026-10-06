@@ -97,6 +97,7 @@
 - `trade_stats` 새 칸(설계서 §4-3 그대로 — `ADD COLUMN IF NOT EXISTS`): `cmp_scope TEXT CHECK IN ('complex','dong_peer','none')` · `cmp_fair_price INTEGER` · `cmp_n SMALLINT` · `cmp_months SMALLINT` · `cmp_area_mode TEXT CHECK IN ('same_area','per_m2')` · `cmp_src TEXT CHECK IN ('sale','presale')` · `complex_jeonse_rate NUMERIC(5,1)` · `complex_jeonse_n SMALLINT` · `complex_sale_n SMALLINT` · `complex_table JSONB` · `complex_jeonse_table JSONB` · `dong_fact JSONB`. 칸마다 COMMENT(뜻·범위·문턱). 옛 칸은 손대지 않는다.
 - 머리 주석: 왜(구 전체 비교 → 같은 단지 · 이 칸은 다) 전까지 아무도 안 읽음 · VIEW 는 다) 에서 — B1) · 선행 = `20261003000000_trade_deals.sql`(없으면 RAISE).
 - 롤백 = DROP TABLE apartment_trade_links · ALTER TABLE trade_stats DROP COLUMN 12개.
+- **첫 채우기만 되돌리기**(표는 두고 자동으로 넣은 줄만 — 세션597 검사관 B · 세션598 명문화): `DELETE FROM apartment_trade_links WHERE created_at >= '2026-10-05T22:14:00Z' AND verified_by IS NULL` — 첫 채우기(`--apply-from`) 시작 = 10/06 07:14 KST, 사람 판정 줄(`verified_by` 있음)은 남는다. 순서 = ① 같은 조건 `count` 먼저(10/06 = 2,348 · 그 뒤 정기 회차가 넣은 줄도 함께 잡힌다 — 다르면 이유부터) ② 운영 데이터 쓰기라 규칙 `data-changing-run-approval` §5 검사관(적대 Opus + 맹점 Opus) ③ 사장님 승인 뒤 실행 ④ 재미리보기. `trade_stats` 새 칸 값은 남아도 손님 영향 0(다) 전까지 화면이 안 읽음).
 
 ## Task 2: `_trade-deals.mjs` 읽기 도우미 + 시험
 
