@@ -72,6 +72,20 @@ export function buildFreshIds(rows, nowMs = Date.now(), days = FRESH_DAYS) {
 }
 
 /**
+ * 단지 처리 오류 중 "실패"로 셀 수를 정한다(세션599). 옛 판은 카카오 오류·upsert 오류를 skip 칸에 넣어
+ * 카카오가 하루 종일 고장이어도 조용히 success 였다. 한두 번 일시 오류로 경보가 울리지 않게 비율로 판정한다:
+ * 시도(갱신 성공+오류) 중 오류가 절반 이상이고 오류 ≥1 이면 오류 수 전부를 실패로, 아니면 0(옛 동작대로 skip).
+ * calc-school-walk `lookupErrorFailCount` 와 같은 경계.
+ * @param {{ ok: number, err: number }} counts
+ * @returns {number} rpt.fail 에 넘길 수(0 이면 오류 수를 rpt.skip 으로)
+ */
+export function errorFailCount({ ok, err }) {
+  const attempted = ok + err;
+  if (attempted === 0 || err < 1) return 0;
+  return err * 2 >= attempted ? err : 0;
+}
+
+/**
  * 반경 안 개수 + 최근접 1건을 돌려준다.
  *
  * ⚠️ **개수는 `documents.length` 가 아니라 `meta.total_count` 다.** 예전에는 `size=5` 로 받아
@@ -144,7 +158,8 @@ async function main() {
   // 신선도로 건너뛴 건을 skip 으로 기록 — 전량 최신인 날 ok=0 이어도 monitor ② 의
   // "success 인데 ok=0 && skip=0" 빈성공 오탐이 안 나게 한다 (notify-subscribers 선례 답습).
   if (freshCount > 0) rpt.skip(freshCount);
-  let updated = 0, skipped = 0;
+  // 세션599: 오류(카카오·upsert)는 skip 이 아니라 errored 로 따로 센다 — 끝에서 비율로 fail/skip 을 가른다.
+  let updated = 0, errored = 0;
 
   /**
    * @param {InfraAptRow} apt
@@ -175,12 +190,12 @@ async function main() {
       }
 
       const { error: uErr } = await sb.from("infra").upsert([row], { onConflict: "apartment_id" });
-      if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); skipped++; }
+      if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); errored++; }
       else updated++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       logError(PHASE, `${apt.name}: ${msg}`);
-      skipped++;
+      errored++;
     }
 
     if ((i + 1) % 30 === 0) log(PHASE, `진행: ${i + 1}/${targets.length} (갱신 ${updated})`);
@@ -195,7 +210,11 @@ async function main() {
   }
 
   rpt.success(updated);
-  rpt.skip(skipped);
+  // 오류가 시도의 절반 이상이면 실패로 센다(→ status failure · exit 1). 그 아래는 옛 동작대로 skip(세션599).
+  const errFailN = errorFailCount({ ok: updated, err: errored });
+  if (errFailN > 0) rpt.fail(errFailN);
+  else rpt.skip(errored);
+  log(PHASE, `갱신 ${updated} · 오류 ${errored} (${errFailN > 0 ? "실패" : "skip"}로 셈)`);
   const result = rpt.summary();
   await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
