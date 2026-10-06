@@ -17,8 +17,9 @@
  *   붙인다 → station 은 새 단지에도 계속 채워야 한다. 실시간 값(pm10·pm25·o3·grade)은 주 1회 값이
  *   화면에 "오늘"로 보이던 거짓이라 **지운다**(`buildStationOnly`).
  * - **바뀐 것만 쓴다**(`classifyStationOnly`) — 첫 회차만 대량(실시간 키 제거), 그 뒤엔 신규 단지 수 +
- *   `infra.air_station_*` 어긋남(infraOnly). ⚠️ 자매 `env_air.py` 가 켜져 있는 동안은 그쪽이 같은 두 칸을
- *   매일 100곳씩(거리 소수 한 자리) 덮어 매주 약 700곳이 infraOnly 로 다시 쓰인다(세션603 재검사).
+ *   `infra.air_station_*` 어긋남(infraOnly). (세션603 재검사 때는 자매 `env_air.py` 가 같은 두 칸을 매일
+ *   100곳씩 덮어 매주 약 700곳이 infraOnly 였다 → **세션604 에 자매 env_air.py 폐지**(2u PR #675, 10/06
+ *   20:46 재시작) — 이제 이 두 칸은 이 수집기만 쓰고, 2회차(10/20)부터 infraOnly ≈ 0 이 정상이다.)
  * - 안전장치: 측정소·거리 변경 30 초과면 안 씀(`--expect-station-changes=N` 정확 일치만 통과) ·
  *   측정소 목록 totalCount 잘림이면 멈춤 · 쓰기 직전 사본 `.omc/artifacts/air-station-only-backup/<날짜>.json`.
  * 인자 없이 실행하면 옛 실시간 경로 그대로다(되돌리기용).
@@ -361,7 +362,8 @@ async function main() {
       const { error: uErr } = await sb.from("apartments").update({ air_quality: merged }).eq("id", apt.id);
       if (uErr) { logError(PHASE, `${apt.name}: ${uErr.message}`); rpt.fail(1); continue; }
       // `infra.air_station_name`·`air_station_dist` 도 함께 맞춘다 — **자매 레포가 읽는 자리**다
-      // (`naver-estate-web` `MbEnvironmentSection.tsx:132·137`). 이 수집기가 `apartments.air_quality`
+      // (`naver-estate-web` `MbEnvironmentSection.tsx` 측정소 줄 + 세션604부터 `backend/routers/mb.py` 가
+      // 이 이름으로 `air_station_annual` 을 조회해 3년 평균을 붙인다). 이 수집기가 `apartments.air_quality`
       // JSON 만 쓰던 동안 그 두 컬럼은 옛 값(km 숫자)이 m 로 표시되고 있었다(세션556).
       // ⚠️ `infra` 는 5개 수집기가 컬럼을 나눠 쓰는 행이라 **소유한 두 칸만** 갱신한다(행 덮어쓰기 금지).
       const { error: iErr } = await sb
