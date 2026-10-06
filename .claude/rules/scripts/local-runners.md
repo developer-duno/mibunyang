@@ -34,8 +34,8 @@ paths:
 | 7 | migration | - |
 | 8 | **collect-crime-safety** | 세션521 신규 — 외부 API 0(로컬 CSV 파싱). 행 생성자(population 5일·market-stats 6일) **뒤**여야 새 `recorded_at` 행을 덮는다 |
 | 9 | unsold | - |
-| 10 | fertility-rate, **molit-building-info** | building-info 는 **토요일이면 건너뜀**(자매 레포 public_data 와 쿼터 충돌) |
-| 11 | housing-permits, **molit-building-info** | building-info 는 **전날이 토요일일 때만**(10일 보충) |
+| 10 | fertility-rate, **molit-building-info** | 토요일에도 돈다(세션603 — 옛 토요일 건너뛰기 삭제: 한도는 창구별이라 2u 토요일 RTMS 와 안 겹침) |
+| 11 | housing-permits | - |
 | 12·13·14 | regional-economy / avg-income / medical-access | - |
 | 15~19 | **maintenance** | 매일 `--limit=300 --budget-min=40` 배치 (옛 cron `0 6 15-19` 이식 — 인자를 빼면 전 대상이 한 회차에 몰린다). `--limit` 은 **짝이 붙은 단지** 수다(세션589 보완). 2u 06:20 K-apt 회차는 40분 예산이 아니라 **수집기의 창 검사**(시작 때·단지마다, 창 시작 5분 전부터 멈춤 — `SIBLING_KAPT_WINDOW`)로 피한다 |
 | 15 | **building-hub** | 1·4·7·10월만 |

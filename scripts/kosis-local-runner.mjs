@@ -24,7 +24,7 @@
  * 일자 매핑 = 기존 UTC cron 이 실제 발화하던 KST 날짜 보존 (UTC 20~22시 = KST 익일 새벽):
  *   2일 housing-supply / 3일 emergency / 5일 population·population-sex-age /
  *   6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
- *   10일 fertility·building-info(토요일이면 11일) / 11일 housing-permits /
+ *   10일 fertility·building-info(토요일에도 — 세션603) / 11일 housing-permits /
  *   12일 regional-economy / 13일 avg-income / 14일 medical-access /
  *   15~19일 maintenance(--limit=300 --budget-min=40 배치, 세션589) / 15일 building-hub(1·4·7·10월만) /
  *   17일 sale-price(1·4·7·10월만) / 18일 jeonse
@@ -150,14 +150,13 @@ export function writeLastProcessed(/** @type {string} */ dateStr, statePath = ST
  *   dow              매주 이 요일(0=일..6=토, KST)에 실행 — 주간 cron 이식용(세션519)
  *   months           있으면 해당 월에만 (분기 cron 이식)
  *   args             수집기에 넘길 고정 인자 (GH yml 이 넘기던 것 보존)
- *   skipIfDow        그 날의 요일(0=일..6=토)이면 건너뜀
- *   onlyIfPrevDayDow 전날 요일이 이 값일 때만 실행 (skipIfDow 로 미룬 회차의 보충)
+ *   (세션603: 쓰는 항목이 없어진 요일 게이트 skipIfDow·onlyIfPrevDayDow 는 코드째 삭제)
  *
  * ⚠️ **GH cron 을 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다.** 러너는 KST 05:30 에
  * 도는데 이 표도 KST 기준이라, cron 의 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
  * 실례(세션519): `0 22 16 * *`(UTC 16일 22시)는 **KST 17일** 07시고,
  * `0 15 * * 1`(UTC 월 15시)은 **KST 화요일** 00시다.
- * @type {Array<{ day?: number, dow?: number, script: string, months?: number[], args?: string[], skipIfDow?: number, onlyIfPrevDayDow?: number }>}
+ * @type {Array<{ day?: number, dow?: number, script: string, months?: number[], args?: string[] }>}
  */
 export const DAY_TABLE = [
   { day: 2, script: "collect-housing-supply-ratio.mjs" },
@@ -199,12 +198,11 @@ export const DAY_TABLE = [
   { day: 8, script: "collect-crime-safety.mjs" },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
-  // 세션 515: 옛 collect-building-info.yml 의 "10일 토요일 → 11일 fallback" 이식.
-  // 토요일은 자매 레포(naver-estate-web) public_data 가 data.go.kr 쿼터를 ~3,600회 쓰는 날이라
-  // building-info(~8,500회)와 같은 날이면 일일 10,000 한도를 넘긴다.
-  { day: 10, script: "molit-building-info.mjs", skipIfDow: 6 },
+  // 세션603: 옛 "10일 토요일 → 11일 보충"(세션515 이식)을 지웠다. 전제("토요일 2u 실거래가와
+  // 같은 일일 한도")가 틀렸다 — data.go.kr 한도는 서비스(창구)별이고 2u 토요일 수집은 RTMS 창구,
+  // 이 수집기는 K-apt 단지 창구(AptListService4·AptBasisInfoServiceV5)다(2u 인계 09-27). 9/10 회차 실측 366회.
+  { day: 10, script: "molit-building-info.mjs" },
   { day: 11, script: "housing-permits.mjs" }, // 세션 501: MOLIT 폐기 → KOSIS DT_MLTM_666 이전
-  { day: 11, script: "molit-building-info.mjs", onlyIfPrevDayDow: 6 },
 
   { day: 12, script: "collect-regional-economy.mjs" },
   { day: 13, script: "collect-avg-income.mjs" },
@@ -257,17 +255,11 @@ export function entriesDueOn(date) {
   const day = date.getDate();
   const month = date.getMonth() + 1;
   const dow = date.getDay();
-  // 원본 변형 금지 — 호출처가 넘긴 Date 를 그대로 쓰면 하루가 조용히 밀린다.
-  const prev = new Date(date.getTime());
-  prev.setDate(prev.getDate() - 1);
-  const prevDow = prev.getDay();
   return DAY_TABLE.filter(
     (e) =>
       // 주간 항목(dow)과 월간 항목(day)은 배타 — dow 가 있으면 그것만 본다(세션519).
       (e.dow !== undefined ? e.dow === dow : e.day === day) &&
-      (!e.months || e.months.includes(month)) &&
-      e.skipIfDow !== dow &&
-      (e.onlyIfPrevDayDow === undefined || e.onlyIfPrevDayDow === prevDow),
+      (!e.months || e.months.includes(month)),
   );
 }
 
@@ -284,7 +276,7 @@ export function collectorsDueOn(date) {
 const DOW_LABEL = ["일", "월", "화", "수", "목", "금", "토"];
 
 /**
- * --list 한 줄. 게이트(분기월·요일 조건)를 사람이 읽는 형태로 붙인다.
+ * --list 한 줄. 게이트(분기월)를 사람이 읽는 형태로 붙인다.
  * @param {(typeof DAY_TABLE)[number]} e
  * @returns {string}
  */
@@ -292,9 +284,6 @@ export function describeEntry(e) {
   /** @type {string[]} */
   const gates = [];
   if (e.months) gates.push(`${e.months.join("·")}월만`);
-  if (e.skipIfDow !== undefined) gates.push(`${DOW_LABEL[e.skipIfDow]}요일 제외`);
-  if (e.onlyIfPrevDayDow !== undefined)
-    gates.push(`전날이 ${DOW_LABEL[e.onlyIfPrevDayDow]}요일일 때만`);
   const gate = gates.length > 0 ? ` (${gates.join(", ")})` : "";
   const args = e.args?.length ? ` ${e.args.join(" ")}` : "";
   const when = e.dow !== undefined ? `매주 ${DOW_LABEL[e.dow]}요일` : `매월 ${e.day}일`;

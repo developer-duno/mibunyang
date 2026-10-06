@@ -78,7 +78,7 @@
 > 로컬 한국 IP 에선 156ms 200 OK 실측). `collect-trades.yml`·`collect-molit-units.yml`·
 > `collect-building-info.yml`·`collect-maintenance.yml`·`collect-building-hub.yml` 5개 삭제 →
 > `scripts/kosis-local-runner.mjs` 매핑표에 편입(발화일·인자·게이트 전부 보존 — 6일 units·trades /
-> 10일 building-info(토요일이면 11일) / 15~19일 maintenance `--limit=600` / 분기 15일 building-hub).
+> 10일 building-info(토요일에도 — 세션603) / 15~19일 maintenance `--limit=600` / 분기 15일 building-hub).
 > 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` (trades·molit-building·molit-units 신규 등재,
 > maintenance·building-hub 는 기존 항목 유지). ⚠️ `collect-building-info.yml` 의 2번째 스텝이던
 > `sync-naver-complex.mjs` 는 옮기지 않았다 — `collect-naver-listings.yml`(Naver Core)이 **매일** 같은
