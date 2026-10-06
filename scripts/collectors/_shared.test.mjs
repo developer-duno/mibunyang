@@ -15,6 +15,7 @@ import {
   JEONNAM_GWANGJU_SGG_OLD_TO_NEW, GWANGJU_GU_NAMES, resolveRegionName,
   RETIRED_GU, HWASEONG_BARE_GU, createRegionResolutionTracker,
   GU_LAWD_CODES, HWASEONG_LAWD_CODES,
+  INFRA_ROW_MISSING_MARKER, formatInfraRowMissing, parseInfraRowMissing,
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
@@ -1306,5 +1307,40 @@ describe("화성특례시 별칭 (세션546)", () => {
 
   it("HWASEONG_BARE_GU 는 비법정 4구 — 도구가 이 명단을 재사용한다", () => {
     expect([...HWASEONG_BARE_GU].sort()).toEqual(["동탄구", "만세구", "병점구", "효행구"]);
+  });
+});
+
+// 세션605: 수집기(collect-air-quality)가 쓰고 아침 브리핑이 읽는 한 쌍 — 한쪽만 바뀌면 조용히 사라진다.
+describe("infra 행 없음 마커 — formatInfraRowMissing ↔ parseInfraRowMissing (세션605)", () => {
+  it("마커 상수와 형식", () => {
+    expect(INFRA_ROW_MISSING_MARKER).toBe("INFRA_ROW_MISSING=");
+    expect(formatInfraRowMissing(3)).toBe("INFRA_ROW_MISSING=3");
+  });
+
+  it("왕복 — format 한 값을 parse 가 그대로 읽는다", () => {
+    for (const n of [1, 2, 37, 651]) expect(parseInfraRowMissing(formatInfraRowMissing(n))).toBe(n);
+  });
+
+  it("다른 사유와 ` | ` 로 이어 붙어도 찾는다(앞·뒤 모두)", () => {
+    expect(parseInfraRowMissing("fetch failed | INFRA_ROW_MISSING=4")).toBe(4);
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=5 | ANNUAL_PURGED=2")).toBe(5);
+  });
+
+  it("앞 조각이 형식 불량이면 다음 조각을 본다 (세션605 보완)", () => {
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=x | INFRA_ROW_MISSING=3")).toBe(3);
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=0 | INFRA_ROW_MISSING=4")).toBe(4);
+  });
+
+  it("없음·형식 불량·0 이하는 null", () => {
+    expect(parseInfraRowMissing(null)).toBeNull();
+    expect(parseInfraRowMissing(undefined)).toBeNull();
+    expect(parseInfraRowMissing("")).toBeNull();
+    expect(parseInfraRowMissing("WARN_STEPS: a")).toBeNull();
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=")).toBeNull();
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=abc")).toBeNull();
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=3x")).toBeNull();
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=-1")).toBeNull();
+    expect(parseInfraRowMissing("INFRA_ROW_MISSING=0")).toBeNull();
+    expect(parseInfraRowMissing("XINFRA_ROW_MISSING=3")).toBeNull();
   });
 });

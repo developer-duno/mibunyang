@@ -27,7 +27,7 @@ import { isLeaseUnit } from "../src/constants/leaseTypes.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
-import { buildBriefing, extractWarnRuns, splitRuns } from "./monitor-briefing.mjs";
+import { buildBriefing, extractInfraMissingRuns, extractWarnRuns, splitRuns } from "./monitor-briefing.mjs";
 import { CLIENT_WRITE_ALLOWLIST } from "./_rls-allowlist.mjs";
 import { groupSharedCoords } from "./fix-placeholder-addresses.mjs";
 import {
@@ -337,7 +337,8 @@ export const EXTERNAL_API_COLLECTORS = [
   //    housing-price 7/16·8/16 **연속 실패**, air-quality 8회 중 2회만 성공(25% 복불복).
   //    둘 다 GH yml 삭제 + 로컬 러너 이전. housing-price 는 아래에 이미 등재돼 있어
   //    거기 문구만 갱신했다(중복 추가하면 한쪽을 지워도 가드가 통과한다 — 뮤테이션이 잡음).
-  { collector: "air-quality",     stale_days: 14, owner: "에어코리아 대기질 (로컬 매주 화요일 + 1주 여유)" },
+  // 세션605: 매일 러너의 생존 신호 — 일일 기준표(14)의 예외, 러너가 죽으면 3일 안에 ⑤-b(미발화).
+  { collector: "air-quality",     stale_days: 3,  owner: "에어코리아 대기질 (로컬 매일 + 여유)" },
   // ── 세션525: apis.data.go.kr/**B552657**(국립중앙의료원 응급의료기관)도 같은 차단.
   //    GH 8/02·8/04 연속 failure 로그가 `[emergency] ERROR: fetch failed`(HTTP 코드 없음)인데
   //    로컬 한국 IP + 같은 키는 `resultCode=00 NORMAL SERVICE`(2026-08-27 실측).
@@ -3499,7 +3500,7 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
     const since = new Date(now.getTime() - 24 * 3600 * 1000).toISOString();
     const { data: runs24h } = await sb
       .from("collector_runs")
-      .select("collector,status,ok_count,skip_count,error_message")
+      .select("collector,status,ok_count,skip_count,error_message,finished_at")
       .gte("finished_at", since);
 
     const todayUtc = now.toISOString().slice(0, 10);
@@ -3525,6 +3526,7 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
       issueCount,
       staleCollectors,
       warnRuns: extractWarnRuns(runs24h ?? []),
+      infraMissingRuns: extractInfraMissingRuns(runs24h ?? []),
       nowIso: now.toISOString(),
     });
 

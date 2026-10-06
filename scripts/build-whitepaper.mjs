@@ -178,13 +178,14 @@ export function parseSchedules() {
       out.set(m[1], prev ? `${prev}; ${desc}` : desc);
     }
   }
-  // (b) 로컬 러너 DAY_TABLE — `{ day: N, script: "x.mjs" }` / `{ dow: N, script: "x.mjs" }`
+  // (b) 로컬 러너 DAY_TABLE — `{ day: N, script: "x.mjs" }` / `{ dow: N, script: "x.mjs" }` / `{ daily: true, script: "x.mjs" }`(세션605)
   const runner = path.join(ROOT, "scripts/kosis-local-runner.mjs");
   try {
     const src = readFileSync(runner, "utf8");
     const DOW = ["일", "월", "화", "수", "목", "금", "토"];
-    for (const m of src.matchAll(/\{\s*(day|dow):\s*(\d+)\s*,\s*script:\s*"([^"]+)"/g)) {
-      const when = m[1] === "day" ? `매월 ${m[2]}일` : `매주 ${DOW[Number(m[2])]}요일`;
+    for (const m of src.matchAll(/\{\s*(day|dow|daily):\s*(\d+|true)\s*,\s*script:\s*"([^"]+)"/g)) {
+      const when =
+        m[1] === "daily" ? "매일" : m[1] === "day" ? `매월 ${m[2]}일` : `매주 ${DOW[Number(m[2])]}요일`;
       const prev = out.get(m[3]);
       const desc = `로컬러너 ${when} 05:30 KST`;
       out.set(m[3], prev ? `${prev}; ${desc}` : desc);

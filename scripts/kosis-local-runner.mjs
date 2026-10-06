@@ -148,6 +148,7 @@ export function writeLastProcessed(/** @type {string} */ dateStr, statePath = ST
  * 일자(KST) → 수집기.
  *   day              매월 이 날짜(KST)에 실행. `dow` 와 **둘 중 하나만** 쓴다
  *   dow              매주 이 요일(0=일..6=토, KST)에 실행 — 주간 cron 이식용(세션519)
+ *   daily            true 면 날짜·요일과 무관하게 매일 실행(세션605). `day`·`dow` 와 같이 쓰지 않는다
  *   months           있으면 해당 월에만 (분기 cron 이식)
  *   args             수집기에 넘길 고정 인자 (GH yml 이 넘기던 것 보존)
  *   (세션603: 쓰는 항목이 없어진 요일 게이트 skipIfDow·onlyIfPrevDayDow 는 코드째 삭제)
@@ -156,7 +157,7 @@ export function writeLastProcessed(/** @type {string} */ dateStr, statePath = ST
  * 도는데 이 표도 KST 기준이라, cron 의 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
  * 실례(세션519): `0 22 16 * *`(UTC 16일 22시)는 **KST 17일** 07시고,
  * `0 15 * * 1`(UTC 월 15시)은 **KST 화요일** 00시다.
- * @type {Array<{ day?: number, dow?: number, script: string, months?: number[], args?: string[] }>}
+ * @type {Array<{ day?: number, dow?: number, daily?: boolean, script: string, months?: number[], args?: string[] }>}
  */
 export const DAY_TABLE = [
   { day: 2, script: "collect-housing-supply-ratio.mjs" },
@@ -241,13 +242,18 @@ export const DAY_TABLE = [
   //   **최근접 측정소만** 배정한다(실시간 17회 호출 0). 점수는 3년 평균(`annual`)만 쓰고, 그 값은 아래
   //   air-annual-attach 가 `air_quality.station` 으로 붙이므로 새 단지의 station 배정은 계속 필요하다.
   //   주 1회 값을 "오늘 대기질"로 보여 주던 실시간 키는 이 모드가 지운다. 인자를 빼면 옛 실시간 경로.
-  { dow: 2, script: "collect-air-quality.mjs", args: ["--station-only"] },
+  // 세션605(사장님 결정 2026-10-06 "새 단지 공백 7~14일 → 하루"): 매주 화요일 → **매일**.
+  //   매일 05:30 측정소 목록 1회 호출 · 쓰기는 배정이 바뀐 행만 · 첫 실제 쓰기 10/08.
+  //   놓친 날 따라잡기(`MAX_CATCHUP_PER_RUN` = 1)는 매일 항목도 날짜마다 돌려 한 실행에 최대 2회 —
+  //   결과가 같은 멱등 호출이라 그대로 둔다(세션605 작업반 지적).
+  { daily: true, script: "collect-air-quality.mjs", args: ["--station-only"] },
   // ⚠️ 위 수집기가 `air_quality` 를 통째로 교체한다. `mergeKeepingAnnual` 이 기존 `annual`(3년 평균)을
   //    보존하지만 **그 한 줄이 유일한 방어선**이라, 한 번 비면 그 단지는 영영 중립값(14점)으로 미끄러진다.
   //    이 재부착은 **멱등**이다(실측 2026-09-23: "붙일 대상 0곳 | 이미 최신 2992") — 평소엔 아무것도
   //    안 하고, 유실이 생긴 회차에만 되살린다. 순서상 반드시 collect-air-quality **뒤**에 둔다.
   //    세션561 적대검증 🔴 적발: 이게 없으면 유실을 되돌릴 사람이 아무도 없었다.
-  { dow: 2, script: "air-annual-attach.mjs", args: ["--apply"] },
+  //    세션605: 위 항목과 같이 매일 — 새로 배정된 단지에 3년 평균을 바로 다음 줄에서 붙인다.
+  { daily: true, script: "air-annual-attach.mjs", args: ["--apply"] },
 ];
 
 /**
@@ -261,8 +267,9 @@ export function entriesDueOn(date) {
   const dow = date.getDay();
   return DAY_TABLE.filter(
     (e) =>
+      // 매일 항목(daily)은 날짜·요일을 보지 않는다(세션605).
       // 주간 항목(dow)과 월간 항목(day)은 배타 — dow 가 있으면 그것만 본다(세션519).
-      (e.dow !== undefined ? e.dow === dow : e.day === day) &&
+      (e.daily === true || (e.dow !== undefined ? e.dow === dow : e.day === day)) &&
       (!e.months || e.months.includes(month)),
   );
 }
@@ -290,7 +297,8 @@ export function describeEntry(e) {
   if (e.months) gates.push(`${e.months.join("·")}월만`);
   const gate = gates.length > 0 ? ` (${gates.join(", ")})` : "";
   const args = e.args?.length ? ` ${e.args.join(" ")}` : "";
-  const when = e.dow !== undefined ? `매주 ${DOW_LABEL[e.dow]}요일` : `매월 ${e.day}일`;
+  const when =
+    e.daily === true ? "매일" : e.dow !== undefined ? `매주 ${DOW_LABEL[e.dow]}요일` : `매월 ${e.day}일`;
   return `${when}${gate}: ${e.script}${args}`;
 }
 

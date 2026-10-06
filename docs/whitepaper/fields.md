@@ -7,7 +7,7 @@
 | 코드명(기계어) | 화면 이름(사람어) | DB 표현식 | 점수 | 수집기 | 주기 | 채움 |
 |---|---|---|---|---|---|---|
 | `address` | 지번 주소 | `(VIEW 없음)` |  |  |  | 100% |
-| `airQuality` | 대기질 | `a.air_quality` | Location | data-audit.mjs, collect-air-quality.mjs, air-annual-attach.mjs | 로컬러너 매주 화요일 05:30 KST | 97.3% |
+| `airQuality` | 대기질 | `a.air_quality` | Location | data-audit.mjs, collect-air-quality.mjs, air-annual-attach.mjs | 로컬러너 매일 05:30 KST | 97.3% |
 | `announcementUrl` | (화면 미표시) | `a.announcement_url` |  | collect-applyhome-seed.mjs | GH cron 30 2 * * 1 (collect-applyhome.yml) | 3.3% |
 | `area` | 전용면적 (㎡) | `(VIEW 없음)` | Price |  |  | 72.6% |
 | `avgFloor` | 평균 거래 층수 (층) | `ts.avg_floor` |  | data-audit.mjs, trade-stats.mjs | GH cron 0 16 7,21 * * (collect-trade-stats.yml) | 99.3% |
@@ -111,7 +111,7 @@
 | `newSupply` | 신규 분양세대수 (세대) | `r.new_supply` |  | data-audit.mjs, collect-market-stats.mjs | 로컬러너 매월 6일 05:30 KST | 100% |
 | `noise` | 소음 (dB) | `(VIEW 없음)` | Location |  |  | 76.4% |
 | `noxious` | 혐오시설 | `(VIEW 없음)` | Location |  |  | 86.2% |
-| `noxiousDist` | 혐오시설 거리 (m) | `a.noxious_dist` | Location | data-audit.mjs, collect-air-quality.mjs, noxious.mjs | 로컬러너 매주 화요일 05:30 KST / GH cron 0 18 3 * * (collect-noxious.yml) | 86.2% |
+| `noxiousDist` | 혐오시설 거리 (m) | `a.noxious_dist` | Location | data-audit.mjs, collect-air-quality.mjs, noxious.mjs | 로컬러너 매일 05:30 KST / GH cron 0 18 3 * * (collect-noxious.yml) | 86.2% |
 | `optionFree` | 옵션 무상 | `a.option_free` | Benefit |  |  | 0% |
 | `optionValue` | 옵션 가치 (만원) | `a.option_value` | Benefit |  |  | 0% |
 | `park` | 공원 (개) | `(VIEW 없음)` | Location |  |  | 100% |
@@ -121,7 +121,7 @@
 | `pharmacyDist` | 약국 거리 (m) | `i.pharmacy_dist` |  | data-audit.mjs |  | 75.7% |
 | `pir` | PIR (소득대비) (배) | `(VIEW 없음)` | Price |  |  | 97.1% |
 | `police` | 경찰관서(3km) (개) | `(VIEW 없음)` | Risk |  |  | 100% |
-| `policeDist` | 경찰관서 거리 (m) | `i.police_dist` | Risk | collect-air-quality.mjs, collect-police.mjs | 로컬러너 매주 화요일 05:30 KST / GH cron 0 16 1 * * (collect-police.yml) | 91.5% |
+| `policeDist` | 경찰관서 거리 (m) | `i.police_dist` | Risk | collect-air-quality.mjs, collect-police.mjs | 로컬러너 매일 05:30 KST / GH cron 0 16 1 * * (collect-police.yml) | 91.5% |
 | `popGrowth` | 인구증감률 (%) | `r.pop_growth` | Future,Risk | data-audit.mjs, population.mjs | 로컬러너 매월 5일 05:30 KST | 100% |
 | `pp` | 평당가 (만원) | `(VIEW 없음)` |  |  |  | 97.1% |
 | `presaleBuildings` | 동수 (동) | `a.presale_buildings` |  | naver-presale.mjs |  | 72.9% |
@@ -155,7 +155,7 @@
 | `schoolGrade` | 학군 등급 | `sc.school_grade` | Location | data-audit.mjs, schools-neis.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 100% |
 | `schoolScore` | 학군 점수 | `sc.school_score` | Location | data-audit.mjs, schools-neis.mjs, collect-nearby-childcare.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / GH cron 30 20 * * 2 (collect-nearby-childcare.yml) | 100% |
 | `scoresComputedAt` | (화면 미표시) | `a.scores_computed_at` |  |  |  | 100% |
-| `subwayDist` | 지하철 거리 (m) | `COALESCE(t.subway_dist, i.subway_dist, 9999)` ⚠️식 | Location | data-audit.mjs, infra-kakao.mjs, collect-air-quality.mjs 외1 | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / 로컬러너 매주 화요일 05:30 KST | 84% |
+| `subwayDist` | 지하철 거리 (m) | `COALESCE(t.subway_dist, i.subway_dist, 9999)` ⚠️식 | Location | data-audit.mjs, infra-kakao.mjs, collect-air-quality.mjs 외1 | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) / 로컬러너 매일 05:30 KST | 84% |
 | `subwayLines` | 지하철 노선 | `t.subway_lines` | Location | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 77.9% |
 | `subwayName` | 최근접 지하철역 | `t.subway_name` |  | data-audit.mjs, transport-tago.mjs | GH cron 30 20 * * * (collect-naver-listings-incremental.yml) | 84% |
 | `sunlight` | 일조 | `(VIEW 없음)` | Location |  |  | 60.2% |

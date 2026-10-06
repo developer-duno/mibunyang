@@ -44,7 +44,7 @@ paths:
 | 18 | jeonse-price-index | - |
 | 20 | **naver-devplan** `--kinds=road,rail,station,jigu` | 네이버 4종만 (V-WORLD 축 제외 — 전량은 ~7.5h·중간 체크포인트 없음) |
 | 21 | **lhzone-status** | 세션522 신규 (택지정보시스템 → dev_plans.progression_step) — 요약표 누락분 세션533 보충 |
-| **매주 화** | **air-quality** `--station-only` | 세션519 신규 — 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**. 표의 첫 `dow` 항목 · 세션603 부터 `--station-only`(실시간 멈춤 — 측정소 좌표 1회로 측정소 배정만, 사장님 결정) |
+| **매일** | **air-quality** `--station-only` → **air-annual-attach** `--apply` | 세션519 신규(옛 cron `0 15 * * 1`(UTC 월) = KST 화요일) · 세션603 부터 `--station-only`(실시간 멈춤 — 측정소 좌표 1회로 측정소 배정만) · **세션605 부터 매일**(`daily: true` 항목, 사장님 결정 "새 단지 공백 7~14일 → 하루" · 첫 실제 쓰기 10/08 05:30 · 쓰기는 바뀐 행만) — attach 는 반드시 air **뒤** |
 
 ⚠️ **GH cron 을 이 표로 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다** (세션519). 러너는
 KST 05:30 에 돌고 이 표도 KST 기준이라, cron 숫자를 그대로 베끼면 하루/한 요일이 밀린다.

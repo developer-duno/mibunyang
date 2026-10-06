@@ -13,20 +13,21 @@
  *
  * ## STATION-ONLY (세션603)
  * 실시간 17회 호출을 건너뛰고 측정소 좌표 목록(1회)으로 **최근접 측정소만** 배정한다.
+ * - 주기 = **매일** 05:30 로컬 러너(세션605, 사장님 결정 "새 단지 공백 7~14일 → 하루" — 옛 매주 화요일).
  * - 점수는 `annual`(3년 평균)만 쓰고, `annual` 은 `air-annual-attach.mjs` 가 `air_quality.station` 으로
  *   붙인다 → station 은 새 단지에도 계속 채워야 한다. 실시간 값(pm10·pm25·o3·grade)은 주 1회 값이
  *   화면에 "오늘"로 보이던 거짓이라 **지운다**(`buildStationOnly`).
  * - **바뀐 것만 쓴다**(`classifyStationOnly`) — 첫 회차만 대량(실시간 키 제거), 그 뒤엔 신규 단지 수 +
  *   `infra.air_station_*` 어긋남(infraOnly). (세션603 재검사 때는 자매 `env_air.py` 가 같은 두 칸을 매일
  *   100곳씩 덮어 매주 약 700곳이 infraOnly 였다 → **세션604 에 자매 env_air.py 폐지**(2u PR #675, 10/06
- *   20:46 재시작) — 이제 이 두 칸은 이 수집기만 쓰고, 2회차(10/20)부터 infraOnly ≈ 0 이 정상이다.)
+ *   20:46 재시작) — 이제 이 두 칸은 이 수집기만 쓰고, 첫 회차(10/08) 다음 날부터 매일 infraOnly ≈ 0 이 정상이다.)
  * - 안전장치: 측정소·거리 변경 30 초과면 안 씀(`--expect-station-changes=N` 정확 일치만 통과) ·
  *   측정소 목록 totalCount 잘림이면 멈춤 · 쓰기 직전 사본 `.omc/artifacts/air-station-only-backup/<날짜>.json`.
  * 인자 없이 실행하면 옛 실시간 경로 그대로다(되돌리기용).
  */
 import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordApiQuota, recordCollectorRun, haversineKm, today, selectAll, ROOT } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordApiQuota, recordCollectorRun, haversineKm, today, selectAll, ROOT, formatInfraRowMissing } from "./_shared.mjs";
 
 loadEnv();
 
@@ -519,7 +520,7 @@ export async function runStationOnly(sb, coordMap, opts = {}) {
   }
   const result = rpt.summary();
   if (infraZeroRows > 0) log(PHASE, `infra 행 없음(0행 갱신) ${infraZeroRows}건 — 성공에서 뺐다`);
-  await recordCollectorRun(PHASE, infraZeroRows > 0 ? { ...result, errorMessage: `INFRA_ROW_MISSING=${infraZeroRows}` } : result, recordSb);
+  await recordCollectorRun(PHASE, infraZeroRows > 0 ? { ...result, errorMessage: formatInfraRowMissing(infraZeroRows) } : result, recordSb);
   return { exitCode: result.fail > 0 ? 1 : 0 };
 }
 
