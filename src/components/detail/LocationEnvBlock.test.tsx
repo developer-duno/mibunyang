@@ -1,13 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import {
-  LocationEnvBlock,
-  crimeDots,
-  airAnnualText,
-  noiseScale,
-  noiseColor,
-  noiseLabel,
-} from "./LocationEnvBlock";
+import { LocationEnvBlock, crimeDots, airAnnualText, noiseScale, noiseColor, noiseLabel } from "./LocationEnvBlock";
 import { positionPct } from "@/components/charts/PositionGauge";
 import { C } from "@/theme";
 import { makeApt } from "@/__tests__/factories";
@@ -219,5 +212,4 @@ describe("순수 함수", () => {
     expect(airAnnualText({ grade: "좋음" } as Parameters<typeof airAnnualText>[0])).toBeNull(); // 오늘 값만 있으면 3년 평균 칩을 안 만든다
     expect(airAnnualText(null)).toBeNull();
   });
-
 });
