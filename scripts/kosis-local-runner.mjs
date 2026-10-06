@@ -237,7 +237,11 @@ export const DAY_TABLE = [
   { day: 21, script: "lhzone-status.mjs" },
   // 세션519: apis.data.go.kr/B552584(에어코리아)도 같은 차단 — GH 8회 중 2회만 성공(25%,
   // 러너 IP 복불복)인데 로컬은 92ms 200 OK. 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**.
-  { dow: 2, script: "collect-air-quality.mjs" },
+  // 세션603(사장님 결정 2026-10-06 "대기질 실시간 멈춤"): `--station-only` = 측정소 좌표 1회 호출로
+  //   **최근접 측정소만** 배정한다(실시간 17회 호출 0). 점수는 3년 평균(`annual`)만 쓰고, 그 값은 아래
+  //   air-annual-attach 가 `air_quality.station` 으로 붙이므로 새 단지의 station 배정은 계속 필요하다.
+  //   주 1회 값을 "오늘 대기질"로 보여 주던 실시간 키는 이 모드가 지운다. 인자를 빼면 옛 실시간 경로.
+  { dow: 2, script: "collect-air-quality.mjs", args: ["--station-only"] },
   // ⚠️ 위 수집기가 `air_quality` 를 통째로 교체한다. `mergeKeepingAnnual` 이 기존 `annual`(3년 평균)을
   //    보존하지만 **그 한 줄이 유일한 방어선**이라, 한 번 비면 그 단지는 영영 중립값(14점)으로 미끄러진다.
   //    이 재부착은 **멱등**이다(실측 2026-09-23: "붙일 대상 0곳 | 이미 최신 2992") — 평소엔 아무것도

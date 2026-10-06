@@ -1,14 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import {
-  LocationEnvBlock,
-  crimeDots,
-  airAnnualText,
-  airTodayText,
-  noiseScale,
-  noiseColor,
-  noiseLabel,
-} from "./LocationEnvBlock";
+import { LocationEnvBlock, crimeDots, airAnnualText, noiseScale, noiseColor, noiseLabel } from "./LocationEnvBlock";
 import { positionPct } from "@/components/charts/PositionGauge";
 import { C } from "@/theme";
 import { makeApt } from "@/__tests__/factories";
@@ -51,11 +43,12 @@ describe("LocationEnvBlock — 칩 (목업 단지 실값)", () => {
     expect(container.textContent).not.toMatch(/감점|점수|가점/);
   });
 
-  it("오늘 대기질은 3년 평균 칩과 섞지 않고 작은 글씨 한 줄로 따로 (E15/S7)", () => {
+  // 세션603: 옛 "오늘 대기질 좋음" 작은 글씨 줄을 지웠다 — 실시간 수집을 멈췄고(사장님 결정), 주 1회 값을
+  //   "오늘"로 보여 온 것이 거짓이었다. 데이터에 옛 grade 가 남아 있어도(전환 기간) 그리지 않는다.
+  it("오늘 대기질 줄은 없다 — 옛 grade 가 남아 있어도 (세션603)", () => {
     const { container } = render(<LocationEnvBlock apt={apt(MOCKUP)} />);
-    expect(screen.getByText("오늘 대기질 좋음")).toBeInTheDocument();
-    expect(chip(container, "air")).not.toContain("오늘");
-    expect(screen.getByText("오늘 대기질 좋음").closest('[data-chip="air"]')).toBeNull();
+    expect(chip(container, "air")).toBe("대기 3년 평균 나쁨 · PM2.5 19.6"); // 양성 앵커
+    expect(container.textContent).not.toContain("오늘");
   });
 
   it("혐오시설이 4곳 이상이면 앞 3개 + '외 N'", () => {
@@ -215,12 +208,8 @@ describe("순수 함수", () => {
     expect(airAnnualText({ annual: { pm25: 15 } })).toBe("대기 3년 평균 좋음 · PM2.5 15");
     expect(airAnnualText({ annual: { pm25: 19 } })).toBe("대기 3년 평균 보통 · PM2.5 19");
     expect(airAnnualText({ annual: { pm25: 19.6 } })).toBe("대기 3년 평균 나쁨 · PM2.5 19.6");
-    expect(airAnnualText({ grade: "좋음" })).toBeNull(); // 오늘 값만 있으면 3년 평균 칩을 안 만든다
+    // 옛 데이터(실시간 grade 만 남은 행) — 타입에서 grade 칸은 세션603 에 뺐지만 전환 기간 실데이터 모양이라 캐스트로 넣는다
+    expect(airAnnualText({ grade: "좋음" } as Parameters<typeof airAnnualText>[0])).toBeNull(); // 오늘 값만 있으면 3년 평균 칩을 안 만든다
     expect(airAnnualText(null)).toBeNull();
-  });
-
-  it("airTodayText — 오늘 등급만, 없으면 null", () => {
-    expect(airTodayText({ grade: "보통" })).toBe("오늘 대기질 보통");
-    expect(airTodayText({ annual: { pm25: 18 } })).toBeNull();
   });
 });
