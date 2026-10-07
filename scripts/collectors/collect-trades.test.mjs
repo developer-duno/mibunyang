@@ -448,7 +448,10 @@ describe("fetchTradeRows · collectRegion — trade_deals (세션589)", () => {
     expect(r.stopped).toBeNull();
   });
 
-  it("사장님 결정 C2 (가): 화성 trades 행 = 41591 응답분만(이 PR 전과 행 단위로 같다) · deals = 4코드 전부", async () => {
+  // 세션607(다 · 사장님 결정 D6/C2): 옛 단언 = "화성 trades 행 = 41591 응답분만(r.rows 가 41591 한 코드 수집과 같다 ·
+  //   100행)". 가) 에서는 화성 60곳의 유동성·점수가 두 번 바뀌지 않게 막아 뒀고, 다) 점수 전환과 함께 푼다 →
+  //   이제 4코드 응답 **전부** 가 trades 행이 된다(gu="화성시" 그대로).
+  it("다) D6: 화성 trades 행 = 4코드 응답 전부 · 행 gu 는 '화성시' · deals 도 4코드 전부", async () => {
     // 코드마다 값이 다른 응답 — 추가 3코드 행이 trades 에 섞이면 값으로 드러난다
     const base = items("sale-hwaseong-41597-202608.json");
     /** @param {string} code */
@@ -464,12 +467,28 @@ describe("fetchTradeRows · collectRegion — trade_deals (세션589)", () => {
       seen: new Set(), fallbackUsed: false,
       onDeals: async (code, _type, res) => { dealsByCode[code] = (dealsByCode[code] ?? 0) + res.deals.length; },
     });
-    // 이 PR 전 수집기 = getLawdCd("경기","화성시") 한 코드만 돌았다
-    const before = await collectRegion({ region: "경기", gu: "화성시" }, [getLawdCd("경기", "화성시") ?? ""], months, { seen: new Set(), fallbackUsed: false });
+    // 코드마다 값이 다르게(dealAmount + 코드 끝자리) 만든 응답이라, 각 코드의 행이 trades 에 따로 들어온다
+    const one = await collectRegion({ region: "경기", gu: "화성시" }, [getLawdCd("경기", "화성시") ?? ""], months, { seen: new Set(), fallbackUsed: false });
     expect(getLawdCd("경기", "화성시")).toBe("41591");
-    expect(r.rows).toEqual(before.rows);
-    expect(r.rows.length).toBe(100); // 매매 50 + 분양권 꼴 50(같은 칸 응답) — 41591 분만
+    expect(one.rows.length).toBe(100); // 41591 한 코드 = 매매 50 + 분양권 꼴 50(같은 칸 응답)
+    expect(r.rows.length).toBe(4 * 100);
+    expect(r.rows.every((row) => row.gu === "화성시")).toBe(true);
+    // 4코드 각각의 행이 들어 있다 — 값 끝자리로 출처 코드를 되짚는다(41591→+1 · 41593→+3 · 41595→+5 · 41597→+7)
+    const basePrices = new Set(base.map((it) => parseInt(it.dealAmount.replace(/,/g, ""))));
+    const offsets = new Set(r.rows.map((row) => [1, 3, 5, 7].find((o) => basePrices.has(row.price - o))));
+    expect(offsets).toEqual(new Set([1, 3, 5, 7]));
     expect(dealsByCode).toEqual({ 41591: 100, 41593: 100, 41595: 100, 41597: 100 });
+  });
+
+  it("다) D6: 코드가 하나인 시군구는 trades 행이 이 PR 전과 같다 — collectRegion = fetchTradeRows 3종류 합", async () => {
+    respond(toXml(items("sale-11680-202608.json")));
+    const rg = { region: "서울", gu: "강남구" };
+    const viaRegion = await collectRegion(rg, GU_LAWD_CODES("서울", "강남구"), ["202608"], { seen: new Set(), fallbackUsed: false });
+    const seen = new Set();
+    const direct = [];
+    for (const t of /** @type {const} */ (["sale", "jeonse", "presale"])) direct.push(...(await fetchTradeRows("11680", ["202608"], t, rg, seen, false)).rows);
+    expect(viaRegion.rows).toEqual(direct);
+    expect(viaRegion.rows.length).toBeGreaterThan(0);
   });
 
   it("다른 지역은 1코드 — 강남구 3종류 × 월 수", async () => {
