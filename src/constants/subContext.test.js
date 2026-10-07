@@ -61,8 +61,10 @@ describe("SUB_CONTEXT", () => {
   });
 
   // 카테고리별 서브 수 검증
-  it("price: 6개 서브", () => {
-    expect(Object.keys(SUB_CONTEXT.price)).toHaveLength(6);
+  // 세션609 라: PSR 항목 삭제(세션607 다) PSR 축 삭제 · R4) — 6 → 5
+  it("price: 5개 서브 (PSR 없음)", () => {
+    expect(Object.keys(SUB_CONTEXT.price)).toHaveLength(5);
+    expect(SUB_CONTEXT.price).not.toHaveProperty("PSR");
   });
   it("location: 5개 서브", () => {
     expect(Object.keys(SUB_CONTEXT.location)).toHaveLength(5);

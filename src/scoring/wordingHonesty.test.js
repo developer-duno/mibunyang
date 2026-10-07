@@ -59,7 +59,7 @@ describe("엔진 문구 정직성 (세션512)", () => {
       /** @param {Record<string, unknown>} o @param {number|undefined} [maint] */
       const cats = (o, maint) =>
         calcCats(apt({ id: 1, price: 50000, region: "경기", ...o }), {
-          regionMedians: maint == null ? {} : { 경기: { pir: 5, psr: 0.8, unsoldRate: 15, supplyRatio: 100, maint } },
+          regionMedians: maint == null ? {} : { 경기: { pir: 5, unsoldRate: 15, supplyRatio: 100, maint } },
         });
       /** @param {Record<string, unknown>} o @param {number} [maint] */
       const maintDetail = (o, maint) => sub(cats(o, maint).benefit, "관리비 절감")?.detail;

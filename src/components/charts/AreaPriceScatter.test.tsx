@@ -1,6 +1,13 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { AreaPriceScatter, parsePoints, MIN_POINTS } from "./AreaPriceScatter";
+import {
+  AreaPriceScatter,
+  parsePoints,
+  MIN_POINTS,
+  SCATTER_H,
+  SCATTER_PAD,
+  SCATTER_FALLBACK_W,
+} from "./AreaPriceScatter";
 
 /**
  * ⚠️ `document.querySelector("svg")` 로 세면 **도움말 `?` 아이콘의 SVG** 까지 잡힌다
@@ -95,6 +102,83 @@ describe("AreaPriceScatter — 기준선", () => {
   it("점 하나당 최저~최고 막대와 평균 점을 그린다", () => {
     render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
     expect(chartCircles()).toHaveLength(8);
+  });
+});
+
+/**
+ * 세션589 E17·S13① — 그림이 화면 폭을 따라 통째로 커지지 않는다.
+ *
+ * 옛 모양: `viewBox 320×180` + `width:100%` → PC(본문 약 750px)에서 2.3배 확대(높이 428px, 글자 25px).
+ * 지금: SVG 를 실제 픽셀 폭으로 그린다(viewBox = 실제 크기) → 높이 180 고정, 글자 그대로.
+ * jsdom 은 레이아웃이 없어 폭을 0 으로 주므로, 폭이 필요한 시험은 `clientWidth` 와 ResizeObserver 를 흉내 낸다.
+ */
+describe("AreaPriceScatter — 크기 (화면 폭 따라 글자가 커지지 않는다)", () => {
+  const svgOf = () => chartSvg() as SVGSVGElement;
+
+  /** 그림 칸의 폭을 px 로 흉내 낸다 (모든 요소의 clientWidth) */
+  const withWidth = (px: number, fn: () => void) => {
+    const desc = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "clientWidth");
+    Object.defineProperty(HTMLElement.prototype, "clientWidth", { configurable: true, get: () => px });
+    try {
+      fn();
+    } finally {
+      if (desc) Object.defineProperty(HTMLElement.prototype, "clientWidth", desc);
+      else delete (HTMLElement.prototype as unknown as Record<string, unknown>).clientWidth;
+    }
+  };
+
+  it("높이는 고정 180px 이다 — PC 에서 240px 를 넘지 않는다", () => {
+    expect(SCATTER_H).toBe(180);
+    render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+    expect(svgOf().getAttribute("height")).toBe("180");
+  });
+
+  it("폭을 못 재면(시험 환경) 320px 로 그린다", () => {
+    render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+    expect(svgOf().getAttribute("width")).toBe("320");
+    expect(svgOf().getAttribute("viewBox")).toBe("0 0 320 180");
+  });
+
+  // ⚠️ 뮤테이션 대상: `width="100%"` + 고정 viewBox 로 되돌리면 red.
+  it("넓은 칸(750px)에서는 viewBox 도 750 — 확대 배율 1 이라 글자 크기가 그대로다", () => {
+    withWidth(750, () => {
+      render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+      const svg = svgOf();
+      expect(svg.getAttribute("width")).toBe("750");
+      expect(svg.getAttribute("height")).toBe("180");
+      expect(svg.getAttribute("viewBox")).toBe("0 0 750 180");
+      for (const t of svg.querySelectorAll("text")) expect(t.getAttribute("font-size")).toBe("11");
+    });
+  });
+
+  // 의존 배열에서 폭이 빠지면 폭이 바뀌어도 옛 좌표(320 기준)로 그린다 — 조용히 틀린 그림.
+  it("폭이 바뀌면 점 좌표도 따라 바뀐다 (750px 에서 마지막 점이 320 밖에 있다)", () => {
+    withWidth(750, () => {
+      render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+      const xs = [...chartCircles()].map((c) => Number(c.getAttribute("cx")));
+      expect(Math.max(...xs)).toBeGreaterThan(320);
+      expect(Math.max(...xs)).toBeLessThanOrEqual(750 - SCATTER_PAD.right);
+    });
+  });
+
+  it("맨 오른쪽 눈금 숫자가 잘리지 않는다 — 오른쪽 여백이 글자 절반보다 넓다", () => {
+    render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+    const ticks = [...svgOf().querySelectorAll('[data-axis="x-tick"]')];
+    expect(ticks.length).toBeGreaterThan(1);
+    const lastX = Math.max(...ticks.map((t) => Number(t.getAttribute("x"))));
+    // 세 자리 숫자("200")는 11px 글자로 약 20px — 가운데 정렬이라 절반(10px)이 오른쪽으로 나간다
+    expect(SCATTER_FALLBACK_W - lastX).toBeGreaterThanOrEqual(14);
+    expect(SCATTER_PAD.right).toBeGreaterThanOrEqual(14);
+  });
+
+  it("'면적(㎡)' 은 눈금 숫자와 다른 줄에 있다 (겹치지 않는다)", () => {
+    render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+    const svg = svgOf();
+    const tickY = Number(svg.querySelector('[data-axis="x-tick"]')?.getAttribute("y"));
+    const titleY = Number(svg.querySelector('[data-axis="x-title"]')?.getAttribute("y"));
+    // 글자 높이 11px — 두 줄의 기준선이 그보다 넓게 떨어져야 안 겹친다
+    expect(titleY - tickY).toBeGreaterThanOrEqual(14);
+    expect(titleY).toBeLessThan(SCATTER_H);
   });
 });
 

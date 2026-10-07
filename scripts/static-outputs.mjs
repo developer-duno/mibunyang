@@ -9,7 +9,17 @@ export { DETAIL_BUCKET_COUNT, detailBucketName };
 
 // list 에서 상세로 분리하는 필드 (키 자체 삭제 = DetailModal undefined sentinel 보존).
 // 가격배열 4개(기존)는 buildListData 의 destructure 로 별도 제외.
-const DETAIL_ONLY_FIELDS = ["nearbySchools", "nearbyChildcare", "nearbyFacilities", "benefits"];
+// 세션609 라) — 시세 비교 범위 좁히기 상세 전용 3칸(VIEW 20261007000000 끝 3줄: dongFact·complexTable·
+//   complexJeonseTable). 시세 탭만 쓰고 단지마다 배열·객체라 목록에 실으면 공개 JSON 이 커진다(마이그 머리 주석).
+const DETAIL_ONLY_FIELDS = [
+  "nearbySchools",
+  "nearbyChildcare",
+  "nearbyFacilities",
+  "benefits",
+  "dongFact",
+  "complexTable",
+  "complexJeonseTable",
+];
 
 // 목록에 잔존할 catsCache subs (첫 항목만) — AptCard 가 price/location subs[0] 의 info/detail 사용.
 const KEEP_FIRST_SUB_CATS = new Set(["price", "location"]);
@@ -82,6 +92,9 @@ export function buildDetailBuckets(apartments, n = DETAIL_BUCKET_COUNT) {
       rentByArea: apt.rentByArea ?? null,
       jeonseByArea: apt.jeonseByArea ?? null,
       priceByFloor: apt.priceByFloor ?? null,
+      dongFact: apt.dongFact ?? null,
+      complexTable: apt.complexTable ?? null,
+      complexJeonseTable: apt.complexJeonseTable ?? null,
     });
   }
   return buckets.map((data, bucket) => ({ bucket, data }));

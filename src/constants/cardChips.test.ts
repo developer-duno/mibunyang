@@ -284,23 +284,32 @@ describe("buildCardChips — 강점/약점 판정", () => {
   });
 
   it("전세가율은 70~80 만 강점 / 80 초과·50 미만은 약점 / 사이는 회색", () => {
-    expect(find(build({ jeonseRate: 72 }), "jeonseHigh")?.layer).toBe("good");
-    expect(find(build({ jeonseRate: 44 }), "jeonseLow")?.layer).toBe("bad");
-    expect(find(build({ jeonseRate: 60 }), "jeonseRate")?.layer).toBe("neutral");
+    expect(find(build({ complexJeonseRate: 72 }), "jeonseHigh")?.layer).toBe("good");
+    expect(find(build({ complexJeonseRate: 44 }), "jeonseLow")?.layer).toBe("bad");
+    expect(find(build({ complexJeonseRate: 60 }), "jeonseRate")?.layer).toBe("neutral");
   });
 
   it("전세가율 80 초과는 초록이 아니라 주황이다 — 점수 곡선이 급락하는 구간", () => {
     // 옛 카드는 92% 를 초록 강점으로 칠했는데, 그 구간 서브점수 평균은 5.5점이다.
     // 실측 310곳(초록 칩의 45.8%)이 그렇게 반대 색으로 칠해져 있었다.
-    const tooHigh = find(build({ jeonseRate: 92 }), "jeonseTooHigh");
+    const tooHigh = find(build({ complexJeonseRate: 92 }), "jeonseTooHigh");
     expect(tooHigh?.layer).toBe("bad");
     expect(tooHigh?.tone).toBe("amber");
-    expect(find(build({ jeonseRate: 92 }), "jeonseHigh")).toBeUndefined();
+    expect(find(build({ complexJeonseRate: 92 }), "jeonseHigh")).toBeUndefined();
+  });
+
+  // 세션609 라 — 칩 소스는 같은 단지 전세가율(complexJeonseRate). 없으면 칩이 없다(옛 구 jeonseRate 로 대신하지 않는다).
+  it("전세가율 칩 소스 = complexJeonseRate — 있음/없음/옛 jeonseRate 만 있음", () => {
+    expect(find(build({ complexJeonseRate: 72 }), "jeonseHigh")?.text).toBe("전세가율 72%");
+    const ids = (chips: ReturnType<typeof build>) => chips.map((c) => c.id).filter((id) => id.startsWith("jeonse"));
+    expect(ids(build({ complexJeonseRate: null }))).toEqual([]);
+    expect(ids(build({ jeonseRate: 72 }))).toEqual([]);
+    expect(ids(build({ jeonseRate: 92, complexJeonseRate: 60 }))).toEqual(["jeonseRate"]);
   });
 
   it("경계값 80 은 아직 강점 (곡선 정점의 끝)", () => {
-    expect(find(build({ jeonseRate: 80 }), "jeonseHigh")?.layer).toBe("good");
-    expect(find(build({ jeonseRate: 80.1 }), "jeonseTooHigh")?.layer).toBe("bad");
+    expect(find(build({ complexJeonseRate: 80 }), "jeonseHigh")?.layer).toBe("good");
+    expect(find(build({ complexJeonseRate: 80.1 }), "jeonseTooHigh")?.layer).toBe("bad");
   });
 
   it("주차는 1.5 이상 강점 / 1 미만 약점 / 사이는 회색", () => {
@@ -562,7 +571,7 @@ describe("buildCardChips — 추가 모집은 청약홈(ah-) 단지만", () => {
 describe("splitCardChips — 상한을 걸어도 정보가 사라지지 않는다", () => {
   const many = build({
     // 강점 4개
-    jeonseRate: 75,
+    complexJeonseRate: 75,
     parkingRatio: 1.8,
     exclusiveRatio: 85,
     dsr40pass: true,
@@ -658,7 +667,7 @@ describe("splitCardChips — 흔한 경고가 진짜 위험을 밀어내지 않�
 
   it("돈으로 환산되는 강점(할인·교통호재)이 취향 강점(전용률·전세가율)보다 앞선다", () => {
     const s = splitCardChips(
-      build({ discountPct: 5, exclusiveRatio: 88, jeonseRate: 75, transitDev: "GTX-A 동탄역", devDist: 1 })
+      build({ discountPct: 5, exclusiveRatio: 88, complexJeonseRate: 75, transitDev: "GTX-A 동탄역", devDist: 1 })
     );
     expect(s.good.map((c) => c.id)).toEqual(["discount", "transitDev"]);
     expect(s.hidden.map((c) => c.id)).toEqual(expect.arrayContaining(["jeonseHigh", "exclusiveHigh"]));
@@ -696,9 +705,9 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
     // 그 키를 쓰는 테스트는 undefined 를 비교하며 조용히 통과한다.
     const everyId = new Set<string>();
     const variants: Array<Record<string, unknown>> = [
-      { discountPct: 5, jeonseRate: 75, parkingRatio: 1.8, exclusiveRatio: 88, naverSchoolWalkMin: 3 },
-      { jeonseRate: 40, parkingRatio: 0.7, exclusiveRatio: 60, naverSchoolWalkMin: 20 },
-      { jeonseRate: 92 },
+      { discountPct: 5, complexJeonseRate: 75, parkingRatio: 1.8, exclusiveRatio: 88, naverSchoolWalkMin: 3 },
+      { complexJeonseRate: 40, parkingRatio: 0.7, exclusiveRatio: 60, naverSchoolWalkMin: 20 },
+      { complexJeonseRate: 92 },
       { corridorType: "복도식", heatFuel: "LPG", schoolGrade: "D", primaryDirection: "북향" },
       { unsoldRate: 45, builderDebtRatio: 171.9, crimeSafetyGrade: 5 },
       { crimeSafetyGrade: 4 },

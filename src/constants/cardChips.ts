@@ -349,7 +349,10 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   }
 
   /* ── 상품 ── */
-  const jeonseRate = a.jeonseRate as number | null | undefined;
+  // 전세가율 = **같은 단지** 같은 평수 전세 중앙 ÷ 매매 중앙(`complexJeonseRate`, 세션609 라 · R3).
+  //   옛 소스 `jeonseRate` 는 구(區) 전체 값이라 이 단지 사정이 아니었다 — 이제 읽지 않는다.
+  //   값이 없으면 칩도 없다(동·구 값으로 대신하지 않는다 — 빈자리 처리는 라) 그림으로 사장님께 보인다).
+  const jeonseRate = a.complexJeonseRate as number | null | undefined;
   if (jeonseRate != null) {
     const v = Number(jeonseRate);
     const text = `전세가율 ${jeonseRate}%`;

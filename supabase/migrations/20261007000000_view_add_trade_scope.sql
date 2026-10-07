@@ -1,4 +1,4 @@
--- apartments_flat VIEW — 시세 비교 범위 좁히기 다) 점수 입력 칸 9개 노출 (세션607)
+-- apartments_flat VIEW — 시세 비교 범위 좁히기 다) 점수 입력 칸 9개 + 라) 화면 칸 3개 노출 (세션607·609)
 --
 -- ⛔⛔ 순서 경고: **이 마이그를 적용하기 전에 다) PR(점수 전환)을 합치면 점수 입력이 비어 전부 중립이 된다.**
 --    다) 의 scorePrice 는 괴리도·전세가율을 이 칸(cmpFairPrice·complexJeonseRate)에서만 읽는다 — 칸이 없으면
@@ -10,13 +10,15 @@
 --   담은 새 칸(cmp_*·complex_*)을 만들었고(20261004000000), 이 VIEW 가 그중 **점수 입력 칸만** 내보낸다.
 --   설계서 docs/superpowers/specs/2026-10-03-trade-scope-narrowing.md §4-3·§5-3 · 계획서 B1.
 --
--- ⚠️ 변경은 SELECT **맨 끝** 9줄(cmpScope … complexSaleN) + "dataReliability" 식의 두 항
+-- ⚠️ 변경은 SELECT **맨 끝** 12줄(cmpScope … complexSaleN 9 + dongFact·complexTable·complexJeonseTable 3) + "dataReliability" 식의 두 항
 --    (ts.nearby_median → ts.cmp_scope IN ('complex','dong_peer') 15점 · ts.jeonse_rate → ts.complex_jeonse_rate 10점,
 --    합계 100 그대로 — 사장님 결정 10-07 "지금 바꿈", 검사관 B4). 이 두 항이 바뀌면 신뢰도 서브점수(가격 0.07)도 움직이므로
 --    등급 전이표에 포함한다. 컬럼 순서·다른 조인·CTE 전부 무변경 → CREATE OR REPLACE 로 충분(DROP 불필요 → GRANT 보존).
--- ⚠️ 넣지 않는 칸: complex_table · complex_jeonse_table · complex_src · dong_fact (라 화면 몫 — 공개 JSON 크기).
+-- ⚠️ 라) 화면 칸 3개(dong_fact·complex_table·complex_jeonse_table)도 맨 끝에 싣는다(세션609) — 매일 굽기가
+--    select("*") 로 읽지만 목록 JSON 에서는 빼고(scripts/static-outputs.mjs DETAIL_ONLY_FIELDS) 상세 버킷에만 둔다.
+--    complex_src 는 넣지 않는다(화면이 cmp_src 로 충분).
 -- ⚠️ security_invoker 보존: CREATE OR REPLACE 라도 WITH (security_invoker = on) 직접 명시.
--- ⚠️ 라이브 API(api/supabase/apartments.ts)는 칸 **화이트리스트** — 같은 PR 에서 9칸을 넣었다.
+-- ⚠️ 라이브 API(api/supabase/apartments.ts)는 칸 **화이트리스트** — 같은 PR 에서 9칸, 라) PR 에서 3칸을 넣었다(12칸).
 --
 -- 선행: 20261004000000_trade_links_and_scope_stats.sql (trade_stats 새 칸) — 없으면 아래 가드가 멈춘다.
 --
@@ -29,7 +31,7 @@
 --          count(*) FILTER (WHERE "cmpScope" IN ('complex','dong_peer')) AS judged,
 --          count("complexJeonseRate") AS jr FROM apartments_flat;
 --
--- 본문은 직전 VIEW(20260922000004_view_add_coord_shared.sql) 통째 복사 + 위 끝 9줄 추가 + "dataReliability" 두 항 교체.
+-- 본문은 직전 VIEW(20260922000004_view_add_coord_shared.sql) 통째 복사 + 위 끝 12줄 추가 + "dataReliability" 두 항 교체.
 -- ROLLBACK: _rollbacks/20261007000001_rollback_view_add_trade_scope.sql (직전 VIEW 복원 — 칸을 줄이므로 DROP 필요)
 DO $$
 BEGIN
@@ -304,7 +306,7 @@ SELECT
   -- 시세 비교 범위 좁히기 다(세션607) — 가격 점수의 입력 칸(trade_stats 새 칸, 20261004000000 이 만듦).
   --   점수(scorePrice)는 이 칸만 읽는다: 적정가 = cmpFairPrice(범위 complex·dong_peer 일 때만) ·
   --   전세가율 = complexJeonseRate. 면적별 표(complex_table·complex_jeonse_table)·동네 사실(dong_fact)은
-  --   라) 화면 몫이라 **넣지 않는다** — 매일 굽기가 이 VIEW 를 select("*") 로 공개 JSON 에 싣는다(계획서 B1).
+  --   라) 화면 칸이라 맨 끝 3줄로 싣는다(세션609) — 목록 JSON 에서는 빼고 상세 버킷에만(static-outputs.mjs).
   --   ⚠️ CREATE OR REPLACE VIEW 는 기존 컬럼 순서 변경 불가(42P16) → 신규 컬럼은 반드시 SELECT 맨 끝.
   ts.cmp_scope AS "cmpScope",
   ts.cmp_fair_price AS "cmpFairPrice",
@@ -314,7 +316,10 @@ SELECT
   ts.cmp_src AS "cmpSrc",
   ts.complex_jeonse_rate AS "complexJeonseRate",
   ts.complex_jeonse_n AS "complexJeonseN",
-  ts.complex_sale_n AS "complexSaleN"
+  ts.complex_sale_n AS "complexSaleN",
+  ts.dong_fact AS "dongFact",
+  ts.complex_table AS "complexTable",
+  ts.complex_jeonse_table AS "complexJeonseTable"
 FROM deduped a
 LEFT JOIN latest_prices p ON p.apartment_id = a.id
 LEFT JOIN infra i ON i.apartment_id = a.id

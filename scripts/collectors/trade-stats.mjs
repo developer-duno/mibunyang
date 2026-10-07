@@ -1,6 +1,6 @@
 // @ts-check
 /**
- * 거래 통계 산출 — PIR, PSR, 전세가율, 인근 시세 중위값
+ * 거래 통계 산출 — PIR, 전세가율, 인근 시세 중위값 (PSR 은 세션609 라 부터 늘 null — PSR 축 삭제)
  *
  * 기존 Supabase 데이터(apartments, trades, regions, complexes, articles)에서
  * 파생 지표를 계산하여 trade_stats 테이블에 upsert.
@@ -590,37 +590,11 @@ async function main() {
       }
     }
 
-    // ── psr (Price to Surrounding Ratio) ────────────────────
-    let psr = null;
-    if (aptPrice != null && aptArea && aptArea > 0 && nearbyMedian != null) {
-      const aptPricePerM2 = aptPrice / aptArea;
-
-      // 인근 거래의 평균 m2당 가격
-      const withArea = recent12m.filter((t) => t.area && t.area > 0);
-      let nearbyPerM2 = null;
-
-      if (withArea.length >= 3) {
-        const perM2List = withArea.map((t) => t.price / t.area);
-        nearbyPerM2 = median(perM2List);
-      } else {
-        // naver 대체
-        const guNaver = naverByGu.get(key) || [];
-        const naverWithArea = guNaver.filter(
-          (a) =>
-            a.numeric_price != null &&
-            a.area2_m2 &&
-            a.area2_m2 > 0 &&
-            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name)
-        );
-        if (naverWithArea.length >= 1) {
-          nearbyPerM2 = median(naverWithArea.map((a) => a.numeric_price / a.area2_m2));
-        }
-      }
-
-      if (nearbyPerM2 && nearbyPerM2 > 0) {
-        psr = Math.round((aptPricePerM2 / nearbyPerM2) * 100) / 100;
-      }
-    }
+    // ── psr — 계산하지 않는다(세션609 라 · 사장님 결정 ③ · 설계서 §4-3) ──────────
+    // 가격 점수의 PSR 축은 세션607 다) 에서 없앴다(R4 — 구 전체 ㎡당 중위와 견줘 1,736곳 중 81% 를 "비쌈"이라 불렀다).
+    // 칸(trade_stats.psr)은 정리 PR 에서 지운다 — 그때까지 늘 null 로 써서 옛 값이 화면·감사에 남지 않게 한다.
+    // nearby_median·jeonse_rate(구)는 그대로 계산한다(결정 ③ 은 psr 만).
+    const psr = null;
 
     // ── recent_trades_6m (최근 6개월 거래 건수) ──────────────
     const recent6m = guTrades.filter(
@@ -756,7 +730,6 @@ async function main() {
   // 4. 요약 출력
   const withMedian = results.filter((r) => r.nearby_median != null);
   const withPir = results.filter((r) => r.pir != null);
-  const withPsr = results.filter((r) => r.psr != null);
   const withJeonse = results.filter((r) => r.jeonse_rate != null);
   const withTrades = results.filter((r) => r.recent_trades_6m != null);
   const withCancel = results.filter((r) => r.cancel_ratio_6m != null);
@@ -766,7 +739,6 @@ async function main() {
   const fromHistory = results.filter(r => r._medianSource === "history").length;
   log("summary", `nearby_median: ${withMedian.length}건 (실거래 ${fromTrades}, 매물 ${fromArticles}, 시세이력 ${fromHistory})`);
   log("summary", `pir: ${withPir.length}건 (평균 ${withPir.length ? (withPir.reduce((s, r) => s + (r.pir ?? 0), 0) / withPir.length).toFixed(1) : "N/A"}년)`);
-  log("summary", `psr: ${withPsr.length}건 (평균 ${withPsr.length ? (withPsr.reduce((s, r) => s + (r.psr ?? 0), 0) / withPsr.length).toFixed(2) : "N/A"})`);
   log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + (r.jeonse_rate ?? 0), 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
   log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + (r.cancel_ratio_6m ?? 0), 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
@@ -816,7 +788,7 @@ async function main() {
       console.log("\nPIR 상위 10:");
       for (const r of withPir.sort((a, b) => (b.pir ?? 0) - (a.pir ?? 0)).slice(0, 10)) {
         const apt = apartments.find((a) => a.id === r.apartment_id);
-        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, PSR ${r.psr ?? "N/A"}, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
+        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
       }
     }
 
@@ -824,7 +796,7 @@ async function main() {
       console.log("\nPIR 하위 10:");
       for (const r of withPir.sort((a, b) => (a.pir ?? 0) - (b.pir ?? 0)).slice(0, 10)) {
         const apt = apartments.find((a) => a.id === r.apartment_id);
-        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, PSR ${r.psr ?? "N/A"}, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
+        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
       }
     }
     return;

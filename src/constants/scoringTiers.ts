@@ -828,11 +828,11 @@ export const POLICE_DIST_NULL_SCORE = 35; // 데이터 없음 중립
 // 대체 = `FUTURE_WEIGHTS`(고정 가중치, 위쪽 정의). 각 항이 비음수 가산이라 채우면 오르기만 한다.
 
 // === Price: 데이터 부재 시 기본값 ===
-export const PRICE_NO_DATA_DEFAULTS: { dev: number; jr: number; pir: number; psr: number } = {
+// psr 키는 지웠다(세션609 라) — PSR 축이 세션607 다) 에서 없어져 읽는 곳이 없다(R4).
+export const PRICE_NO_DATA_DEFAULTS: { dev: number; jr: number; pir: number } = {
   dev: 30,
   jr: 50,
   pir: 50,
-  psr: 50,
 };
 
 // 세션114: 인근 실거래 중위값(nearbyMedian) 부재로 시도 평균 avgPriceSqm을

@@ -58,7 +58,15 @@ function buildStat(values: number[]): FieldStat | null {
  * ⚠️ `unsoldRate`(0%=완판=유효)·`subwayDist`(자체 센티널)·`parkingRatio`(0도 가능)는 제외 —
  *    이들에서 0은 진짜 값이므로 미수집으로 바꾸면 안 된다.
  */
-const ZERO_MEANS_MISSING = new Set(["pp", "pir", "jeonseRate", "avgMaintenanceCost", "exclusiveRatio"]);
+// complexJeonseRate(같은 단지 전세가율, 세션609 라)도 0% 는 있을 수 없다 — 0 은 미수집.
+const ZERO_MEANS_MISSING = new Set([
+  "pp",
+  "pir",
+  "jeonseRate",
+  "complexJeonseRate",
+  "avgMaintenanceCost",
+  "exclusiveRatio",
+]);
 
 /** 편차 계산에 쓸 수 있는 값인가 — null·NaN·센티널·("없음=0" 필드의) 0 제외 */
 export function usableValue(field: string, raw: unknown): number | null {

@@ -70,6 +70,10 @@ export interface AptDetailFields {
   nearbyChildcare?: unknown[] | null;
   nearbyFacilities?: unknown[] | null;
   benefits?: unknown[] | null;
+  /** 세션609 라) 시세 탭 상세 전용 3칸 — 모양은 `types/scoring.ts` Apt 의 같은 이름 칸 */
+  dongFact?: unknown;
+  complexTable?: unknown[] | null;
+  complexJeonseTable?: unknown[] | null;
 }
 
 // ─── 상세 버킷 lazy fetch (세션 468) ───

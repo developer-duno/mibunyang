@@ -327,6 +327,11 @@ function sanitizeTransaction(row: any) {
     complexJeonseRate: row.complexJeonseRate ?? null,
     complexJeonseN: row.complexJeonseN ?? null,
     complexSaleN: row.complexSaleN ?? null,
+    // 시세 비교 범위 좁히기 라(세션609) — 시세 탭 화면 칸 3개(VIEW 20261007000000 끝 3줄). null 보존:
+    //   없으면 화면이 그 줄·표를 안 그린다(빈 배열·0 을 지어 넣으면 "거래 0건" 이라는 없는 사실이 된다).
+    dongFact: row.dongFact ?? null,
+    complexTable: row.complexTable ?? null,
+    complexJeonseTable: row.complexJeonseTable ?? null,
     // 규제/보증 (engine.js scoreRisk에서 사용)
     isRegulated: row.isRegulated ?? false,
     // dsr40pass 는 null 보존 (세션513, 아래 hugGuarantee 세션508 선례와 동형). 미산정 121곳은

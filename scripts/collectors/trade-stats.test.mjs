@@ -432,6 +432,22 @@ describe("buildLatestPriceMap — VIEW latest_prices 규칙 미러 (A4)", () => 
     expect(src.includes("buildLatestPriceMap")).toBe(true); // 겨누는 식별자 존재 먼저 확인
     expect(src).toMatch(/const\s+latestPriceMap\s*=\s*buildLatestPriceMap\(/);
   });
+
+  // 세션609 라 · 사장님 결정 ③ · 설계서 §4-3 — psr 는 계산하지 않고 늘 null 로 쓴다(PSR 축은 세션607 다) 에서 삭제).
+  //   main() 은 DB 를 통째로 읽는 함수라 단위로 못 돌린다 → 소스에서 좌변을 고정해 본다(주석은 걷어낸다).
+  //   계산식(㎡당 비율)이 되살아나거나 psr 에 다른 값을 넣으면 red.
+  it("psr 는 항상 null — 계산식이 없고 결과 행에 null 로 실린다 (세션609 라)", () => {
+    const code = readFileSync(new URL("./trade-stats.mjs", import.meta.url), "utf8")
+      .split(/\r?\n/)
+      .map((l) => l.replace(/\/\/.*$/, ""))
+      .join("\n");
+    expect(code).toMatch(/const\s+psr\s*=\s*null\s*;/); // 양성 앵커 — 선언이 있다
+    expect(code).not.toMatch(/\bpsr\s*=\s*(?!null\b)[^=\s]/); // null 말고 다른 값을 넣는 자리가 없다
+    expect(code).not.toMatch(/aptPricePerM2|nearbyPerM2/); // 옛 ㎡당 비율 계산 재료
+    expect(code).toMatch(/^\s+psr,\s*$/m); // 결과 행에는 칸이 그대로 실린다(칸 삭제는 정리 PR)
+    // 요약 로그·미리보기 출력에서도 PSR 토막이 빠졌다
+    expect(code).not.toMatch(/withPsr|PSR \$\{/);
+  });
 });
 
 // 세션539 B-2: main() 의 Promise.all 안 6개 조회 중 articles(:233, 세션513 사고 후 추가) 만

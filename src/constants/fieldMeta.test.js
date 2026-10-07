@@ -150,8 +150,9 @@ describe("FIELD_META", () => {
     expect(FIELD_META.builderCreditGrade.fmt("A", { builder: "부산도시공사" })).toBe("A");
   });
 
-  it("psr fmt: 숫자 → toFixed(2)", () => {
-    expect(FIELD_META.psr.fmt(0.85)).toBe("0.85");
+  // 세션609 라) — PSR 축 삭제(세션607 다) · R4)와 함께 필드 정의도 지웠다. 되살아나면 red.
+  it("psr 항목이 없다 (PSR 축 삭제)", () => {
+    expect(FIELD_META).not.toHaveProperty("psr");
   });
 
   // 분양정보 필드 테스트

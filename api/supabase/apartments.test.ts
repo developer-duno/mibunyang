@@ -546,6 +546,8 @@ describe('sanitize (null → 기본값)', () => {
 // 세션607 다) 보완(검사관 A M12 · 사장님 결정 B4) — VIEW 마이그 파일을 직접 읽는 정적 가드.
 //   VIEW 별칭 하나가 오타면 그 칸은 화이트리스트에서 늘 undefined → null 이 되어 점수가 조용히 중립이 된다.
 //   주석(-- …)은 걷어내고 본다 — 머리말에 칸 이름·옛 식이 설명으로 적혀 있어 그대로 세면 무효다.
+//   세션609 라): 화면 칸 3개(dongFact·complexTable·complexJeonseTable)가 끝에 붙어 9 → 12. `dong_fact` 는
+//   `cmp_`·`complex_` 접두가 아니라 정규식에 `dong_` 를 더했다(빠뜨리면 11 로 세어 빨강).
 describe('VIEW 마이그 20261007000000 ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
   const stripSql = (p: string) =>
     readFileSync(new URL(p, import.meta.url), 'utf8')
@@ -555,23 +557,23 @@ describe('VIEW 마이그 20261007000000 ↔ 라이브 API 화이트리스트 (�
   const mig = stripSql('../../supabase/migrations/20261007000000_view_add_trade_scope.sql');
   const rollback = stripSql('../../supabase/migrations/_rollbacks/20261007000001_rollback_view_add_trade_scope.sql');
   const aliasesOf = (sql: string) =>
-    [...sql.matchAll(/\bts\.(?:cmp_|complex_)[a-z_]+\s+AS\s+"([A-Za-z]+)"/g)].map((m) => m[1]);
+    [...sql.matchAll(/\bts\.(?:cmp_|complex_|dong_)[a-z_]+\s+AS\s+"([A-Za-z]+)"/g)].map((m) => m[1]);
   const count = (sql: string, needle: string) => sql.split(needle).length - 1;
 
-  it('마이그가 내보내는 점수 입력 별칭 9개 = 화이트리스트가 받는 9칸 (집합·개수 둘 다)', async () => {
+  it('마이그가 내보내는 별칭 12개(점수 입력 9 + 라) 화면 3) = 화이트리스트가 받는 12칸 (집합·개수 둘 다)', async () => {
     const viewAliases = aliasesOf(mig);
-    expect(viewAliases).toHaveLength(9);
+    expect(viewAliases).toHaveLength(12);
     // 화이트리스트 이름은 실제 sanitize 출력에서 읽는다(소스 문자열이 아니라 동작)
     mockQuery.range.mockResolvedValue({ data: [{ id: 1, name: 'A', region: '경기' }], error: null, count: 1 });
     const res = makeRes();
     await handler(makeReq(), res);
     const d = res.json.mock.calls[0][0].data[0];
-    const whitelist = Object.keys(d).filter((k) => /^(cmp|complex)[A-Z]/.test(k));
-    expect(whitelist).toHaveLength(9);
+    const whitelist = Object.keys(d).filter((k) => /^(cmp|complex|dong)[A-Z]/.test(k));
+    expect(whitelist).toHaveLength(12);
     expect(new Set(viewAliases)).toEqual(new Set(whitelist));
   });
 
-  it('롤백 파일에는 그 9칸이 없다', () => {
+  it('롤백 파일에는 그 12칸이 없다', () => {
     expect(aliasesOf(rollback)).toHaveLength(0);
     for (const a of aliasesOf(mig)) expect(count(rollback, `"${a}"`), a).toBe(0);
   });

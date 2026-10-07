@@ -1,4 +1,4 @@
-import { memo, useMemo } from "react";
+import { memo, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
 import { niceTicks } from "../LineChart";
@@ -24,9 +24,22 @@ import { niceTicks } from "../LineChart";
 
 export type AreaPricePoint = { area: number; min: number; avg: number; max: number; count: number };
 
-const W = 320;
-const H = 180;
-const PAD = { top: 10, right: 8, bottom: 26, left: 46 };
+/**
+ * 그림 높이(px) — **화면 폭과 무관하게 고정**이다(세션589 E17).
+ * 옛 모양은 `viewBox 320×180` 을 `width:100%` 로 늘려, PC(본문 약 750px)에서 그림이 2.3배로 커지며
+ * 글자까지 같이 커졌다(높이 428px · 축 글자 25px). 이제 SVG 를 **실제 픽셀 폭 그대로** 그린다 —
+ * 폭이 넓어지면 점 사이만 벌어지고 글자·높이는 그대로다.
+ */
+export const SCATTER_H = 180;
+/** 폭을 아직 못 쟀을 때(첫 그리기 · 시험 환경)의 폭 */
+export const SCATTER_FALLBACK_W = 320;
+/**
+ * 여백. right — 맨 오른쪽 눈금 숫자("200")가 가운데 정렬이라 절반이 밖으로 나간다 → 그 절반(약 10px)보다 넓게.
+ * bottom — 눈금 숫자 줄과 "면적(㎡)" 줄을 **따로** 둔다(한 줄에 두면 마지막 눈금과 겹친다, S13①).
+ */
+export const SCATTER_PAD = { top: 10, right: 18, bottom: 36, left: 46 };
+const H = SCATTER_H;
+const PAD = SCATTER_PAD;
 /** 이보다 적으면 분포라고 부르지 않는다 */
 export const MIN_POINTS = 5;
 
@@ -59,7 +72,29 @@ export const AreaPriceScatter = memo(function AreaPriceScatter({
   aptArea?: number | null;
 }) {
   const pts = useMemo(() => parsePoints(priceByArea), [priceByArea]);
+  const empty = pts.length < MIN_POINTS;
 
+  // 그림을 담는 칸의 실제 폭(px). 빈 상태에서는 칸이 없으므로 `empty` 가 풀릴 때 다시 잰다
+  // (가격 배열은 상세 버킷이 늦게 도착한다 — 처음엔 빈 상태였다가 그림으로 바뀐다).
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const [width, setWidth] = useState(SCATTER_FALLBACK_W);
+  useLayoutEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const read = () => {
+      const w = Math.round(el.clientWidth);
+      // 0 = 아직 안 보이는 탭(display:none) — 보이게 되면 ResizeObserver 가 다시 부른다.
+      if (w > 0) setWidth(w);
+    };
+    read();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [empty]);
+  const W = width;
+
+  // ⚠️ `W`(폭)가 좌표를 정한다 — 의존 배열에서 빠지면 폭이 바뀌어도 옛 좌표로 그린다.
   const geom = useMemo(() => {
     if (pts.length < MIN_POINTS) return null;
     const areas = pts.map((p) => p.area);
@@ -72,7 +107,7 @@ export const AreaPriceScatter = memo(function AreaPriceScatter({
     const sx = (v: number) => PAD.left + ((v - xs.min) / (xs.max - xs.min)) * iw;
     const sy = (v: number) => PAD.top + ih - ((v - ys.min) / (ys.max - ys.min)) * ih;
     return { xs, ys, sx, sy, ih };
-  }, [pts, aptPrice]);
+  }, [pts, aptPrice, W]);
 
   const cheaper = useMemo(() => {
     if (!pts.length || aptPrice == null || aptPrice <= 0) return null;
@@ -105,89 +140,93 @@ export const AreaPriceScatter = memo(function AreaPriceScatter({
       }
       height={H}
     >
-      {geom && (
-        <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ display: "block", maxWidth: "100%" }}>
-          {/* 가로 격자 + Y 눈금 */}
-          {geom.ys.ticks.map((t) => (
-            <g key={`y${t}`}>
-              <line
-                x1={PAD.left}
-                x2={W - PAD.right}
-                y1={geom.sy(t)}
-                y2={geom.sy(t)}
-                stroke={C.border}
-                strokeWidth={1}
-              />
-              <text x={PAD.left - 5} y={geom.sy(t)} dy="0.35em" textAnchor="end" fontSize={F.xs} fill={C.muted}>
-                {t >= 10000 ? `${Math.round(t / 10000)}억` : t.toLocaleString("ko-KR")}
+      {/* 폭을 재는 칸 — SVG 는 이 칸의 실제 픽셀 폭으로 그린다(viewBox = 실제 크기 → 글자가 안 커진다) */}
+      <div ref={wrapRef} style={{ width: "100%", overflow: "hidden" }}>
+        {geom && (
+          <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} style={{ display: "block" }}>
+            {/* 가로 격자 + Y 눈금 */}
+            {geom.ys.ticks.map((t) => (
+              <g key={`y${t}`}>
+                <line
+                  x1={PAD.left}
+                  x2={W - PAD.right}
+                  y1={geom.sy(t)}
+                  y2={geom.sy(t)}
+                  stroke={C.border}
+                  strokeWidth={1}
+                />
+                <text x={PAD.left - 5} y={geom.sy(t)} dy="0.35em" textAnchor="end" fontSize={F.xs} fill={C.muted}>
+                  {t >= 10000 ? `${Math.round(t / 10000)}억` : t.toLocaleString("ko-KR")}
+                </text>
+              </g>
+            ))}
+            {/* X 눈금 */}
+            {geom.xs.ticks.map((t) => (
+              <text
+                key={`x${t}`}
+                data-axis="x-tick"
+                x={geom.sx(t)}
+                y={H - PAD.bottom + 14}
+                textAnchor="middle"
+                fontSize={F.xs}
+                fill={C.muted}
+              >
+                {Math.round(t)}
               </text>
-            </g>
-          ))}
-          {/* X 눈금 */}
-          {geom.xs.ticks.map((t) => (
-            <text
-              key={`x${t}`}
-              x={geom.sx(t)}
-              y={H - PAD.bottom + 14}
-              textAnchor="middle"
-              fontSize={F.xs}
-              fill={C.muted}
-            >
-              {Math.round(t)}
+            ))}
+            <text data-axis="x-title" x={W - PAD.right} y={H - 6} textAnchor="end" fontSize={F.xs} fill={C.muted}>
+              면적(㎡)
             </text>
-          ))}
-          <text x={W - PAD.right} y={H - 4} textAnchor="end" fontSize={F.xs} fill={C.muted}>
-            면적(㎡)
-          </text>
 
-          {/* 이 단지 면적 — 세로 기준선 */}
-          {aptArea != null && aptArea > 0 && aptArea >= geom.xs.min && aptArea <= geom.xs.max && (
-            <line
-              x1={geom.sx(aptArea)}
-              x2={geom.sx(aptArea)}
-              y1={PAD.top}
-              y2={PAD.top + geom.ih}
-              stroke={C.gridStrong}
-              strokeWidth={1}
-              strokeDasharray="2 3"
-            />
-          )}
-
-          {/* 면적 구간별 최저~최고 범위 + 평균 점 */}
-          {pts.map((p) => (
-            <g key={p.area}>
+            {/* 이 단지 면적 — 세로 기준선 */}
+            {aptArea != null && aptArea > 0 && aptArea >= geom.xs.min && aptArea <= geom.xs.max && (
               <line
-                x1={geom.sx(p.area)}
-                x2={geom.sx(p.area)}
-                y1={geom.sy(p.max)}
-                y2={geom.sy(p.min)}
-                stroke={C.blueBorder}
-                strokeWidth={3}
-                strokeLinecap="round"
+                x1={geom.sx(aptArea)}
+                x2={geom.sx(aptArea)}
+                y1={PAD.top}
+                y2={PAD.top + geom.ih}
+                stroke={C.gridStrong}
+                strokeWidth={1}
+                strokeDasharray="2 3"
               />
-              <circle cx={geom.sx(p.area)} cy={geom.sy(p.avg)} r={3} fill={C.blue} />
-            </g>
-          ))}
+            )}
 
-          {/* 이 단지 분양가 — 가로 기준선 (맨 위에 그려 점에 가리지 않게) */}
-          {aptPrice != null && aptPrice > 0 && (
-            <>
-              <line
-                x1={PAD.left}
-                x2={W - PAD.right}
-                y1={geom.sy(aptPrice)}
-                y2={geom.sy(aptPrice)}
-                stroke={C.amber}
-                strokeWidth={1.5}
-                strokeDasharray="4 3"
-              />
-              <text x={W - PAD.right} y={geom.sy(aptPrice) - 4} textAnchor="end" fontSize={F.xs} fill={C.amber}>
-                이 단지 분양가
-              </text>
-            </>
-          )}
-        </svg>
-      )}
+            {/* 면적 구간별 최저~최고 범위 + 평균 점 */}
+            {pts.map((p) => (
+              <g key={p.area}>
+                <line
+                  x1={geom.sx(p.area)}
+                  x2={geom.sx(p.area)}
+                  y1={geom.sy(p.max)}
+                  y2={geom.sy(p.min)}
+                  stroke={C.blueBorder}
+                  strokeWidth={3}
+                  strokeLinecap="round"
+                />
+                <circle cx={geom.sx(p.area)} cy={geom.sy(p.avg)} r={3} fill={C.blue} />
+              </g>
+            ))}
+
+            {/* 이 단지 분양가 — 가로 기준선 (맨 위에 그려 점에 가리지 않게) */}
+            {aptPrice != null && aptPrice > 0 && (
+              <>
+                <line
+                  x1={PAD.left}
+                  x2={W - PAD.right}
+                  y1={geom.sy(aptPrice)}
+                  y2={geom.sy(aptPrice)}
+                  stroke={C.amber}
+                  strokeWidth={1.5}
+                  strokeDasharray="4 3"
+                />
+                <text x={W - PAD.right} y={geom.sy(aptPrice) - 4} textAnchor="end" fontSize={F.xs} fill={C.amber}>
+                  이 단지 분양가
+                </text>
+              </>
+            )}
+          </svg>
+        )}
+      </div>
     </ChartFrame>
   );
 });

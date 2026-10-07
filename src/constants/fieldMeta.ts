@@ -154,12 +154,8 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     fmt: (v) => n(v, "배"),
     isEstimated: (v, apt) => apt?._fallbackPir,
   },
-  psr: {
-    label: "PSR (주변대비)",
-    section: "가격",
-    fmt: (v) => (typeof v === "number" ? v.toFixed(2) : "—"),
-    isEstimated: (v, apt) => apt?._fallbackPsr,
-  },
+  // `psr`(PSR 주변대비) 항목은 지웠다(세션609 라) — 가격 점수 PSR 축이 세션607 다) 에서 없어졌다(R4).
+  //   DB·타입의 칸은 정리 PR 에서 지운다. 관리자 표·서랍에도 더는 안 나온다.
   dataReliability: {
     label: "데이터 신뢰도",
     section: "가격",
@@ -673,7 +669,6 @@ export const FIELD_SECTIONS: { key: string; label: string; fields: string[] }[] 
       "housingPrice",
       "jeonseRate",
       "pir",
-      "psr",
       "dataReliability",
       "nearbyBuildYear",
       "avgFloor",

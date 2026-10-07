@@ -24,7 +24,8 @@ const ADMIN_SEC_COLOR: Record<string, string> = {
   교차검증: "#6366F1",
 };
 const ADMIN_FIELD_EXCLUDE: Record<string, readonly string[]> = {
-  가격: ["nearbyMedian", "jeonseRate", "pir", "psr", "dataReliability"],
+  // psr 은 뺐다(세션609 라) — PSR 축 삭제(세션607 다) · R4), 필드 정의도 없다.
+  가격: ["nearbyMedian", "jeonseRate", "pir", "dataReliability"],
   입지: ["hospital", "conv", "cafe", "culture", "bank", "pharmacy"],
   안전: ["unsoldRate", "recentTrades6m", "supplyRatio", "popGrowth"],
 };

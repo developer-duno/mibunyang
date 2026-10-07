@@ -8,6 +8,7 @@ import { HighlightField } from "./HighlightField";
 import { CompletenessDonut } from "./CompletenessDonut";
 import { HelpHint } from "@/components/HelpHint";
 import { ChartFrame } from "@/components/charts/ChartFrame";
+import { StepBars } from "@/components/charts/StepBars";
 import type { Apt } from "@/types/scoring";
 import type { DataSection } from "@/types/components/DataSections.types";
 
@@ -166,11 +167,9 @@ export const PriceByFloorBlock = memo(function PriceByFloorBlock({ apt }: { apt:
   const rows = (apt.priceByFloor as Array<{ group: string; avg: number; count: number }> | undefined) ?? [];
   if (rows.length === 0) return null;
 
-  const maxAvg = Math.max(...rows.map((r) => r.avg));
-
   // SourceComparison 이 하던 폴백 은폐를 그대로 이관한다 — 우리 값이 없어 네이버 값을 대신
   // 앉힌 상태(`_fallbackAvgFloor`)면 "N층"이 아니라 "미수집"으로 적어야 한다. 안 그러면
-  // 네이버 값을 우리가 잰 값처럼 말하게 된다(§SourceComparison.tsx 헤더 주석과 같은 원칙).
+  // 네이버 값을 우리가 잰 값처럼 말하게 된다(옛 두 출처 대조표의 원칙 — 그 표는 세션589 에 `detail/NaverListingLine` 한 줄로 바뀌었다).
   const isAvgFloorFallback = apt._fallbackAvgFloor === true;
   const avgFloor = isAvgFloorFallback ? null : (apt.avgFloor as number | null | undefined);
   // floorRange 는 대응하는 폴백 플래그가 없다(확인 완료) — 값이 있으면 그대로 쓴다.
@@ -189,32 +188,9 @@ export const PriceByFloorBlock = memo(function PriceByFloorBlock({ apt }: { apt:
 
   return (
     <ChartFrame title="층별 매매가 (주변 실거래)" ariaLabel={aria} height={140}>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 84 }} aria-hidden>
-        {rows.map((r) => {
-          const pct = maxAvg > 0 ? Math.max(8, (r.avg / maxAvg) * 100) : 8;
-          return (
-            <div
-              key={r.group}
-              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}
-            >
-              <span style={{ fontSize: F.micro, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-                {fmtPrice(r.avg)}
-              </span>
-              <div style={{ flex: 1, display: "flex", alignItems: "flex-end", width: "70%" }}>
-                <div style={{ width: "100%", height: `${pct}%`, background: C.blue, borderRadius: "4px 4px 0 0" }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-        {rows.map((r) => (
-          <div key={r.group} style={{ flex: 1, textAlign: "center" }}>
-            <div style={{ fontSize: F.xs, fontWeight: 700, color: C.sub }}>{r.group}</div>
-            <div style={{ fontSize: F.micro, color: C.muted }}>{r.count}건</div>
-          </div>
-        ))}
-      </div>
+      <StepBars
+        items={rows.map((r) => ({ label: r.group, value: r.avg, valueText: fmtPrice(r.avg), sub: `${r.count}건` }))}
+      />
       {summaryParts.length > 0 && (
         <div style={{ marginTop: 8, fontSize: F.xs, color: C.sub }}>{summaryParts.join(" · ")}</div>
       )}

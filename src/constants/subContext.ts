@@ -145,10 +145,7 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       interpret: (sc) => (sc >= 70 ? "소득 대비 부담 적음" : sc >= 40 ? "보통 부담" : "소득 대비 부담 큼"),
       benchmark: `${PIR_SCORE_TIERS.EXCELLENT_MAX}배 이하 우수 (1인당 개인소득 기준)`,
     },
-    PSR: {
-      interpret: (sc) => (sc >= 70 ? "주변 대비 합리적" : sc >= 40 ? "시세 수준" : "주변 대비 고가"),
-      benchmark: "0.85 이하 우수",
-    },
+    // `PSR` 항목은 지웠다(세션609 라) — 가격 점수에 PSR 서브가 더는 없다(세션607 다) · R4).
     "데이터 신뢰도": {
       interpret: (sc) => (sc >= 70 ? "데이터 충분" : sc >= 40 ? "일부 추정치 포함" : "데이터 부족"),
       benchmark: "70% 이상 권장",

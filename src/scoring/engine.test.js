@@ -745,7 +745,7 @@ describe("scoreRisk", () => {
   // sanitize(engine)가 unsoldRate null 을 지역 중위값으로 되채우지 않아야 한다 (세션 445).
   //   되채우면 calcCats 의 미분양률 sub 가 "미분양 자료 없음" 이 아니라 중위값 등급으로 나옴.
   it("calcCats: unsoldRate null + 지역 중위값 존재 -> 중위값 되채움 안 함 ('미분양 자료 없음' 유지)", () => {
-    const ctx = { regionMedians: { 경기: { pir: 5, psr: 0.8, unsoldRate: 10, supplyRatio: 100, maint: 0 } } };
+    const ctx = { regionMedians: { 경기: { pir: 5, unsoldRate: 10, supplyRatio: 100, maint: 0 } } };
     const cats = calcCats(makeApt({ region: "경기", units: 300, unsoldRate: null }), /** @type {any} */ (ctx));
     const sub = cats.risk.subs.find((s) => s.name === "미분양률");
     expect(sub?.info).toContain("미분양 자료 없음");
@@ -1195,7 +1195,8 @@ describe("computeRegionalMedians", () => {
     ];
     const m = computeRegionalMedians(apts);
     expect(m["경기"].pir).toBe(7);
-    expect(m["경기"].psr).toBe(1.0);
+    // 세션609 라) — psr 중앙값은 더 만들지 않는다(PSR 축 삭제, 세션607 다) · R4)
+    expect(m["경기"]).not.toHaveProperty("psr");
   });
   it("빈 배열 -> 빈 객체", () => {
     expect(computeRegionalMedians([])).toEqual({});
@@ -1207,7 +1208,6 @@ describe("computeRegionalMedians", () => {
     ]);
     const m = computeRegionalMedians(apts);
     expect(m["경기"].pir).toBe(5);
-    expect(m["경기"].psr).toBe(0.8);
     // 세션 445: unsoldRate null(=폭발값 무력화) 단지는 지역 중위값 분모에서 제외 → 20 단독.
     expect(m["경기"].unsoldRate).toBe(20);
   });
@@ -1223,8 +1223,8 @@ describe("computeRegionalMedians", () => {
     expect(computeRegionalMedians(apts)["서울"].pir).toBe(7);
   });
   it("단일 원소 -> 그 값", () => {
-    const apts = /** @type {any} */ ([{ region: "부산", psr: 1.5 }]);
-    expect(computeRegionalMedians(apts)["부산"].psr).toBe(1.5);
+    const apts = /** @type {any} */ ([{ region: "부산", pir: 1.5 }]);
+    expect(computeRegionalMedians(apts)["부산"].pir).toBe(1.5);
   });
   it('region null/빈문자 -> "기타" 버킷 (L31)', () => {
     const apts = /** @type {any} */ ([
@@ -1238,22 +1238,23 @@ describe("computeRegionalMedians", () => {
   });
   it("NaN/음수 필터 — pir 등 Number.isFinite, maint 는 >0 만 (L33-37)", () => {
     const apts = /** @type {any} */ ([
-      { region: "대전", pir: NaN, psr: -1, avgMaintenanceCost: -100 },
-      { region: "대전", pir: 5, psr: 0.9, avgMaintenanceCost: 0 },
-      { region: "대전", pir: 7, psr: 1.1, avgMaintenanceCost: 200 },
+      { region: "대전", pir: NaN, unsoldRate: -1, avgMaintenanceCost: -100 },
+      { region: "대전", pir: 5, unsoldRate: 0.9, avgMaintenanceCost: 0 },
+      { region: "대전", pir: 7, unsoldRate: 1.1, avgMaintenanceCost: 200 },
     ]);
     const m = computeRegionalMedians(apts);
-    // pir: NaN 제외 → [5,7] 평균 6. psr: -1 은 Number.isFinite 통과(음수도 finite)라 [-1,0.9,1.1] 중앙값 0.9.
+    // pir: NaN 제외 → [5,7] 평균 6. unsoldRate: -1 은 Number.isFinite 통과(음수도 finite)라 [-1,0.9,1.1] 중앙값 0.9.
+    // (세션609 라: 옛 대상 psr 은 PSR 축 삭제로 계산에서 뺐다 — 같은 Number.isFinite 경로인 unsoldRate 로 옮겼다)
     expect(m["대전"].pir).toBe(6);
-    expect(m["대전"].psr).toBe(0.9);
+    expect(m["대전"].unsoldRate).toBe(0.9);
     // maint: -100·0 제외(>0 만), 200 단독 → 200
     expect(m["대전"].maint).toBe(200);
   });
   it("해당 지역 모든 값 null -> 각 필드 null (L40)", () => {
-    const apts = /** @type {any} */ ([{ region: "광주", pir: null, psr: null }]);
+    const apts = /** @type {any} */ ([{ region: "광주", pir: null, unsoldRate: null }]);
     const m = computeRegionalMedians(apts);
     expect(m["광주"].pir).toBeNull();
-    expect(m["광주"].psr).toBeNull();
+    expect(m["광주"].unsoldRate).toBeNull();
   });
 });
 

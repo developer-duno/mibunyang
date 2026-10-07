@@ -32,6 +32,16 @@ export interface NearbyChildcare {
  * sanitize() 후의 a 객체 = 모든 위험·가격·인프라 필드 num()/str() 처리 완료.
  * 본 타입은 sanitize 입력·출력 둘 다 커버 (보수적 partial).
  */
+/** 같은 단지 면적별 거래 한 줄(`trade_stats.complex_table` — 세션609 라). 금액 만원 총액. */
+export interface TradeScopeAreaRow {
+  area: number;
+  n: number;
+  min: number;
+  median: number | null;
+  max: number;
+  last_month: string;
+}
+
 export interface Apt {
   // 식별자
   id?: string;
@@ -79,6 +89,26 @@ export interface Apt {
   complexJeonseRate?: number | null;
   complexJeonseN?: number | null;
   complexSaleN?: number | null;
+  /**
+   * 시세 비교 범위 좁히기 라(세션609) — 시세 탭 **상세 전용** 3칸(VIEW 20261007000000 끝 3줄).
+   * 목록 JSON 에는 없고 상세 버킷(`apartments-detail-16-N.json`)·라이브 API 에만 온다 — 옛 캐시·목록에서는 undefined.
+   * - `dongFact`: 같은 동·같은 평수 매매(나이 제한 없음) 사실. `age_gap_years` = 이 단지 연도 − 그 집들 건축년도
+   *   중앙값(양수 = 그 집들이 오래됨, `scripts/collectors/_trade-scope.mjs`). 금액은 만원 총액.
+   * - `complexTable`·`complexJeonseTable`: 같은 단지 면적별 매매(또는 분양권)·전세 행. `last_month` = "YYYYMM".
+   */
+  dongFact?: {
+    n: number;
+    min: number;
+    median: number | null;
+    max: number;
+    build_year_min: number | null;
+    build_year_max: number | null;
+    age_gap_years: number | null;
+    peer_n: number;
+    peer_median: number | null;
+  } | null;
+  complexTable?: TradeScopeAreaRow[] | null;
+  complexJeonseTable?: TradeScopeAreaRow[] | null;
 
   // 위험 (sanitize 후 num + 비관 폴백)
   // unsold = 미분양 세대 수(원시), unsoldRate = 미분양률(%). 100% 초과 폭발값은 null 로 무력화(세션 445).
@@ -280,7 +310,7 @@ export interface ScoringContext {
     string,
     {
       pir: number | null;
-      psr: number | null;
+      // psr 중앙값은 세션609 라) 에 뺐다(computeRegionalMedians — PSR 축 삭제, 세션607 다) · R4)
       unsoldRate: number | null;
       supplyRatio: number | null;
       maint: number | null;

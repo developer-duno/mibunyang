@@ -38,6 +38,10 @@ function makeApt(id, over = {}) {
     rentByArea: [{ area: 84, rent: 100 }],
     jeonseByArea: [{ area: 84, jeonse: 30000 }],
     priceByFloor: [{ floor: 10, price: 50000 }],
+    // 세션609 라) 상세 전용 3칸(시세 탭 — 동네 사실 줄·같은 단지 면적별 표)
+    dongFact: { n: 4, min: 30000, median: 35000, max: 40000, build_year_min: 1996, build_year_max: 2004, age_gap_years: 22, peer_n: 0, peer_median: null },
+    complexTable: [{ area: 84, n: 5, min: 48000, median: 50000, max: 52000, last_month: "202609" }],
+    complexJeonseTable: undefined,
     ...over,
   };
 }
@@ -92,6 +96,13 @@ describe("buildListData", () => {
     }
   });
 
+  // 세션609 라) — 시세 탭 전용 3칸은 목록 JSON 에 싣지 않는다(단지마다 배열·객체 — 공개 JSON 크기).
+  it("시세 비교 상세 3칸(dongFact·complexTable·complexJeonseTable) 키 삭제", () => {
+    for (const k of ["dongFact", "complexTable", "complexJeonseTable"]) {
+      expect(k in list[0]).toBe(false);
+    }
+  });
+
   it("noxious 잔존 (칩 + scoreLocation fallback 이중 사용)", () => {
     expect(Array.isArray(/** @type {any} */ (list[0]).noxious)).toBe(true);
   });
@@ -132,7 +143,7 @@ describe("buildDetailBuckets", () => {
   it("각 원소 = 상세 필드 + 가격배열 + full catsCache", () => {
     const el = buckets.flatMap((b) => b.data)[0];
     expect(Object.keys(el).sort()).toEqual(
-      ["benefits", "catsCache", "id", "jeonseByArea", "nearbyChildcare", "nearbyFacilities", "nearbySchools", "priceByArea", "priceByFloor", "rentByArea"].sort()
+      ["benefits", "catsCache", "complexJeonseTable", "complexTable", "dongFact", "id", "jeonseByArea", "nearbyChildcare", "nearbyFacilities", "nearbySchools", "priceByArea", "priceByFloor", "rentByArea"].sort()
     );
     // full catsCache — 슬림 안 됨 (product subs 도 전량)
     expect(/** @type {any} */ (el).catsCache.product.subs.length).toBeGreaterThan(0);
@@ -141,6 +152,13 @@ describe("buildDetailBuckets", () => {
   it("undefined 필드는 null 로 정규화", () => {
     const el = buckets.flatMap((b) => b.data)[0];
     expect(/** @type {any} */ (el).nearbyChildcare).toBe(null);
+    expect(/** @type {any} */ (el).complexJeonseTable).toBe(null);
+  });
+
+  it("시세 비교 상세 3칸은 값 그대로 실린다 (세션609 라)", () => {
+    const el = /** @type {any} */ (buckets.flatMap((b) => b.data)[0]);
+    expect(el.dongFact.age_gap_years).toBe(22);
+    expect(el.complexTable).toHaveLength(1);
   });
 });
 
