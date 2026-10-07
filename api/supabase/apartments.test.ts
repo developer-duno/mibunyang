@@ -584,4 +584,28 @@ describe('VIEW 마이그 20261007000000 ↔ 라이브 API 화이트리스트 (�
     expect(count(rollback, 'ts.nearby_median IS NOT NULL')).toBe(1);
     expect(count(rollback, 'ts.jeonse_rate IS NOT NULL')).toBe(1);
   });
+
+  // 세션609(재검사 🟡3): 신뢰도 식은 "합계 100" 이 머리말 약속인데 시험이 없었다 — 한 항만 바뀌어도
+  //   LEAST(100, …) 가 넘침을 조용히 깎아 화면엔 티가 안 난다. 앵커를 못 찾으면 실패한다(조용한 통과 금지).
+  const reliabilityWeights = (sql: string) => {
+    const startAnchor = 'GREATEST(0, LEAST(100, (';
+    const endAnchor = '))) AS "dataReliability"';
+    expect(count(sql, startAnchor)).toBe(1);
+    const start = sql.indexOf(startAnchor);
+    const end = sql.indexOf(endAnchor, start);
+    expect(end).toBeGreaterThan(start);
+    const block = sql.slice(start + startAnchor.length, end);
+    return [...block.matchAll(/\bTHEN\s+(\d+)\b/g)].map((m) => Number(m[1]));
+  };
+
+  it('dataReliability 식 — 항 9개·합 100 (마이그·롤백 둘 다)', () => {
+    for (const [name, sql] of [
+      ['마이그', mig],
+      ['롤백', rollback],
+    ] as const) {
+      const w = reliabilityWeights(sql);
+      expect(w, name).toHaveLength(9);
+      expect(w.reduce((s, x) => s + x, 0), name).toBe(100);
+    }
+  });
 });

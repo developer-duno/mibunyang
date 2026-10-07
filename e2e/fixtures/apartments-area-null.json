@@ -58,7 +58,8 @@
           "label": "가격 매력도",
           "total": 53,
           "deviation": "-5.4",
-          "fairPrice": 35640
+          "fairPrice": 35640,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -290,7 +291,8 @@
           "label": "가격 매력도",
           "total": 44,
           "deviation": "0.0",
-          "fairPrice": 0
+          "fairPrice": 0,
+          "fairPriceScope": "none"
         },
         "future": {
           "key": "future",
@@ -510,7 +512,8 @@
           "label": "가격 매력도",
           "total": 80,
           "deviation": "27.6",
-          "fairPrice": 54432
+          "fairPrice": 54432,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -720,7 +723,8 @@
           "label": "가격 매력도",
           "total": 44,
           "deviation": "-18.0",
-          "fairPrice": 43800
+          "fairPrice": 43800,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -801,7 +805,8 @@
           "label": "가격 매력도",
           "total": 31,
           "deviation": "-52.7",
-          "fairPrice": 58000
+          "fairPrice": 58000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -882,7 +887,8 @@
           "label": "가격 매력도",
           "total": 31,
           "deviation": "-53.8",
-          "fairPrice": 58000
+          "fairPrice": 58000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -963,7 +969,8 @@
           "label": "가격 매력도",
           "total": 78,
           "deviation": "22.0",
-          "fairPrice": 30456
+          "fairPrice": 30456,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1044,7 +1051,8 @@
           "label": "가격 매력도",
           "total": 28,
           "deviation": "-164.1",
-          "fairPrice": 47376
+          "fairPrice": 47376,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1125,7 +1133,8 @@
           "label": "가격 매력도",
           "total": 85,
           "deviation": "57.3",
-          "fairPrice": 71820
+          "fairPrice": 71820,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1206,7 +1215,8 @@
           "label": "가격 매력도",
           "total": 82,
           "deviation": "44.0",
-          "fairPrice": 58320
+          "fairPrice": 58320,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1287,7 +1297,8 @@
           "label": "가격 매력도",
           "total": 41,
           "deviation": "-14.4",
-          "fairPrice": 28764
+          "fairPrice": 28764,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1368,7 +1379,8 @@
           "label": "가격 매력도",
           "total": 48,
           "deviation": "-17.4",
-          "fairPrice": 31000
+          "fairPrice": 31000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1449,7 +1461,8 @@
           "label": "가격 매력도",
           "total": 57,
           "deviation": "-2.8",
-          "fairPrice": 30456
+          "fairPrice": 30456,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1530,7 +1543,8 @@
           "label": "가격 매력도",
           "total": 92,
           "deviation": "18.5",
-          "fairPrice": 33000
+          "fairPrice": 33000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1611,7 +1625,8 @@
           "label": "가격 매력도",
           "total": 87,
           "deviation": "35.6",
-          "fairPrice": 66500
+          "fairPrice": 66500,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1692,7 +1707,8 @@
           "label": "가격 매력도",
           "total": 72,
           "deviation": "10.8",
-          "fairPrice": 40000
+          "fairPrice": 40000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1773,7 +1789,8 @@
           "label": "가격 매력도",
           "total": 87,
           "deviation": "24.0",
-          "fairPrice": 54000
+          "fairPrice": 54000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1854,7 +1871,8 @@
           "label": "가격 매력도",
           "total": 49,
           "deviation": "-40.0",
-          "fairPrice": 60000
+          "fairPrice": 60000,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -1935,7 +1953,8 @@
           "label": "가격 매력도",
           "total": 61,
           "deviation": "8.0",
-          "fairPrice": 36353
+          "fairPrice": 36353,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -2016,7 +2035,8 @@
           "label": "가격 매력도",
           "total": 90,
           "deviation": "44.2",
-          "fairPrice": 53460
+          "fairPrice": 53460,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -2097,7 +2117,8 @@
           "label": "가격 매력도",
           "total": 75,
           "deviation": "8.0",
-          "fairPrice": 38250
+          "fairPrice": 38250,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",
@@ -2192,7 +2213,8 @@
           "label": "가격 매력도",
           "total": 46,
           "deviation": "0.0",
-          "fairPrice": 0
+          "fairPrice": 0,
+          "fairPriceScope": "none"
         },
         "future": {
           "key": "future",
@@ -2427,7 +2449,8 @@
           "deviation": "-152.8",
           "fairPrice": 17176,
           "fairPriceFromSidoAvg": false,
-          "fairPriceFromAreaBucket": true
+          "fairPriceFromAreaBucket": true,
+          "fairPriceScope": "complex"
         },
         "future": {
           "key": "future",

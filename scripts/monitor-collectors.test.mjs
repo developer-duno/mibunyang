@@ -1651,6 +1651,26 @@ describe("checkTradeScopeFill — ⑥-b 점수 입력 채움 (세션607)", () =>
     const broken = fakeSb(() => ({ count: null, error: { code: "57014", message: "statement timeout" } }));
     await expect(fetchTradeScopeFillCounts(broken)).rejects.toThrow("statement timeout");
   });
+
+  it("배선 가드 — runAll 이 ⑥ 뒤에서 ⑥-b 를 부르고 그 결과를 issues 에 합친다 (세션609 · 재검사 🟡1)", () => {
+    // 순수 함수 시험은 main() 이 이 점검을 안 불러도 초록이다 — 소스 본문을 읽어 배선을 고정한다.
+    //   줄머리 `//` 주석 줄은 걷어내고 본다(배선 줄을 주석 처리하면 빨강이 나게).
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8")
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join("\n");
+    const viewStaleAt = src.search(/issues\s*=\s*issues\.concat\(\s*checkViewRegionStale\(/);
+    const blockAt = src.search(/issues\s*=\s*issues\.concat\(\s*await\s+runFailOpenCheck\(\s*"⑥-b/);
+    expect(viewStaleAt).toBeGreaterThan(-1);
+    expect(blockAt).toBeGreaterThan(viewStaleAt);
+    // runFailOpenCheck 콜백 본문만 잘라 본다(닫는 `}));` 까지)
+    const end = src.indexOf("}));", blockAt);
+    expect(end).toBeGreaterThan(blockAt);
+    const block = src.slice(blockAt, end);
+    expect(block).toMatch(/const\s+counts\s*=\s*await\s+fetchTradeScopeFillCounts\(\s*\)/);
+    expect(block).toMatch(/const\s+scopeIssues\s*=\s*checkTradeScopeFill\(\s*counts\s*\)/);
+    expect(block).toMatch(/return\s+scopeIssues\s*;/);
+  });
 });
 
 describe("checkOrphanGuPairs — ⑦ 시군구 짝 불일치 (세션549)", () => {
