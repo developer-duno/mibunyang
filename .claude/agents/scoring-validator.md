@@ -32,7 +32,7 @@ color: cyan
 | 위치 | 합계 | 허용 오차 |
 |---|---|---|
 | PROFILES 5개 (`live`, `invest`, `newlywed`, `edu`, `retire`) — `src/constants/profiles.js` | **각각 100** | ±0.01 |
-| `scorePrice` 내부 (괴리도/전세가율/PIR/PSR/신뢰도/택지비 총 6개) | **1.00** | ±0.0001 |
+| `scorePrice` 내부 (괴리도 0.55/전세가율 0.20/PIR 0.15/신뢰도 0.07/택지비 0.03 총 5개 — 상수 `PRICE_SUB_WEIGHTS`, 세션607 D12 · PSR 축 삭제) | **1.00** | ±0.0001 |
 | `scoreLocation` 내부 (5개 서브) | **1.00** | ±0.0001 |
 | `scoreLocation` > `infra` 서브가중치 (10항목) | **1.00** | ±0.0001 |
 | `scoreRisk` 내부 (11개 서브) | **1.00** | ±0.0001 |
@@ -44,7 +44,7 @@ color: cyan
 ## 클램핑 규칙
 
 - 모든 최종 점수는 `[0, 100]` 범위. `Math.max(0, Math.min(100, x))` 또는 `Math.min(..., 100)` 패턴 필수.
-- **특수 케이스 — PSR 서브스코어**: `psr < 0.7`일 때 내부 계산값이 100 초과 가능. 반드시 clamp 필요.
+- **특수 케이스 — 괴리도 서브스코어**: 구간식(`DEV_SCORE_TIERS`) 계산값이 0~100 밖으로 나갈 수 있어 `devSc` 를 clamp 한다(`scorePrice.ts`). 옛 PSR 서브스코어 clamp 는 세션607 에 PSR 축과 함께 없어졌다.
 - clamp 누락 위치를 `Math.min|Math.max|clamp` grep으로 체크.
 
 ## null/undefined/NaN 처리
@@ -70,7 +70,7 @@ color: cyan
 3. 각 프로필 가중치 합을 `node -e` 스니펫으로 **직접 합산** (±0.01 이내 100인지)
 4. `src/scoring/score*.js` 각 파일의 내부 서브가중치 객체/배열 추출 후 합 = 1.00 확인
 5. `scoreProduct.js`는 max 9항목 = 100 별도 확인
-6. `Math.min|Math.max|clamp` Grep — 최종 점수 반환 직전에 있는지 (특히 PSR 경로)
+6. `Math.min|Math.max|clamp` Grep — 최종 점수 반환 직전에 있는지 (특히 괴리도 `devSc` 경로)
 7. `?.|?? 0|Number.isFinite` Grep — null 가드 누락 여부
 8. 변경된 파일이 있으면 변경 전후 diff로 불변식 깨짐 여부 집중 확인
 
@@ -94,7 +94,7 @@ PASS/FAIL
 
 ## 클램핑
 - Math.min/max 호출: N개, 누락 위치: [파일:라인]
-- PSR 특수 케이스 clamp: ✅/❌
+- 괴리도(devSc) 특수 케이스 clamp: ✅/❌
 
 ## null 처리
 - optional chaining 누락: [파일:라인]

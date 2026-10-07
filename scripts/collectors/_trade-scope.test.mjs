@@ -44,6 +44,16 @@ describe("상수 = 설계서 §5-2 값", () => {
   });
 });
 
+// 세션607(다): 점수·화면 문구가 쓰는 짝 상수(src/constants/scoringTiers.ts)가 여기 정본과 같은지 — 한쪽만 바뀌면
+//   "같은 동 비슷한 연식(±N년)"·"면적 N㎡ 이내 ㎡당 환산" 문구가 실제 규칙과 어긋난다.
+describe("짝 상수 — scoringTiers.ts 의 문구용 숫자 = 이 파일 정본", () => {
+  it("TRADE_SCOPE_PEER_YEARS = PEER_YEARS · TRADE_SCOPE_PER_M2_TOL_M2 = PER_M2_TOL_M2", async () => {
+    const tiers = await import("../../src/constants/scoringTiers");
+    expect(tiers.TRADE_SCOPE_PEER_YEARS).toBe(PEER_YEARS);
+    expect(tiers.TRADE_SCOPE_PER_M2_TOL_M2).toBe(PER_M2_TOL_M2);
+  });
+});
+
 describe("median — trade-stats.mjs 와 같은 정의(순환 import 를 피해 옮겨 둔 사본)", () => {
   it("같은 입력표에 같은 답 · 짝수 개는 두 가운데 평균 반올림", () => {
     const table = [[], [5], [3, 1, 2], [1, 2], [1, 4], [10, 20, 31, 40], [7.5, 2.25], [100, 101, 102, 103, 104, 105]];

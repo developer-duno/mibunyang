@@ -46,7 +46,7 @@ src/scoring/                (⚠️ 전부 .ts — 옛 문서가 .js 로 적어 
 |------|------|
 | PROFILES 5개 (live/invest/newlywed/edu/retire) | 각각 **100** |
 | PROFILES `locW` (입지 5서브 프로필별 비중 — newlywed/edu/retire, 세션526) | 각각 **1.00** |
-| scorePrice 내부 (괴리도/전세가율/PIR/PSR/신뢰도/택지비) | **1.00** |
+| scorePrice 내부 (괴리도 0.55/전세가율 0.20/PIR 0.15/신뢰도 0.07/택지비 0.03 — `PRICE_SUB_WEIGHTS`, 세션607 PSR 축 삭제) | **1.00** |
 | scoreLocation 내부 (5개 서브 — 기준 `LOCATION_SUB_WEIGHTS`) | **1.00** |
 | infra 서브가중치 (10항목) | **1.00** |
 | scoreRisk 내부 (11개 서브) | **1.00** |
@@ -71,7 +71,7 @@ src/scoring/                (⚠️ 전부 .ts — 옛 문서가 .js 로 적어 
 ## 모든 점수 0~100 클램핑
 
 `Math.min(..., 100)` 또는 `Math.max(0, Math.min(100, ...))` 필수.
-특히 PSR 서브스코어는 psr < 0.7일 때 100 초과 가능.
+(옛 PSR 서브스코어는 psr < 0.7일 때 100 초과 가능했다 — PSR 축은 세션607 에 삭제.)
 
 ## PIR 점수 구간 (세션108 재설계)
 
@@ -86,40 +86,41 @@ src/scoring/                (⚠️ 전부 .ts — 옛 문서가 .js 로 적어 
 
 상수: `src/constants/scoringTiers.js` → `PIR_SCORE_TIERS = { EXCELLENT_MAX: 10, GOOD_MAX: 20, MODERATE_MAX: 30, BURDEN_PENALTY: 2 }`.
 
-## fairPrice 폴백 + 신뢰도 차감 (세션114, 1순위 면적 버킷 매칭 추가)
+## 적정가 = 같은 단지 → 같은 동 또래 실거래 (세션607 — 시세 비교 범위 좁히기 다)
 
-`fairPrice` 산정은 4단 폴백:
+정본 = 설계서 `docs/superpowers/specs/2026-10-03-trade-scope-narrowing.md` §5-3(R1~R5·D8·D10·D12).
 
-1. **`trade_stats.price_by_area` 평형별 실거래 버킷 매칭**(`matchAreaPrice`, `scorePrice.ts`) — 1순위
-2. `trade_stats.nearby_median` × `getAreaAdj`
-3. `regions.avg_price_sqm` × 면적 → `fairPriceFromSidoAvg=true` 플래그 설정
-4. `presale_pp` × 면적/3.3058 → 동일 플래그 설정
+- **입력 = `cmpFairPrice`**(VIEW `apartments_flat` ← `trade_stats.cmp_fair_price`, 만원 총액). `cmpScope` 가
+  `complex`(같은 단지 — 입주 전은 분양권 거래, R2) 또는 `dong_peer`(같은 동·같은 평수·준공 ±10년 또래 매매, R5)이고
+  값 > 0 일 때만 적정가로 쓴다. 범위·건수·기간·면적 방식은 `trade-stats.mjs`·`_trade-scope.mjs` 가 정한다.
+- **계수 없음**: `getAgeCoeff`(연식·신축)·`getAreaAdj`(면적)·브랜드 `adj` 를 곱하지 않는다(D8·R5 — 자기 단지·또래 값).
+- **폴백 없음**: 옛 `priceByArea` 버킷(`matchAreaPrice`)·`nearbyMedian`(구 중위)·`avgPriceSqm`(시도 평균)·`presalePp`
+  는 점수에서 읽지 않는다. 그래서 `PRICE_FALLBACK_RELIABILITY_PENALTY`(신뢰도 −15) 경로도 없다(상수는 정리 PR 에서 삭제).
+- **적정가가 없으면(D10) 괴리도만 중립**(`PRICE_NO_DATA_DEFAULTS.dev`) — 전세가율·PIR·신뢰도·택지비는 각자 판정한다
+  (옛 코드는 넷 다 중립). 분양가가 없을 때도 같다.
+- **전세가율 입력 = `complexJeonseRate`**(같은 단지 전세 ÷ 매매, R3·D11) — null 이면 중립. 옛 `jeonseRate`(구)·
+  `naverJeonseRate` 는 점수에서 안 읽는다. 등급 식(70~80 적정 …)은 그대로.
+- **PSR 축 삭제(R4)** — 가중치 `PRICE_SUB_WEIGHTS`(괴리도 0.55 · 전세가율 0.20 · PIR 0.15 · 신뢰도 0.07 · 택지비 0.03),
+  `subs` 5개. 괴리도 식·`DEV_SCORE_TIERS` 는 그대로(입력만 교체 — 등급표 재측정은 10/08 실데이터 뒤 별도).
+- **반환값**: `fairPriceScope`('complex'·'dong_peer'·'none') · `fairPriceSrc`('sale'·'presale'·null) · `fairPriceN`
+  — 옛 `fairPriceFromAreaBucket`·`fairPriceFromSidoAvg` 를 대신한다. 화면(`cardChips` 근거 라벨·`AdminScoreBreakdown`)은
+  이 값을 그대로 쓰고 **자체 재계산하지 않는다**(세션527). 판정 칩('저렴/수준/비쌈')은 범위 complex·dong_peer 만.
+- **문구**: 괴리도 detail 끝 = "이 단지 실거래 N건(최근 M개월) 대비" / "이 단지 분양권 거래 N건(…) 대비" /
+  "같은 동 비슷한 연식(±10년)·같은 평수 실거래 N건 대비"(+ per_m2 면 "(면적 20㎡ 이내 ㎡당 환산)") ·
+  none = "비교할 실거래가 아직 없어요 (중립 N점)". 숫자는 상수(`TRADE_SCOPE_PEER_YEARS`·`TRADE_SCOPE_PER_M2_TOL_M2`
+  — 정본 `_trade-scope.mjs` 와 시험으로 짝)·값에서 읽는다.
+- ⚠️ **순서**: VIEW 마이그 `20261007000000_view_add_trade_scope.sql` 적용 전에 이 코드를 합치면 입력 칸이 없어
+  전 단지가 괴리도·전세가율 중립으로 굽힌다. 엔진 문구는 `catsCache` 에 구워지므로 `compute-scores` 재계산 뒤 화면에 닿는다.
 
-**옛 2순위(nearbyMedian)의 결함**: `nearby_median` 은 같은 구 안 **모든 거래의 총액 중위값**(면적
-무관)이다. 여기에 `getAreaAdj`(±3~8%)만 곱하면, 단지 면적이 그 동네 전형 면적의 3배여도 fairPrice
-는 1.08배만 커져 **대형 평형이 구조적으로 "비싸다"로 채점**됐다(실측: 정적 JSON 1,713곳
-corr(면적, 괴리도) = −0.704, 150㎡+ 단지의 괴리도 0점 비율 100.0%, 라펜트힐 241.958㎡ 괴리도
-−924.1%). `price_by_area`(5㎡ 버킷별 실거래 평균)는 이미 그 평형대의 실거래이므로, 매칭에
-성공하면 `areaAdj` 를 **다시 곱하지 않는다**(곱하면 corr −0.237, 안 곱하면 −0.147 — 실측으로
-확인한 이중 계상 회피). 최근접 버킷과의 이격이 `AREA_BUCKET_TOLERANCE_M2`(기본 10㎡)를 넘으면
-그 버킷의 ㎡당가로 환산한다.
-
-⚠️ **면적 미상(`_noArea`, `apt.area` 가 null/미기재)은 버킷 매칭 대상에서 제외**한다. `sanitize`
-가 area 를 84 로 누른 뒤에는 "안 잰 것"과 "84㎡ 단지"를 구분할 수 없기 때문 — 누르기 전에
-`_noArea` 플래그를 남겨(세션508 `_no*` 관례) 84㎡ 버킷으로 오매칭되지 않게 막는다.
-
-**2~4순위 폴백 사용 시**: `dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY` (기본 15,
-`src/constants/scoringTiers.js`). 괴리도 `detail`에 `" — 광역 시도 평균 기준(실시세 왜곡 가능)"`,
-신뢰도 `info/detail`에 `" -폴백차감15"` 접미. **1순위(버킷 매칭)는 신뢰도 차감 없음** — 시도
-평균보다 정밀한 실거래이기 때문. 대신 괴리도 `detail`에 `" — 평수대별 실거래 기준"` 접미.
-점수 계산 로직·가중치는 불변, UX 정직성 보정만.
-
-영향 단지(옛 2순위 사고): 섬·군 10개(인천 동구 2·옹진군 2·경기 가평군 3·양평군 2·연천군 1).
-세션115 Playwright 실측으로 전문가 대시보드 `ExpertScoreBreakdown`에서 5/5 DOM 노출 확인.
+> 옛 절("fairPrice 폴백 + 신뢰도 차감 (세션114, 1순위 면적 버킷 매칭 추가)" — 4단 폴백·`_noArea` 버킷 제외·
+> 시도 평균 −15·"평수대별 실거래 기준" 접미)은 세션607 에 삭제됐다. 원문은 git 이력(`bf8b0eff` 이전 이 파일).
 
 ## 연식·신축 계수 (세션529 — 결함B 처방의 근거 재산출)
 
-`fairPrice`(1~4순위 전부)에 곱해지는 `ageCoeff` 는 두 표에서 나온다 — 준공 후는 `AGE_PREMIUM`,
+> ⚠️ **세션607 부터 적정가에 곱하지 않는다**(위 절 — 같은 단지·또래 실거래라 연식 보정이 이중이 된다, D8·R5).
+> 아래는 그 전 기록이다. `AGE_PREMIUM`·`PRESALE_PREMIUM_COEFF`·`getAgeCoeff` 는 정리 PR 에서 삭제 후보.
+
+(옛) `fairPrice`(1~4순위 전부)에 곱해지는 `ageCoeff` 는 두 표에서 나온다 — 준공 후는 `AGE_PREMIUM`,
 미준공(분양 예정)은 `PRESALE_PREMIUM_COEFF`(둘 다 `src/constants/brands.ts`, **거기 주석이 진실의 원천**).
 
 ### 선재 결함: 준공 판정이 통째로 뒤집혀 있었다
@@ -259,6 +260,9 @@ V8 은 이 6자리를 **확장 연도**로 읽어 서기 202605년을 만든다.
 
 ### 문구 밴드 ±5 → ±10 — **우리 추정 자체의 흔들림**이 근거
 
+> ⚠️ 세션607: 이 근거(계수 흔들림)의 **전제가 바뀌었다** — 적정가에 계수를 곱하지 않는다. 밴드 폭(±10)은 그대로 두고
+> 10/08 실데이터(같은 단지·또래 적정가) 분포로 재측정한다(등급 전이표와 함께 — 메인 몫).
+
 `fairPrice` 는 실거래에 계수를 곱해 만든 **추정치**다. 그 계수를 이미 문서화된 범위 안에서만
 흔들어도(미준공 패리티 1.265~1.455 = ±7.1% · `AGE_PREMIUM` 앵커 허용 ±15%) 괴리율이
 **중앙 ±11.5%p** 움직인다(n=1,537 · 미준공 ±7.3 · 준공 ±15.4). ±5% 밴드에서는 표본의 **5.4%만**
@@ -273,12 +277,12 @@ V8 은 이 6자리를 **확장 연도**로 읽어 서기 202605년을 만든다.
 
 ### 아직 못 고친 것
 
-- **면적 미상 176곳(10.2%)** 은 여전히 폴백 경로다. 네이버가 그 단지의 주택형 목록을 안 주기 때문
+- (세션607 해소 — 폴백 경로 자체가 없어졌다) **면적 미상 176곳(10.2%)** 은 여전히 폴백 경로다. 네이버가 그 단지의 주택형 목록을 안 주기 때문
   (빈 응답 589건). 지어내지 않고 **화면에 사실을 적는다** — 괴리도 `detail` 에
   `"면적 미상이라 동네 전체 실거래 총액과 비교(평형 차이 반영 안 됨)"`.
 - `trade-stats.mjs` 의 `latestPriceMap` 은 아직 `recorded_at` 만 보고 `house_type` 을 안 본다.
   VIEW(`latest_prices`)는 청약홈 행을 먼저 고르므로 **둘이 같은 단지에 서로 다른 price·area 를 쓴다**
-  → PSR 이 화면 `price` 와 다른 값에서 계산된다. BACKLOG 등재.
+  → PSR 이 화면 `price` 와 다른 값에서 계산된다. BACKLOG 등재. (세션607: PSR 은 점수에서 빠졌다 — 남는 건 시세 탭 표시뿐, 라) 몫)
 
 ## 새 카테고리 추가 시
 

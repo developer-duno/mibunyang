@@ -22,6 +22,8 @@ import {
   STALE_CLEAR_MAX_RATIO,
   UPDATE_CONCURRENCY,
   UPDATE_BATCH_DELAY_MS,
+  CMP_SCOPE_MIN_FILL,
+  assertCmpScopeReady,
 } from "./compute-scores.mjs";
 
 const src = readFileSync(new URL("./compute-scores.mjs", import.meta.url), "utf8")
@@ -263,5 +265,68 @@ describe("compute-scores — DB 요청률 (세션527)", () => {
 
   it("UPDATE 루프가 배치 사이에 실제로 쉰다", () => {
     expect(src).toMatch(/if\s*\(i\s*>\s*0\)\s*await\s+sleep\(\s*UPDATE_BATCH_DELAY_MS\s*\)\s*;/);
+  });
+});
+
+/**
+ * 세션607 다) 보완(검사관 A🟠) — 점수 입력 칸(cmpScope)이 없거나 비면 굽지 않고 멈춘다.
+ * 마이그 20261007000000 전에 합치거나 VIEW 를 롤백하면 전 단지 괴리도가 조용히 중립으로 구워지는 구멍.
+ */
+describe("compute-scores — 점수 입력 준비 확인 (세션607)", () => {
+  const rowsWith = (/** @type {Array<string | null>} */ scopes) => scopes.map((s, i) => ({ id: `a${i}`, cmpScope: s }));
+
+  it("0건이면 null — 0건 경로는 기존 처리(ok=0 기록 → monitor ②)", () => {
+    expect(assertCmpScopeReady([])).toBeNull();
+  });
+
+  it("첫 행에 cmpScope 칸 자체가 없으면 '칸 없음' 으로 멈춘다(마이그 미적용·VIEW 롤백)", () => {
+    const reason = assertCmpScopeReady([{ id: "a0", price: 50000 }, { id: "a1", price: 40000 }]);
+    expect(reason).toContain("cmpScope 칸 없음");
+    expect(reason).toContain("20261007000000");
+  });
+
+  it("채움률이 하한 미만이면 멈춘다 — 'none' 도 채움으로 센다", () => {
+    // 10행 중 5행만 채움(50%) → 하한 80% 미만
+    const reason = assertCmpScopeReady(rowsWith(["complex", "none", "dong_peer", "none", "none", null, null, null, null, null]));
+    expect(reason).toContain("5/10");
+    expect(reason).toContain("하한");
+  });
+
+  it("전부 'none' 이어도 채움 100% 라 통과 — 판정 결과가 '비교할 실거래 없음' 인 것은 정상", () => {
+    expect(assertCmpScopeReady(rowsWith(Array(10).fill("none")))).toBeNull();
+  });
+
+  it("하한 경계 — 채움률이 정확히 하한이면 통과, 한 행 모자라면 멈춘다", () => {
+    const n = 100;
+    const atMin = Math.round(n * CMP_SCOPE_MIN_FILL);
+    const at = rowsWith(Array.from({ length: n }, (_, i) => (i < atMin ? "complex" : null)));
+    const below = rowsWith(Array.from({ length: n }, (_, i) => (i < atMin - 1 ? "complex" : null)));
+    expect(assertCmpScopeReady(at)).toBeNull();
+    expect(assertCmpScopeReady(below)).not.toBeNull();
+  });
+
+  it("하한은 0 보다 크고 1 이하다(0 이면 멈춤 장치가 꺼진다)", () => {
+    expect(CMP_SCOPE_MIN_FILL).toBeGreaterThan(0);
+    expect(CMP_SCOPE_MIN_FILL).toBeLessThanOrEqual(1);
+  });
+
+  it("main() 배선 — 로드 직후·UPDATE 전에 확인하고, 멈출 때 failure 기록 + exit 1", () => {
+    expect(src).toMatch(
+      /const\s+notReady\s*=\s*assertCmpScopeReady\(\s*allApartments\s*\)\s*;\s*if\s*\(\s*notReady\s*\)\s*\{\s*logError\([^)]*\)\s*;\s*await\s+recordCollectorRun\(\s*PHASE\s*,\s*\{\s*\.\.\.reporter\.summary\(\)\s*,\s*status:\s*["']failure["']\s*,\s*errorMessage:\s*notReady\s*\}\s*\)\s*;\s*process\.exit\(1\)/,
+    );
+    const checkAt = src.indexOf("assertCmpScopeReady(allApartments)");
+    expect(checkAt).toBeGreaterThan(src.indexOf("allApartments.length === 0"));
+    expect(checkAt).toBeLessThan(src.indexOf("calcCats(apt, ctx)"));
+    expect(checkAt).toBeLessThan(src.indexOf('.update({ cats_cache: row.cats_cache })'));
+  });
+
+  it("daily-deploy 배선 — compute-scores 단계는 continue-on-error (F1 멈춤이 공개 JSON 갱신·배포까지 막지 않게, 세션608 재검사관 🟠)", () => {
+    const yml = readFileSync(new URL("../.github/workflows/daily-deploy.yml", import.meta.url), "utf8");
+    const stepAt = yml.indexOf("- name: Compute apartment scores (cats_cache)");
+    expect(stepAt).toBeGreaterThan(-1);
+    const nextStepAt = yml.indexOf("- name:", stepAt + 1);
+    const step = yml.slice(stepAt, nextStepAt === -1 ? undefined : nextStepAt);
+    expect(step).toMatch(/^\s*continue-on-error:\s*true\s*$/m);
+    expect(step).toContain("scripts/compute-scores.mjs");
   });
 });

@@ -19,6 +19,16 @@ export function makeApt(overrides = {}) {
     jeonseRate: 70,
     pir: 5,
     psr: 0.9,
+    // 시세 비교 범위 좁히기 다(세션607) — 가격 점수의 실제 입력(옛 nearbyMedian·jeonseRate 와 같은 값으로 맞춰 둔다)
+    cmpScope: "complex",
+    cmpFairPrice: 55000,
+    cmpN: 5,
+    cmpMonths: 12,
+    cmpAreaMode: "same_area",
+    cmpSrc: "sale",
+    complexJeonseRate: 70,
+    complexJeonseN: 4,
+    complexSaleN: 5,
     dataReliability: 80,
     subwayDist: 500,
     subwayName: "영통역",
@@ -112,7 +122,8 @@ export function makeScoredItem(aptOverrides = {}, resOverrides = {}) {
     res: {
       total: 75,
       cats: {
-        price: { total: 70, subs: [] },
+        // 세션607: 가격 판정 칩은 비교 범위(fairPriceScope)가 complex·dong_peer 일 때만 뜬다
+        price: { total: 70, subs: [], fairPriceScope: "complex", fairPriceSrc: "sale", fairPriceN: 5 },
         location: { total: 80, subs: [] },
         product: { total: 65, subs: [] },
         benefit: { total: 60, subs: [] },

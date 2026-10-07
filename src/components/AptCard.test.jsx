@@ -10,7 +10,14 @@ function makeRes(overrides = {}) {
   return {
     total: 75,
     cats: {
-      price: { label: "가격 매력도", total: 70, subs: [{ info: "-3.5%", name: "적정가괴리", score: 70 }] },
+      // 세션607: 가격 판정 칩은 비교 범위(fairPriceScope)가 complex·dong_peer 일 때만 뜬다(설계서 §5-4)
+      price: {
+        label: "가격 매력도",
+        total: 70,
+        subs: [{ info: "-3.5%", name: "적정가괴리", score: 70 }],
+        fairPriceScope: "complex",
+        fairPriceSrc: "sale",
+      },
       location: { label: "입지·생활권", total: 80, subs: [{ info: "역세권(500m)", name: "지하철", score: 80 }] },
       product: { label: "상품성", total: 65, subs: [] },
       benefit: { label: "혜택·할인", total: 60, totalWon: 1500, rate: 3, wonSource: "관리비 절감", subs: [] },
@@ -239,9 +246,9 @@ describe("AptCard", () => {
     res.cats.price.deviation = "-13.5";
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.queryByText("적정가 -13.5%")).toBeNull();
-    // (인근 실거래 기준) = 세션536: 비교 근거(경로) 표기. makeApt() 기본 area=84(면적 앎) + 두 fairPriceFrom* 플래그
-    // 미설정(nearbyMedian 경로) → priceBasisLabel("인근 실거래 기준").
-    expect(screen.getByText("적정가보다 13% 비쌈 (인근 실거래 기준)")).toBeInTheDocument(); // Math.abs(Math.round(-13.5))=13 (JS는 -13.5를 -13으로 반올림)
+    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale
+    // → priceBasisLabel("이 단지 실거래 기준") (옛 기대 "(인근 실거래 기준)" — nearbyMedian 경로는 폐지).
+    expect(screen.getByText("적정가보다 13% 비쌈 (이 단지 실거래 기준)")).toBeInTheDocument(); // Math.abs(Math.round(-13.5))=13 (JS는 -13.5를 -13으로 반올림)
   });
 
   // 세션411: 적정가 괴리(deviation) 부호 — 양수(+)=적정가보다 저렴(좋음). scorePrice.ts:127
@@ -251,8 +258,8 @@ describe("AptCard", () => {
     res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트 추가 — 옛 픽스처엔 없어 칩이 안 떴다
     res.cats.price.deviation = "18.4";
     render(<AptCard {...makeProps({ res })} />);
-    // (인근 실거래 기준) = 세션536 비교 근거 표기, makeApt() 기본 area=84 + 플래그 미설정
-    expect(screen.getByText("적정가보다 18% 저렴 (인근 실거래 기준)")).toBeInTheDocument(); // Math.round("18.4")=18
+    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
+    expect(screen.getByText("적정가보다 18% 저렴 (이 단지 실거래 기준)")).toBeInTheDocument(); // Math.round("18.4")=18
   });
 
   it("deviation 음수(비쌈)면 빨강 '비쌈' 배지 표시 + '저렴' 미표시 (세션420 A)", () => {
@@ -260,8 +267,8 @@ describe("AptCard", () => {
     res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트
     res.cats.price.deviation = "-18.4";
     render(<AptCard {...makeProps({ res })} />);
-    // (인근 실거래 기준) = 세션536 비교 근거 표기, makeApt() 기본 area=84 + 플래그 미설정
-    expect(screen.getByText("적정가보다 18% 비쌈 (인근 실거래 기준)")).toBeInTheDocument(); // Math.abs(Math.round("-18.4"))=18
+    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
+    expect(screen.getByText("적정가보다 18% 비쌈 (이 단지 실거래 기준)")).toBeInTheDocument(); // Math.abs(Math.round("-18.4"))=18
     expect(screen.queryByText(/저렴/)).toBeNull(); // 음수는 저렴 배지 안 뜸 (상호배타)
   });
 
@@ -281,8 +288,8 @@ describe("AptCard", () => {
     res.cats.price.fairPrice = 90000;
     res.cats.price.deviation = d;
     render(<AptCard {...makeProps({ res })} />);
-    // (인근 실거래 기준) = 세션536 비교 근거 표기, makeApt() 기본 area=84 + 플래그 미설정
-    expect(screen.getByText("적정가 수준 (인근 실거래 기준)")).toBeInTheDocument();
+    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
+    expect(screen.getByText("적정가 수준 (이 단지 실거래 기준)")).toBeInTheDocument();
     expect(screen.queryByText(/적정가보다/)).toBeNull();
   });
 
@@ -545,8 +552,8 @@ describe("AptCard", () => {
       cats.price = { ...cats.price, total: 75, fairPrice: 50000, deviation: 12 };
       render(<AptCard {...makeProps({ profileWeights: INVEST_W, res: makeRes({ cats }) })} />);
       expect(screen.queryByText(/적정가 대비 12% 저렴/)).toBeNull();
-      // (인근 실거래 기준) = 세션536 비교 근거 표기, makeApt() 기본 area=84 + 플래그 미설정
-      expect(screen.getByText("적정가보다 12% 저렴 (인근 실거래 기준)")).toBeInTheDocument();
+      // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
+      expect(screen.getByText("적정가보다 12% 저렴 (이 단지 실거래 기준)")).toBeInTheDocument();
     });
   });
 

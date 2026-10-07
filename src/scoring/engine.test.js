@@ -34,6 +34,10 @@ import {
   COORD_UNKNOWN_TRANSPORT_SCORE,
   COORD_UNKNOWN_INFRA_SCORE,
   POLICE_DIST_NULL_SCORE,
+  PRICE_NO_DATA_DEFAULTS,
+  PRICE_SUB_WEIGHTS,
+  TRADE_SCOPE_PER_M2_TOL_M2,
+  TRADE_SCOPE_PEER_YEARS,
 } from "@/constants/scoringTiers";
 import {
   getAgeCoeff,
@@ -78,6 +82,16 @@ function makeApt(overrides = {}) {
     jeonseRate: 70,
     pir: 5,
     psr: 0.9,
+    // 시세 비교 범위 좁히기 다(세션607) — 가격 점수의 실제 입력(옛 nearbyMedian·jeonseRate 와 같은 값으로 맞춰 둔다)
+    cmpScope: "complex",
+    cmpFairPrice: 55000,
+    cmpN: 5,
+    cmpMonths: 12,
+    cmpAreaMode: "same_area",
+    cmpSrc: "sale",
+    complexJeonseRate: 70,
+    complexJeonseN: 4,
+    complexSaleN: 5,
     dataReliability: 80,
     subwayDist: 500,
     busRoutes: 10,
@@ -373,19 +387,21 @@ describe("scorePrice", () => {
     const r = scorePrice(makeApt());
     expect(r.total).toBeGreaterThanOrEqual(0);
     expect(r.total).toBeLessThanOrEqual(100);
-    expect(r.subs).toHaveLength(6);
+    // 세션607: PSR 축 삭제(설계서 R4) → 하위 점수 6개 → 5개
+    expect(r.subs).toHaveLength(5);
+    expect(r.subs.map((s) => s.name)).not.toContain("PSR");
     expect(r.fairPrice).toBeGreaterThan(0);
   });
-  it("nearbyMedian=0이면 fairPrice=0", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: 0 }));
+  it("비교 범위 none 이면 fairPrice=0 (세션607 — 옛 단언: nearbyMedian=0 이면 fairPrice=0)", () => {
+    const r = scorePrice(makeApt({ cmpScope: "none", cmpFairPrice: null }));
     expect(r.fairPrice).toBe(0);
     expect(r.subs[0].info).toBe("데이터 부재");
   });
   it("분양가 < 적정가 -> 높은 점수", () => {
-    expect(scorePrice(makeApt({ price: 30000, nearbyMedian: 55000 })).total).toBeGreaterThan(70);
+    expect(scorePrice(makeApt({ price: 30000, cmpFairPrice: 55000 })).total).toBeGreaterThan(70);
   });
   it("분양가 > 적정가 -> 낮은 점수", () => {
-    expect(scorePrice(makeApt({ price: 80000, nearbyMedian: 40000 })).total).toBeLessThan(60);
+    expect(scorePrice(makeApt({ price: 80000, cmpFairPrice: 40000 })).total).toBeLessThan(60);
   });
   it("세션108: PIR <= 10 -> PIR 서브스코어 100 (우수 구간)", () => {
     expect(scorePrice(makeApt({ pir: 8 })).subs.find((s) => s.name === "PIR")?.score ?? 0).toBe(100);
@@ -406,13 +422,15 @@ describe("scorePrice", () => {
   it("세션108: PIR=60 -> 부담 구간 하한 0 클램프", () => {
     expect(scorePrice(makeApt({ pir: 60 })).subs.find((s) => s.name === "PIR")?.score ?? 0).toBe(0);
   });
-  it("전세가율 75%에서 최대", () => {
+  it("전세가율 75%에서 최대 (세션607: 입력 = complexJeonseRate)", () => {
     expect(
-      scorePrice(makeApt({ jeonseRate: 75 })).subs.find((s) => s.name === "전세가율")?.score ?? 0
+      scorePrice(makeApt({ complexJeonseRate: 75 })).subs.find((s) => s.name === "전세가율")?.score ?? 0
     ).toBeGreaterThanOrEqual(95);
   });
-  it("PSR 점수 100 초과 불가 (클램핑)", () => {
-    expect(scorePrice(makeApt({ psr: 0.5 })).subs.find((s) => s.name === "PSR")?.score ?? 0).toBeLessThanOrEqual(100);
+  // 세션607: 옛 "PSR 점수 100 초과 불가 (클램핑)" 은 PSR 축 삭제(설계서 R4)로 대상이 없어졌다 —
+  //   대신 psr 값이 극단이어도 가격 점수가 그대로인지(점수 입력이 아님) 잠근다.
+  it("psr 은 더 이상 가격 점수 입력이 아니다 (PSR 축 삭제)", () => {
+    expect(scorePrice(makeApt({ psr: 0.5 })).total).toBe(scorePrice(makeApt({ psr: 3 })).total);
   });
 });
 
@@ -1747,20 +1765,162 @@ describe("scoreLocation — 교통 sentinel + busRoutes 클램핑 (세션 288)",
   });
 });
 
-describe("scorePrice — fairPrice 3단 폴백 라벨 보강 (세션 288)", () => {
-  it('nearbyMedian 부재 + avgPriceSqm 폴백 → 신뢰도 detail "폴백차감15"', () => {
-    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 12000 }));
-    const rel = r.subs.find((s) => s.name === "데이터 신뢰도");
-    expect(rel?.detail).toContain("폴백차감");
+/**
+ * 시세 비교 범위 좁히기 다(세션607) — 적정가 = 같은 단지·같은 동 또래 실거래(`cmpFairPrice`), 폴백 없음.
+ * 설계서 docs/superpowers/specs/2026-10-03-trade-scope-narrowing.md §5-3 · R1·R2·R3·R4·R5 · D8·D10·D12.
+ * 픽스처 ⓐ~ⓖ = 지시서 brief-impl §⑤ 최소 픽스처. 숫자(가중치·중립값·연식 폭·면적 폭)는 상수에서 읽는다.
+ */
+describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", () => {
+  const base = /** @type {any} */ ({
+    price: 50000,
+    area: 84,
+    pir: 15,
+    dataReliability: 80,
+    landCostRatio: null,
+    cmpMonths: 12,
+    cmpAreaMode: "same_area",
+    complexJeonseRate: 75,
+    complexJeonseN: 4,
+    complexSaleN: 6,
   });
-  it("nearbyMedian 부재 + avgPriceSqm/presalePp 둘 다 null → fairPrice 0 분기", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: null }));
+  const sub = (/** @type {any} */ r, /** @type {string} */ name) =>
+    r.subs.find((/** @type {any} */ s) => s.name === name);
+
+  it("ⓐ complex+sale 3건 — 적정가 = cmpFairPrice 그대로, 문구 '이 단지 실거래 3건(최근 12개월) 대비'", () => {
+    const r = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 60000, cmpN: 3 }));
+    expect(r.fairPrice).toBe(60000);
+    expect(r.deviation).toBe((((60000 - 50000) / 60000) * 100).toFixed(1));
+    expect(r.fairPriceScope).toBe("complex");
+    expect(r.fairPriceSrc).toBe("sale");
+    expect(r.fairPriceN).toBe(3);
+    expect(sub(r, "적정가 괴리도").detail).toContain("이 단지 실거래 3건(최근 12개월) 대비");
+    expect(sub(r, "적정가 괴리도").detail).not.toContain("분양권");
+  });
+
+  it("ⓑ complex+presale — 문구 '이 단지 분양권 거래 N건(최근 M개월) 대비'", () => {
+    const r = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpSrc: "presale", cmpFairPrice: 52000, cmpN: 7 }));
+    expect(r.fairPrice).toBe(52000);
+    expect(r.fairPriceSrc).toBe("presale");
+    expect(sub(r, "적정가 괴리도").detail).toContain("이 단지 분양권 거래 7건(최근 12개월) 대비");
+    expect(sub(r, "적정가 괴리도").detail).not.toContain("이 단지 실거래");
+  });
+
+  it("ⓒ dong_peer — 문구 '같은 동 비슷한 연식(±10년)·같은 평수 실거래 N건 대비', 종류는 늘 매매", () => {
+    const r = scorePrice(makeApt({ ...base, cmpScope: "dong_peer", cmpSrc: "sale", cmpFairPrice: 48000, cmpN: 4 }));
+    expect(r.fairPrice).toBe(48000);
+    expect(r.fairPriceScope).toBe("dong_peer");
+    expect(r.fairPriceSrc).toBe("sale");
+    expect(sub(r, "적정가 괴리도").detail).toContain(
+      `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·같은 평수 실거래 4건 대비`
+    );
+  });
+
+  it("ⓒ' dong_peer 인데 cmpSrc 가 'presale' 이어도 종류는 매매 — 또래 비교는 늘 매매(세션607 보완 M2)", () => {
+    const r = scorePrice(makeApt({ ...base, cmpScope: "dong_peer", cmpSrc: "presale", cmpFairPrice: 48000, cmpN: 4 }));
+    expect(r.fairPriceScope).toBe("dong_peer");
+    expect(r.fairPriceSrc).toBe("sale");
+    expect(sub(r, "적정가 괴리도").detail).not.toContain("분양권");
+  });
+
+  it("ⓓ none — 괴리도만 중립, 전세가율·PIR 은 값대로 판정(D10 — 옛 코드는 넷 다 중립)", () => {
+    const withData = scorePrice(
+      makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 60000, cmpN: 3 })
+    );
+    const none = scorePrice(makeApt({ ...base, cmpScope: "none", cmpFairPrice: null, cmpN: 0, cmpSrc: null }));
+    expect(none.fairPrice).toBe(0);
+    expect(none.deviation).toBe("0.0");
+    expect(none.fairPriceScope).toBe("none");
+    expect(none.fairPriceSrc).toBeNull();
+    expect(none.fairPriceN).toBe(0);
+    expect(sub(none, "적정가 괴리도").score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
+    expect(sub(none, "적정가 괴리도").detail).toBe(
+      `비교할 실거래가 아직 없어요 (중립 ${PRICE_NO_DATA_DEFAULTS.dev}점)`
+    );
+    // 전세가율 75%·PIR 15배 는 중립(50)이 아니라 값대로
+    expect(sub(none, "전세가율").score).toBe(sub(withData, "전세가율").score);
+    expect(sub(none, "전세가율").score).not.toBe(PRICE_NO_DATA_DEFAULTS.jr);
+    expect(sub(none, "PIR").score).toBe(sub(withData, "PIR").score);
+    expect(sub(none, "PIR").score).not.toBe(PRICE_NO_DATA_DEFAULTS.pir);
+    // 세션607 보완(M3): 범위 none 이면 건수 칸에 값이 들어와도 fairPriceN 은 0 — 판정 안 한 비교의 건수를 내지 않는다
+    const noneWithN = scorePrice(makeApt({ ...base, cmpScope: "none", cmpFairPrice: null, cmpN: 7, cmpSrc: null }));
+    expect(noneWithN.fairPriceScope).toBe("none");
+    expect(noneWithN.fairPriceN).toBe(0);
+  });
+
+  it("ⓓ' 분양가가 없을 때도 같은 규칙 — 괴리도만 중립, PIR 은 값대로", () => {
+    const r = scorePrice(
+      makeApt({ ...base, price: 0, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 60000, cmpN: 3 })
+    );
     expect(r.fairPrice).toBe(0);
-    expect(r.subs[0].info).toBe("데이터 부재");
+    expect(sub(r, "적정가 괴리도").score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
+    expect(sub(r, "PIR").score).not.toBe(PRICE_NO_DATA_DEFAULTS.pir);
   });
-  it('폴백 사용 시 괴리도 detail 에 "광역 시도 평균 기준" 경고', () => {
-    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 12000 }));
-    expect(r.subs[0].detail).toContain("광역 시도 평균 기준");
+
+  it("ⓔ per_m2 — '(면적 20㎡ 이내 ㎡당 환산)' 덧붙임", () => {
+    const r = scorePrice(
+      makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 61000, cmpN: 5, cmpAreaMode: "per_m2" })
+    );
+    expect(sub(r, "적정가 괴리도").detail).toContain(`(면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산)`);
+    const same = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 61000, cmpN: 5 }));
+    expect(sub(same, "적정가 괴리도").detail).not.toContain("㎡당 환산");
+  });
+
+  it("ⓕ complexJeonseRate null + 옛 jeonseRate 있음 → 전세가율 중립(구 값으로 대신하지 않는다, R3)", () => {
+    const r = scorePrice(makeApt({ ...base, complexJeonseRate: null, jeonseRate: 75, naverJeonseRate: 75 }));
+    expect(sub(r, "전세가율").score).toBe(PRICE_NO_DATA_DEFAULTS.jr);
+    expect(sub(r, "전세가율").info).toBe("데이터 부재");
+    expect(sub(r, "전세가율").detail).toBe(`같은 단지 전세·매매 거래 부족 (중립 ${PRICE_NO_DATA_DEFAULTS.jr}점)`);
+    const has = scorePrice(makeApt({ ...base, complexJeonseRate: 75, jeonseRate: null }));
+    expect(sub(has, "전세가율").detail).toContain("이 단지 전세 4건 ÷ 매매 6건");
+  });
+
+  it("ⓖ nearbyMedian·priceByArea·avgPriceSqm·presalePp 가 있어도 scope none 이면 적정가 0 (폴백 삭제)", () => {
+    const r = scorePrice(
+      makeApt({
+        ...base,
+        cmpScope: "none",
+        cmpFairPrice: null,
+        nearbyMedian: 55000,
+        priceByArea: [{ area: 85, min: 50000, avg: 65000, max: 80000, count: 30 }],
+        avgPriceSqm: 7312,
+        presalePp: 2000,
+      })
+    );
+    expect(r.fairPrice).toBe(0);
+    expect(r.fairPriceScope).toBe("none");
+    expect(sub(r, "적정가 괴리도").info).toBe("데이터 부재");
+  });
+
+  it("ⓖ' 범위가 complex 여도 cmpFairPrice 가 0·null 이면 none — 다른 칸으로 메우지 않는다", () => {
+    for (const v of [0, null, -1]) {
+      const r = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpFairPrice: v, nearbyMedian: 55000 }));
+      expect(r.fairPrice, String(v)).toBe(0);
+      expect(r.fairPriceScope, String(v)).toBe("none");
+    }
+  });
+
+  it("적정가에 연식·면적·브랜드 계수를 곱하지 않는다(D8·R5) — 미준공·대형·1군이어도 cmpFairPrice 그대로", () => {
+    const future = ymOffset(18); // 미준공 → 옛 코드는 PRESALE_PREMIUM_COEFF 를 곱했다
+    for (const over of [{ completion: future }, { area: 140 }, { builder: "삼성물산" }, { completion: "199912" }]) {
+      const r = scorePrice(
+        makeApt({ ...base, ...over, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 60000, cmpN: 3 })
+      );
+      expect(r.fairPrice, JSON.stringify(over)).toBe(60000);
+    }
+  });
+
+  it("신뢰도 차감 없음 — 폴백이 없으니 dataReliability 그대로(옛 −15 경로 삭제)", () => {
+    const r = scorePrice(
+      makeApt({ ...base, cmpScope: "none", cmpFairPrice: null, avgPriceSqm: 7312, dataReliability: 55 })
+    );
+    expect(sub(r, "데이터 신뢰도").score).toBe(55);
+    expect(`${sub(r, "데이터 신뢰도").info} ${sub(r, "데이터 신뢰도").detail}`).not.toContain("폴백차감");
+  });
+
+  it("범위 값이 이상하면(none 이 아닌 다른 글자) 판정하지 않는다", () => {
+    const r = scorePrice(makeApt({ ...base, cmpScope: /** @type {any} */ ("gu"), cmpFairPrice: 60000 }));
+    expect(r.fairPrice).toBe(0);
+    expect(r.fairPriceScope).toBe("none");
   });
 });
 
@@ -1836,148 +1996,36 @@ describe("scorePrice — 택지비비율 (landSc)", () => {
   });
 });
 
-describe("scorePrice — fairPrice 폴백 (단위 교정)", () => {
-  // avgPriceSqm 단위: 천원/㎡ (fieldMeta.js:72) → fairPrice(만원) = avgPriceSqm × area / 10
-  it("nearbyMedian=null + avgPriceSqm 있으면 → 만원 스케일로 올바른 fairPrice", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: 4510, area: 84.9372, price: 43000 }));
-    // 4510 × 84.9372 / 10 ≈ 38,307 만원 × 연식계수 × 면적보정(84.9㎡ → 1.0) × 브랜드보정
-    // ⚠️ 상·하한을 그냥 넓히지 말 것 — 이 테스트가 잡는 건 **단위(스케일) 오류**다
-    //    (세션91 실측: fairPrice=132, dev −32,401%). 연식계수가 바뀌면 fairPrice 도 그만큼
-    //    움직이므로 범위를 계수에서 파생시켜, 스케일 감시는 유지하되 계수 변경에는 흔들리지 않게 한다.
-    //    계수 값 자체의 타당성은 아래 "관측값 앵커" 블록이 따로 지킨다.
-    const base1 = Math.round((4510 * 84.9372) / 10) * getAgeCoeff(makeApt({}).completion);
-    expect(r.fairPrice).toBeGreaterThanOrEqual(base1 * 0.9);
-    expect(r.fairPrice).toBeLessThanOrEqual(base1 * 1.2);
-    // dev는 한 자릿수 ~ 30% 이내여야 함 (이전 버그는 -32,401%)
-    expect(parseFloat(String(r.deviation))).toBeGreaterThan(-30);
-    expect(parseFloat(String(r.deviation))).toBeLessThan(30);
-  });
-  // presalePp 단위: 만원/평 (fieldMeta.js:148) → fairPrice(만원) = presalePp × (area / 3.3058)
-  it("nearbyMedian=null + presalePp 있으면 → 평수 환산으로 올바른 fairPrice", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: 2000, area: 84, price: 40000 }));
-    // 2000 × (84 / 3.3058) ≈ 50,822 만원 × 연식계수 × 브랜드보정 (범위 파생 이유는 위 테스트 주석 참조)
-    const base2 = 2000 * (84 / 3.3058) * getAgeCoeff(makeApt({}).completion);
-    expect(r.fairPrice).toBeGreaterThanOrEqual(base2 * 0.9);
-    expect(r.fairPrice).toBeLessThanOrEqual(base2 * 1.2);
-  });
-  it("셋 다 null → PRICE_NO_DATA_DEFAULTS 분기", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: null, avgPriceSqm: null, presalePp: null }));
-    expect(r.fairPrice).toBe(0);
-    expect(r.subs.find((s) => s.name === "적정가 괴리도")?.info).toBe("데이터 부재");
-  });
-  it("경남 거제 유로스카이 실측 회귀 — dev 쓰레기 값 나오면 안 됨", () => {
-    // 세션91 실측: 이전엔 fairPrice=132, dev=-32,401% (clamp로 0점)
-    const r = scorePrice(
-      makeApt({
-        nearbyMedian: null,
-        avgPriceSqm: 4510,
-        area: 84.9372,
-        price: 43000,
-        jeonseRate: null,
-        pir: null,
-        psr: null,
-      })
-    );
-    expect(r.subs.find((s) => s.name === "적정가 괴리도")?.score ?? 0).toBeGreaterThan(0);
-    expect(r.subs.find((s) => s.name === "적정가 괴리도")?.info).not.toContain("-32");
-  });
-});
-
-describe("scorePrice — 시도 평균 폴백 신뢰도 차감 + detail 경고 (세션114)", () => {
-  // 방안 A: nearbyMedian=null 이고 avgSqm/presalePp 폴백 사용 시 dataReliability -15
-  it("nearbyMedian 있음 → 폴백 없음 → 차감 없음 (기준선)", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: 55000, avgPriceSqm: 7312, dataReliability: 90 }));
-    const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
-    expect(rel.score).toBe(90);
-    expect(rel.info).not.toContain("폴백차감");
-  });
-  it('nearbyMedian=null + avgPriceSqm 사용 → relSc -15 + info에 "-폴백차감15"', () => {
-    const r = scorePrice(
-      makeApt({
-        nearbyMedian: null,
-        avgPriceSqm: 7312,
-        area: 84.9372,
-        price: 42590,
-        dataReliability: 55,
-      })
-    );
-    const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
-    expect(rel.score).toBe(40); // 55 - 15
-    expect(rel.info).toContain("-폴백차감15");
-  });
-  it("dataReliability=10 에서 차감해도 0 미만으로 떨어지지 않음 (클램프)", () => {
-    const r = scorePrice(
-      makeApt({
-        nearbyMedian: null,
-        avgPriceSqm: 7312,
-        area: 84.9372,
-        price: 42590,
-        dataReliability: 10,
-      })
-    );
-    const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
-    expect(rel.score).toBe(0);
-  });
-  // 방안 B: 폴백 사용 시 괴리도 detail에 "광역 시도 평균 기준" 접미
-  it('폴백 사용 → 괴리도 detail에 "광역 시도 평균 기준" 경고 포함', () => {
-    const r = scorePrice(
-      makeApt({
-        nearbyMedian: null,
-        avgPriceSqm: 7312,
-        area: 84.9372,
-        price: 42590,
-        dataReliability: 55,
-      })
-    );
-    const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
-    expect(dev.detail).toContain("광역 시도 평균 기준");
-  });
-  it("폴백 미사용 → 괴리도 detail에 경고 없음", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: 55000 }));
-    const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
-    expect(dev.detail).not.toContain("광역 시도 평균 기준");
-  });
-  // 방안 A: presalePp 폴백도 동일하게 차감
-  it("presalePp 폴백도 dataReliability -15 적용", () => {
-    const r = scorePrice(
-      makeApt({
-        nearbyMedian: null,
-        avgPriceSqm: null,
-        presalePp: 2000,
-        area: 84,
-        price: 40000,
-        dataReliability: 67,
-      })
-    );
-    const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
-    expect(rel.score).toBe(52); // 67 - 15
-  });
-  // 회귀 방지: 가평 자라섬 수자인 실측 — 폴백 사용 + 차감 동시 확인
-  it("가평 자라섬 수자인 실측 회귀 — 폴백 + 차감 + 경고 모두 반영", () => {
-    const r = scorePrice(
-      makeApt({
-        nearbyMedian: null,
-        avgPriceSqm: 7312,
-        area: 84.9176,
-        price: 42590,
-        dataReliability: 55,
-        jeonseRate: null,
-      })
-    );
-    expect(r.fairPrice).toBeGreaterThan(0);
-    const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
-    expect(rel.score).toBe(40);
-    const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
-    expect(dev.detail).toContain("광역 시도 평균 기준");
+// 세션607: 옛 두 블록 "fairPrice 폴백 (단위 교정)"(avgPriceSqm·presalePp 를 만원 총액으로 환산해 적정가로 씀 —
+//   세션91 단위 오류 회귀 가드)과 "시도 평균 폴백 신뢰도 차감 + detail 경고 (세션114)"(폴백이면 신뢰도 −15 ·
+//   괴리도 detail "광역 시도 평균 기준") 는 **폴백 자체가 삭제**돼(설계서 §5-3·D10) 대상이 없어졌다.
+//   대신 그 실측 회귀 단지(경남 거제 유로스카이·가평 자라섬 수자인)의 입력이 이제 적정가를 만들지 않는지를 잠근다.
+describe("scorePrice — 시도 평균·분양 평당가 폴백 삭제 (세션607)", () => {
+  it("거제 유로스카이·가평 자라섬 수자인 입력(avgPriceSqm 만 있음) → 적정가 0 · 괴리도 중립 · 신뢰도 차감 없음", () => {
+    for (const over of [
+      { avgPriceSqm: 4510, area: 84.9372, price: 43000, dataReliability: 55 },
+      { avgPriceSqm: 7312, area: 84.9176, price: 42590, dataReliability: 55 },
+      { avgPriceSqm: null, presalePp: 2000, area: 84, price: 40000, dataReliability: 67 },
+    ]) {
+      const r = scorePrice(makeApt({ ...over, nearbyMedian: null, cmpScope: "none", cmpFairPrice: null }));
+      expect(r.fairPrice).toBe(0);
+      const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
+      expect(dev.score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
+      expect(dev.detail).not.toContain("광역 시도 평균");
+      const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
+      expect(rel.score).toBe(over.dataReliability);
+      expect(rel.info).not.toContain("폴백차감");
+    }
   });
 });
 
 describe("scorePrice — null 가드 (유령 폴백 제거)", () => {
-  it('jeonseRate=null → "데이터 부재" 표시 + PRICE_NO_DATA_DEFAULTS.jr 점수', () => {
-    const r = scorePrice(makeApt({ jeonseRate: null }));
+  // 세션607: 전세가율 입력이 jeonseRate(구) → complexJeonseRate(같은 단지) 로 바뀌었다(설계서 R3).
+  it('complexJeonseRate=null → "데이터 부재" 표시 + PRICE_NO_DATA_DEFAULTS.jr 점수', () => {
+    const r = scorePrice(makeApt({ complexJeonseRate: null }));
     const sub = /** @type {any} */ (r.subs.find((s) => s.name === "전세가율"));
     expect(sub.info).toBe("데이터 부재");
-    expect(sub.score).toBe(50); // PRICE_NO_DATA_DEFAULTS.jr
+    expect(sub.score).toBe(PRICE_NO_DATA_DEFAULTS.jr);
   });
   it('pir=null → "데이터 부재" 표시', () => {
     const r = scorePrice(makeApt({ pir: null }));
@@ -1985,12 +2033,7 @@ describe("scorePrice — null 가드 (유령 폴백 제거)", () => {
     expect(sub.info).toBe("데이터 부재");
     expect(sub.score).toBe(50);
   });
-  it('psr=null → "데이터 부재" 표시 (NaN% 유령 방지)', () => {
-    const r = scorePrice(makeApt({ psr: null }));
-    const sub = /** @type {any} */ (r.subs.find((s) => s.name === "PSR"));
-    expect(sub.info).toBe("데이터 부재");
-    expect(sub.score).toBe(50);
-  });
+  // 세션607: 옛 'psr=null → "데이터 부재" 표시 (NaN% 유령 방지)' 는 PSR 축 삭제(R4)로 대상이 없어졌다.
 });
 
 // 세션592 사장님 결정: 분양가격지수 보정(옛 130+ → +5, 110+ → +3) 끔 — 원천이 2025-10 에서 멈췄고 전 단지가 같은 +5.
@@ -2199,12 +2242,56 @@ describe("FAR/EXCL/FLOOR/PARKING _UNKNOWN_SCORE — 관측값 앵커 (세션539)
   });
 });
 
-describe("scorePrice — 내부 가중치 합계 (세션66)", () => {
-  it("6개 서브 가중치 합 = 1.00", () => {
-    // engine.js: devSc*0.30 + jrSc*0.20 + pirSc*0.15 + psrSc*0.25 + relSc*0.07 + landSc*0.03
-    const weights = [0.3, 0.2, 0.15, 0.25, 0.07, 0.03];
-    const sum = weights.reduce((a, b) => a + b, 0);
+// 세션607: 옛 단언 = 리터럴 배열 [0.3, 0.2, 0.15, 0.25, 0.07, 0.03] 의 합이 1.00 (엔진 코드와 이어지지 않는 항등식 —
+//   엔진 가중치를 바꿔도 초록이었다). 이제 엔진이 읽는 상수 PRICE_SUB_WEIGHTS 를 읽고, total 이 그 상수로
+//   만들어지는지 픽스처로 잠근다(설계서 D12 — 괴리도 0.55 · 전세가율 0.20 · PIR 0.15 · 신뢰도 0.07 · 택지비 0.03).
+describe("scorePrice — 내부 가중치 (세션66 · 세션607 D12)", () => {
+  it("5개 서브 가중치 합 = 1.00 이고 D12 값 그대로", () => {
+    const sum = Object.values(PRICE_SUB_WEIGHTS).reduce((a, b) => a + b, 0);
     expect(Math.round(sum * 100) / 100).toBe(1.0);
+    expect(PRICE_SUB_WEIGHTS).toEqual({ dev: 0.55, jr: 0.2, pir: 0.15, rel: 0.07, land: 0.03 });
+  });
+  it("total = Σ(서브 점수 × PRICE_SUB_WEIGHTS) — 엔진이 실제로 이 상수를 쓴다", () => {
+    // 반올림 오차가 없게 서브 점수가 전부 정수로 떨어지는 픽스처: 괴리도 만점(+35%↑ → 97) · 전세가율 75 → 100 ·
+    //   PIR 30 → 60 · 신뢰도 80 · 택지비 null → 50.
+    // 세션607 보완(M9): 옛 픽스처는 PIR 8 → 100 이라 전세가율·PIR 이 둘 다 100 — 두 가중치(0.20↔0.15)를 맞바꿔도
+    //   total 이 같아 변이가 살았다. 두 서브 점수를 다르게(100 vs 60) 두어 교환하면 total 이 2점 달라지게 했다.
+    const r = scorePrice(
+      makeApt({
+        price: 30000,
+        cmpScope: "complex",
+        cmpSrc: "sale",
+        cmpFairPrice: 60000,
+        cmpN: 5,
+        complexJeonseRate: 75,
+        pir: 30,
+        dataReliability: 80,
+        landCostRatio: null,
+      })
+    );
+    const s = Object.fromEntries(r.subs.map((x) => [x.name, x.score]));
+    expect(s["전세가율"]).toBe(100);
+    expect(s["PIR"]).toBe(60);
+    const W = PRICE_SUB_WEIGHTS;
+    const expected =
+      s["적정가 괴리도"] * W.dev +
+      s["전세가율"] * W.jr +
+      s["PIR"] * W.pir +
+      s["데이터 신뢰도"] * W.rel +
+      s["택지비비율"] * W.land;
+    expect(r.subs).toHaveLength(5);
+    expect(r.total).toBe(Math.round(expected));
+    // 리터럴 고정: 97×0.55 + 100×0.20 + 60×0.15 + 80×0.07 + 50×0.03 = 89.45 → 89 (교환하면 87.45 → 87)
+    expect(r.total).toBe(89);
+    // 옛 가중치(괴리도 0.30 + PSR 0.25 중립 50)였다면 값이 달라야 이 가드가 의미 있다
+    const old =
+      s["적정가 괴리도"] * 0.3 +
+      50 * 0.25 +
+      s["전세가율"] * 0.2 +
+      s["PIR"] * 0.15 +
+      s["데이터 신뢰도"] * 0.07 +
+      s["택지비비율"] * 0.03;
+    expect(Math.round(old)).not.toBe(r.total);
   });
 });
 
@@ -2227,13 +2314,13 @@ describe("하위 호환 — makeApt() 기본값 제로 드리프트", () => {
 // === 세션70: 클램핑 일관성 — 음수 방어 테스트 ===
 
 describe("클램핑 일관성 — 음수 방어", () => {
-  it("scorePrice: nearbyMedian=0 경로에서 total >= 0", () => {
-    const r = scorePrice(makeApt({ nearbyMedian: 0 }));
+  it("scorePrice: 적정가 없음(범위 none) 경로에서 total >= 0", () => {
+    const r = scorePrice(makeApt({ cmpScope: "none", cmpFairPrice: null }));
     expect(r.total).toBeGreaterThanOrEqual(0);
   });
 
   it("scorePrice: 극단 고가에서 total >= 0", () => {
-    const r = scorePrice(makeApt({ price: 999999, nearbyMedian: 10000, pir: 99, psr: 9, jeonseRate: 0 }));
+    const r = scorePrice(makeApt({ price: 999999, cmpFairPrice: 10000, pir: 99, complexJeonseRate: 0 }));
     expect(r.total).toBeGreaterThanOrEqual(0);
   });
 
@@ -2604,9 +2691,10 @@ describe("브랜드 정규화는 가격축에도 걸린다 (세션514)", () => {
     expect(raw.price.fairPrice).toBe(norm.price.fairPrice);
   });
 
-  it("1군 프리미엄이 실제로 적정가를 올린다 (계수가 안 걸리면 미등재와 같아진다)", () => {
-    // adj 1.05 > 1.0 — 정규화가 빠지면 "지에스건설(주)" 가 미등재 취급이라 아래가 같아져 red.
-    expect(price("지에스건설(주)").fairPrice ?? 0).toBeGreaterThan(price("듣도보도못한건설(주)").fairPrice ?? 0);
+  // 세션607: 옛 단언 "1군 프리미엄이 실제로 적정가를 올린다(지에스건설(주) fairPrice > 미등재)" 는 뒤집혔다 —
+  //   적정가가 같은 단지·같은 동 또래 실거래라 브랜드 계수를 곱하지 않는다(설계서 D8·R5). 브랜드는 상품성축 몫.
+  it("브랜드는 적정가에 곱하지 않는다 — 1군·미등재가 같은 cmpFairPrice 면 같은 적정가 (세션607 D8)", () => {
+    expect(price("지에스건설(주)").fairPrice).toBe(price("듣도보도못한건설(주)").fairPrice);
   });
 });
 
@@ -2862,146 +2950,53 @@ describe("matchAreaPrice — 평형별 실거래 버킷 매칭", () => {
   });
 });
 
-describe("scorePrice — 면적 버킷 매칭이 fairPrice 1순위 (면적 편향 수정)", () => {
-  it("대형 평형이 버킷 매칭 덕에 총액비교보다 정확한 괴리도 점수를 받는다", () => {
-    const bucket = /** @type {any} */ ([{ area: 150, min: 180000, max: 220000, avg: 200000, count: 15 }]);
-    const devScoreOf = (/** @type {any} */ r) => r.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
-    // nearbyMedian(55000)은 국민평형(84㎡) 기준 중위값 — 150㎡ 단지에 그대로 쓰면 fairPrice 가
-    // 실제 실거래(20억)보다 훨씬 작게 잡혀 price=200000 이 "과대평가"로 채점된다.
-    const withoutBucket = calcCats(makeApt({ area: 150, price: 200000, nearbyMedian: 55000 })).price;
-    const withBucket = calcCats(makeApt({ area: 150, price: 200000, nearbyMedian: 55000, priceByArea: bucket })).price;
-    expect(devScoreOf(withBucket).score).toBeGreaterThan(devScoreOf(withoutBucket).score);
-    expect(devScoreOf(withBucket).detail).toContain("평수대별 실거래 기준");
-    expect(devScoreOf(withoutBucket).detail).not.toContain("평수대별 실거래 기준");
-  });
-
-  it("버킷 매칭 시 areaAdj 를 다시 곱하지 않는다 (이중 계상 회피)", () => {
-    // areaAdj 를 다시 곱하면 red — fairPrice = bucketAvg × ageCoeff × bAdj 만이어야 한다.
-    const bucket = /** @type {any} */ ([{ area: 150, min: 180000, max: 220000, avg: 200000, count: 15 }]);
-    const apt = makeApt({
-      area: 150,
-      price: 200000,
-      nearbyMedian: 55000,
-      priceByArea: bucket,
-      completion: null, // ageCoeff = 1.05
-      builder: "듣도보도못한건설(주)", // 미등재 → bAdj = 1.0
-    });
-    const r = calcCats(apt).price;
-    expect(r.fairPrice).toBe(Math.round(200000 * 1.05 * 1.0));
-  });
-
-  it("_noArea(면적 미상)는 84㎡ 버킷이 있어도 매칭하지 않는다 — 현행 폴백값과 같아야 한다", () => {
-    // sanitize 가 area:null 을 84 로 누르기 전에 _noArea=true 를 남긴다. 이 가드가 없으면
-    // "안 잰 것"이 "84㎡ 단지"로 오매칭돼 아래 두 결과가 달라진다.
-    const bucket = /** @type {any} */ ([{ area: 84, min: 40000, max: 60000, avg: 50000, count: 30 }]);
-    const withBucket = calcCats(makeApt(/** @type {any} */ ({ area: null, price: 45000, priceByArea: bucket })));
-    const withoutBucket = calcCats(makeApt(/** @type {any} */ ({ area: null, price: 45000 })));
-    expect(withBucket.price.fairPrice).toBe(withoutBucket.price.fairPrice);
-    expect(withBucket.price.total).toBe(withoutBucket.price.total);
-    expect(withBucket.price.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도")?.detail).not.toContain(
-      "평수대별 실거래 기준"
-    );
-  });
-
-  it("면적이 유효해도 priceByArea 가 비어 있거나 없으면 기존 로직 그대로", () => {
-    const withoutField = calcCats(makeApt({ area: 100 })).price;
-    const withEmptyArray = calcCats(makeApt(/** @type {any} */ ({ area: 100, priceByArea: [] }))).price;
-    expect(withoutField.fairPrice).toBe(withEmptyArray.fairPrice);
-    expect(withoutField.total).toBe(withEmptyArray.total);
-  });
-
-  /**
-   * 세션527 적대검증: `AdminScoreBreakdown` 이 fairPrice 를 **자체 재계산**하고 있어
-   * 같은 모달에 서로 다른 괴리율 두 개가 떴다. 화면이 엔진을 따라오려면 **어느 경로로 구했는지**를
-   * 엔진이 밖으로 알려야 한다 — detail 문자열 정규식으로 판정하면 문구를 고칠 때 조용히 깨진다.
-   */
-  it("어느 경로로 fairPrice 를 구했는지 플래그로 알린다 (화면 자체 재계산 방지)", () => {
-    const bucket = /** @type {any} */ ([{ area: 100, min: 180000, max: 220000, avg: 200000, count: 30 }]);
-    const viaBucket = calcCats(makeApt(/** @type {any} */ ({ area: 100, price: 150000, priceByArea: bucket }))).price;
-    expect(viaBucket.fairPriceFromAreaBucket).toBe(true);
-    expect(viaBucket.fairPriceFromSidoAvg).toBe(false);
-
-    // 폴백(버킷 없음) — 플래그가 켜지면 안 된다.
-    const viaFallback = calcCats(makeApt({ area: 100, price: 150000 })).price;
-    expect(viaFallback.fairPriceFromAreaBucket).toBe(false);
-  });
-
-  it("플래그가 실제 산식 경로와 일치한다 (플래그만 켜고 값은 옛 경로인 회귀 방지)", () => {
-    const bucket = /** @type {any} */ ([{ area: 100, min: 180000, max: 220000, avg: 200000, count: 30 }]);
-    const apt = makeApt(/** @type {any} */ ({ area: 100, price: 150000, priceByArea: bucket }));
-    const r = calcCats(apt).price;
-    // 버킷 경로면 fairPrice 는 버킷 avg 기반이라 nearbyMedian 기반 값과 달라야 한다.
-    const fallback = calcCats(makeApt({ area: 100, price: 150000 })).price;
-    expect(r.fairPriceFromAreaBucket).toBe(true);
-    expect(r.fairPrice).not.toBe(fallback.fairPrice);
-  });
-});
-
 /**
- * 결함B 처방 (세션528) — 미준공(예정) 단지의 신축 프리미엄.
- * `getAgeCoeff`/`isPresale` 단위 테스트만으로는 부족하다 — 이 저장소가 실전에서 지나는 경로는
- * `calcCats`(→ `sanitize` → `scorePrice`) 이지 `scorePrice`/`getAgeCoeff` 단독 호출이 아니다
- * ([[guards-must-be-mutation-tested]] §"테스트가 실제 경로를 지나는가", 세션508/512 재발 자리).
+ * 세션607: 옛 두 블록 "면적 버킷 매칭이 fairPrice 1순위"(priceByArea 버킷 avg × ageCoeff × bAdj · 플래그
+ * fairPriceFromAreaBucket/SidoAvg)·"미준공 신축 프리미엄(결함B, 세션528)"(fairPrice = 버킷 avg × PRESALE_PREMIUM_COEFF)
+ * 은 적정가 입력이 같은 단지·같은 동 또래 실거래(cmpFairPrice)로 바뀌어(설계서 §5-3·D8·R2·R5) 대상이 없어졌다.
+ * 남는 뜻 — **실전 경로(calcCats → sanitize → scorePrice)** 에서 새 규칙이 그대로 걸리는지 — 를 여기서 잠근다.
  */
-describe("scorePrice — 미준공 신축 프리미엄 (결함B 처방, 세션528)", () => {
-  it("실제 경로(calcCats)에서 미준공 단지가 이미 준공된 단지보다 fairPrice 가 더 크게 잡힌다", () => {
-    // builder 를 미등재로 고정해 bAdj=1.0 — 브랜드 계수를 섞지 않고 age/presale 계수만 비교.
-    // 세션529 정정: 옛 주석은 "AGE_PREMIUM 은 나이 먹을수록 커지는 표라 오래된 준공과 비교하면
-    // 역전될 수 있다"고 했는데, 실측으로 표 방향이 뒤집히고(brands.ts 주석) 미준공 계수가 전 구간보다
-    // 커져 그 역전이 사라졌다. 대조군을 갓 준공으로 제한할 이유도 함께 없어졌다(위 앵커 블록이 잠근다).
-    // ⚠️ 입력은 **실전 DB 형식(YYYYMM)** 이다 — 대시 형식은 운영 DB 에 0건이라 실전 경로를 못 지난다.
-    const bucket = /** @type {any} */ ([{ area: 100, min: 40000, max: 60000, avg: 50000, count: 30 }]);
-    const presale = calcCats(
+describe("scorePrice — 실전 경로(calcCats)에서 새 비교 범위 (세션607)", () => {
+  const dev = (/** @type {any} */ r) => r.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
+
+  it("미준공 단지(분양권 거래 기준)도 적정가에 신축 프리미엄을 곱하지 않는다 — cmpFairPrice 그대로", () => {
+    const r = calcCats(
       makeApt({
         area: 100,
         price: 55000,
-        priceByArea: bucket,
         completion: ymOffset(48),
-        builder: "듣도보도못한건설(주)",
+        cmpScope: "complex",
+        cmpSrc: "presale",
+        cmpFairPrice: 50000,
+        cmpN: 4,
       })
     ).price;
-    const built = calcCats(
-      makeApt({
-        area: 100,
-        price: 55000,
-        priceByArea: bucket,
-        completion: ymOffset(-3),
-        builder: "듣도보도못한건설(주)",
-      })
-    ).price;
-    // presale 은 fairPrice = 50000×PRESALE_PREMIUM_COEFF(bAdj=1.0) — dev = (fairPrice-price)/fairPrice.
-    expect(presale.fairPrice).toBe(Math.round(50000 * PRESALE_PREMIUM_COEFF));
-    // 미준공 계수가 갓 준공 구간값보다 크므로 presale 의 dev 가 더 큰 양수(덜 비쌈 판정)여야 한다.
-    expect(Number(presale.deviation)).toBeGreaterThan(Number(built.deviation));
+    expect(r.fairPrice).toBe(50000);
+    expect(r.fairPrice).not.toBe(Math.round(50000 * PRESALE_PREMIUM_COEFF));
+    expect(r.fairPriceSrc).toBe("presale");
   });
 
-  it("옛 동작(미준공=1.0 중립)으로 되돌리면 이 가드가 깨진다 — 뮤테이션 실증", () => {
-    // 소스(scorePrice.ts)의 `return PRESALE_PREMIUM_COEFF;` 를 `return 1.0;` 으로 되돌려 재실행한
-    // 결과를 세션528에서 직접 확인함(위 테스트 모두 red). 이 테스트는 그 사실을 문서화하는
-    // 자리이며, 값 자체는 PRESALE_PREMIUM_COEFF 상수를 통해서만 검증한다(하드코딩 금지).
-    const bucket = /** @type {any} */ ([{ area: 100, min: 40000, max: 60000, avg: 50000, count: 30 }]);
-    const presale = calcCats(
-      makeApt({
-        area: 100,
-        price: 58000,
-        priceByArea: bucket,
-        completion: ymOffset(48),
-        builder: "듣도보도못한건설(주)",
-      })
-    ).price;
-    // 옛 동작(1.0)이면 fairPrice=50000 < price=58000 → dev 음수(고평가 오판).
-    // 새 동작은 fairPrice=50000×PRESALE_PREMIUM_COEFF=58500 ≥ price=58000 → dev 가 0 근방 양수(적정 판정).
-    expect(presale.fairPrice).toBeGreaterThanOrEqual(58000);
-    expect(Number(presale.deviation)).toBeGreaterThanOrEqual(0);
+  it("버킷(priceByArea)이 있어도 적정가 경로가 아니다 — 있든 없든 결과가 같다", () => {
+    const bucket = /** @type {any} */ ([{ area: 100, min: 180000, max: 220000, avg: 200000, count: 30 }]);
+    const a = calcCats(makeApt(/** @type {any} */ ({ area: 100, price: 150000, priceByArea: bucket }))).price;
+    const b = calcCats(makeApt({ area: 100, price: 150000 })).price;
+    expect(a.fairPrice).toBe(b.fairPrice);
+    expect(a.total).toBe(b.total);
+    expect(a.fairPriceFromAreaBucket).toBeUndefined();
+    expect(a.fairPriceFromSidoAvg).toBeUndefined();
   });
 
-  it("진짜 비싼 분양가는 프리미엄을 반영해도 여전히 낮은 점수를 받는다 (부작용 없음 확인)", () => {
-    // 스펙 문서 극단 사례(써밋 리미티드 남천 -273%, 양산자이 파크팰리체 -442%)와 같은 결 —
-    // 신축 프리미엄이 진짜 바가지 단지를 "적정"으로 덮어주면 안 된다.
-    const bucket = /** @type {any} */ ([{ area: 100, min: 40000, max: 60000, avg: 50000, count: 30 }]);
-    const r = calcCats(makeApt({ area: 100, price: 200000, priceByArea: bucket, completion: ymOffset(48) })).price;
-    const devScoreOf = (/** @type {any} */ res) => res.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
-    expect(devScoreOf(r).score).toBe(0);
+  it("문자열 숫자 입력(정적 JSON·API)도 sanitize 가 숫자로 맞춘다", () => {
+    const r = calcCats(
+      makeApt(/** @type {any} */ ({ price: 50000, cmpFairPrice: "60000", cmpN: "3", complexJeonseRate: "75" }))
+    ).price;
+    expect(r.fairPrice).toBe(60000);
+    expect(r.fairPriceN).toBe(3);
+  });
+
+  it("진짜 비싼 분양가는 같은 단지 기준으로도 낮은 점수를 받는다", () => {
+    const r = calcCats(makeApt({ area: 100, price: 200000, cmpFairPrice: 50000, completion: ymOffset(48) })).price;
+    expect(dev(r).score).toBe(0);
   });
 });
 
