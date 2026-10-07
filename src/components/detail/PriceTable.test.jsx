@@ -56,7 +56,7 @@ describe("PriceTable", () => {
   it("가격 배열이 아직 없고 불러오는 중이면 자리표시 + 안내 글", () => {
     const apt = /** @type {any} */ (makeApt({ priceByArea: [] }));
     render(<PriceTable apt={apt} isLoading />);
-    expect(screen.getByText("인근 매매 시세")).toBeTruthy();
+    expect(screen.getByText("시·군·구 전체 매매 시세")).toBeTruthy();
     expect(screen.getByText("가격 정보를 불러오는 중…")).toBeTruthy();
   });
 
@@ -70,7 +70,7 @@ describe("PriceTable", () => {
   it("priceByArea가 있으면 면적마다 범위 막대 줄을 그리고, 표는 없다", () => {
     const apt = /** @type {any} */ (makeApt({ priceByArea: makePriceByArea(), area: 84 }));
     const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText(/인근 매매 시세/)).toBeTruthy();
+    expect(screen.getByText(/시·군·구 전체 매매 시세/)).toBeTruthy();
     expect(screen.getAllByTestId("price-table-row")).toHaveLength(3);
     // 옛 표(면적·하한·평균·상한·건수)가 되살아나면 red
     expect(container.querySelector("table")).toBeNull();
@@ -143,7 +143,7 @@ describe("PriceTable", () => {
       area: 84,
     });
     const { container } = render(<PriceTable apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText(/인근 매매·전세 시세/)).toBeTruthy();
+    expect(screen.getByText(/시·군·구 전체 매매·전세 시세/)).toBeTruthy();
     // 면적 3개 = 줄 3개 (매매 3 + 전세 3 이 6줄이 되지 않는다)
     expect(screen.getAllByTestId("price-table-row")).toHaveLength(3);
     const row = rowOf("★ 84㎡");

@@ -32,7 +32,9 @@ export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: Pr
     if (isLoading) {
       return (
         <div style={BOX}>
-          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>인근 매매 시세</div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 8 }}>
+            시·군·구 전체 매매 시세
+          </div>
           {[0, 1, 2].map((i) => (
             <div
               key={i}
@@ -47,7 +49,9 @@ export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: Pr
     if (error) {
       return (
         <div style={BOX}>
-          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>인근 매매 시세</div>
+          <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 4 }}>
+            시·군·구 전체 매매 시세
+          </div>
           <div style={{ fontSize: F.xs, color: C.red }}>가격 정보를 불러오지 못했습니다. 새로고침해 주세요.</div>
         </div>
       );
@@ -92,7 +96,7 @@ export const PriceTable = memo(function PriceTable({ apt, isLoading, error }: Pr
   return (
     <div style={BOX}>
       <div style={{ fontSize: F.base, fontWeight: 700, color: C.text, marginBottom: 2 }}>
-        {hasRent ? "인근 매매·전세 시세 (매매 최근 6개월)" : "인근 매매 시세 (최근 6개월)"}
+        {hasRent ? "시·군·구 전체 매매·전세 시세 (매매 최근 12개월)" : "시·군·구 전체 매매 시세 (최근 12개월)"}
       </div>
       <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 6 }}>
         {hasRent ? `${filterText} · 매매 총 ${totalCount}건` : `총 ${totalCount}건 · ${filterText}`}
