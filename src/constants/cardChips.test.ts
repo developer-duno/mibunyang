@@ -99,13 +99,13 @@ describe("buildCardChips — 늘 보이는 핵심 값(core)", () => {
     const fresh = mkRes({
       price: {
         total: 70,
-        subs: [{ info: "데이터 부재", detail: "비교할 실거래가 아직 없어요 (중립 30점)" }],
+        subs: [{ info: "데이터 부재", detail: "비교할 실거래가 아직 없어요 (중립 35점)" }],
         fairPrice: 0,
         deviation: "0.0",
         fairPriceScope: "none",
       },
     });
-    expect(find(build({}, fresh), "fairPriceDetail")?.text).toBe("비교할 실거래가 아직 없어요 (중립 30점)");
+    expect(find(build({}, fresh), "fairPriceDetail")?.text).toBe("비교할 실거래가 아직 없어요 (중립 35점)");
   });
 
   it("적정가와 정확히 같으면(fairPrice 있음 + 괴리 0) '적정가 수준'", () => {
@@ -135,7 +135,7 @@ describe("buildCardChips — 적정가 비교 근거 (세션536 · 세션607)", 
     mkRes({
       price: {
         total: 70,
-        subs: [{ info: "x", detail: "비교할 실거래가 아직 없어요 (중립 30점)" }],
+        subs: [{ info: "x", detail: "비교할 실거래가 아직 없어요 (중립 35점)" }],
         fairPrice: 9e4,
         deviation: 19,
         ...extra,

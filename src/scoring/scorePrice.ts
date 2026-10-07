@@ -160,7 +160,7 @@ export function matchAreaPrice(
 }
 
 // 세션111: price=0 구조적 사유별 UX 분기 확장.
-// 점수 로직(devSc=30 중립)은 불변, 문구만 정교화.
+// 점수 로직(devSc=PRICE_NO_DATA_DEFAULTS.dev 중립)은 불변, 문구만 정교화.
 // 판정 순서: 임대 → 정비사업 → 후분양 → 오피스텔 → 분양계획 → 택지지구 블록 → 공공분양 → 기본.
 // presaleStage "분양계획"은 모집공고 전 예정 단지 신호 — naver-presale 수집기가
 // price=0으로 저장하는 정상 동작. 이름 패턴보다 구체적이라 택지블록 앞에 위치.
@@ -326,7 +326,7 @@ export function scorePrice(apt: Apt): Res {
         name: "데이터 신뢰도",
         score: relSc,
         info: `${dataReliability}%`,
-        detail: `${dataReliability}% (80%↑신뢰, 50%↑보통, 30%↓추정)`,
+        detail: `${dataReliability}% (80%↑충분, 50%↑비교 실거래 일부 없음, 30%↓핵심 자료 부족)`,
       },
       {
         name: "택지비비율",

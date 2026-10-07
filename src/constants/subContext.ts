@@ -147,7 +147,8 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     },
     // `PSR` 항목은 지웠다(세션609 라) — 가격 점수에 PSR 서브가 더는 없다(세션607 다) · R4).
     "데이터 신뢰도": {
-      interpret: (sc) => (sc >= 70 ? "데이터 충분" : sc >= 40 ? "일부 추정치 포함" : "데이터 부족"),
+      interpret: (sc) =>
+        sc >= 70 ? "핵심 자료·비교 실거래 충분" : sc >= 40 ? "비교 실거래 일부 없음" : "핵심 자료 부족",
       benchmark: "70% 이상 권장",
     },
     // ⚠️ 두 가지가 어긋나 있었다.
