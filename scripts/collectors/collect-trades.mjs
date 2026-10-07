@@ -145,7 +145,6 @@ async function fetchXml(url) {
  * @param {RegionGuPair} rg
  * @param {Set<string>} seen
  * @param {boolean} prevFallbackUsed
- * @param {boolean} [dealsOnly] true 면 `trades` 행을 만들지 않고(`seen` 도 안 건드림) `deals` 만 — 화성 추가 3코드(사장님 결정 C2 가)
  * @returns {Promise<FetchResult>}
  *
  * 세션589: 같은 item 으로 `trade_deals` 행(`deals`)도 만든다 — 원문 한 건 = 한 행이라 `seen` 으로 접지 않는다.
@@ -153,7 +152,7 @@ async function fetchXml(url) {
  * `skippedOwnership` 으로 센다(`trades` 행에는 지금처럼 들어간다 — 2u 가 읽는 표의 내용을 바꾸지 않는다).
  * 한 달 응답이 중간에 예외로 끊기면 그 달 `deals` 는 버린다(반쪽 응답으로 열쇠를 교체하지 않게).
  */
-export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed, dealsOnly = false) {
+export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbackUsed) {
   const config = TRADE_CONFIGS[type];
   /** @type {TradeRow[]} */
   const rows = [];
@@ -195,9 +194,6 @@ export async function fetchTradeRows(lawdCd, months, type, rg, seen, prevFallbac
         const deal = buildDealRow(item, { type, region: rg.region, gu: dealGu, sggCd: lawdCd, month, getTag });
         if (deal) monthDeals.push(deal);
         else if (type === "presale" && isOwnershipRight(item, getTag)) monthOwnership++;
-        // 사장님 결정 C2 (가): 화성 추가 3코드 응답은 trades 행을 만들지 않는다 — trades 는 이 PR 전과 행 단위로 같다
-        if (dealsOnly) continue;
-
         const floor = parseInt(getTag(item, "floor") || "0") || null;
         const buildYear = parseInt(getTag(item, "buildYear") || "0") || null;
         const dong = getTag(item, "umdNm") || null;
@@ -253,15 +249,14 @@ export async function collectRegion(rg, codes, months, ctx) {
   let fallbackUsed = ctx.fallbackUsed;
   /** @type {"interrupt" | "budget" | null} */
   let stopped = null;
-  // trades 행을 만드는 코드 = 이 PR 전과 같은 getLawdCd 한 코드(목록에 없으면 첫 코드 — trades 가 통째로 비지 않게)
-  const primary = getLawdCd(rg.region, rg.gu);
-  const tradesCode = primary && codes.includes(primary) ? primary : codes[0];
   outer: for (const lawdCd of codes) {
     for (const type of /** @type {TradeType[]} */ (["sale", "jeonse", "presale"])) {
       stopped = ctx.shouldStop?.() ?? null;
       if (stopped) break outer;
-      // trades 행은 지금처럼 getLawdCd 한 코드(화성 = 41591) 응답에서만 — 나머지 코드는 trade_deals 만(사장님 결정 C2 가)
-      const result = await fetchTradeRows(lawdCd, months, type, rg, ctx.seen, fallbackUsed, lawdCd !== tradesCode);
+      // 시세 비교 범위 좁히기 다(세션607 · 사장님 결정 D6/C2): 화성 4코드 응답 **전부** 로 trades 행도 만든다
+      //   (가 에서는 41591 응답만 trades 에 넣었다 — 화성 60곳의 유동성·점수가 두 번 바뀌지 않게 다) 점수 전환과 함께 푼다).
+      //   행의 gu 는 "화성시" 그대로(tradeRowGu) · 코드가 하나인 다른 시군구는 이 PR 전과 같다.
+      const result = await fetchTradeRows(lawdCd, months, type, rg, ctx.seen, fallbackUsed);
       rows.push(...result.rows);
       apiCalls += result.apiCalls;
       apiFails += result.apiFails;
