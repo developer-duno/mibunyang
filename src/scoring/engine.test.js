@@ -3194,6 +3194,14 @@ describe("좌표 의심 단지의 이름-지구 일치 예외 — 그 칸의 개
     expect(devZoneKeyword("김포북변", "검단구", "인천")).toBe("김포북변");
     expect(devZoneKeyword("한강시네폴리스", "검단구", "인천")).toBe("한강시네폴리스");
   });
+  it("핵심어 뽑기 — 두 단어 gu 는 모든 단어를 떼고, '도심'은 일반어 (세션611 · BACKLOG #608 후속)", () => {
+    // 전엔 첫 단어("수원")만 떼어 "권선"·"소사"가 핵심어로 남았다
+    expect(devZoneKeyword("수원권선지구", "수원시 권선구", "경기")).toBeNull();
+    expect(devZoneKeyword("부천소사역세권개발", "부천시 소사구", "경기")).toBe("역세권개발");
+    expect(devZoneKeyword("수원도심지구", "수원시 권선구", "경기")).toBeNull();
+    // 반대 방향 — 한 단어 gu 는 전과 같다
+    expect(devZoneKeyword("시흥은계", "시흥시", "경기")).toBe("은계");
+  });
   it("핵심어 뽑기 — 접미어는 긴 것부터, 2글자 미만은 null", () => {
     expect(devZoneKeyword("판교제2도시첨단산업단지", null, null)).toBe("판교제2");
     expect(devZoneKeyword("시흥A지구", "시흥시", "경기")).toBeNull();

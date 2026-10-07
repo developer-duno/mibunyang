@@ -109,6 +109,33 @@ export function clearAllowed(clearCount, expectClear) {
 }
 
 /**
+ * 쓸 행을 정한다(순수 함수 — main 은 이 결과로만 쓴다). 비움이 차단되면 붙이기만, 아니면 붙이기 + 비움.
+ * 세션611: main 의 차단 배선이 시험 밖이었다(세션606 재검사관 C ③b — main 에서 차단을 꺼도 초록).
+ * @param {Array<Record<string, unknown>>} updates 붙일 행
+ * @param {Array<Record<string, unknown>>} clears 옛 annual 을 비울 행
+ * @param {number | null} expectClear `--expect-clear=N` 값(없으면 null)
+ * @returns {{ rows: Array<Record<string, unknown>>, clearBlocked: boolean }}
+ */
+export function planClearWrite(updates, clears, expectClear) {
+  const clearBlocked = !clearAllowed(clears.length, expectClear);
+  return { rows: clearBlocked ? updates : [...updates, ...clears], clearBlocked };
+}
+
+/**
+ * collector_runs 에 남길 결과(순수 함수). 비움이 차단됐으면 붙이기가 다 됐어도 failure 로 남긴다.
+ * @template {{ status?: string, errorMessage?: string | null }} R
+ * @param {R} result createReporter().summary()
+ * @param {boolean} clearBlocked
+ * @param {number} clearCount 비울 단지 수
+ * @returns {R}
+ */
+export function attachRunRecord(result, clearBlocked, clearCount) {
+  return clearBlocked
+    ? { ...result, status: "failure", errorMessage: `옛 annual 비움 ${clearCount}곳 > ${CLEAR_LIMIT} 차단(--expect-clear 필요)` }
+    : result;
+}
+
+/**
  * Supabase 응답 배열에서 **실제** 성공/실패를 센다.
  *
  * ⚠️ 이 함수가 따로 있는 이유 = 세션560 실사고. 옛 코드는 보낸 건수(슬라이스 길이)를 그대로
@@ -202,19 +229,17 @@ async function main() {
     updates.push({ id: apt.id, air_quality: { ...aq, annual: next } });
   }
 
-  const clearBlocked = !clearAllowed(clears.length, expectClear);
+  const { rows: toWrite, clearBlocked } = planClearWrite(updates, clears, expectClear);
   if (clearBlocked) {
     logError(
       PHASE,
       `옛 annual 비움 ${clears.length}곳 > 상한 ${CLEAR_LIMIT} — 비움은 하나도 쓰지 않는다(붙이기는 진행). 확인 뒤 --expect-clear=${clears.length}`
     );
-  } else {
-    updates.push(...clears);
   }
 
   log(
     PHASE,
-    `붙일 대상 ${updates.length}곳(옛 annual 비움 ${clears.length}${clearBlocked ? " — 차단" : ""}) | 이미 최신 ${skipSame} | 3년평균 없음 ${skipNoAnnual}(측정소 ${missingStations.size}종) | 측정소 미상 ${skipNoStation}`
+    `붙일 대상 ${toWrite.length}곳(옛 annual 비움 ${clears.length}${clearBlocked ? " — 차단" : ""}) | 이미 최신 ${skipSame} | 3년평균 없음 ${skipNoAnnual}(측정소 ${missingStations.size}종) | 측정소 미상 ${skipNoStation}`
   );
   if (missingStations.size) {
     log(PHASE, `  3년평균 없는 측정소: ${[...missingStations].slice(0, 10).join(", ")}`);
@@ -238,12 +263,12 @@ async function main() {
   const CHUNK = 500;
   let ok = 0;
   let fail = 0;
-  for (let i = 0; i < updates.length; i += CHUNK) {
+  for (let i = 0; i < toWrite.length; i += CHUNK) {
     if (rpt.interrupted()) {
       log(PHASE, `중단 신호 — ${ok}곳까지 반영하고 멈춥니다`);
       break;
     }
-    const slice = updates.slice(i, i + CHUNK);
+    const slice = toWrite.slice(i, i + CHUNK);
     const results = await Promise.all(
       slice.map((row) =>
         limit(async () =>
@@ -260,12 +285,7 @@ async function main() {
   if (fail) rpt.fail(fail);
   rpt.skip(skipSame + skipNoAnnual + skipNoStation);
   const result = rpt.summary();
-  await recordCollectorRun(
-    PHASE,
-    clearBlocked
-      ? { ...result, status: "failure", errorMessage: `옛 annual 비움 ${clears.length}곳 > ${CLEAR_LIMIT} 차단(--expect-clear 필요)` }
-      : result
-  );
+  await recordCollectorRun(PHASE, attachRunRecord(result, clearBlocked, clears.length));
   log(PHASE, `완료 — 반영 ${ok}곳${fail ? ` / 실패 ${fail}곳` : ""}`);
   if (fail || clearBlocked) process.exitCode = 1;
 }

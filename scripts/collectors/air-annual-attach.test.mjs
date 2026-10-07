@@ -7,7 +7,17 @@
  * 보낸 건수를 그대로 더했기 때문이다.
  */
 import { describe, it, expect } from "vitest";
-import { buildAnnual, needsUpdate, countResults, shouldClearAnnual, clearAllowed } from "./air-annual-attach.mjs";
+import { readFileSync } from "node:fs";
+import {
+  buildAnnual,
+  needsUpdate,
+  countResults,
+  shouldClearAnnual,
+  clearAllowed,
+  planClearWrite,
+  attachRunRecord,
+  CLEAR_LIMIT,
+} from "./air-annual-attach.mjs";
 
 /** @type {Map<string, { pm25: number | null; pm10: number | null; o3: number | null; years: string | null }>} */
 const TABLE = new Map([
@@ -104,5 +114,47 @@ describe("clearAllowed — 비움 차단기(30곳 초과면 비움 안 씀, --ex
     expect(clearAllowed(31, 31)).toBe(true);
     expect(clearAllowed(31, 30)).toBe(false);
     expect(clearAllowed(3000, 31)).toBe(false);
+  });
+});
+
+describe("planClearWrite · attachRunRecord — 비움 차단의 main 배선(세션611 · 세션606 재검사관 C ③b)", () => {
+  /** @param {number} n @param {string} tag */
+  const rows = (n, tag) => Array.from({ length: n }, (_, i) => ({ id: `${tag}${i}`, air_quality: { annual: null } }));
+  it("비움이 상한 안이면 붙이기 + 비움을 쓴다 · 넘으면 붙이기만 쓰고 차단 표시", () => {
+    const ok = planClearWrite(rows(2, "u"), rows(CLEAR_LIMIT, "c"), null);
+    expect(ok.clearBlocked).toBe(false);
+    expect(ok.rows).toHaveLength(2 + CLEAR_LIMIT);
+    const blocked = planClearWrite(rows(2, "u"), rows(CLEAR_LIMIT + 1, "c"), null);
+    expect(blocked.clearBlocked).toBe(true);
+    expect(blocked.rows.map((r) => r.id)).toEqual(["u0", "u1"]);
+  });
+  it("--expect-clear=N 이 정확히 맞으면 상한을 넘어도 쓴다", () => {
+    const p = planClearWrite(rows(1, "u"), rows(31, "c"), 31);
+    expect(p.clearBlocked).toBe(false);
+    expect(p.rows).toHaveLength(32);
+  });
+  it("차단된 회차는 붙이기가 다 돼도 failure 로 남긴다 · 아니면 결과 그대로", () => {
+    const result = { ok: 5, fail: 0, skip: 0, elapsed: "1.0", status: "success" };
+    expect(attachRunRecord(result, true, 31)).toEqual({
+      ...result,
+      status: "failure",
+      errorMessage: `옛 annual 비움 31곳 > ${CLEAR_LIMIT} 차단(--expect-clear 필요)`,
+    });
+    expect(attachRunRecord(result, false, 31)).toBe(result);
+  });
+  it("main 은 planClearWrite 의 rows 만 쓰고, 기록은 attachRunRecord 로 남긴다(소스 배선)", () => {
+    const src = readFileSync(new URL("./air-annual-attach.mjs", import.meta.url), "utf8");
+    const start = src.indexOf("async function main()");
+    expect(start).toBeGreaterThan(0);
+    // main 본문만 · 줄 주석 걷어냄(주석 처리된 배선이 "있음"으로 잡히지 않게)
+    const main = src
+      .slice(start)
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join("\n");
+    expect(main).toMatch(/const\s*\{\s*rows:\s*toWrite\s*,\s*clearBlocked\s*\}\s*=\s*planClearWrite\(\s*updates\s*,\s*clears\s*,\s*expectClear\s*\)/);
+    expect(main).toMatch(/const\s+slice\s*=\s*toWrite\.slice\(/);
+    expect(main).toMatch(/recordCollectorRun\(\s*PHASE\s*,\s*attachRunRecord\(\s*result\s*,\s*clearBlocked\s*,\s*clears\.length\s*\)\s*\)/);
+    expect(main).not.toMatch(/updates\.slice\(|updates\.push\(\s*\.\.\.clears/);
   });
 });
