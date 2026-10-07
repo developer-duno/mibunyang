@@ -153,7 +153,7 @@ describe("DataSectionBlock", () => {
     render(<DataSectionBlock section={/** @type {any} */ (find("단지 기본정보"))} apt={apt} />);
     fireEvent.click(screen.getByText("단지 기본정보"));
     // HighlightField 도메인 설명 포함
-    expect(screen.getByText(/핵심 데이터 수집 완성도/)).toBeTruthy();
+    expect(screen.getByText(/핵심 자료·비교 실거래 갖춤 정도/)).toBeTruthy();
   });
 
   // 세션589 — 그 접힘이 섹션 목록으로 되돌아오면(= 시세 탭에 접힘이 되살아나면) red.

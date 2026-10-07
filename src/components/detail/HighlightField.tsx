@@ -11,7 +11,7 @@ import type { HighlightFieldProps } from "@/types/detail";
 const HIGHLIGHT_DESC: Record<string, string> = {
   pir: "연소득 대비 분양가 비율. 낮을수록 부담 적음",
   unsoldRate: "총 세대 중 미분양 비율. 낮을수록 인기",
-  dataReliability: "핵심 데이터 수집 완성도",
+  dataReliability: "핵심 자료·비교 실거래 갖춤 정도",
 };
 
 // 점수 박스 1개 (강조 필드용)

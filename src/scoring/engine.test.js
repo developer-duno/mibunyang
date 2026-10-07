@@ -2401,12 +2401,12 @@ describe("클램핑 일관성 — 음수 방어", () => {
 // 세션99: scorePrice price=0 devSc=97 오인 버그 회귀 방어
 // 재건축·후분양·임대형 등 price=0 + nearbyMedian>0 조합이 정상 분기로 빠져
 // dev=100% → devSc=97 만점을 받던 버그. 분기 조건에 apt.price<=0 추가 후
-// "데이터 부재" 경로로 흡수되어 devSc=PRICE_NO_DATA_DEFAULTS.dev=30 중립.
+// "데이터 부재" 경로로 흡수되어 devSc=PRICE_NO_DATA_DEFAULTS.dev(35, 세션612) 중립.
 describe("scorePrice — price=0 devSc=97 오인 버그 (세션99)", () => {
-  it("price=0 + nearbyMedian>0 → 데이터 부재 분기 (devSc=30)", () => {
+  it("price=0 + nearbyMedian>0 → 데이터 부재 분기 (devSc=PRICE_NO_DATA_DEFAULTS.dev)", () => {
     const r = scorePrice(makeApt({ price: 0, nearbyMedian: 202000 }));
     const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
-    expect(dev.score).toBe(30);
+    expect(dev.score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
     expect(dev.info).toBe("데이터 부재");
     expect(r.fairPrice).toBe(0);
   });
@@ -2430,12 +2430,12 @@ describe("scorePrice — price=0 devSc=97 오인 버그 (세션99)", () => {
 });
 
 // 세션111: price=0 구조적 사유별 UX 분기 확장 (택지지구/공공/오피스텔).
-// 점수는 불변(devSc=30), 문구만 정교화. 38건 중 26건 미분류 → 맞춤 안내로 흡수.
+// 점수는 불변(devSc=PRICE_NO_DATA_DEFAULTS.dev — 세션612 35), 문구만 정교화. 38건 중 26건 미분류 → 맞춤 안내로 흡수.
 describe("scorePrice — price=0 classifyNoPrice 확장 (세션111)", () => {
   it('택지지구 블록(BL 접미사) → "택지지구 블록" 안내', () => {
     const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "인천검암S3BL" }));
     expect(r.subs[0].detail).toContain("택지지구 블록");
-    expect(r.subs[0].score).toBe(30);
+    expect(r.subs[0].score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
   });
 
   it('신도시 포함 단지 → "택지지구 블록" 안내', () => {
@@ -2470,7 +2470,7 @@ describe("scorePrice — price=0 classifyNoPrice 확장 (세션111)", () => {
   it("매칭 안 되는 민간분양 → 기본 메시지 유지", () => {
     const r = scorePrice(makeApt({ price: 0, nearbyMedian: 200000, name: "더샵관저아르테", presaleType: "민간분양" }));
     expect(r.subs[0].detail).toBe("분양가 데이터 없음 (중립 점수)");
-    expect(r.subs[0].score).toBe(30);
+    expect(r.subs[0].score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
   });
 
   // 세션111 후속: presaleStage="분양계획" 분기 (모집공고 전 예정 단지)
@@ -2485,7 +2485,7 @@ describe("scorePrice — price=0 classifyNoPrice 확장 (세션111)", () => {
       })
     );
     expect(r.subs[0].detail).toContain("분양 예정 단지");
-    expect(r.subs[0].score).toBe(30);
+    expect(r.subs[0].score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
   });
 
   it("분양계획 우선순위: 오피스텔 이후, 택지블록 이전", () => {
