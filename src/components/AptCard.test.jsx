@@ -498,6 +498,18 @@ describe("AptCard", () => {
       rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
       expect(screen.queryByText(/시공사 부채비율/)).toBeNull();
     });
+
+    // 세션612 W6 — 전세가율 칩 재료는 같은 단지 값(complexJeonseRate, 세션609 라). 옛 구 값(jeonseRate)은 그대로 두고
+    // complexJeonseRate 만 바꿔도 카드가 다시 그려져야 한다.
+    // ⚠️ 뮤테이션 대상: AptCard.tsx comparator 의 비교를 옛 `jeonseRate` 로 되돌리면 red.
+    it("complexJeonseRate 만 변경(null→44) 시 카드 리렌더 — 전세가율 칩이 나타난다 (세션612)", () => {
+      const aptInitial = makeApt({ id: "naver-100", jeonseRate: 65, complexJeonseRate: null });
+      const aptUpdated = makeApt({ id: "naver-100", jeonseRate: 65, complexJeonseRate: 44 });
+      const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
+      expect(screen.queryByText(/전세가율 44%/)).toBeNull();
+      rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      expect(screen.getByText(/전세가율 44%/)).toBeInTheDocument();
+    });
   });
 
   // 맞춤 추천 이유 칩 (세션 432) — 프로필 최우선 카테고리가 긍정일 때만 노출

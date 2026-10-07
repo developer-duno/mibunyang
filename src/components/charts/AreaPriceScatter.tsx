@@ -16,7 +16,7 @@ import { niceTicks } from "../LineChart";
  *
  * 가로 = 면적(㎡), 세로 = 실거래가(만원). 점 하나가 면적 구간 하나이고,
  * 세로 막대는 그 구간의 **최저~최고 범위**다. 가로 점선은 **이 단지 분양가**라
- * 점이 선보다 아래면 "주변 실거래가 분양가보다 싸다"는 뜻이다.
+ * 점이 선보다 아래면 "시·군·구 전체 실거래가 분양가보다 싸다"는 뜻이다.
  *
  * ⚠️ 포인트가 너무 적으면(5 미만) 그리지 않는다 — 점 두어 개로 "시세 분포"를 말하면
  * 없는 경향을 있는 것처럼 보이게 한다. 실측상 해당 단지는 **5건(0.3%)** 뿐이다.
@@ -117,8 +117,8 @@ export const AreaPriceScatter = memo(function AreaPriceScatter({
 
   const aria =
     pts.length < MIN_POINTS
-      ? "주변 실거래 자료가 분포를 그릴 만큼 모이지 않았습니다."
-      : `주변 실거래 ${pts.length}개 면적 구간. 면적 ${Math.min(...pts.map((p) => p.area))}부터 ` +
+      ? "시·군·구 전체 실거래 자료가 분포를 그릴 만큼 모이지 않았습니다."
+      : `시·군·구 전체 실거래 ${pts.length}개 면적 구간. 면적 ${Math.min(...pts.map((p) => p.area))}부터 ` +
         `${Math.max(...pts.map((p) => p.area))} 제곱미터, 가격 ${Math.min(...pts.map((p) => p.min)).toLocaleString("ko-KR")}부터 ` +
         `${Math.max(...pts.map((p) => p.max)).toLocaleString("ko-KR")} 만원.` +
         (cheaper ? ` 이 단지 분양가보다 싸게 거래된 구간이 ${cheaper.total}개 중 ${cheaper.below}개입니다.` : "");
@@ -136,8 +136,8 @@ export const AreaPriceScatter = memo(function AreaPriceScatter({
       empty={pts.length < MIN_POINTS}
       emptyReason={
         pts.length === 0
-          ? "주변 실거래 자료를 아직 모으지 못했어요"
-          : `주변 실거래가 ${pts.length}건뿐이라 분포를 그리지 않았어요 (${MIN_POINTS}건부터 그려요)`
+          ? "시·군·구 전체 실거래 자료를 아직 모으지 못했어요"
+          : `시·군·구 전체 실거래가 ${pts.length}건뿐이라 분포를 그리지 않았어요 (${MIN_POINTS}건부터 그려요)`
       }
       height={H}
     >

@@ -1,6 +1,6 @@
 -- ROLLBACK: 20261007000000_view_add_trade_scope.sql (세션607)
 --
--- 직전 VIEW(20260922000004_view_add_coord_shared.sql) 본문 그대로 — 끝 9칸(cmpScope … complexSaleN)만 빠진다.
+-- 직전 VIEW(20260922000004_view_add_coord_shared.sql) 본문 그대로 — 끝 12칸(점수 입력 9 + 화면 3 · cmpScope … complexSaleN)만 빠진다.
 -- ⚠️ 되돌리기 전에 **다) PR(점수 전환)을 먼저 되돌린다** — 다) 의 점수는 이 칸에서만 괴리도·전세가율을 읽으므로,
 --    칸이 사라지면 전 단지가 괴리도·전세가율 중립으로 굽힌다.
 --

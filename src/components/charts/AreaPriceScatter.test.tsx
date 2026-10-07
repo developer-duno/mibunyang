@@ -88,6 +88,15 @@ describe("AreaPriceScatter — 적은 표본은 그리지 않는다", () => {
   });
 });
 
+// 세션612 W5 — 이 그림은 시·군·구 전체 거래라, 제목이 범위를 밝힌다(위 판정 줄의 '같은 단지·같은 동'과 구분).
+// ⚠️ 뮤테이션 대상: 제목을 옛 "면적별 실거래가" 로 되돌리면 red.
+describe("AreaPriceScatter — 제목이 범위를 밝힌다", () => {
+  it("제목이 '시·군·구 전체 면적별 실거래가' 다", () => {
+    render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);
+    expect(screen.getByText(/시·군·구 전체 면적별 실거래가/)).toBeInTheDocument();
+  });
+});
+
 describe("AreaPriceScatter — 기준선", () => {
   it("이 단지 분양가를 가로 점선으로 긋고 이름표를 단다", () => {
     render(<AreaPriceScatter priceByArea={pts(8)} aptPrice={5000} aptArea={59} />);

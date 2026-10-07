@@ -68,7 +68,7 @@ export function isStaleClearSafe(staleCount, totalWithScores) {
 }
 
 // ── 점수 입력 준비 확인 (세션607 다) 보완 — 검사관 A🟠) ─────────────
-// ⚠️ 마이그 20261007000000(VIEW apartments_flat 끝 9칸 cmpScope …)을 적용하기 전에 이 코드를 합치면
+// ⚠️ 마이그 20261007000000(VIEW apartments_flat 끝 12칸(점수 입력 9 + 화면 3) cmpScope …)을 적용하기 전에 이 코드를 합치면
 //    **여기서 멈춘다**. 그대로 굽게 두면 칸이 없어(또는 비어) 전 단지 괴리도가 중립으로 cats_cache 에
 //    구워지고, 손님 화면의 '저렴/수준/비쌈' 판정 칩이 한꺼번에 사라진다 — 에러 없이 조용히.
 //    같은 일이 VIEW 롤백·trade-stats 범위 판정 실패(채움 0) 때도 난다.

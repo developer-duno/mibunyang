@@ -225,7 +225,7 @@ describe("부가블록 3종", () => {
       })
     );
     render(<PriceByFloorBlock apt={apt} />);
-    expect(screen.getByText("층별 매매가 (주변 실거래)")).toBeTruthy();
+    expect(screen.getByText("층별 매매가 (시·군·구 전체 실거래)")).toBeTruthy();
     expect(screen.getByText("저층")).toBeTruthy();
     // 거래 건수를 "N건"으로 병기한다 (세션508 PR-3b B3)
     expect(screen.getByText("3건")).toBeTruthy();
