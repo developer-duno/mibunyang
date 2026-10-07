@@ -1284,6 +1284,13 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(entry?.stale_days).toBe(4);
   });
 
+  // 세션606: 어린이집 상세가 매일 시군구 단위 호출로 바뀌어 air-quality 와 같은 기준(3).
+  it("childcare-detail 은 stale 3 으로 등재돼 있다 — 매일 러너가 죽으면 3일 안에 ⑤-b (세션606)", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "childcare-detail");
+    expect(entry, "childcare-detail 미등재").toBeTruthy();
+    expect(entry?.stale_days).toBe(3);
+  });
+
   // 세션605: 대기질이 매일 러너로 바뀌어 이 행이 러너의 생존 신호가 됐다 — 일일 기준표(14)의 예외.
   it("air-quality 는 stale 3 으로 등재돼 있다 — 매일 러너가 죽으면 3일 안에 ⑤-b (세션605)", () => {
     const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "air-quality");

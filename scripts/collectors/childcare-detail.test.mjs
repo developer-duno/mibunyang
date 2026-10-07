@@ -13,7 +13,21 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getMibuyangSupabase: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { parseChildcareDetailXml, mergeDetailIntoFacility, isNetworkError, assertNoQuotaError, QuotaExceededError } = await import("./childcare-detail.mjs");
+const {
+  parseChildcareDetailXml,
+  mergeDetailIntoFacility,
+  isNetworkError,
+  assertNoQuotaError,
+  QuotaExceededError,
+  buildDetailUrl,
+  parseRegionDetailXml,
+  mergeRegionDetails,
+  decideRunStatus,
+  selectLatestRegions,
+  resolveArcode,
+  planRegion,
+  processRegion,
+} = await import("./childcare-detail.mjs");
 
 describe("parseChildcareDetailXml", () => {
   // cpmsapi030 응답 = 단일 item 블록 (1 stcode = 1 시설). 70 필드 현실값 sample.
@@ -189,7 +203,7 @@ describe("mergeDetailIntoFacility", () => {
     // 기존 7 필드 중 살아남는 2개 (detail 이 나머지 덮어씀)
     expect(merged.crtel).toBe("02-763-6038");
     expect(merged.crfax).toBe("050-5845-6038");
-    // resume skip 키 — main L249 if (fac.crtypename) 가 보는 키
+    // 상세가 붙었다는 표시
     expect(merged.crtypename).toBe("국공립");
     // 70 필드 배열 spread
     expect(merged.class_cnt.TOT).toBe(6);
@@ -271,5 +285,186 @@ describe("assertNoQuotaError (INFO-300/400 전역 종료 신호)", () => {
     expect(err.name).toBe("QuotaExceededError");
     expect(err.code).toBe("INFO-300");
     expect(err).toBeInstanceOf(Error);
+  });
+});
+
+// 세션606 — 시군구 단위 호출(arcode = GU_LAWD_MAP, stcode 없음) · 최신행만 · 상세만 merge · 0건 차단기
+describe("buildDetailUrl — 시군구 하나 질의", () => {
+  it("key 먼저, arcode 만 — stcode 는 질의에 없다(빈 값도 금지: 2u 실측 ERROR-100)", () => {
+    const url = buildDetailUrl("K", "41480");
+    expect(url).toBe("http://api.childcare.go.kr/mediate/rest/cpmsapi030/cpmsapi030/request?key=K&arcode=41480");
+    expect(url).not.toMatch(/stcode/i);
+  });
+});
+
+describe("parseRegionDetailXml — 시군구 응답의 <item> 전부", () => {
+  const regionXml = `<response><item><stcode>41480000001</stcode><crname>가</crname><crtypename>국공립</crtypename><CRREPNAME>대표가</CRREPNAME><la>37.7</la></item>
+<item><stcode>41480000002</stcode><crname>나</crname><crtypename>민간</crtypename></item>
+<item><stcode>41480000003</stcode><crname>다</crname><crtypename>가정</crtypename></item>
+<item><crname>번호없음</crname></item></response>`;
+  it("블록마다 파싱 — 3건(stcode 없는 블록은 버림), 대문자 태그 그대로", () => {
+    const ds = parseRegionDetailXml(regionXml);
+    expect(ds.map((d) => d.stcode)).toEqual(["41480000001", "41480000002", "41480000003"]);
+    expect(ds[0].crrepname).toBe("대표가");
+    expect(ds[2].crtypename).toBe("가정");
+  });
+  it("INFO-200 0건 응답 → 빈 배열", () => {
+    expect(parseRegionDetailXml("<response><errcode>INFO-200</errcode></response>")).toEqual([]);
+  });
+});
+
+describe("mergeRegionDetails — 상세만 덧입힘(시설 추가·삭제 0) · 멱등", () => {
+  const facilities = [
+    { stcode: "A1", crname: "가", crtel: "02-1" },
+    { stcode: "A2", crname: "나", crtel: "02-2" },
+    { stcode: "A3", crname: "다", crtel: "02-3" },
+  ];
+  const details = /** @type {any[]} */ ([
+    { stcode: "A1", crname: "가", crtypename: "국공립", class_cnt: { TOT: 3 } },
+    { stcode: "A3", crname: "다", crtypename: "민간", class_cnt: { TOT: 1 } },
+    { stcode: "ZZ", crname: "응답에만", crtypename: "가정", class_cnt: { TOT: 0 } },
+  ]);
+  it("응답에만 있는 시설은 더하지 않고, 응답에 없는 시설은 그대로 둔다", () => {
+    const m = mergeRegionDetails(facilities, details);
+    expect(m.facilities.map((f) => f.stcode)).toEqual(["A1", "A2", "A3"]);
+    expect(m.matched).toBe(2);
+    expect(m.facilities[1]).toBe(facilities[1]);
+    expect(/** @type {any} */ (m.facilities[0]).crtypename).toBe("국공립");
+    expect(/** @type {any} */ (m.facilities[0]).crtel).toBe("02-1");
+    expect(m.changed).toBe(true);
+  });
+  it("같은 상세를 다시 덧입히면 바뀜 없음 — 키 순서가 달라도(jsonb 왕복)", () => {
+    const first = mergeRegionDetails(facilities, details).facilities;
+    const reordered = first.map((f) => Object.fromEntries(Object.entries(f).reverse()));
+    const again = mergeRegionDetails(/** @type {any} */ (reordered), details);
+    expect(again.changed).toBe(false);
+  });
+});
+
+describe("decideRunStatus — (0건 + 실패) ÷ 시도 > 10% · 전역 종료 = failure", () => {
+  const base = { attempted: 260, zeroRegions: 0, failedRegions: 0, updateFails: 0, stopReason: null, interrupted: false };
+  it("260 중 27곳 0건 = failure / 26곳(정확히 10%) = success / 15곳 = success", () => {
+    expect(decideRunStatus({ ...base, zeroRegions: 27 }).status).toBe("failure");
+    expect(decideRunStatus({ ...base, zeroRegions: 26 }).status).toBe("success");
+    expect(decideRunStatus({ ...base, zeroRegions: 15 }).status).toBe("success");
+  });
+  it("호출 실패도 분자에 — 실패 20 + 0건 10 = 30/260 → failure, 실패 30 단독도 failure", () => {
+    const v = decideRunStatus({ ...base, failedRegions: 20, zeroRegions: 10 });
+    expect(v.status).toBe("failure");
+    expect(v.errorMessage).toMatch(/실패 20/);
+    expect(decideRunStatus({ ...base, failedRegions: 30 }).status).toBe("failure");
+  });
+  it("분모는 응답 수가 아니라 시도 수 — 실패 10 + 0건 16 = 26/260(10%) → success (응답 250 으로 나누면 10.4%)", () => {
+    expect(decideRunStatus({ ...base, failedRegions: 10, zeroRegions: 16 }).status).toBe("success");
+  });
+  it("전역 종료(연속 네트워크 실패 · INFO-300) = failure + 사유", () => {
+    const net = decideRunStatus({ ...base, attempted: 5, failedRegions: 5, stopReason: "연속 네트워크 실패 5 시군구 전역 종료" });
+    expect(net.status).toBe("failure");
+    expect(net.errorMessage).toMatch(/전역 종료/);
+    const quota = decideRunStatus({ ...base, attempted: 3, stopReason: "INFO-300 전역 종료" });
+    expect(quota.status).toBe("failure");
+  });
+  it("UPDATE 실패 = failure · 정상 = success(errorMessage null) · 중단 신호 = partial", () => {
+    expect(decideRunStatus({ ...base, updateFails: 1 }).status).toBe("failure");
+    expect(decideRunStatus(base)).toEqual({ status: "success", errorMessage: null });
+    expect(decideRunStatus({ ...base, interrupted: true }).status).toBe("partial");
+  });
+  it("시도 0 이면 비율 판정 안 함", () => {
+    expect(decideRunStatus({ ...base, attempted: 0 }).status).toBe("success");
+  });
+});
+
+describe("selectLatestRegions — (region, gu) 최신행만", () => {
+  it("옛 recorded_at 행은 빠지고, 같은 날짜면 id 큰 쪽", () => {
+    const rows = /** @type {any[]} */ ([
+      { id: 1, region: "경기", gu: "파주시", recorded_at: "2026-09-01", childcare: null },
+      { id: 5, region: "경기", gu: "파주시", recorded_at: "2026-10-01", childcare: null },
+      { id: 2, region: "서울", gu: "강남구", recorded_at: "2026-10-01", childcare: null },
+      { id: 7, region: "서울", gu: "강남구", recorded_at: "2026-10-01", childcare: null },
+      { id: 9, region: "서울", gu: null, recorded_at: "2026-10-01", childcare: null },
+    ]);
+    expect(selectLatestRegions(rows).map((r) => r.id).sort((a, b) => a - b)).toEqual([5, 7]);
+  });
+});
+
+describe("resolveArcode — GU_LAWD_MAP 코드(시설번호 앞자리 아님)", () => {
+  it("파주 41480 · 구례 12730 · 일반구 수원시 장안구 41111", () => {
+    expect(resolveArcode("경기", "파주시")).toBe("41480");
+    expect(resolveArcode("전남", "구례군")).toBe("12730");
+    expect(resolveArcode("경기", "수원시 장안구")).toBe("41111");
+  });
+  it("제주는 제주 수집기의 49xxx(탐침 10/07: 49110 270건 · 50110 INFO-200 0건)", () => {
+    expect(resolveArcode("제주", "제주시")).toBe("49110");
+    expect(resolveArcode("제주", "서귀포시")).toBe("49130");
+  });
+  it("표에 없으면 null — 프로토타입 키도 null", () => {
+    expect(resolveArcode("경기", "없는시")).toBeNull();
+    expect(resolveArcode("서울", "constructor")).toBeNull();
+    expect(resolveArcode("경기", null)).toBeNull();
+  });
+});
+
+describe("mergeDetailIntoFacility — 좌표 보존 · info 소유 7필드 유지 (세션606 보완)", () => {
+  it("새 la/lo 가 빈 값·null 이면 옛 좌표를 지킨다", () => {
+    const fac = { stcode: "A1", crname: "가", la: "37.77", lo: "126.78" };
+    const m1 = mergeDetailIntoFacility(fac, /** @type {any} */ ({ stcode: "A1", crname: "가", la: "", lo: null }));
+    expect(m1.la).toBe("37.77");
+    expect(m1.lo).toBe("126.78");
+    const m2 = mergeDetailIntoFacility(fac, /** @type {any} */ ({ stcode: "A1", crname: "가", la: "37.80", lo: "126.80" }));
+    expect(m2.la).toBe("37.80");
+  });
+  it("info 소유 7필드는 기존 값 유지 — crname 이 다른 응답이 와도 바뀜 없음", () => {
+    const fac = { stcode: "A1", crname: "가(목록)", crtel: "02-1", craddr: "목록 주소", crhome: "", crcapat: 40 };
+    const detail = /** @type {any} */ ({ stcode: "A1", crname: "가(상세)", craddr: "상세 주소", crhome: "http://x", crcapat: 41, crtypename: "민간", class_cnt: { TOT: 2 } });
+    const merged = mergeDetailIntoFacility(fac, detail);
+    expect(merged.crname).toBe("가(목록)");
+    expect(merged.craddr).toBe("목록 주소");
+    expect(merged.crcapat).toBe(40);
+    expect(merged.crtypename).toBe("민간");
+    const again = mergeRegionDetails(/** @type {any} */ ([merged]), [{ ...detail, crname: "가(상세 바뀜)" }]);
+    expect(again.changed).toBe(false);
+  });
+});
+
+describe("mergeRegionDetails — 안쪽 값 경계", () => {
+  it("class_cnt.TOT 하나만 바뀐 응답 → changed true", () => {
+    const fac = [{ stcode: "A1", crname: "가" }];
+    const d1 = /** @type {any} */ ({ stcode: "A1", crname: "가", crtypename: "민간", class_cnt: { TOT: 2, "00": 1 } });
+    const first = mergeRegionDetails(fac, [d1]).facilities;
+    const d2 = { ...d1, class_cnt: { TOT: 3, "00": 1 } };
+    expect(mergeRegionDetails(/** @type {any} */ (first), [d2]).changed).toBe(true);
+    expect(mergeRegionDetails(/** @type {any} */ (first), [d1]).changed).toBe(false);
+  });
+});
+
+describe("planRegion · processRegion — 시군구 하나 처리(main 은 결과대로만)", () => {
+  /** @param {string} region @param {string} gu @param {any[]} facilities */
+  const row = (region, gu, facilities) => /** @type {any} */ ({ id: 1, region, gu, recorded_at: "2026-10-01", childcare: { facilities } });
+  it("arcode 는 GU_LAWD_MAP 코드 — 시설번호 앞자리(40400)가 아니다", () => {
+    const p = planRegion(row("경기", "파주시", [{ stcode: "40400000031", crname: "가" }]));
+    expect(p).toEqual({ action: "call", arcode: "41480", facilities: [{ stcode: "40400000031", crname: "가" }] });
+  });
+  it("시설 0곳 = 호출 안 함(none) · 코드 없음 = noArcode", () => {
+    expect(planRegion(row("경기", "파주시", [])).action).toBe("none");
+    expect(planRegion(/** @type {any} */ ({ id: 1, region: "경기", gu: "파주시", recorded_at: "x", childcare: null })).action).toBe("none");
+    expect(planRegion(row("경기", "없는시", [{ stcode: "1", crname: "가" }])).action).toBe("noArcode");
+  });
+  it("0건 응답 → zero true + 응답 코드, 시설 0곳이면 zero 로 세지 않는다", () => {
+    const xml = "<response><errcode>INFO-200</errcode></response>";
+    const z = processRegion({ facilities: [{ stcode: "A1", crname: "가" }], xml });
+    expect(z.zero).toBe(true);
+    expect(z.code).toBe("INFO-200");
+    expect(z.changed).toBe(false);
+    expect(processRegion({ facilities: [], xml }).zero).toBe(false);
+  });
+  it("정상 응답 → merged · changed", () => {
+    const xml = "<response><item><stcode>A1</stcode><crname>가</crname><crtypename>민간</crtypename></item></response>";
+    const out = processRegion({ facilities: [{ stcode: "A1", crname: "가" }, { stcode: "A2", crname: "나" }], xml });
+    expect(out.zero).toBe(false);
+    expect(out.parsed).toBe(1);
+    expect(out.matched).toBe(1);
+    expect(out.changed).toBe(true);
+    expect(/** @type {any} */ (out.merged[0]).crtypename).toBe("민간");
+    expect(out.merged).toHaveLength(2);
   });
 });

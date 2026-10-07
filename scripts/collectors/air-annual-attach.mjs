@@ -27,6 +27,7 @@
  * ## 사용법
  *   node scripts/collectors/air-annual-attach.mjs            (dry-run)
  *   node scripts/collectors/air-annual-attach.mjs --apply
+ *   node scripts/collectors/air-annual-attach.mjs --apply --expect-clear=N   (비움이 30곳을 넘을 때, 정확히 N 이면만 진행)
  */
 import {
   loadEnv,
@@ -80,6 +81,34 @@ export function needsUpdate(existing, next) {
 }
 
 /**
+ * 3년 평균을 못 만드는데(buildAnnual → null) 옛 `annual` 이 남아 있으면 비워야 한다.
+ * 측정소가 표에서 빠지면 옛 평균이 점수에 계속 쓰이던 자리 — 사장님 결정 2026-10-07 01:5x
+ * "성적표 없음으로 둔다"(AIR_QUALITY_DEFAULT 중립 14점). 이미 비어 있으면 다시 쓰지 않는다(멱등).
+ *
+ * @param {Record<string, unknown> | null | undefined} airQuality 단지의 기존 air_quality
+ * @param {Record<string, unknown> | null} next buildAnnual 결과
+ * @returns {boolean} `annual: null` 로 갱신이 필요하면 true
+ */
+export function shouldClearAnnual(airQuality, next) {
+  return next == null && airQuality?.annual != null;
+}
+
+/** 비움 차단기 상한 — 대기질 수집기 측정소 바뀜 차단기(30)와 같은 숫자. */
+export const CLEAR_LIMIT = 30;
+
+/**
+ * 비움 차단기(세션606 검사관 B). 측정소 표기 변경·표 일부만 적재 같은 사고면 수천 곳이 한 번에
+ * 중립 14점으로 떨어진다 → 비울 단지가 30곳을 넘으면 비움을 하나도 쓰지 않는다(붙이기는 그대로).
+ * 우회 = `--expect-clear=N`, 비울 수가 정확히 N 일 때만.
+ * @param {number} clearCount 비울 단지 수
+ * @param {number | null} expectClear `--expect-clear=N` 값(없으면 null)
+ * @returns {boolean} 비움을 써도 되면 true
+ */
+export function clearAllowed(clearCount, expectClear) {
+  return clearCount <= CLEAR_LIMIT || expectClear === clearCount;
+}
+
+/**
  * Supabase 응답 배열에서 **실제** 성공/실패를 센다.
  *
  * ⚠️ 이 함수가 따로 있는 이유 = 세션560 실사고. 옛 코드는 보낸 건수(슬라이스 길이)를 그대로
@@ -107,6 +136,10 @@ export function countResults(results) {
 
 async function main() {
   const apply = process.argv.includes("--apply");
+  const expectArg = process.argv.find((a) => a.startsWith("--expect-clear="));
+  const expectClear = expectArg && /^\d+$/.test(expectArg.slice("--expect-clear=".length))
+    ? Number(expectArg.slice("--expect-clear=".length))
+    : null;
   const sb = getSupabase();
 
   const annualRows = await selectAll(
@@ -139,6 +172,8 @@ async function main() {
   let skipNoStation = 0;
   let skipNoAnnual = 0;
   let skipSame = 0;
+  /** @type {Array<Record<string, unknown>>} */
+  const clears = [];
   /** @type {Set<string>} */
   const missingStations = new Set();
 
@@ -151,6 +186,11 @@ async function main() {
     }
     const next = buildAnnual(/** @type {{ station?: string }} */ (aq), byStation);
     if (!next) {
+      if (shouldClearAnnual(aq, next)) {
+        clears.push({ id: apt.id, air_quality: { ...aq, annual: null } });
+        missingStations.add(station);
+        continue;
+      }
       skipNoAnnual++;
       missingStations.add(station);
       continue;
@@ -162,9 +202,19 @@ async function main() {
     updates.push({ id: apt.id, air_quality: { ...aq, annual: next } });
   }
 
+  const clearBlocked = !clearAllowed(clears.length, expectClear);
+  if (clearBlocked) {
+    logError(
+      PHASE,
+      `옛 annual 비움 ${clears.length}곳 > 상한 ${CLEAR_LIMIT} — 비움은 하나도 쓰지 않는다(붙이기는 진행). 확인 뒤 --expect-clear=${clears.length}`
+    );
+  } else {
+    updates.push(...clears);
+  }
+
   log(
     PHASE,
-    `붙일 대상 ${updates.length}곳 | 이미 최신 ${skipSame} | 3년평균 없음 ${skipNoAnnual}(측정소 ${missingStations.size}종) | 측정소 미상 ${skipNoStation}`
+    `붙일 대상 ${updates.length}곳(옛 annual 비움 ${clears.length}${clearBlocked ? " — 차단" : ""}) | 이미 최신 ${skipSame} | 3년평균 없음 ${skipNoAnnual}(측정소 ${missingStations.size}종) | 측정소 미상 ${skipNoStation}`
   );
   if (missingStations.size) {
     log(PHASE, `  3년평균 없는 측정소: ${[...missingStations].slice(0, 10).join(", ")}`);
@@ -173,6 +223,7 @@ async function main() {
 
   if (!apply) {
     log(PHASE, "DRY-RUN 종료");
+    if (clearBlocked) process.exitCode = 1;
     return;
   }
 
@@ -209,9 +260,14 @@ async function main() {
   if (fail) rpt.fail(fail);
   rpt.skip(skipSame + skipNoAnnual + skipNoStation);
   const result = rpt.summary();
-  await recordCollectorRun(PHASE, result);
+  await recordCollectorRun(
+    PHASE,
+    clearBlocked
+      ? { ...result, status: "failure", errorMessage: `옛 annual 비움 ${clears.length}곳 > ${CLEAR_LIMIT} 차단(--expect-clear 필요)` }
+      : result
+  );
   log(PHASE, `완료 — 반영 ${ok}곳${fail ? ` / 실패 ${fail}곳` : ""}`);
-  if (fail) process.exitCode = 1;
+  if (fail || clearBlocked) process.exitCode = 1;
 }
 
 const argv1 = process.argv[1];

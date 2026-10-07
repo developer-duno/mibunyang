@@ -1,11 +1,13 @@
 // @ts-check
 /**
- * 보육정보공개 cpmsapi030 (어린이집별 70 필드 상세 조회) → regions.childcare.facilities[] 7→70 필드 확장 (세션 254 W6-D2 옵션 NB C-γ''')
+ * 보육정보공개 cpmsapi030 (어린이집 70 필드 상세) → regions.childcare.facilities[] 7→70 필드 확장 (세션 254 W6-D2 · 세션606 시군구 단위로 고침)
  *
  * 자원: info.childcare.go.kr 보육정보공개 API
  * endpoint: http://api.childcare.go.kr/mediate/rest/cpmsapi030/cpmsapi030/request
- * 요청 parameter: key (인증키 32자) + arcode (시군구코드 5자) + stcode (어린이집코드 11자)
- * 응답 형식: REST + XML, 1 stcode = 1 응답 (단일 시설)
+ * 요청 parameter: key (인증키) + arcode (시군구코드 5자 = GU_LAWD_MAP) — stcode 는 넣지 않는다
+ * 응답 형식: REST + XML, 1 arcode = 그 시군구 시설 전체(<item> 여러 개, 좌표+상세)
+ *   세션606 탐침(.omc/artifacts/session603/probe_1007.log): 파주 41480 → 346건, 겹침 330/330.
+ *   2u 실측(childcare_api.py): stcode 키를 빈 값으로라도 넣으면 ERROR-100, key 를 먼저.
  *
  * 70 필드 그룹:
  *   - 위치 6: la / lo / sidoname / sigunname / zipcode / craddr
@@ -18,45 +20,43 @@
  *   - EM_CNT 15 (교직원 자격별): 0Y/1Y/2Y/4Y/6Y/A1~A10/TOT
  *   - EW_CNT 8 (입소대기): 00~05 + M6/TOT
  *
- * 작업 흐름:
- *   1. regions.childcare.facilities[] 23,122곳 stcode + arcode 박제 답습 로드
- *   2. resume self skip: facility 객체 crtypename 박제 여부 = 70 필드 박제 완료 표시
- *   3. DAILY_LIMIT (process.env, 기본 1000) 만큼 cpmsapi030 호출 + 70 필드 추출
- *   4. 시군구 단위 atomic UPDATE (1 시군구 = 1 UPDATE)
- *   5. 23일 분산 cron 답습 (세션 256 F 단계)
+ * 작업 흐름 (세션606):
+ *   1. regions 전 행을 selectAll 커서로 읽고 (region, gu) 최신행만 고른다(옛 행은 건드리지 않는다)
+ *   2. 최신행 facilities 가 있는 시군구마다 cpmsapi030 1회(arcode = GU_LAWD_MAP, 없으면 skip)
+ *   3. 응답 시설을 stcode 로 최신행 facilities 에 상세만 덧입힌다(시설 추가·삭제 없음 — 목록은 childcare-info 소유)
+ *   4. 바뀐 시군구만 UPDATE(같으면 skip — 멱등)
+ *   5. 0건 차단기: 시설이 있는데 0건 응답인 시군구 비율 > 10% 면 failure + exit 1
+ *   매일 04:30 로컬 러너(childcare-local-runner.mjs) — 정상 회차 호출 ≈260회.
  *
  * 사용:
- *   node scripts/collectors/childcare-detail.mjs            (regions UPDATE)
- *   node scripts/collectors/childcare-detail.mjs --dry-run  (미리보기 sample)
- *   DAILY_LIMIT=10 node scripts/collectors/childcare-detail.mjs --dry-run  (제한)
+ *   node scripts/collectors/childcare-detail.mjs                          (regions UPDATE)
+ *   node scripts/collectors/childcare-detail.mjs --dry-run                (미리보기 — 호출은 같다)
+ *   node scripts/collectors/childcare-detail.mjs --dry-run --only=경기:파주시  (시군구 하나만, 호출 1회)
  *
  * 필요 env:
  *   CHILDCARE_BASIC_API_KEY  — info.childcare.go.kr cpmsapi030 인증키 (cpmsapi021 의 CHILDCARE_API_KEY 와 별 키)
- *   DAILY_LIMIT              — 일일 호출 한도 (기본 1000)
+ *   DAILY_LIMIT              — 일일 호출 한도 (기본 1000, 단위 = 시군구 호출)
  *   SUPABASE_URL
  *   SUPABASE_SERVICE_KEY
  */
-import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, recordApiQuota, recordCollectorRun, sleep } from "./_shared.mjs";
-import { extractTag } from "./childcare-info.mjs";
+import { loadEnv, getSupabase, log, logError, createReporter, fetchWithRetry, recordApiQuota, recordCollectorRun, sleep, selectAll, GU_LAWD_MAP } from "./_shared.mjs";
+import { extractTag, pickLatestPerKey } from "./childcare-info.mjs";
+import { JEJU_ARCODE_MAP } from "./childcare-info-jeju.mjs";
 
 loadEnv();
 
 const API_KEY = process.env.CHILDCARE_BASIC_API_KEY;
 const BASE_URL = "http://api.childcare.go.kr/mediate/rest/cpmsapi030/cpmsapi030/request";
 const DAILY_LIMIT = parseInt(process.env.DAILY_LIMIT ?? "1000", 10);
-// 한 시군구에서 연속 네트워크 실패가 이 횟수에 도달하면 그 시군구를 건너뛴다.
-// GH 러너(해외 IP) 가 api.childcare.go.kr(평문 HTTP) 에 막히면 같은 arcode 전 facility 가
-// 호출당 ~30s×3 재시도로 매달려 60분 timeout 으로 잘린다(세션 398 raw 로그: 세종 fetch failed 연쇄).
-// 시도 자체가 진행으로 안 잡혀 DAILY_LIMIT 종료조건도 발동 못 했다 → 조기 중단으로 출혈 차단.
-const NET_FAIL_CIRCUIT = parseInt(process.env.NET_FAIL_CIRCUIT ?? "3", 10);
-// 연속으로 이 수만큼 시군구가 통째로 네트워크 차단(circuit trip + 성공 0)되면 전역 종료.
-// 해외 IP 전면 차단(KOSIS 6/9 사고) 시 947 시군구를 각 3회씩 두드려 timeout 되는 것을 차단.
+// 연속으로 이 수만큼 시군구 호출이 네트워크 실패하면 전역 종료(단위 = 시군구 호출, 세션606).
+// GH 러너(해외 IP) 가 api.childcare.go.kr(평문 HTTP) 에 막히면 호출마다 ~30s×3 재시도로 매달려
+// timeout 으로 잘렸다(세션 398 raw 로그: 세종 fetch failed 연쇄, KOSIS 6/9 사고와 같은 꼴).
 const GLOBAL_DEAD_CIRCUIT = parseInt(process.env.GLOBAL_DEAD_CIRCUIT ?? "5", 10);
 
 /**
  * cpmsapi030 응답 XML 의 결과코드가 "오늘 더 호출 불가"(쿼터 초과 INFO-300 / 키 만료 INFO-400)
  * 인지 검사. 해당 시 throw — 호출부가 "응답 부재 skip"(시설 개별 사정)과 구분해 전역 종료한다.
- * INFO-200(검색결과 없음)·기타 코드는 통과시켜 기존 null 흐름(해당 시설만 skip)을 유지.
+ * INFO-200(검색결과 없음)·기타 코드는 통과시켜 0건 응답 흐름(그 시군구 skip + 0건 차단기)으로 보낸다.
  *
  * 사고 답습(세션 400): 가드 부재 시 INFO-300 응답에 <item> 이 없어 parseChildcareDetailXml 이
  * null 반환 → "응답 부재 skip" + processed++ 로 묻혀 1000건 쿼터 초과를 success 로 기록(데이터
@@ -139,7 +139,9 @@ export function isNetworkError(msg) {
  * @property {string} [craddr]
  * @property {string} [crhome]
  * @property {number} [crcapat]
- * @property {string} [crtypename]  - 70 필드 박제 완료 표시 (resume skip 키)
+ * @property {string} [crtypename]  - 70 필드 상세가 붙어 있으면 채워짐
+ * @property {string|null} [la]     - 위도(상세에서 옴)
+ * @property {string|null} [lo]     - 경도(상세에서 옴)
  */
 
 const CLASS_KEYS = ["00", "01", "02", "03", "04", "05", "M2", "M3", "M5", "SP", "TOT"];
@@ -220,35 +222,195 @@ export function parseChildcareDetailXml(xml) {
 }
 
 /**
- * cpmsapi030 호출 (arcode + stcode 동시 필수).
+ * 시군구 하나의 질의 주소 — key 먼저, arcode 만. stcode 는 넣지 않는다(빈 값도 금지):
+ * 2u 실측(`childcare_api.py`) stcode 키가 있으면 ERROR-100, 없으면 그 시군구 시설 전체를 준다.
+ * arcode 는 GU_LAWD_MAP 코드여야 한다 — 시설번호 앞자리(파주 40400 등)는 INFO-200 0건(세션606 원인 ①).
+ * @param {string} key
  * @param {string} arcode
- * @param {string} stcode
- * @returns {Promise<ChildcareDetail | null>}
+ * @returns {string}
  */
-async function fetchChildcareDetail(arcode, stcode) {
-  if (!API_KEY) throw new Error("CHILDCARE_BASIC_API_KEY 환경변수 필요");
-  const url = `${BASE_URL}?key=${encodeURIComponent(API_KEY)}&arcode=${arcode}&stcode=${stcode}`;
-  const res = await fetchWithRetry(url);
-  const xml = await res.text();
-  assertNoQuotaError(xml);  // INFO-300/400 = 전역 종료 신호 (응답 부재 skip 과 구분)
-  return parseChildcareDetailXml(xml);
+export function buildDetailUrl(key, arcode) {
+  return `${BASE_URL}?key=${encodeURIComponent(key)}&arcode=${arcode}`;
 }
 
 /**
+ * 시군구 응답 XML → 시설 상세 배열. `<item>` 블록을 전부 나누고(탐침 `probe_cpms_1007.mjs:20` 정규식)
+ * 블록 하나는 기존 parseChildcareDetailXml 로 읽는다(대문자 CRREPNAME 등 태그 처리 그대로).
+ * stcode·crname 이 없는 블록은 버린다.
+ * @param {string} xml
+ * @returns {ChildcareDetail[]}
+ */
+export function parseRegionDetailXml(xml) {
+  /** @type {ChildcareDetail[]} */
+  const out = [];
+  for (const m of xml.matchAll(/<item>([\s\S]*?)<\/item>/g)) {
+    const d = parseChildcareDetailXml(`<item>${m[1]}</item>`);
+    if (d) out.push(d);
+  }
+  return out;
+}
+
+/** childcare-info(cpmsapi021) 가 주인인 7필드 — 상세 수집기는 덮지 않는다(두 창구 값이 달라 매일 UPDATE 가 나는 것 방지). */
+const INFO_OWNED_KEYS = /** @type {const} */ (["stcode", "crname", "crtel", "crfax", "craddr", "crhome", "crcapat"]);
+
+/**
  * 기존 7 필드 facility + cpmsapi030 70 필드 detail 통합.
- * stcode/crname 일치. 70 필드 박제 = crtypename 존재로 표시.
+ * - info 소유 7필드(INFO_OWNED_KEYS)는 기존 값이 있으면 그대로 두고 상세만 덧입힌다(세션606 검사관 A·B).
+ * - 새 la/lo 가 비었거나(null·"") 없으면 옛 좌표를 지킨다(세션606 검사관 A — 응답에 좌표 없는 시설).
  * @param {ExistingFacility} facility
  * @param {ChildcareDetail} detail
  * @returns {ChildcareDetail & { crtel: string, crfax: string }}
  */
 export function mergeDetailIntoFacility(facility, detail) {
-  return {
-    // 기존 7 필드 유지 (cpmsapi021 답습)
+  /** @type {any} */
+  const merged = {
     crtel: facility.crtel ?? "",
     crfax: facility.crfax ?? "",
     // cpmsapi030 70 필드 (위치 6 + 기본 8 + 시설 6 + 정원/현원 2 + 일자 6 + 4 배열)
     ...detail,
   };
+  const fac = /** @type {Record<string, unknown>} */ (/** @type {unknown} */ (facility));
+  for (const k of INFO_OWNED_KEYS) {
+    if (fac[k] !== undefined) merged[k] = fac[k];
+  }
+  for (const k of ["la", "lo"]) {
+    const next = merged[k];
+    if ((next == null || next === "") && fac[k] != null && fac[k] !== "") merged[k] = fac[k];
+  }
+  return merged;
+}
+
+/**
+ * 키 순서와 무관한 비교용 직렬화. DB jsonb 는 객체 키 순서를 바꿔 돌려주므로 JSON.stringify 만으로
+ * 비교하면 같은 값도 매일 "바뀜"이 되어 멱등이 깨진다.
+ * @param {unknown} v
+ * @returns {string}
+ */
+function stableStringify(v) {
+  if (Array.isArray(v)) return `[${v.map(stableStringify).join(",")}]`;
+  if (v && typeof v === "object") {
+    const o = /** @type {Record<string, unknown>} */ (v);
+    return `{${Object.keys(o)
+      .filter((k) => o[k] !== undefined)
+      .sort()
+      .map((k) => `${JSON.stringify(k)}:${stableStringify(o[k])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+
+/**
+ * 최신행 시설 목록에 응답 상세만 stcode 로 덧입힌다. 시설을 더하거나 빼지 않는다
+ * (목록은 childcare-info 소유 — 응답에만 있는 시설은 버리고, 응답에 없는 시설은 그대로 둔다).
+ * @param {ExistingFacility[]} facilities
+ * @param {ChildcareDetail[]} details
+ * @returns {{ facilities: Array<ExistingFacility | (ChildcareDetail & { crtel: string, crfax: string })>, matched: number, changed: boolean }}
+ */
+export function mergeRegionDetails(facilities, details) {
+  const byStcode = new Map(details.map((d) => [d.stcode, d]));
+  let matched = 0;
+  const next = facilities.map((fac) => {
+    const d = byStcode.get(fac.stcode);
+    if (!d) return fac;
+    matched++;
+    return mergeDetailIntoFacility(fac, d);
+  });
+  return { facilities: next, matched, changed: stableStringify(next) !== stableStringify(facilities) };
+}
+
+/** 차단기 경계 — 시도한 시군구 중 (0건 응답 + 호출 실패) 비율이 이 값을 넘으면 failure. */
+export const ZERO_RESPONSE_FAIL_RATIO = 0.1;
+
+/**
+ * 회차 판정. 다음 중 하나라도 있으면 failure(+ errorMessage), 아니면 success(중단 신호면 partial).
+ * - (0건 응답 시군구 + 호출 실패 시군구) ÷ 시도한 시군구 > 10% — 사장님 결정 2026-10-07 "호출 시군구"
+ * - 전역 종료(INFO-300/400 · 연속 네트워크 실패) — 전부 실패해도 success 로 묻히던 구멍(세션606 검사관 A·B)
+ * - UPDATE 실패
+ * 호출 실패 몇 곳이 10% 안이면 success 다(다음 회차가 다시 부른다) — fail_count 에는 남는다.
+ * @param {{ attempted: number, zeroRegions: number, failedRegions: number, updateFails: number, stopReason: string | null, interrupted: boolean }} s
+ * @returns {{ status: "success" | "failure" | "partial", errorMessage: string | null }}
+ */
+export function decideRunStatus(s) {
+  /** @type {string[]} */
+  const reasons = [];
+  if (s.stopReason) reasons.push(s.stopReason);
+  if (s.attempted > 0 && (s.zeroRegions + s.failedRegions) / s.attempted > ZERO_RESPONSE_FAIL_RATIO) {
+    reasons.push(`0건 ${s.zeroRegions}·실패 ${s.failedRegions} / 시도 ${s.attempted} 시군구 > ${ZERO_RESPONSE_FAIL_RATIO * 100}%`);
+  }
+  if (s.updateFails > 0) reasons.push(`UPDATE 실패 ${s.updateFails}`);
+  if (reasons.length > 0) return { status: "failure", errorMessage: reasons.join(" · ") };
+  return { status: s.interrupted ? "partial" : "success", errorMessage: null };
+}
+
+/**
+ * @typedef {{ id: number, region: string, gu: string | null, recorded_at: string, childcare: { facilities?: ExistingFacility[] } | null }} RegionRow
+ */
+
+/**
+ * regions 전 행 → (region, gu) 최신행만. childcare-info.mjs:270-290 패턴 그대로
+ * (selectAll 결과를 recorded_at 내림·id 내림으로 정렬한 뒤 pickLatestPerKey).
+ * 옛 행은 대상에서 빠진다 — PATCH 를 최신행 id 로만 보내기 위함.
+ * @param {RegionRow[]} allRegions
+ * @returns {RegionRow[]}
+ */
+export function selectLatestRegions(allRegions) {
+  const sorted = allRegions.slice().sort((a, b) => {
+    if (a.recorded_at !== b.recorded_at) return a.recorded_at > b.recorded_at ? -1 : 1;
+    return b.id - a.id;
+  });
+  const latestMap = pickLatestPerKey(sorted);
+  const latestIds = new Set([...latestMap.values()].map((v) => v.id));
+  return sorted.filter((r) => latestIds.has(r.id));
+}
+
+/**
+ * 시군구 코드를 꺼낸다. 없으면 null(호출자가 skip + 로그). 표에서 키를 꺼낼 땐 hasOwnProperty
+ * (admin-district-code-reform §3).
+ * 제주는 GU_LAWD_MAP(50110/50130)이 아니라 제주 수집기의 49xxx 를 쓴다 — 세션606 탐침 2026-10-07 05:23
+ * (`probe_jeju_city.mjs`): cpmsapi030 49110 → 270건 · 49130 → 99건 · 50110 → INFO-200 0건.
+ * @param {string} region
+ * @param {string | null} gu
+ * @returns {string | null}
+ */
+export function resolveArcode(region, gu) {
+  if (!gu) return null;
+  if (region === "제주") {
+    return Object.prototype.hasOwnProperty.call(JEJU_ARCODE_MAP, gu) ? JEJU_ARCODE_MAP[gu] : null;
+  }
+  const map = /** @type {Record<string, Record<string, string>>} */ (GU_LAWD_MAP);
+  if (!Object.prototype.hasOwnProperty.call(map, region)) return null;
+  const sido = map[region];
+  return Object.prototype.hasOwnProperty.call(sido, gu) ? sido[gu] : null;
+}
+
+/**
+ * 시군구 하나를 부를지 정한다(순수 함수 — main 은 이 결과대로만 움직인다).
+ * 시설 0곳이면 호출하지 않고(0건으로도 안 센다), 코드가 없으면 skip.
+ * arcode 는 resolveArcode 로만 — 시설번호 앞자리(옛 원인 ①)로 만들지 않는다.
+ * @param {RegionRow} row
+ * @returns {{ action: "none" } | { action: "noArcode" } | { action: "call", arcode: string, facilities: ExistingFacility[] }}
+ */
+export function planRegion(row) {
+  const facilities = /** @type {ExistingFacility[]} */ (row.childcare?.facilities ?? []);
+  if (facilities.length === 0) return { action: "none" };
+  const arcode = resolveArcode(row.region, row.gu);
+  if (!arcode) return { action: "noArcode" };
+  return { action: "call", arcode, facilities };
+}
+
+/**
+ * 시군구 하나의 응답을 처리한다(순수 함수). 파싱 → 0건 판정 → 상세 덧입힘 → 바뀜 판정.
+ * @param {{ facilities: ExistingFacility[], xml: string }} input
+ * @returns {{ parsed: number, zero: boolean, code: string | null, merged: Array<ExistingFacility | (ChildcareDetail & { crtel: string, crfax: string })>, matched: number, changed: boolean }}
+ */
+export function processRegion({ facilities, xml }) {
+  const details = parseRegionDetailXml(xml);
+  const code = /\b((?:INFO|ERROR)-\d+)\b/.exec(xml)?.[1] ?? null;
+  if (details.length === 0) {
+    return { parsed: 0, zero: facilities.length > 0, code, merged: facilities, matched: 0, changed: false };
+  }
+  const m = mergeRegionDetails(facilities, details);
+  return { parsed: details.length, zero: false, code, merged: m.facilities, matched: m.matched, changed: m.changed };
 }
 
 async function main() {
@@ -257,170 +419,144 @@ async function main() {
     process.exit(1);
   }
   const dryRun = process.argv.includes("--dry-run");
-  log("init", `DAILY_LIMIT=${DAILY_LIMIT}${dryRun ? " --dry-run" : ""}`);
+  // --only=<region>:<gu> — 시군구 하나만(호출 1회). 구현 확인용 dry-run 한도.
+  const onlyArg = process.argv.find((a) => a.startsWith("--only="));
+  const only = onlyArg ? onlyArg.slice("--only=".length) : null;
+  log("init", `DAILY_LIMIT=${DAILY_LIMIT}${dryRun ? " --dry-run" : ""}${only ? ` --only=${only}` : ""}`);
 
   const sb = getSupabase();
 
-  // regions.childcare 답습 자산 로드 (606 시군구 × N facilities)
-  const { data: regions, error: regErr } = await sb
-    .from("regions")
-    .select("id, region, gu, childcare")
-    .not("childcare", "is", null);
-  if (regErr) throw new Error(`regions 조회 실패: ${regErr.message}`);
+  // regions 전 행을 고유키 커서로 읽고 (region, gu) 최신행만(세션606 원인 ② — 옛 코드는 무정렬 1,000행).
+  /** @type {RegionRow[]} */
+  let allRegions;
+  try {
+    allRegions = /** @type {any} */ (
+      await selectAll((s) => s.from("regions").select("id, region, gu, recorded_at, childcare"), sb, "id")
+    );
+  } catch (e) {
+    throw new Error(`regions 조회 실패: ${e instanceof Error ? e.message : String(e)}`);
+  }
+  let targets = selectLatestRegions(allRegions);
+  if (only) {
+    targets = targets.filter((r) => `${r.region}:${r.gu}` === only);
+    if (targets.length === 0) {
+      logError("init", `--only=${only}: 해당 (region, gu) 최신행 없음`);
+      process.exit(1);
+    }
+  }
+  log("init", `regions ${allRegions.length}행 → (region, gu) 최신행 ${targets.length}건`);
 
-  log("init", `regions NOT NULL childcare: ${regions.length}건`);
-
-  // 시군구 단위 처리 (atomic UPDATE)
-  let processed = 0;       // cpmsapi030 성공 호출 횟수 (쿼터 기록용)
-  let attempted = 0;       // cpmsapi030 시도 횟수 (성공+실패) — DAILY_LIMIT 종료조건 기준
-  let skippedFacilities = 0;  // resume self skip
+  let processed = 0;       // cpmsapi030 응답 받은 시군구 호출 수 (쿼터 기록)
+  let attempted = 0;       // cpmsapi030 시도한 시군구 수 (성공+실패) — DAILY_LIMIT·차단기 분모
+  let zeroRegions = 0;     // 시설이 있는데 0건 응답인 시군구
+  let failedRegions = 0;   // 호출이 실패한 시군구(네트워크·HTTP 오류·본문 읽기 실패)
+  let updateFails = 0;
   let updatedRegions = 0;
-  let limitReached = false;   // DAILY_LIMIT 도달 — 현재 시군구 UPDATE 후 전체 종료
-  let quotaExhausted = false;  // INFO-300/400 (일 요청 초과/키 만료) — 즉시 전역 종료, 다음 cron 재시도
-  let consecutiveDeadRegions = 0;  // 성공 0건으로 circuit 끊긴 시군구 연속 횟수 (전역 차단 감지)
+  let unchangedRegions = 0;
+  /** @type {string | null} */
+  let stopReason = null;   // 전역 종료 사유(INFO-300/400 · 연속 네트워크 실패) — failure 로 기록
+  let consecutiveNetFails = 0;  // 연속 네트워크 실패 시군구 호출 수 (전역 차단 감지)
   const rpt = createReporter("childcare-detail");
 
-  for (const r of regions) {
+  for (const r of targets) {
     if (rpt.interrupted()) break;
-    const facilities = /** @type {ExistingFacility[]} */ (r.childcare?.facilities ?? []);
-    if (facilities.length === 0) continue;
-
-    // arcode 답습: childcare-info.mjs aggregate 시점 박제 안 됨 → GU_LAWD_MAP 역참조
-    // 단, regions.region + gu 자체로 직접 매핑 가능 (childcare-info.mjs L137~143 답습)
-    // 본 collector 는 arcode 별도 필드 필요 → 시군구 facility 첫 stcode 11자에서 arcode 5자 추출 (stcode prefix = arcode)
-    const firstStcode = facilities[0]?.stcode;
-    if (!firstStcode || firstStcode.length < 5) {
-      logError("region", `${r.region} ${r.gu}: stcode prefix 부재`);
+    const plan = planRegion(r);
+    if (plan.action === "none") continue;  // 시설 0 = 호출하지 않는다
+    if (plan.action === "noArcode") {
+      log("skip", `${r.region} ${r.gu}: GU_LAWD_MAP 에 없음 — skip`);
+      rpt.skip(1);
       continue;
     }
-    const arcode = firstStcode.slice(0, 5);
+    const { arcode, facilities } = plan;
 
-    /** @type {Array<ExistingFacility | (ChildcareDetail & { crtel: string, crfax: string })>} */
-    const updatedFacilities = [];
-    let regionChanged = false;
-    let consecutiveNetFails = 0;  // 이 시군구 연속 네트워크 실패 (circuit breaker)
-    let regionCircuitTripped = false;  // 이 시군구가 네트워크 circuit 으로 끊겼나
+    // 시도(attempted) 기준 — 실패 호출도 진행으로 쳐야 네트워크 차단 시에도 종료조건이 발동한다.
+    if (attempted >= DAILY_LIMIT) {
+      log("limit", `DAILY_LIMIT ${DAILY_LIMIT} 도달 — 남은 시군구는 다음 회차`);
+      break;
+    }
 
-    for (const fac of facilities) {
-      // resume self skip: 70 필드 박제 표시 = crtypename 존재
-      if (fac.crtypename) {
-        updatedFacilities.push(fac);
-        skippedFacilities++;
-        continue;
-      }
-
-      // DAILY_LIMIT 도달 시 현재 시군구 facility 루프 종료
-      // (break = facility 루프만 탈출 → 아래 atomic UPDATE 실행 → 시군구 루프 끝에서 전체 종료)
-      // 시도(attempted) 기준 — 실패 호출도 진행으로 쳐야 네트워크 차단 시에도 종료조건이 발동한다.
-      if (attempted >= DAILY_LIMIT) {
-        log("limit", `DAILY_LIMIT ${DAILY_LIMIT} 도달 — 남은 시군구 ${regions.length - updatedRegions}건 다음 cron 분산`);
-        updatedFacilities.push(fac);  // 미박제 그대로 유지
-        // 남은 facilities 도 그대로 박제 (atomic UPDATE 보장)
-        const idx = facilities.indexOf(fac);
-        for (let i = idx + 1; i < facilities.length; i++) updatedFacilities.push(facilities[i]);
-        limitReached = true;
+    /** @type {string} */
+    let xml;
+    try {
+      attempted++;
+      const res = await fetchWithRetry(buildDetailUrl(API_KEY, arcode));
+      xml = await res.text();
+      assertNoQuotaError(xml);  // INFO-300/400 = 전역 종료 신호 (0건 응답과 구분)
+      processed++;
+      consecutiveNetFails = 0;
+      await sleep(300);  // rate limit (population-sex-age L144 답습)
+    } catch (e) {
+      // INFO-300/400 = 오늘 더 호출 불가 → 즉시 전역 종료, failure 로 기록(다음 회차 재시도).
+      if (e instanceof QuotaExceededError) {
+        logError("quota", `${r.region} ${r.gu}: ${e.message} — 전역 종료 (다음 회차 재시도)`);
+        stopReason = `${e.code} 전역 종료`;
         break;
       }
-
-      try {
-        const detail = await fetchChildcareDetail(arcode, fac.stcode);
-        processed++;
-        attempted++;
-        consecutiveNetFails = 0;  // 성공 = circuit 리셋
-        await sleep(300);  // rate limit (population-sex-age L144 답습)
-
-        if (!detail) {
-          // 응답 부재 = stcode 폐지 또는 응답 빈 값. 기존 7 필드 유지
-          logError("fetch", `${r.region} ${r.gu} ${fac.stcode}: 응답 부재 — skip`);
-          updatedFacilities.push(fac);
-          continue;
-        }
-
-        updatedFacilities.push(mergeDetailIntoFacility(fac, detail));
-        regionChanged = true;
-      } catch (e) {
-        // INFO-300/400 (일 요청 초과/키 만료) = 오늘 더 호출 불가 → 즉시 전역 종료.
-        // "응답 부재 skip"(시설 개별 사정)과 달리 success 로 묻지 않고 미박제 그대로 다음 cron 재시도.
-        if (e instanceof QuotaExceededError) {
-          logError("quota", `${r.region} ${r.gu}: ${e.message} — 전역 종료 (다음 cron 재시도)`);
-          updatedFacilities.push(fac);  // 미박제 그대로 유지
-          const idx = facilities.indexOf(fac);
-          for (let i = idx + 1; i < facilities.length; i++) updatedFacilities.push(facilities[i]);
-          quotaExhausted = true;
+      const msg = e instanceof Error ? e.message : String(e);
+      failedRegions++;
+      logError("fetch", `${r.region} ${r.gu} (${arcode}): ${msg}`);
+      rpt.fail(1);
+      // 네트워크 레벨 실패(해외 IP 차단 등)가 연속 N 시군구면 전면 차단 → 전역 종료.
+      if (isNetworkError(msg)) {
+        consecutiveNetFails++;
+        if (consecutiveNetFails >= GLOBAL_DEAD_CIRCUIT) {
+          logError("circuit", `연속 ${consecutiveNetFails}개 시군구 네트워크 실패 — 전역 종료 (api.childcare.go.kr 해외 IP 차단 의심, 다음 회차 재시도)`);
+          stopReason = `연속 네트워크 실패 ${consecutiveNetFails} 시군구 전역 종료`;
           break;
         }
-        const msg = e instanceof Error ? e.message : String(e);
-        attempted++;  // 실패도 시도로 집계 — DAILY_LIMIT 종료조건이 네트워크 차단 시에도 발동하게
-        logError("fetch", `${r.region} ${r.gu} ${fac.stcode}: ${msg}`);
-        updatedFacilities.push(fac);  // 실패 시 기존 유지
-
-        // 네트워크 레벨 실패(해외 IP 차단 등)는 같은 arcode 전체에 번지므로 연속 N회면 시군구 skip.
-        // HTTP 4xx/5xx(시설별 개별 사정)는 circuit 대상 아님 — facility 단위로 계속 진행.
-        if (isNetworkError(msg)) {
-          consecutiveNetFails++;
-          if (consecutiveNetFails >= NET_FAIL_CIRCUIT) {
-            logError("circuit", `${r.region} ${r.gu}: 연속 네트워크 실패 ${consecutiveNetFails}회 — 시군구 skip (해외 IP 차단 의심)`);
-            regionCircuitTripped = true;
-            // 남은 facilities 미박제 그대로 유지 (atomic UPDATE 보존, 다음 cron 재시도)
-            const idx = facilities.indexOf(fac);
-            for (let i = idx + 1; i < facilities.length; i++) updatedFacilities.push(facilities[i]);
-            break;
-          }
-        } else {
-          consecutiveNetFails = 0;  // 비네트워크 에러 = circuit 리셋
-        }
-      }
-    }
-
-    // dry-run = UPDATE 0
-    if (dryRun) {
-      if (regionChanged) {
-        const sample = /** @type {any} */ (updatedFacilities.find(f => f.crtypename));
-        log("dry-run", `${r.region} ${r.gu}: ${facilities.length}건 중 변경 1+ — sample crtypename=${sample?.crtypename}, cctv=${sample?.cctvinstlcnt}, la=${sample?.la}`);
-        updatedRegions++;
-      }
-    } else if (regionChanged) {
-      // 시군구 atomic UPDATE
-      const newChildcare = {
-        ...r.childcare,
-        facilities: updatedFacilities,
-      };
-      const { error: updErr } = await sb
-        .from("regions")
-        .update({ childcare: newChildcare })
-        .eq("id", r.id);
-      if (updErr) {
-        logError("update", `${r.region} ${r.gu}: ${updErr.message}`);
-        rpt.fail(1);
       } else {
-        updatedRegions++;
-        rpt.success(1);
-        log("update", `${r.region} ${r.gu}: ${facilities.length}건 (${processed}/${DAILY_LIMIT})`);
+        consecutiveNetFails = 0;
       }
+      continue;
     }
 
-    // 전역 dead-region circuit: circuit 으로 끊긴 시군구가 성공 0건이면 dead 로 집계,
-    // 성공이 1건이라도 있으면 리셋(네트워크 살아있음). 연속 dead 가 임계 도달 = 전면 차단 → 전역 종료.
-    if (regionCircuitTripped && !regionChanged) {
-      consecutiveDeadRegions++;
-      if (consecutiveDeadRegions >= GLOBAL_DEAD_CIRCUIT) {
-        logError("circuit", `연속 ${consecutiveDeadRegions}개 시군구 전면 네트워크 차단 — 전역 종료 (api.childcare.go.kr 해외 IP 차단 의심, 다음 cron 재시도)`);
-        break;
-      }
-    } else if (regionChanged) {
-      consecutiveDeadRegions = 0;  // 성공한 시군구 = 네트워크 정상, 전역 circuit 리셋
+    const out = processRegion({ facilities, xml });
+    if (out.zero) {
+      zeroRegions++;
+      log("zero", `${r.region} ${r.gu} (${arcode}): 0건 응답(${out.code ?? "코드 없음"}) — 시설 ${facilities.length}곳 그대로, skip`);
+      rpt.skip(1);
+      continue;
     }
 
-    // DAILY_LIMIT 도달 또는 쿼터 초과(INFO-300/400) = 전체 종료
-    if (limitReached || quotaExhausted) break;
+    const tag = `${r.region} ${r.gu} (${arcode}): 응답 ${out.parsed} · 병합 ${out.matched}/${facilities.length}`;
+    if (!out.changed) {
+      unchangedRegions++;
+      log("same", `${tag} — 바뀐 것 없음, UPDATE 안 함`);
+      rpt.skip(1);
+      continue;
+    }
+
+    if (dryRun) {
+      const sample = /** @type {any} */ (out.merged.find((f) => f.crtypename));
+      log("dry-run", `${tag} — sample crtypename=${sample?.crtypename}, cctv=${sample?.cctvinstlcnt}, la=${sample?.la}`);
+      updatedRegions++;
+      continue;
+    }
+
+    // 최신행 id 로만 UPDATE (옛 행 0)
+    const { error: updErr } = await sb
+      .from("regions")
+      .update({ childcare: { ...r.childcare, facilities: out.merged } })
+      .eq("id", r.id);
+    if (updErr) {
+      logError("update", `${r.region} ${r.gu}: ${updErr.message}`);
+      updateFails++;
+      rpt.fail(1);
+    } else {
+      updatedRegions++;
+      rpt.success(1);
+      log("update", `${tag} (${processed}/${DAILY_LIMIT})`);
+    }
   }
 
-  log("done", `cpmsapi030 시도 ${attempted}회 (성공 ${processed}) / resume skip ${skippedFacilities}건 / regions UPDATE ${updatedRegions}건${quotaExhausted ? " / 쿼터 초과 조기 종료" : ""}`);
+  log("done", `cpmsapi030 시도 ${attempted}회 (응답 ${processed} · 실패 ${failedRegions}) / 0건 ${zeroRegions} / 바뀜 없음 ${unchangedRegions} / regions UPDATE ${updatedRegions}건${stopReason ? ` / ${stopReason}` : ""}`);
 
   if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", processed);
-  const result = rpt.summary();
-  await recordCollectorRun("childcare-detail", result);
-  if (result.fail > 0) process.exit(1);
+  const summary = rpt.summary();
+  const verdict = decideRunStatus({ attempted, zeroRegions, failedRegions, updateFails, stopReason, interrupted: summary.status === "partial" });
+  if (verdict.errorMessage) logError("verdict", `failure — ${verdict.errorMessage} (이미 UPDATE 한 시군구는 그대로)`);
+  await recordCollectorRun("childcare-detail", { ...summary, status: verdict.status, errorMessage: verdict.errorMessage });
+  if (verdict.status === "failure") process.exit(1);
 }
 
 const argv1 = process.argv[1];

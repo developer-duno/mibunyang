@@ -95,13 +95,13 @@ monitor NULL 급증 경보가 영구화되고 있었다. **처방은 감시를 �
 
 | 구분 | 방식 | 실행 |
 |------|------|------|
-| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 매일 04:30 KST (info/info-jeju — ⚠️ childcare-detail 은 세션603(2026-10-06)부터 일시 제외: 빈 응답 재호출로 하루 한도 헛씀, 고친 PR 에서 복귀) |
+| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 매일 04:30 KST (info → info-jeju → detail 3종 — detail 은 세션603 일시 제외 뒤 세션606 에 시군구 단위 호출로 고쳐 복귀) |
 | 수동/보충 | `node scripts/childcare-local-runner.mjs` | 필요시 |
 | 대상 확인 | `node scripts/childcare-local-runner.mjs --list` | - |
 
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-childcare-task.ps1`
 
-KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실행 — detail 은 `DAILY_LIMIT` 1000/일 누적(~23일), info(243건)/jeju(2건)는 양이 적어 매일 최신 유지. 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`(childcare-detail/info/info-jeju, stale_days 14). 시간 분리 = childcare 04:30 / KOSIS 05:30 / naver 02:00·08:00. detail 의 circuit breaker(세션 398)는 로컬(한국 IP)에선 차단이 없어 발동 안 함 = 무해(외부 장애 시 안전망으로 보존).
+KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실행 — detail 은 시군구당 1회(arcode = `GU_LAWD_MAP`, 제주만 `JEJU_ARCODE_MAP` 49xxx — 탐침 10/07 05:23 50110 은 0건 · 매일 ≈260회 · `DAILY_LIMIT` 1000), info(243건)/jeju(2건)는 양이 적어 매일 최신 유지. 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`(childcare-detail/info/info-jeju, stale_days 3 — 매일 러너, 세션606). 시간 분리 = childcare 04:30 / KOSIS 05:30 / naver 02:00·08:00. detail 의 circuit breaker(세션 398 · 세션606 부터 연속 네트워크 실패 시군구 호출 `GLOBAL_DEAD_CIRCUIT`)는 로컬(한국 IP)에선 차단이 없어 발동 안 함 = 무해(외부 장애 시 안전망으로 보존). (0건 응답 + 호출 실패) 시군구가 시도의 10% 를 넘거나 전역 종료면 failure(세션606 차단기).
 
 ---
 
