@@ -448,7 +448,8 @@ export const EXTERNAL_API_COLLECTORS = [
   //    api.childcare.go.kr 해외 IP 차단으로 GH collect-childcare-detail/jeju.yml 삭제 +
   //    collect-childcare.yml info step 제거 (세션 399) — GH run 이 없어 collector_runs 신선도가
   //    유일한 "안 돌면 알림". 매일 발화 = 14 (1주 여유).
-  { collector: "childcare-detail",     stale_days: 14, owner: "어린이집 상세 cpmsapi030 (로컬 매일)" },
+  // 세션606: childcare-detail 은 매일 러너의 시군구 단위 호출로 바뀌어 air-quality(세션605)와 같은 3.
+  { collector: "childcare-detail",     stale_days: 3,  owner: "어린이집 상세 cpmsapi030 (로컬 매일)" },
   { collector: "childcare-info",       stale_days: 14, owner: "어린이집 정보 cpmsapi021 (로컬 매일)" },
   { collector: "childcare-info-jeju",  stale_days: 14, owner: "제주 어린이집 cpmsapi017 (로컬 매일)" },
 ];

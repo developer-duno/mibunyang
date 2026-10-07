@@ -153,7 +153,7 @@ export function aggregateChildcare(items, fetchedAt) {
 
 /**
  * 신규 집계(cpmsapi021 7필드)에 기존 최신행 facility 의 좌표·상세 필드(cpmsapi030 70필드)를
- * stcode 기준으로 보존 merge. childcare-detail 이 ~23일 누적 보강한 la/lo + crtypename 등을
+ * stcode 기준으로 보존 merge. childcare-detail 이 매일 시군구 단위로 보강한 la/lo + crtypename 등을
  * 월간/수동 info 가 7필드로 통째 덮어 전멸시키던 톱니(좌표 0% → nearby 매칭 100/2001 붕괴) 차단.
  * - count / total_capacity / fetched_at: 신규 집계값 사용 (현재 시점 정확).
  * - facilities[]: stcode 일치 시 기존 추가 필드(la/lo/crtypename/cctvinstlcnt 등)는 보존,

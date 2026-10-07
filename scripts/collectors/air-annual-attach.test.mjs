@@ -7,7 +7,7 @@
  * 보낸 건수를 그대로 더했기 때문이다.
  */
 import { describe, it, expect } from "vitest";
-import { buildAnnual, needsUpdate, countResults } from "./air-annual-attach.mjs";
+import { buildAnnual, needsUpdate, countResults, shouldClearAnnual, clearAllowed } from "./air-annual-attach.mjs";
 
 /** @type {Map<string, { pm25: number | null; pm10: number | null; o3: number | null; years: string | null }>} */
 const TABLE = new Map([
@@ -76,5 +76,33 @@ describe("needsUpdate — 멱등(같은 값이면 다시 쓰지 않는다)", () 
   it("한 칸이라도 다르면 갱신 필요", () => {
     expect(needsUpdate({ ...next, pm25: 18.28 }, next)).toBe(true);
     expect(needsUpdate({ ...next, years: "2021,2022,2023" }, next)).toBe(true);
+  });
+});
+
+describe("shouldClearAnnual — 측정소가 표에서 빠지면 옛 annual 을 비운다(사장님 결정 2026-10-07)", () => {
+  const old = { pm25: 18.27, pm10: 37.32, o3: 0.0319, years: "2022,2023,2024" };
+  it("표에 없는 측정소 + 옛 annual 있음 → 비움(중립 14점으로)", () => {
+    const aq = { station: "폐쇄측정소", annual: old };
+    expect(shouldClearAnnual(aq, buildAnnual(aq, TABLE))).toBe(true);
+  });
+  it("이미 비어 있으면(null·없음) 다시 쓰지 않는다 — 멱등", () => {
+    expect(shouldClearAnnual({ station: "폐쇄측정소", annual: null }, null)).toBe(false);
+    expect(shouldClearAnnual({ station: "폐쇄측정소" }, null)).toBe(false);
+  });
+  it("새 평균을 만들 수 있으면 비우지 않는다", () => {
+    const aq = { station: "강서구", annual: old };
+    expect(shouldClearAnnual(aq, buildAnnual(aq, TABLE))).toBe(false);
+  });
+});
+
+describe("clearAllowed — 비움 차단기(30곳 초과면 비움 안 씀, --expect-clear=N 정확 일치만 우회)", () => {
+  it("30곳까지는 진행 · 31곳은 차단", () => {
+    expect(clearAllowed(30, null)).toBe(true);
+    expect(clearAllowed(31, null)).toBe(false);
+  });
+  it("--expect-clear=31 이면 31곳 진행, 값이 다르면 차단", () => {
+    expect(clearAllowed(31, 31)).toBe(true);
+    expect(clearAllowed(31, 30)).toBe(false);
+    expect(clearAllowed(3000, 31)).toBe(false);
   });
 });

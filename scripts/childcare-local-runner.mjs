@@ -12,7 +12,7 @@
  * + EXTERNAL_API_COLLECTORS 등재(collector_runs 기반 "안 돌면 알림" 보존).
  *
  * KOSIS 러너(kosis-local-runner.mjs)와 차이: KOSIS 는 월간이라 DAY_TABLE 일자 디스패치이나,
- * childcare 는 매일 3종 전부 실행한다 (detail = DAILY_LIMIT 1000/일 누적 ~23일,
+ * childcare 는 매일 3종 전부 실행한다 (detail = 시군구당 1회 ≈260회/일, 세션606,
  * info 243건/jeju 2건 = 양 적어 매일 돌려 항상 최신). → 일자 매핑 불필요, 고정 배열.
  *
  * 사용법:
@@ -36,14 +36,13 @@ const COLLECTORS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "
 /**
  * 매일 실행할 childcare 수집기 (전부 api.childcare.go.kr 평문 HTTP, 해외 IP 차단 대상).
  * Kakao 기반 collect-childcare.mjs / DB 가공 collect-nearby-childcare.mjs 는 GH 에 남아 제외.
- * 세션603(2026-10-06): childcare-detail.mjs 일시 제외 — 시설 번호 앞자리로 만든 arcode 가
- * 파주·세종·남양주·광주·구례에서 빈 응답을 받고, 빈 응답 시설을 표시하지 않아 매일 같은
- * 997곳을 다시 불러 하루 한도(1,000)를 헛쓰고 있었다(최근 11회 UPDATE 0). 고친 PR 에서 되돌린다.
+ * 세션606: childcare-detail.mjs 복귀 — 시군구당 1회(arcode = GU_LAWD_MAP)로 고쳐 매일 ≈260회, 목록(info) 뒤에 돈다.
  * @type {string[]}
  */
 export const CHILDCARE_COLLECTORS = [
   "childcare-info.mjs",
   "childcare-info-jeju.mjs",
+  "childcare-detail.mjs",
 ];
 
 async function main() {
