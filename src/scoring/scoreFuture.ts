@@ -83,6 +83,7 @@ const DEV_ZONE_GENERIC_WORDS = new Set([
   "택지개발",
   "도시개발",
   "공공주택",
+  "도심", // 세션611 — "수원도심지구" 에서 시·구 이름을 떼면 "도심"만 남는다(BACKLOG #608 후속)
 ]);
 
 /** 접미어·접두 떼기를 되풀이하는 최대 횟수("인천검단지구 택지개발지구" → "검단지구" → "검단" → ""). */
@@ -104,7 +105,7 @@ function adminNameCore(token: string | undefined): string | null {
 /**
  * 지구명 원문에서 핵심어를 뽑는다(순수 함수).
  * ① 끝의 숫자 제거("부천대장2"→"부천대장") ② 접미어 제거(긴 것부터)
- * ③ 그 단지의 시·군 이름·시도 약칭 접두 제거(gu·region 첫 토큰에서 시/군/구를 뗀 것, 둘 다·순서 무관
+ * ③ 그 단지의 시·군 이름·시도 약칭 접두 제거(gu 모든 토큰·region 첫 토큰에서 시/군/구를 뗀 것, 둘 다·순서 무관
  *    — "시흥거모"→"거모"). 지구명이 **시 이름 그 자체**면("순천"·"안성1"·"인천") 빈 문자열이 된다 —
  *    이름에 도시명이 든 단지가 가짜 좌표 곁 그 도시 지구 점수를 되살리지 않게(세션569 검사관).
  * ②③ 은 더 떼어낼 게 없을 때까지 최대 `DEV_ZONE_STRIP_ROUNDS` 번 되풀이한다("인천검단지구" → "검단지구" → "검단").
@@ -112,9 +113,11 @@ function adminNameCore(token: string | undefined): string | null {
  */
 export function devZoneKeyword(zoneName: string, gu?: string | null, region?: string | null): string | null {
   let k = zoneName.replace(/\s+/g, "").replace(/\d+$/, "");
-  const prefixes = [adminNameCore(gu?.split(/\s+/)[0]), adminNameCore(region?.split(/\s+/)[0])].filter(
-    (p): p is string => p != null
-  );
+  // gu 는 **모든 단어**("수원시 권선구" → "수원"·"권선") — 첫 단어만 떼면 "권선"이 핵심어로 남았다(세션611).
+  // 긴 접두부터 대조한다(짧은 접두가 긴 접두의 앞부분을 먼저 먹지 않게).
+  const prefixes = [...(gu?.split(/\s+/) ?? []).map(adminNameCore), adminNameCore(region?.split(/\s+/)[0])]
+    .filter((p): p is string => p != null)
+    .sort((a, b) => b.length - a.length);
   for (let round = 0; round < DEV_ZONE_STRIP_ROUNDS; round++) {
     const before = k;
     const suffix = DEV_ZONE_SUFFIXES.find((sfx) => k.endsWith(sfx) && k.length > sfx.length);

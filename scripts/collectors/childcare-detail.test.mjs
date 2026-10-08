@@ -27,6 +27,8 @@ const {
   resolveArcode,
   planRegion,
   processRegion,
+  initRunCounters,
+  advanceRunCounters,
 } = await import("./childcare-detail.mjs");
 
 describe("parseChildcareDetailXml", () => {
@@ -444,6 +446,10 @@ describe("planRegion · processRegion — 시군구 하나 처리(main 은 결�
     const p = planRegion(row("경기", "파주시", [{ stcode: "40400000031", crname: "가" }]));
     expect(p).toEqual({ action: "call", arcode: "41480", facilities: [{ stcode: "40400000031", crname: "가" }] });
   });
+  it("제주시는 제주 수집기 코드 49110 — GU_LAWD_MAP 의 50110 이 아니다(세션606 재검사관 C)", () => {
+    const p = planRegion(row("제주", "제주시", [{ stcode: "50110000001", crname: "가" }]));
+    expect(p).toEqual({ action: "call", arcode: "49110", facilities: [{ stcode: "50110000001", crname: "가" }] });
+  });
   it("시설 0곳 = 호출 안 함(none) · 코드 없음 = noArcode", () => {
     expect(planRegion(row("경기", "파주시", [])).action).toBe("none");
     expect(planRegion(/** @type {any} */ ({ id: 1, region: "경기", gu: "파주시", recorded_at: "x", childcare: null })).action).toBe("none");
@@ -466,5 +472,79 @@ describe("planRegion · processRegion — 시군구 하나 처리(main 은 결�
     expect(out.changed).toBe(true);
     expect(/** @type {any} */ (out.merged[0]).crtypename).toBe("민간");
     expect(out.merged).toHaveLength(2);
+  });
+});
+
+describe("advanceRunCounters — 반복 한 바퀴 셈 갱신(main 은 이 결과로만 셈) · 세션611", () => {
+  it("처음 셈은 전부 0 · 전역 종료 없음", () => {
+    expect(initRunCounters()).toEqual({
+      attempted: 0, processed: 0, zeroRegions: 0, failedRegions: 0, updateFails: 0, consecutiveNetFails: 0, stopReason: null,
+    });
+  });
+  it("응답 받음 → 시도+1 · 응답+1 · 0건 아님", () => {
+    const c = advanceRunCounters(initRunCounters(), { type: "fetched", zero: false });
+    expect(c).toMatchObject({ attempted: 1, processed: 1, zeroRegions: 0, failedRegions: 0, stopReason: null });
+  });
+  it("0건 응답 → 0건+1 (시도·응답도 +1)", () => {
+    const c = advanceRunCounters(initRunCounters(), { type: "fetched", zero: true });
+    expect(c).toMatchObject({ attempted: 1, processed: 1, zeroRegions: 1 });
+  });
+  it("네트워크 실패 → 실패+1 · 시도+1 · 응답 그대로 · 연속+1", () => {
+    const c = advanceRunCounters(initRunCounters(), { type: "fetchFail", network: true }, 5);
+    expect(c).toMatchObject({ attempted: 1, processed: 0, failedRegions: 1, consecutiveNetFails: 1, stopReason: null });
+  });
+  it("INFO-300 → 시도+1 · 전역 종료 사유 문자열", () => {
+    const c = advanceRunCounters(initRunCounters(), { type: "quota", code: "INFO-300" });
+    expect(c.attempted).toBe(1);
+    expect(c.stopReason).toBe("INFO-300 전역 종료");
+  });
+  it("연속 네트워크 실패가 임계에 닿으면 전역 종료 · 그 전엔 아니다", () => {
+    let c = initRunCounters();
+    for (let i = 0; i < 4; i++) c = advanceRunCounters(c, { type: "fetchFail", network: true }, 5);
+    expect(c.stopReason).toBeNull();
+    c = advanceRunCounters(c, { type: "fetchFail", network: true }, 5);
+    expect(c.stopReason).toBe("연속 네트워크 실패 5 시군구 전역 종료");
+    expect(c.failedRegions).toBe(5);
+  });
+  it("응답을 받거나 네트워크 아닌 실패면 연속 셈이 0 으로 — 띄엄띄엄 실패는 전역 종료가 아니다", () => {
+    let c = initRunCounters();
+    for (let i = 0; i < 4; i++) c = advanceRunCounters(c, { type: "fetchFail", network: true }, 5);
+    c = advanceRunCounters(c, { type: "fetched", zero: false }, 5);
+    expect(c.consecutiveNetFails).toBe(0);
+    for (let i = 0; i < 4; i++) c = advanceRunCounters(c, { type: "fetchFail", network: true }, 5);
+    c = advanceRunCounters(c, { type: "fetchFail", network: false }, 5);
+    expect(c.consecutiveNetFails).toBe(0);
+    expect(c.stopReason).toBeNull();
+    expect(c.failedRegions).toBe(9);
+  });
+  it("UPDATE 실패 → +1 (시도는 다시 세지 않는다)", () => {
+    const c = advanceRunCounters(advanceRunCounters(initRunCounters(), { type: "fetched", zero: false }), { type: "updateFail" });
+    expect(c).toMatchObject({ attempted: 1, updateFails: 1 });
+  });
+  it("셈 결과를 decideRunStatus 에 넘기면 판정이 이어진다 — 네트워크 전역 종료 = failure", () => {
+    let c = initRunCounters();
+    for (let i = 0; i < 5; i++) c = advanceRunCounters(c, { type: "fetchFail", network: true }, 5);
+    const v = decideRunStatus({ ...c, interrupted: false });
+    expect(v.status).toBe("failure");
+    expect(v.errorMessage).toContain("연속 네트워크 실패 5");
+  });
+  it("main 은 네 갈래 모두 advanceRunCounters 로만 셈을 바꾸고 그 셈으로 판정한다(소스 배선)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./childcare-detail.mjs", import.meta.url), "utf8");
+    const start = src.indexOf("async function main()");
+    expect(start).toBeGreaterThan(0);
+    // main 본문만 · 줄 주석 걷어냄(주석 처리된 배선이 "있음"으로 잡히지 않게)
+    const main = src
+      .slice(start)
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join("\n");
+    for (const type of ["quota", "fetchFail", "fetched", "updateFail"]) {
+      expect(main).toMatch(new RegExp(`\\bc\\s*=\\s*advanceRunCounters\\(\\s*c\\s*,\\s*\\{\\s*type:\\s*"${type}"`));
+    }
+    expect(main).toMatch(/if\s*\(\s*c\.attempted\s*>=\s*DAILY_LIMIT\s*\)/);
+    expect(main).toMatch(/if\s*\(\s*c\.stopReason\s*\)\s*\{\s*logError\("circuit",[^\n]*\n\s*break;/);
+    expect(main).toMatch(/decideRunStatus\(\{\s*attempted:\s*c\.attempted,\s*zeroRegions:\s*c\.zeroRegions,\s*failedRegions:\s*c\.failedRegions,\s*updateFails:\s*c\.updateFails,\s*stopReason:\s*c\.stopReason,/);
+    expect(main).not.toMatch(/\b(attempted|processed|zeroRegions|failedRegions|updateFails|consecutiveNetFails)\+\+/);
   });
 });

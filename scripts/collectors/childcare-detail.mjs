@@ -413,6 +413,57 @@ export function processRegion({ facilities, xml }) {
   return { parsed: details.length, zero: false, code, merged: m.facilities, matched: m.matched, changed: m.changed };
 }
 
+/**
+ * @typedef {{ attempted: number, processed: number, zeroRegions: number, failedRegions: number, updateFails: number, consecutiveNetFails: number, stopReason: string | null }} RunCounters
+ */
+
+/** @returns {RunCounters} */
+export function initRunCounters() {
+  return { attempted: 0, processed: 0, zeroRegions: 0, failedRegions: 0, updateFails: 0, consecutiveNetFails: 0, stopReason: null };
+}
+
+/**
+ * 반복 한 바퀴의 결과로 회차 셈을 갱신한다(순수 함수 — main 은 이 결과로만 셈을 바꾸고,
+ * `stopReason` 이 생기면 반복을 끝낸다). 세션606 재검사관 C: main 배선이 시험 밖이었다.
+ * - fetched: 응답 받음 → 시도+1 · 응답+1 · 연속 네트워크 실패 0 · zero 면 0건+1
+ * - quota: INFO-300/400 → 시도+1 · 전역 종료
+ * - fetchFail: 호출 실패 → 시도+1 · 실패+1 · 네트워크 실패면 연속+1(임계 도달 = 전역 종료), 아니면 연속 0
+ * - updateFail: UPDATE 실패 → +1 (시도는 fetched 에서 이미 셈)
+ * @param {RunCounters} c
+ * @param {{ type: "fetched", zero: boolean } | { type: "quota", code: string } | { type: "fetchFail", network: boolean } | { type: "updateFail" }} ev
+ * @param {number} [circuit] 연속 네트워크 실패 임계(기본 GLOBAL_DEAD_CIRCUIT)
+ * @returns {RunCounters}
+ */
+export function advanceRunCounters(c, ev, circuit = GLOBAL_DEAD_CIRCUIT) {
+  switch (ev.type) {
+    case "fetched":
+      return {
+        ...c,
+        attempted: c.attempted + 1,
+        processed: c.processed + 1,
+        consecutiveNetFails: 0,
+        zeroRegions: c.zeroRegions + (ev.zero ? 1 : 0),
+      };
+    case "quota":
+      return { ...c, attempted: c.attempted + 1, stopReason: `${ev.code} 전역 종료` };
+    case "fetchFail": {
+      const consecutiveNetFails = ev.network ? c.consecutiveNetFails + 1 : 0;
+      return {
+        ...c,
+        attempted: c.attempted + 1,
+        failedRegions: c.failedRegions + 1,
+        consecutiveNetFails,
+        stopReason:
+          ev.network && consecutiveNetFails >= circuit
+            ? `연속 네트워크 실패 ${consecutiveNetFails} 시군구 전역 종료`
+            : c.stopReason,
+      };
+    }
+    case "updateFail":
+      return { ...c, updateFails: c.updateFails + 1 };
+  }
+}
+
 async function main() {
   if (!API_KEY) {
     logError("init", "CHILDCARE_BASIC_API_KEY 환경변수 필요");
@@ -446,16 +497,11 @@ async function main() {
   }
   log("init", `regions ${allRegions.length}행 → (region, gu) 최신행 ${targets.length}건`);
 
-  let processed = 0;       // cpmsapi030 응답 받은 시군구 호출 수 (쿼터 기록)
-  let attempted = 0;       // cpmsapi030 시도한 시군구 수 (성공+실패) — DAILY_LIMIT·차단기 분모
-  let zeroRegions = 0;     // 시설이 있는데 0건 응답인 시군구
-  let failedRegions = 0;   // 호출이 실패한 시군구(네트워크·HTTP 오류·본문 읽기 실패)
-  let updateFails = 0;
+  // 회차 셈(시도·응답·0건·실패·UPDATE 실패·연속 네트워크 실패·전역 종료 사유)은 advanceRunCounters 로만 바꾼다.
+  //   attempted = 시도한 시군구 수(성공+실패) — DAILY_LIMIT·차단기 분모 · processed = 응답 받은 수(쿼터 기록)
+  let c = initRunCounters();
   let updatedRegions = 0;
   let unchangedRegions = 0;
-  /** @type {string | null} */
-  let stopReason = null;   // 전역 종료 사유(INFO-300/400 · 연속 네트워크 실패) — failure 로 기록
-  let consecutiveNetFails = 0;  // 연속 네트워크 실패 시군구 호출 수 (전역 차단 감지)
   const rpt = createReporter("childcare-detail");
 
   for (const r of targets) {
@@ -470,7 +516,7 @@ async function main() {
     const { arcode, facilities } = plan;
 
     // 시도(attempted) 기준 — 실패 호출도 진행으로 쳐야 네트워크 차단 시에도 종료조건이 발동한다.
-    if (attempted >= DAILY_LIMIT) {
+    if (c.attempted >= DAILY_LIMIT) {
       log("limit", `DAILY_LIMIT ${DAILY_LIMIT} 도달 — 남은 시군구는 다음 회차`);
       break;
     }
@@ -478,41 +524,32 @@ async function main() {
     /** @type {string} */
     let xml;
     try {
-      attempted++;
       const res = await fetchWithRetry(buildDetailUrl(API_KEY, arcode));
       xml = await res.text();
       assertNoQuotaError(xml);  // INFO-300/400 = 전역 종료 신호 (0건 응답과 구분)
-      processed++;
-      consecutiveNetFails = 0;
       await sleep(300);  // rate limit (population-sex-age L144 답습)
     } catch (e) {
       // INFO-300/400 = 오늘 더 호출 불가 → 즉시 전역 종료, failure 로 기록(다음 회차 재시도).
       if (e instanceof QuotaExceededError) {
         logError("quota", `${r.region} ${r.gu}: ${e.message} — 전역 종료 (다음 회차 재시도)`);
-        stopReason = `${e.code} 전역 종료`;
+        c = advanceRunCounters(c, { type: "quota", code: e.code });
         break;
       }
       const msg = e instanceof Error ? e.message : String(e);
-      failedRegions++;
+      // 네트워크 레벨 실패(해외 IP 차단 등)가 연속 N 시군구면 전면 차단 → 전역 종료(stopReason).
+      c = advanceRunCounters(c, { type: "fetchFail", network: isNetworkError(msg) });
       logError("fetch", `${r.region} ${r.gu} (${arcode}): ${msg}`);
       rpt.fail(1);
-      // 네트워크 레벨 실패(해외 IP 차단 등)가 연속 N 시군구면 전면 차단 → 전역 종료.
-      if (isNetworkError(msg)) {
-        consecutiveNetFails++;
-        if (consecutiveNetFails >= GLOBAL_DEAD_CIRCUIT) {
-          logError("circuit", `연속 ${consecutiveNetFails}개 시군구 네트워크 실패 — 전역 종료 (api.childcare.go.kr 해외 IP 차단 의심, 다음 회차 재시도)`);
-          stopReason = `연속 네트워크 실패 ${consecutiveNetFails} 시군구 전역 종료`;
-          break;
-        }
-      } else {
-        consecutiveNetFails = 0;
+      if (c.stopReason) {
+        logError("circuit", `연속 ${c.consecutiveNetFails}개 시군구 네트워크 실패 — 전역 종료 (api.childcare.go.kr 해외 IP 차단 의심, 다음 회차 재시도)`);
+        break;
       }
       continue;
     }
 
     const out = processRegion({ facilities, xml });
+    c = advanceRunCounters(c, { type: "fetched", zero: out.zero });
     if (out.zero) {
-      zeroRegions++;
       log("zero", `${r.region} ${r.gu} (${arcode}): 0건 응답(${out.code ?? "코드 없음"}) — 시설 ${facilities.length}곳 그대로, skip`);
       rpt.skip(1);
       continue;
@@ -540,20 +577,27 @@ async function main() {
       .eq("id", r.id);
     if (updErr) {
       logError("update", `${r.region} ${r.gu}: ${updErr.message}`);
-      updateFails++;
+      c = advanceRunCounters(c, { type: "updateFail" });
       rpt.fail(1);
     } else {
       updatedRegions++;
       rpt.success(1);
-      log("update", `${tag} (${processed}/${DAILY_LIMIT})`);
+      log("update", `${tag} (${c.processed}/${DAILY_LIMIT})`);
     }
   }
 
-  log("done", `cpmsapi030 시도 ${attempted}회 (응답 ${processed} · 실패 ${failedRegions}) / 0건 ${zeroRegions} / 바뀜 없음 ${unchangedRegions} / regions UPDATE ${updatedRegions}건${stopReason ? ` / ${stopReason}` : ""}`);
+  log("done", `cpmsapi030 시도 ${c.attempted}회 (응답 ${c.processed} · 실패 ${c.failedRegions}) / 0건 ${c.zeroRegions} / 바뀜 없음 ${unchangedRegions} / regions UPDATE ${updatedRegions}건${c.stopReason ? ` / ${c.stopReason}` : ""}`);
 
-  if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", processed);
+  if (!dryRun) await recordApiQuota("childcare-detail", "CHILDCARE_BASIC_API_KEY", c.processed);
   const summary = rpt.summary();
-  const verdict = decideRunStatus({ attempted, zeroRegions, failedRegions, updateFails, stopReason, interrupted: summary.status === "partial" });
+  const verdict = decideRunStatus({
+    attempted: c.attempted,
+    zeroRegions: c.zeroRegions,
+    failedRegions: c.failedRegions,
+    updateFails: c.updateFails,
+    stopReason: c.stopReason,
+    interrupted: summary.status === "partial",
+  });
   if (verdict.errorMessage) logError("verdict", `failure — ${verdict.errorMessage} (이미 UPDATE 한 시군구는 그대로)`);
   await recordCollectorRun("childcare-detail", { ...summary, status: verdict.status, errorMessage: verdict.errorMessage });
   if (verdict.status === "failure") process.exit(1);
