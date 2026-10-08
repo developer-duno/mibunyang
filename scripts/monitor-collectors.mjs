@@ -364,7 +364,8 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "molit-building",  stale_days: 38, owner: "MOLIT 건축물대장 상세 (로컬 매월 10일)" },
   // molit-units 만 14 인 이유 = 월간 cron 외에 네이버 로컬 파이프라인(월/목 08:00, run-naver-local)
   // 4/6 단계가 같은 수집기를 돌린다. 정상 최대 간격이 4일이라 월간 38 을 쓰면 정지를 늦게 잡는다.
-  { collector: "molit-units",     stale_days: 14, owner: "MOLIT 세대수 보정 (로컬 매월 6일 + 네이버 파이프라인 월/목)" },
+  // 세션612: kosis 러너 6일 항목을 빼 네이버 파이프라인(월/목, 이제 4/5 단계) 한 곳만 — 주기가 그대로라 14 유지.
+  { collector: "molit-units",     stale_days: 14, owner: "MOLIT 세대수 보정 (네이버 파이프라인 월/목 — 세션612 부터 한 곳)" },
   { collector: "transport-tago",  stale_days: 14, owner: "버스정류장 파일(data.go.kr, 세션497부터 TAGO 실시간 API 대체) + Kakao" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
   { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
@@ -449,9 +450,11 @@ export const EXTERNAL_API_COLLECTORS = [
   //    collect-childcare.yml info step 제거 (세션 399) — GH run 이 없어 collector_runs 신선도가
   //    유일한 "안 돌면 알림". 매일 발화 = 14 (1주 여유).
   // 세션606: childcare-detail 은 매일 러너의 시군구 단위 호출로 바뀌어 air-quality(세션605)와 같은 3.
-  { collector: "childcare-detail",     stale_days: 3,  owner: "어린이집 상세 cpmsapi030 (로컬 매일)" },
-  { collector: "childcare-info",       stale_days: 14, owner: "어린이집 정보 cpmsapi021 (로컬 매일)" },
-  { collector: "childcare-info-jeju",  stale_days: 14, owner: "제주 어린이집 cpmsapi017 (로컬 매일)" },
+  // 세션612(결정 ⑨): 러너가 화요일만 3종을 돌린다(주 1회) → 3종 전부 주간 14. 러너 생존 신호는
+  //   kosis 러너의 air-quality(3)가 맡는다 — childcare 는 신호가 아니다.
+  { collector: "childcare-detail",     stale_days: 14, owner: "어린이집 상세 cpmsapi030 (로컬 주 1회 화)" },
+  { collector: "childcare-info",       stale_days: 14, owner: "어린이집 정보 cpmsapi021 (로컬 주 1회 화)" },
+  { collector: "childcare-info-jeju",  stale_days: 14, owner: "제주 어린이집 cpmsapi017 (로컬 주 1회 화)" },
 ];
 
 /** ⑤ 외부 API 장기 중단 판정 — 최근 N회 연속 success+ok=0 = silent fail 의심. */
@@ -844,7 +847,7 @@ function staleActionLines(collector) {
   return collector.startsWith("naver-")
     ? [
         `[조치 1] 예약 작업 MibunyangNaverCollect(월·목 08:00) 결과 확인 — schtasks /query /tn MibunyangNaverCollect`,
-        `[조치 2] naver-collect.log 확인 → 남은 단계 수동 재개 뒤 node scripts/record-pipeline-run.mjs done --collector=naver-pipeline --ok=6 --skip=0`,
+        `[조치 2] naver-collect.log 확인 → 남은 단계 수동 재개 뒤 node scripts/record-pipeline-run.mjs done --collector=naver-pipeline --ok=5 --skip=0`,
       ]
     : [
         `[조치 1] 집서버 작업 확인 — schtasks /query /tn MibunyangKosisLocal (로컬 러너 수집기인 경우)`,

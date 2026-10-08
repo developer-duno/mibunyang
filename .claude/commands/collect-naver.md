@@ -1,5 +1,5 @@
 ---
-description: 네이버 부동산 수집을 손으로 실행 — 예약 작업과 같은 6단계(run-naver-local.sh) + 결과 보고
+description: 네이버 부동산 수집을 손으로 실행 — run-naver-local.sh 6단계(예약 bat 는 5단계, 점수는 03:00 daily-deploy) + 결과 보고
 argument-hint: [--limit=N] [--dry-run] [--max-minutes=N] [--no-resume]
 allowed-tools: Bash, Read
 ---
@@ -10,7 +10,7 @@ allowed-tools: Bash, Read
 > 어디서도 부르지 않는 옛 Node 크롤러 하위 프로젝트). `scripts/post-naver-collect.sh`(4단계)는
 > 예약에서 빠진 옛 경로(로그 마지막 2026-04-11)이고, 3단계로 미분양 `collect-unsold-kosis` 를 돌린다 — 미분양은
 > 원래 로컬 러너 **매월 9일에만** 돈다. 예약 작업 `MibunyangNaverCollect`(월/목 08:00) = `scripts/run-naver-local.bat`,
-> 손 실행용 쌍둥이 = `scripts/run-naver-local.sh`(같은 6단계, 콘솔로 진행을 보이게 일부러 로그 파일로 안 돌린다).
+> 손 실행용 쌍둥이 = `scripts/run-naver-local.sh`(6단계 — compute-scores 포함, 콘솔로 진행을 보이게 일부러 로그 파일로 안 돌린다). 예약 bat 는 세션612 부터 5단계(점수는 03:00 daily-deploy 만).
 > 아래 손 실행 전체는 세션567 에 돌려 보지 않았다(인터프리터 `python3`·`py -3` = 3.12.10 만 확인) — 첫 사용 때 2번부터.
 
 ## 실행 절차

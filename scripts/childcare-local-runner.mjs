@@ -12,11 +12,12 @@
  * + EXTERNAL_API_COLLECTORS 등재(collector_runs 기반 "안 돌면 알림" 보존).
  *
  * KOSIS 러너(kosis-local-runner.mjs)와 차이: KOSIS 는 월간이라 DAY_TABLE 일자 디스패치이나,
- * childcare 는 매일 3종 전부 실행한다 (detail = 시군구당 1회 ≈260회/일, 세션606,
- * info 243건/jeju 2건 = 양 적어 매일 돌려 항상 최신). → 일자 매핑 불필요, 고정 배열.
+ * childcare 는 고정 배열 3종을 한 번에 실행한다 (detail = 시군구당 1회 ≈260회, 세션606).
+ * 세션612: 매일 → **화요일만**(`shouldRunToday`). 작업 스케줄러는 매일 04:30 그대로, 다른 요일은 로그 한 줄 + exit 0.
  *
  * 사용법:
- *   node scripts/childcare-local-runner.mjs            3종 전부 실행
+ *   node scripts/childcare-local-runner.mjs            화요일(KST)이면 3종 실행, 아니면 건너뜀
+ *   node scripts/childcare-local-runner.mjs --force    요일 무관 3종 실행(보충·손 실행)
  *   node scripts/childcare-local-runner.mjs --dry-run  수집기에 --dry-run 전달
  *   node scripts/childcare-local-runner.mjs --list      대상 목록 출력만
  *
@@ -34,7 +35,7 @@ const PHASE = "childcare-local-runner";
 const COLLECTORS_DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "collectors");
 
 /**
- * 매일 실행할 childcare 수집기 (전부 api.childcare.go.kr 평문 HTTP, 해외 IP 차단 대상).
+ * 실행할 childcare 수집기 — 세션612부터 화요일만 (전부 api.childcare.go.kr 평문 HTTP, 해외 IP 차단 대상).
  * Kakao 기반 collect-childcare.mjs / DB 가공 collect-nearby-childcare.mjs 는 GH 에 남아 제외.
  * 세션606: childcare-detail.mjs 복귀 — 시군구당 1회(arcode = GU_LAWD_MAP)로 고쳐 매일 ≈260회, 목록(info) 뒤에 돈다.
  * @type {string[]}
@@ -45,13 +46,34 @@ export const CHILDCARE_COLLECTORS = [
   "childcare-detail.mjs",
 ];
 
+/**
+ * 세션612(사장님 결정 ⑨): 3종을 주 1회 — **화요일(KST)만** 돈다. 어린이집 정보는 매일 바뀌지 않는데
+ * 매일 3종을 다 부르던 외부 호출을 주 1회로 줄인다. Windows 작업 `MibunyangChildcareLocal` 은 매일 04:30 그대로 두고
+ * 러너가 요일로 거른다(작업 재등록 없음). 러너 생존 신호는 kosis 러너의 air-quality(감시 stale 3)가 맡는다.
+ * 감시 ⑤ 의 childcare 3종 stale_days 는 주간 14 — 이 값을 바꾸면 그쪽도 같이.
+ */
+export const CHILDCARE_RUN_DOW = 2;
+
+/**
+ * 오늘 3종을 돌릴지. 시각은 밖에서 넣는다(시험 고정용). PC 시간대에 기대지 않게 UTC+9 로 KST 요일을 잰다.
+ * @param {Date} now
+ * @param {boolean} force `--force` — 요일 무관 실행(놓친 주 보충·손 실행)
+ * @returns {boolean}
+ */
+export function shouldRunToday(now, force) {
+  if (force) return true;
+  const kstDow = new Date(now.getTime() + 9 * 60 * 60 * 1000).getUTCDay();
+  return kstDow === CHILDCARE_RUN_DOW;
+}
+
 async function main() {
   loadEnv();
   const dryRun = process.argv.includes("--dry-run");
+  const force = process.argv.includes("--force");
 
   if (process.argv.includes("--list")) {
     for (const script of CHILDCARE_COLLECTORS) {
-      log(PHASE, `매일: ${script}`);
+      log(PHASE, `매주 화요일: ${script}`);
     }
     return;
   }
@@ -59,6 +81,11 @@ async function main() {
   // KST 로컬 날짜 — toISOString() 은 UTC 라 04:30 KST 실행 시 전일로 표기됨.
   const date = new Date();
   const dateStr = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+
+  if (!shouldRunToday(date, force)) {
+    log(PHASE, `${dateStr}: 오늘은 건너뜀 — 어린이집 3종은 화요일만 돈다(세션612). 보충은 --force`);
+    return;
+  }
 
   log(
     PHASE,

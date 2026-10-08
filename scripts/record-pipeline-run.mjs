@@ -14,7 +14,7 @@
  *   done    --collector=naver-pipeline --ok=<성공 단계 수> --skip=<경고 단계 수> [--warn=이름,이름]
  *           status "success" 1행. 경고가 있으면 error_message = "WARN_STEPS: 이름,이름".
  *   failed  --step=<N> --name=<단계명>
- *           status "failure" · ok = N-1(끝낸 단계 수) · fail 1 · error_message = "STEP_FAILED: N/6 이름".
+ *           status "failure" · ok = N-1(끝낸 단계 수) · fail 1 · error_message = "STEP_FAILED: N/5 이름"(세션612 전엔 N/6).
  *
  * ⚠️ 무슨 일이 있어도 exit 0 — 기록 실패가 파이프라인을 죽이면 안 된다(`recordCollectorRun` 도 예외를 삼킨다).
  * ⚠️ `--dry-run` 이면 collector_runs 에 쓰지 않는다(기존 규칙, `_shared.mjs` recordCollectorRun).
@@ -27,7 +27,8 @@ import { loadEnv, recordCollectorRun } from "./collectors/_shared.mjs";
 /** collector_runs 기록명 — 감시 ⑤ EXTERNAL_API_COLLECTORS 의 키와 정확히 같아야 한다(라벨 드리프트 가드가 이 PHASE 를 읽는다). */
 const PHASE = "naver-pipeline";
 export const PIPELINE_COLLECTOR = PHASE;
-export const PIPELINE_TOTAL_STEPS = 6;
+/** 세션612: 6 → 5 — bat 의 점수 굽기 단계(옛 6/6)를 지웠다(점수는 매일 03:00 daily-deploy 만). `_naver-bat-guard.test.mjs` 가 bat 단계 표시 수와 묶는다. */
+export const PIPELINE_TOTAL_STEPS = 5;
 export const STAMP_PATH = resolve(dirname(fileURLToPath(import.meta.url)), "..", ".naver-pipeline-start.json");
 
 /**
