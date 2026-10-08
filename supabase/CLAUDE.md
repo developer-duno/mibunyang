@@ -64,6 +64,7 @@
 | 미분양 출처 | 1 (unsold_source TEXT — NULL·`kosis`·`applyhome`·`hold`, CHECK + hold 면 unsold·unsold_rate NULL 제약) | collect-unsold-kosis(`kosis`) · collect-applyhome-seed(`applyhome`) · 사람(`hold` = 자료 없음 확정, backfill-unsold-source 계획 파일로만 걸고 푼다 — 수집기 둘 다 덮지 않음) — **세션568**(마이그 20260924000200) · hold **세션570**(마이그 20260924000600). 판정 규칙 정본 = `scripts/collectors/collect-unsold-kosis.mjs` `shouldSkipKosisFill`·`planUnsoldUpdates` 머리말 |
 | 청약홈 값 만료 | 2 (unsold_as_of DATE — applyhome=값의 공고일 · hold=보류 결정일(감시 ⑫(e) 6개월 재검토) · competition_shortfall INTEGER ≥0 — 최신 경쟁률 회차 평형별 미달 합) | collect-applyhome-seed(`unsold_as_of`) · collect-applyhome(`competition_shortfall`, 0 이면 applyhome 값 0) · collect-unsold-kosis(공고일+6개월 지나면 KOSIS 로) — **세션569 C6**(마이그 20260924000500). VIEW 미노출 |
 | 묶음 열쇠 | 1 (complex_key TEXT — 같은 단지 묶음 열쇠, NULL = 아직 안 채운 새 행 · 읽는 쪽은 `COALESCE(complex_key, id)`. 세션588) | assign-complex-keys(매일 굽기 앞 단계가 전 행을 다시 계산해 바뀐 행만 고친다 · 규칙 = `_same-complex.mjs` · 예외 = `docs/audits/same-complex-exceptions.json`). VIEW 가 이 칸을 읽는 것은 "한 단지 = 한 장" 다) 단계 |
+| SGIS 행정동 | 2 (sgis_emd_cd TEXT — SGIS 행정동 코드 8자리 = 시도2+시군구3+읍면동3, 시도 코드는 SGIS 자체(세종29·전남36)라 법정동 bjd_code 와 다른 체계 · CHECK 숫자 8자리 · 색인 · sgis_mapped_at TIMESTAMPTZ — 쓴 시각. NULL = 미매핑·좌표 없음·결과 없음. 세션614, 마이그 20261008000000) | sgis-map-emd(로컬 러너 매주 화요일 · 좌표로 rgeocodewgs84 1회 · 빈칸만 채움 · 시도 불일치면 안 씀). VIEW 미노출 |
 
 ### 칸 추가 뒤 확인 (세션568)
 

@@ -21,7 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
-import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, HWASEONG_LAWD_CODES } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, HWASEONG_LAWD_CODES, parseSgisSidoMismatch, hasSgisFirstRunPending } from "./collectors/_shared.mjs";
 import { isMissingTable } from "./collectors/_trade-deals.mjs";
 import { isLeaseUnit } from "../src/constants/leaseTypes.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
@@ -268,7 +268,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -431,6 +431,14 @@ export const EXTERNAL_API_COLLECTORS = [
   //   월간(매월 20일) 이므로 31일 + 1주 여유 = 38 (일일=14 / 주간=14 / 월간=38 / 분기=100 기준표).
   //   DAY_TABLE 의 발화주기를 바꾸면 이 값도 함께 바꿀 것 — monitor-collectors.test.mjs 가 두 파일을 묶는다.
   { collector: "naver-devplan",    stale_days: 38, owner: "네이버 개발계획 도로·철도·역·지구 (로컬 매월 20일)" },
+  // sgis-map-emd = SGIS 좌표→행정동 매핑(세션614 · SGIS 1단계). 로컬 러너 매주 화요일(DAY_TABLE `dow: 2`) —
+  //   GH run 이 없어 ①③ 대상 밖이므로 collector_runs 신선도가 유일한 "안 돌면 알림". 주간 = 7 + 여유 1주기 = 14.
+  //   대상 0건 주간은 skip=1 로 기록해(수집기 쌍둥이 주석) ⑤-a 빈 성공 오탐이 없다.
+  //   since = 등재일. ⚠️ ⑤ 는 첫 회차 대기를 **못 본다**(보완 W2): 관문 대기 실행도 매주 success·skip 1 행을 남기므로
+  //   ⑤-b(미발화)·등재 뒤 행 0 둘 다 안 걸리고, ⑤-a 는 skip>0 행을 건너뛴다. 대기 행(FIRST_RUN_PENDING)과
+  //   시도 불일치 표시(SGIS_SIDO_MISMATCH=N)는 ⑱ checkSgisMapMarkers 가 읽는다 — 대기가 since + stale_days 를 넘으면 ⑱ 이 운다.
+  //   ⑤ 가 여기서 잡는 것은 "러너가 화요일에 아예 안 돈다"(행 자체가 14일 넘게 없음)뿐이다.
+  { collector: "sgis-map-emd",     stale_days: 14, since: "2026-10-08", owner: "SGIS 좌표→행정동 매핑 (로컬 매주 화요일)" },
   // ── KOSIS 10종 = 집서버 로컬 러너 수집기 (kosis-local-runner.mjs, 매일 05:30 KST 일자 디스패치).
   //    kosis.kr 해외 IP 차단으로 GH collect-*.yml 10개 삭제 (세션 288~289) — GH run 이 없어
   //    ③ 워크플로 미발화 점검 대상에서 빠지므로 collector_runs 신선도가 유일한 "안 돌면 알림".
@@ -1822,6 +1830,77 @@ export async function fetchTradeLinksHealth(sbArg) {
   return { links, apts, latestSuccess: runs?.[0] ?? null };
 }
 
+// ── ⑱ SGIS 행정동 매핑 표시 (세션614 보완 W2) ───────────────────────────────
+/** ⑱ 이 `collector_runs` 에서 찾는 수집기 이름(sgis-map-emd.mjs PHASE). */
+export const SGIS_MAP_COLLECTOR = "sgis-map-emd";
+
+/**
+ * ⑱ SGIS 매핑 표시 — 최신 `collector_runs` 행(sgis-map-emd)의 error_message 를 읽는다.
+ * (a) `FIRST_RUN_PENDING`(첫 회차 관문 대기)이고 등재일(`EXTERNAL_API_COLLECTORS` 의 since, KST 자정) + stale_days 를 넘었으면
+ *     `sgis-map-pending` — 대기 실행은 success·skip 1 이라 ⑤ 가 못 본다(⑤ 주석 참조). 등재일이 없으면 판정 안 함.
+ * (b) `SGIS_SIDO_MISMATCH=N` 이면 `sgis-map-sido-mismatch`(N 곳을 안 씀 — 좌표가 엉뚱한 시도를 가리킴).
+ * at = 그 행의 finished_at — "항상 dedup" 종류라 같은 행은 한 번만, 다음 화요일 행이 또 그러면 다시 운다(⑮ 와 같은 결).
+ * 행이 없으면 침묵(그건 ⑤ 의 "등재 뒤 행 0" 몫).
+ * @param {Array<{ error_message?: string | null, finished_at?: string | null }>} runs finished_at DESC — [0] 만 본다
+ * @param {Date} [now]
+ * @param {ReadonlyArray<{ collector: string, stale_days: number, since?: string }>} [targets]
+ * @returns {Issue[]}
+ */
+export function checkSgisMapMarkers(runs, now = new Date(), targets = EXTERNAL_API_COLLECTORS) {
+  const latest = runs?.[0];
+  if (!latest) return [];
+  const msg = latest.error_message ?? null;
+  const at = latest.finished_at ?? undefined;
+  /** @type {Issue[]} */
+  const issues = [];
+  if (hasSgisFirstRunPending(msg)) {
+    const entry = targets.find((c) => c.collector === SGIS_MAP_COLLECTOR);
+    const sinceMs = entry?.since ? new Date(`${entry.since}T00:00:00+09:00`).getTime() : NaN;
+    if (entry && Number.isFinite(sinceMs)) {
+      const days = (now.getTime() - sinceMs) / 86400000;
+      if (days > entry.stale_days) {
+        issues.push({
+          kind: "sgis-map-pending",
+          collector: SGIS_MAP_COLLECTOR,
+          detail: `첫 회차 대기 ${Math.floor(days)}일 — 전이표 승인 뒤 --first-run`,
+          lines: [
+            `등재(${entry.since}) 뒤 ${Math.floor(days)}일째 매주 화요일 실행이 관문에 걸려 아무것도 쓰지 않았습니다(기준 ${entry.stale_days}일).`,
+          ],
+          at,
+        });
+      }
+    }
+  }
+  const n = parseSgisSidoMismatch(msg);
+  if (n != null) {
+    issues.push({
+      kind: "sgis-map-sido-mismatch",
+      collector: SGIS_MAP_COLLECTOR,
+      detail: `시도 불일치로 안 쓴 단지 ${n}곳 — SGIS 응답 시도가 우리 지역과 다름(자리표시·오좌표 의심)`,
+      lines: [`마지막 실행에서 ${n}곳의 좌표가 다른 시도의 행정동으로 나왔습니다 — 그 단지는 sgis_emd_cd 를 비워 둡니다.`],
+      at,
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑱ 재료 — sgis-map-emd 의 최신 collector_runs 1행.
+ * @param {any} [sbArg]
+ * @returns {Promise<Array<{ error_message?: string | null, finished_at?: string | null }>>}
+ */
+export async function fetchSgisMapLatestRun(sbArg) {
+  const sb = sbArg ?? getSupabase();
+  const { data, error } = await sb
+    .from("collector_runs")
+    .select("collector,status,ok_count,skip_count,error_message,finished_at")
+    .eq("collector", SGIS_MAP_COLLECTOR)
+    .order("finished_at", { ascending: false })
+    .limit(1);
+  if (error) throw new Error(`collector_runs(${SGIS_MAP_COLLECTOR}) 조회 실패: ${error.message}`);
+  return data ?? [];
+}
+
 /**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
@@ -2083,7 +2162,8 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
 // ⑫ 도 사람이 고쳐야 풀린다(세션569). ⑬ local-failure 는 at=finished_at(행마다 고유)이라 같은 실패 행을
 // 창(26시간)이 겹친 이튿날 한 번 더 알리지 않게 dedup 한다(세션570) — 새 실패 행은 새 키라 그대로 울린다.
 // ⑮ kapt-window 도 at=최근 실행 finished_at — 같은 실행은 한 번만, 다음 회차가 또 건너뛰면 새로 울린다(세션589).
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window"]);
+// ⑱ sgis-map-* 도 at=그 실행의 finished_at — 같은 화요일 행은 한 번만, 다음 화요일 행이 또 그러면 새로 울린다(세션614 보완 W2).
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch"]);
 
 /**
  * @param {Issue} issue
@@ -2990,7 +3070,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614)을 돌려 이슈를 합친다.
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -3003,6 +3083,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchKaptWindowRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchTradeDeals?: () => ReturnType<typeof fetchTradeDealsHealth>,
  *   fetchTradeLinks?: () => ReturnType<typeof fetchTradeLinksHealth>,
+ *   fetchSgisMapRun?: () => ReturnType<typeof fetchSgisMapLatestRun>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -3019,6 +3100,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchKeyHealth = deps.fetchKeyHealth ?? fetchComplexKeyHealth;
   const fetchTradeDeals = deps.fetchTradeDeals ?? (() => fetchTradeDealsHealth());
   const fetchTradeLinks = deps.fetchTradeLinks ?? (() => fetchTradeLinksHealth());
+  const fetchSgisMapRun = deps.fetchSgisMapRun ?? (() => fetchSgisMapLatestRun());
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -3129,6 +3211,15 @@ export async function runDailyGuardedChecks(deps = {}) {
       : `active ${h.links.length}줄 · 마지막 성공 ${h.latestSuccess?.finished_at ?? "없음"}`;
     console.log(`[monitor] ⑰ 연결 표 점검: ${state} → 이상 ${linkIssues.length}건`);
     return linkIssues;
+  }));
+
+  // ⑱ SGIS 매핑 표시 — 첫 회차 대기(FIRST_RUN_PENDING)가 등재일 + 14일을 넘김 · 시도 불일치로 안 쓴 단지 수(세션614 보완 W2).
+  //    대기 실행은 success·skip 1 이라 ⑤ 가 못 본다. 행이 없으면 침묵(⑤ 등재 뒤 행 0 몫).
+  issues = issues.concat(await runFailOpenCheck("⑱ SGIS 매핑 표시 점검", async () => {
+    const runs = await fetchSgisMapRun();
+    const sgisIssues = checkSgisMapMarkers(runs);
+    console.log(`[monitor] ⑱ SGIS 매핑 표시 점검: 최근 행 ${runs.length ? (runs[0].error_message ?? "표시 없음") : "없음"} → 이상 ${sgisIssues.length}건`);
+    return sgisIssues;
   }));
 
   return issues;
@@ -3834,7 +3925,7 @@ async function main() {
       return scopeIssues;
     }));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());

@@ -82,7 +82,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
     ]);
   });
 
-  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 3종 + 행안부 인구 2종 + CSV 1종 + 택지정보 1종을 전부 커버한다", () => {
+  it("매핑표는 KOSIS 11종 + MOLIT 5종 + 네이버 개발계획 1종 + data.go.kr 3종 + 행안부 인구 2종 + CSV 1종 + 택지정보 1종 + SGIS 매핑 1종을 전부 커버한다", () => {
     const scripts = [...new Set(DAY_TABLE.map((e) => e.script))].sort();
     expect(scripts).toEqual(
       [
@@ -130,6 +130,8 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         // 세션 522: 택지정보시스템 지구단계정보(openapi.jigu.go.kr, 무인증) → dev_plans
         // lh_zone 의 progression_step. GH 워크플로가 없어 여기 없으면 아예 안 돈다.
         "lhzone-status.mjs",
+        // 세션 614: SGIS 좌표→행정동 매핑(매주 화요일 `dow: 2`). GH 워크플로가 없어 여기 없으면 아예 안 돈다.
+        "sgis-map-emd.mjs",
       ].sort(),
     );
   });

@@ -237,6 +237,13 @@ export const DAY_TABLE = [
   // 새로 긁고, 이 수집기가 그 위에 정부 장부의 조성 단계를 덮는다(신규 지구도 같은 달에 채워진다).
   // 원본이 월간 갱신(고시월 단위)이고 외부 API 키가 없어 data.go.kr 일일 쿼터를 0 쓴다.
   { day: 21, script: "lhzone-status.mjs" },
+  // 세션614(SGIS 1단계, 사장님 결정 2026-10-08 "실행 위치 = 집 PC 로컬 러너 매주 화요일"): 단지 좌표 →
+  //   SGIS 행정동 코드 8자리(`apartments.sgis_emd_cd`, 빈칸만 채움). 화요일 = 월요일 청약홈 seed 가 새 단지를
+  //   넣은 다음 날이라 그 주 새 단지를 바로 매핑한다. 첫 회차(≈2,6xx콜)는 사람이 `--dry-run --impact-out=<절대경로>`
+  //   전이표를 승인한 뒤 `--first-run --expect-ok=N` 으로 손으로 돌린다 — 그 전까지 이 항목은 관문에 걸려 아무것도 안 쓰고
+  //   (FIRST_RUN_PENDING 기록 · 감시 ⑱), 첫 회차 뒤에는 주당 새 단지 몇십 곳만 채운다.
+  //   설계서 `.omc/artifacts/session614/plan-sgis-map-emd.md` §5 · 감시 = monitor ⑤ `sgis-map-emd`(14일).
+  { dow: 2, script: "sgis-map-emd.mjs" },
   // 세션519: apis.data.go.kr/B552584(에어코리아)도 같은 차단 — GH 8회 중 2회만 성공(25%,
   // 러너 IP 복불복)인데 로컬은 92ms 200 OK. 옛 cron `0 15 * * 1`(UTC 월)은 **KST 화요일**.
   // 세션603(사장님 결정 2026-10-06 "대기질 실시간 멈춤"): `--station-only` = 측정소 좌표 1회 호출로
