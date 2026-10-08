@@ -2,7 +2,12 @@ name: Naver Post-Processing (Incremental)
 
 on:
   schedule:
-    - cron: '30 20 * * *' # UTC 20:30 = KST 05:30 (core UTC 19:00 + 실측 56:03 종료 19:56 후 마진 34분)
+    # 세션612·615: 매일 → 주 2회(화·금) — 월·목 러너가 만든 새 단지 다음 날. 새 단지는 월·목 네이버 러너
+    # (naver-presale)와 월요일 청약홈 seed 가 만든다(최근 28일 신규 238곳이 월·목에 몰림, DB 실측).
+    # 10/06·10/07 실측 transport·infra 는 ok 0 · skip 3,273(매일은 헛돌이). 목요일 단지를 다음 화요일까지
+    # 두면 교통 칸이 비어 점수가 9999(지하철 없음)로 틀리므로 금요일 회차를 둔다.
+    # schools --limit 1200 도 같이 주 2회가 된다. 워크플로 이름은 그대로(monitor-collectors.yml 이 이름으로 묶는다).
+    - cron: '30 20 * * 1,4' # 매주 월·목 UTC 20:30 = KST 화·금 05:30
   workflow_dispatch:
 
 concurrency:

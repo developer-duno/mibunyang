@@ -22,12 +22,12 @@
 > 세션572: monitor ⑫(d) hold 경보 열쇠 = DB 명단 지문 + 기준 명단 지문. DB hold 명단이 기준과 같아진 날 `hold:` 열쇠를
 > `monitor_alert_state` 에서 지운다(`clearAlertKeysByPrefix`, 실패해도 감시는 계속) — 같은 사고가 다시 나면 다시 울린다.
 
-### 매일 (3개)
+### 매일 (2개) + 세션612·615 에 주 2회로 바꾼 1개(incremental — 자리만 그대로)
 
 | 워크플로우 | 설명 |
 |-----------|------|
 | `collect-naver-listings.yml` | 네이버 후처리 Core (sync + 전용률 계산, UTC 19:00) |
-| `collect-naver-listings-incremental.yml` | 네이버 후처리 Incremental (UTC 20:30 = KST 05:30) — `transport-tago` → `infra-kakao` → `schools-neis` 를 **무인자로** 순차 실행. **세션 491 문서 추가** (그동안 표에 없었다). 이 세 스텝이 같은 이름의 월간 워크플로를 대체하므로 그쪽 schedule 을 지웠다. **세션568**: 학교 단계만 `--limit 1200` — 신선한 행을 걷어낸 **뒤** 오래된 순(옛 `--limit` 은 걷어내기 전에 잘라 id 뒤쪽이 영영 처리되지 않았다). 9/23 하루에 2,654행이 몰려 10/23~24 동시 만료 대비, 평소 하루 약 100곳이라 영향 없음 |
+| `collect-naver-listings-incremental.yml` | ⚠️ **세션612·615: 매일 → 주 2회(화·금) — 월·목 러너가 만든 새 단지 다음 날**(05:30 KST = UTC 월·목 20:30). 새 단지는 월·목 네이버 러너와 월요일 청약홈 seed 가 만들고, 10/06·10/07 transport·infra 가 ok 0·skip 3,273 이었다. 금요일 회차가 없으면 목요일 단지 교통 칸이 다음 화요일까지 비어 점수가 9999(지하철 없음)로 틀린다. 아래 원래 설명의 "매일"은 그 전 이야기다. 네이버 후처리 Incremental (UTC 20:30 = KST 05:30) — `transport-tago` → `infra-kakao` → `schools-neis` 를 **무인자로** 순차 실행. **세션 491 문서 추가** (그동안 표에 없었다). 이 세 스텝이 같은 이름의 월간 워크플로를 대체하므로 그쪽 schedule 을 지웠다. **세션568**: 학교 단계만 `--limit 1200` — 신선한 행을 걷어낸 **뒤** 오래된 순(옛 `--limit` 은 걷어내기 전에 잘라 id 뒤쪽이 영영 처리되지 않았다). 9/23 하루에 2,654행이 몰려 10/23~24 동시 만료 대비, 평소 하루 약 100곳이라 영향 없음 |
 | `daily-deploy.yml` | Vercel 자동 배포 (KST 03:00). **세션 491**: `compute-scores` + `refresh-data` 두 잡을 `scoring-and-refresh` 하나로 합침 — `needs` 로 어차피 순차였는데 checkout·setup-node·npm ci 를 두 번 태우고 분 올림도 두 번 물었다. 스텝 순서(scores → collect-data → commit/push)는 그대로. **세션589**: 그 앞에 `Assign complex keys` 단계(묶음 열쇠 칸 — `continue-on-error` · 한도 5분, 실패해도 굽기는 어제 열쇠로 계속). ⚠️ 실행 조회는 `gh run list --workflow daily-deploy.yml`(파일 이름)로 — 표시 이름 "Daily Data Refresh" 로 찾으면 같은 이름의 옛 워크플로(3월) 실행이 나온다(세션586) |
 
 > 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
@@ -50,7 +50,7 @@
 | `collect-trade-stats.yml` | 거래 통계 산출 (**격주 7·21일** 16:00 UTC — 세션 491: 주 입력 trades 가 매월 6일에만 갱신되므로 주간은 과잉) |
 | `collect-trade-stats-regions.yml` | 시군구 거래 통계 (**격주 7·21일** 16:30 UTC, trade-stats 직후) |
 | `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리). **세션 491**: 세 조회가 전부 max_rows=1000 에 걸려 3주 연속 갱신 0건이던 것을 매칭 선행 + `.in()` 분할로 복구 (dry-run 실측 **갱신 490건**) |
-| `collect-nearby-childcare.yml` | 단지 1km 내 어린이집 근접 계산 (**세션 491: 매일 → 주 1회 화** — 입력이 82일째 정지 + 재계산 결과 677건 × 8필드 전부 동일). **세션 491 문서 추가** (그동안 표에 없었다) |
+| `collect-nearby-childcare.yml` | 세션615: 주 1회(수 05:30 KST) 유지 — 외부 호출 0(DB 가공만), 입력 `regions.childcare.facilities` 를 화요일 로컬 어린이집 러너가 채운 다음 날. 단지 1km 내 어린이집 근접 계산 (**세션 491: 매일 → 주 1회 화** — 입력이 82일째 정지 + 재계산 결과 677건 × 8필드 전부 동일). **세션 491 문서 추가** (그동안 표에 없었다) |
 | `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) |
 | `collect-applyhome-remndr.yml` | 청약홈 잔여세대 평형 + 취소후재공급 경쟁률 (월 13:30 KST, 세션 496 PR #330). **세션 548 문서 추가** (그동안 표에 없었다) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
@@ -70,7 +70,7 @@
 > **세션 399: childcare 3종(api.childcare.go.kr 평문 HTTP) GH 폐기 → 집서버 로컬 러너 이전.** 해외
 > Azure IP 차단으로 `collect-childcare-detail.yml`·`collect-childcare-jeju.yml` 삭제 +
 > `collect-childcare.yml` 의 info step 제거(Kakao step 만 GH 잔존). 수집 = `scripts/childcare-local-runner.mjs`
-> (Windows 작업 `MibunyangChildcareLocal`, 매일 04:30 KST 3종 전부 실행, `scripts/register-childcare-task.ps1` 로
+> (Windows 작업 `MibunyangChildcareLocal`, 매일 04:30 KST 발화 — 세션612 부터 러너가 **화요일만** 3종 실행, `scripts/register-childcare-task.ps1` 로
 > 등록). 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS` (childcare-detail/info/info-jeju, collector_runs 신선도).
 >
 > **세션 515: 국토부(apis.data.go.kr/1613000) 의존 5종 GH 폐기 → 집서버 로컬 러너 이전.** 1613000 만

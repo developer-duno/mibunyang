@@ -88,7 +88,7 @@ describe("buildRunResult — collector_runs 에 들어갈 값", () => {
 
   it("failed 2단계 → failure · ok 1 · fail 1 · STEP_FAILED 마커", () => {
     const { result } = buildRunResult(parseArgs(["failed", "--step=2", "--name=sync-naver"]), started, now);
-    expect(result).toMatchObject({ status: "failure", ok: 1, fail: 1, errorMessage: "STEP_FAILED: 2/6 sync-naver" });
+    expect(result).toMatchObject({ status: "failure", ok: 1, fail: 1, errorMessage: "STEP_FAILED: 2/5 sync-naver" }); // 세션612: 단계 5개
   });
 
   it("시작 기록이 없으면 경과·시작 시각만 비운다(기록은 한다)", () => {
@@ -121,7 +121,7 @@ describe("runCommand — 시작 기록 파일과 가짜 클라이언트", () => 
     const sb = fakeSb();
     await runCommand(parseArgs(["failed", "--step=5", "--name=calc-exclusive-ratio"]), { stampPath: stamp, sb });
     expect(sb.inserted[0].row).toMatchObject({
-      status: "failure", ok_count: 4, fail_count: 1, elapsed_sec: null, error_message: "STEP_FAILED: 5/6 calc-exclusive-ratio",
+      status: "failure", ok_count: 4, fail_count: 1, elapsed_sec: null, error_message: "STEP_FAILED: 5/5 calc-exclusive-ratio",
     });
   });
 

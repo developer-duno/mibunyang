@@ -9,7 +9,7 @@
 
 ## 프로젝트 전용 커맨드 (`.claude/commands/`)
 
-- `/collect-naver` — 네이버 수집 손 실행(`run-naver-local.sh` 6단계 — 예약 작업과 같은 순서, 세션567 정정)
+- `/collect-naver` — 네이버 수집 손 실행(`run-naver-local.sh` 6단계 — compute-scores 포함 · 예약 bat 는 5단계, 점수는 03:00 daily-deploy — 세션612)
 
 ## 프로젝트 전용 스킬 (`.claude/skills/`, 자율 발동 — 세션 418 command→skill 승격)
 

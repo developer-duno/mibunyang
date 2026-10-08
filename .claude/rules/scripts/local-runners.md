@@ -30,7 +30,7 @@ paths:
 | 2 | housing-supply-ratio | - |
 | 3 | **collect-emergency** | 세션525 신규 — 옛 cron `0 16 2 * *`(UTC 2일)은 **KST 3일**. B552657(국립중앙의료원)도 해외 IP 차단 |
 | 5 | **population → population-sex-age** | 세션550 신규 — 옛 cron `0 20 5 * *`(UTC 5일)은 **KST 6일**이지만 **일부러 5일**. `regions` **행 생성자**라 후행(6·7·8일)보다 앞이어야 한다([[regions-multicollector-recorded-at-lag]]). 대상 월은 일(day)을 안 봐서 5일↔6일이 같은 달(`population.mjs:589`) |
-| 6 | market-stats → **molit-units** → **trades** | trades 가 가장 오래 걸려 마지막 |
+| 6 | market-stats → **trades** | trades 가 가장 오래 걸려 마지막 · molit-units 는 세션612 에 빼 네이버 러너(월·목) 한 곳만 |
 | 7 | migration | - |
 | 8 | **collect-crime-safety** | 세션521 신규 — 외부 API 0(로컬 CSV 파싱). 행 생성자(population 5일·market-stats 6일) **뒤**여야 새 `recorded_at` 행을 덮는다 |
 | 9 | unsold | - |
@@ -95,13 +95,13 @@ monitor NULL 급증 경보가 영구화되고 있었다. **처방은 감시를 �
 
 | 구분 | 방식 | 실행 |
 |------|------|------|
-| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 매일 04:30 KST (info → info-jeju → detail 3종 — detail 은 세션603 일시 제외 뒤 세션606 에 시군구 단위 호출로 고쳐 복귀) |
+| 자동 수집 | Windows 스케줄러 `MibunyangChildcareLocal` → `childcare-local-runner.bat` | 작업은 매일 04:30 KST 그대로, **러너가 화요일만 3종 실행**(세션612 결정 ⑨ — 다른 요일은 "오늘은 건너뜀" + exit 0, 보충 `--force`) · info → info-jeju → detail (detail 은 세션603 일시 제외 뒤 세션606 에 시군구 단위 호출로 고쳐 복귀) |
 | 수동/보충 | `node scripts/childcare-local-runner.mjs` | 필요시 |
 | 대상 확인 | `node scripts/childcare-local-runner.mjs --list` | - |
 
 등록/변경: `powershell -ExecutionPolicy Bypass -File scripts/register-childcare-task.ps1`
 
-KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실행 — detail 은 시군구당 1회(arcode = `GU_LAWD_MAP`, 제주만 `JEJU_ARCODE_MAP` 49xxx — 탐침 10/07 05:23 50110 은 0건 · 매일 ≈260회 · `DAILY_LIMIT` 1000), info(243건)/jeju(2건)는 양이 적어 매일 최신 유지. 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`(childcare-detail/info/info-jeju, stale_days 3 — 매일 러너, 세션606). 시간 분리 = childcare 04:30 / KOSIS 05:30 / naver 02:00·08:00. detail 의 circuit breaker(세션 398 · 세션606 부터 연속 네트워크 실패 시군구 호출 `GLOBAL_DEAD_CIRCUIT`)는 로컬(한국 IP)에선 차단이 없어 발동 안 함 = 무해(외부 장애 시 안전망으로 보존). (0건 응답 + 호출 실패) 시군구가 시도의 10% 를 넘거나 전역 종료면 failure(세션606 차단기).
+KOSIS(월간 일자 디스패치)와 달리 childcare 는 3종을 한 번에 실행(세션612 부터 **화요일만** — `shouldRunToday`) — detail 은 시군구당 1회(arcode = `GU_LAWD_MAP`, 제주만 `JEJU_ARCODE_MAP` 49xxx — 탐침 10/07 05:23 50110 은 0건 · 회차당 ≈260회 · `DAILY_LIMIT` 1000), info(243건)/jeju(2건). 감시 = monitor ⑤ `EXTERNAL_API_COLLECTORS`(childcare-detail/info/info-jeju, stale_days **14** — 주간, 세션612. 러너 생존 신호는 kosis 러너의 air-quality(3)가 맡는다). 시간 분리 = childcare 04:30 / KOSIS 05:30 / naver 02:00·08:00. detail 의 circuit breaker(세션 398 · 세션606 부터 연속 네트워크 실패 시군구 호출 `GLOBAL_DEAD_CIRCUIT`)는 로컬(한국 IP)에선 차단이 없어 발동 안 함 = 무해(외부 장애 시 안전망으로 보존). (0건 응답 + 호출 실패) 시군구가 시도의 10% 를 넘거나 전역 종료면 failure(세션606 차단기).
 
 ---
 
@@ -126,7 +126,7 @@ KOSIS(월간 일자 디스패치)와 달리 childcare 는 매일 3종 전부 실
 | 3/6 | naver-presale.mjs | 분양정보 19필드 수집 | - |
 | 4/6 | molit-units.mjs | 세대수 보정 (국토부 API, 세션89 교체) | - |
 | 5/6 | calc-exclusive-ratio.mjs | 전용률 계산 | O |
-| 6/6 | compute-scores.mjs | cats_cache 스코어링 갱신 | - |
+| ~~6/6~~ | ~~compute-scores.mjs~~ | **세션612 bat 에서 삭제**(결정 ⑧) — 점수는 매일 03:00 `daily-deploy` 만 굽는다. bat 은 이제 5단계(`PIPELINE_TOTAL_STEPS` 5). 손 실행 `run-naver-local.sh` 에는 남아 있다 | - |
 
 **세션89 변경**: 4/6 단계가 `naver-units.mjs`(네이버 크롤링, IP 차단)에서 `molit-units.mjs`(국토부 API)로 교체됨. **세션233 영구 삭제**. 실패 시 WARNING 처리로 5/6, 6/6 계속 진행. `run-naver-local.bat`/`.sh` 양쪽 동일.
 
@@ -274,9 +274,9 @@ PostgREST 에 **행마다 다른 값을 넣는 배치 UPDATE 문법이 없어** 
 | 3/6 | naver-presale.mjs — 네이버 분양 일정 | 계속 (WARNING) |
 | 4/6 | molit-units.mjs — 세대수 2차 보정 (국토부 API, 세션89 교체) | 계속 (WARNING) |
 | 5/6 | calc-exclusive-ratio.mjs — 전용률 | 중단 |
-| 6/6 | compute-scores.mjs — cats_cache 갱신 | 계속 (WARNING) |
+| ~~6/6~~ | ~~compute-scores.mjs~~ — 세션612 삭제(점수는 03:00 daily-deploy 만 · bat 은 1/5~5/5) | — |
 
-손 실행 쌍둥이 = `scripts/run-naver-local.sh`(같은 6단계, 콘솔 출력) — 명령 `/collect-naver` 가 이쪽을 쓴다.
+손 실행 쌍둥이 = `scripts/run-naver-local.sh`(6단계 — compute-scores 포함, 콘솔 출력) — 명령 `/collect-naver` 가 이쪽을 쓴다. 예약 bat 는 세션612 부터 5단계(점수는 03:00 daily-deploy 만).
 
 
 ---
@@ -286,7 +286,7 @@ PostgREST 에 **행마다 다른 값을 넣는 배치 UPDATE 문법이 없어** 
 | 시간(KST) | 프로젝트 | 작업 | 실행일 |
 |-----------|---------|------|--------|
 | 03:00 | naver-estate-web | discover_regions | 일요일 |
-| 08:00 | mibunyang | naver-collect.py (6단계) | 월/목 |
+| 08:00 | mibunyang | naver-collect.py (bat 5단계 — 세션612) | 월/목 |
 | 매12시간 | naver-estate-web | crawl_articles | 매일 |
 | 매4시간 | naver-estate-web | crawl_details | 매일 |
 | 04:00 | naver-estate-web | collect_prices | 수요일 |

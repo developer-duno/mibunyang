@@ -105,7 +105,7 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         "collect-maintenance.mjs",
         "collect-trades.mjs",
         "molit-building-info.mjs",
-        "molit-units.mjs",
+        // 세션612: molit-units 는 뺐다 — 네이버 러너(run-naver-local.bat, 월·목) 한 곳에서만 돈다.
         // 세션 517: 네이버 개발계획 크론 편입 — 편입 전까지 어느 스케줄에도 없어 손으로만 돌았다.
         "naver-devplan.mjs",
         // 세션 519: 1613000 만의 문제가 아니었다 — www.data.go.kr(공시가격 CSV)·
@@ -143,10 +143,10 @@ describe("collectorsDueOn — 일자 디스패치", () => {
 });
 
 describe("MOLIT 5종 이전 (세션 515)", () => {
-  it("매월 6일은 시장통계 → 세대수보정 → 실거래 순서로 due 다 (실거래가 가장 오래 걸려 마지막)", () => {
+  // 세션612: 세대수보정(molit-units)은 6일에서 빠졌다 — 네이버 러너 월·목 한 곳.
+  it("매월 6일은 시장통계 → 실거래 순서로 due 다 (실거래가 가장 오래 걸려 마지막 · 세대수보정 없음)", () => {
     expect(collectorsDueOn(at(2026, 9, 6))).toEqual([
       "collect-market-stats.mjs",
-      "molit-units.mjs",
       "collect-trades.mjs",
       ...DAILY,
     ]);
@@ -399,10 +399,9 @@ describe("행안부 인구 2종 이전 (세션 550)", () => {
     expect(dayOf("collect-crime-safety.mjs")).toEqual([8]);
   });
 
-  it("6일은 market-stats → molit-units → trades 순서 그대로다 (인구가 끼어들지 않았다)", () => {
+  it("6일은 market-stats → trades 순서 그대로다 (인구가 끼어들지 않았다 · molit-units 는 세션612 에 뺐다)", () => {
     expect(collectorsDueOn(at(2026, 9, 6))).toEqual([
       "collect-market-stats.mjs",
-      "molit-units.mjs",
       "collect-trades.mjs",
       ...DAILY,
     ]);

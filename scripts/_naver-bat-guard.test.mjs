@@ -2,6 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { PIPELINE_TOTAL_STEPS } from "./record-pipeline-run.mjs";
 
 // run-naver-local.bat 정적 가드(세션570). Windows 예약 작업이 이 파일을 그대로 실행하므로
 // ① CRLF 가 깨지면 스케줄러 발화가 실패하고(세션400·470 재발) ② 완주 기록 호출이 빠지면
@@ -34,6 +35,24 @@ describe("run-naver-local.bat — 줄바꿈·글자", () => {
   });
 });
 
+// 세션612·615 주기 다이어트: 두 워크플로의 요일을 글자로 고정한다(감시·문서가 이 요일을 전제).
+// incremental = 화·금 05:30 KST(월·목 러너가 만든 새 단지 다음 날 — 금요일이 빠지면 목요일 단지 교통 칸이
+//   다음 화요일까지 비어 점수가 9999 로 틀린다) · nearby = 수 05:30 KST(입력을 화요일 어린이집 러너가 채운 다음 날).
+describe("수집 워크플로 cron 요일 (세션615)", () => {
+  const cronOf = (/** @type {string} */ name) => {
+    const yml = readFileSync(fileURLToPath(new URL(`../.github/workflows/${name}`, import.meta.url)), "utf8");
+    return [...yml.matchAll(/^\s*-\s*cron:\s*'([^']+)'/gm)].map((m) => m[1]);
+  };
+
+  it("collect-naver-listings-incremental.yml = '30 20 * * 1,4' 하나(KST 화·금 05:30)", () => {
+    expect(cronOf("collect-naver-listings-incremental.yml")).toEqual(["30 20 * * 1,4"]);
+  });
+
+  it("collect-nearby-childcare.yml = '30 20 * * 2' 하나(KST 수 05:30)", () => {
+    expect(cronOf("collect-nearby-childcare.yml")).toEqual(["30 20 * * 2"]);
+  });
+});
+
 describe("run-naver-local.bat — 완주 기록 호출(naver-pipeline)", () => {
   const idx = (/** @type {(l: string) => boolean} */ pred) => lines.findIndex(pred);
 
@@ -42,7 +61,7 @@ describe("run-naver-local.bat — 완주 기록 호출(naver-pipeline)", () => {
     expect(starts).toHaveLength(1);
     const logStart = idx((l) => l.includes("naver collect start"));
     const recStart = idx((l) => l.trim().startsWith(`${RECORD} start`));
-    const step1 = idx((l) => l.includes("=== 1/6"));
+    const step1 = idx((l) => l.includes("=== 1/5"));
     expect(logStart).toBeGreaterThanOrEqual(0);
     expect(recStart).toBeGreaterThan(logStart);
     expect(recStart).toBeLessThan(step1);
@@ -60,7 +79,22 @@ describe("run-naver-local.bat — 완주 기록 호출(naver-pipeline)", () => {
     expect(done).toBeGreaterThanOrEqual(0);
     expect(done).toBeLessThan(logDone);
     // done 직전에 OK_STEPS 계산
-    expect(lines.slice(0, done).some((l) => l.trim() === "set /a OK_STEPS=6-WARN")).toBe(true);
+    expect(lines.slice(0, done).some((l) => l.trim() === "set /a OK_STEPS=5-WARN")).toBe(true);
+  });
+
+  // 세션612 결정 ⑧: 점수 굽기는 매일 03:00 daily-deploy 만 한다. 러너가 월·목 08:00 에 다시 구우면
+  // 낮 동안 화면 정적 파일과 DB 점수가 갈라진다(점수 섞임 창). 단계 수는 기록기 상수와 묶는다.
+  it("점수 굽기 단계가 없고, 단계 표시 수 = 기록기 PIPELINE_TOTAL_STEPS(5)", () => {
+    expect(text.includes("compute-scores")).toBe(false);
+    const markers = lines.filter((l) => /^echo === \d\/\d /.test(l.trim()));
+    expect(markers.map((l) => l.trim().match(/=== (\d)\/(\d)/)?.slice(1).join("/"))).toEqual([
+      "1/5",
+      "2/5",
+      "3/5",
+      "4/5",
+      "5/5",
+    ]);
+    expect(PIPELINE_TOTAL_STEPS).toBe(markers.length);
   });
 
   it("failed 호출 수 = exit /b 1 수, 그리고 각 failed 는 바로 다음 줄이 exit /b 1", () => {
@@ -75,7 +109,7 @@ describe("run-naver-local.bat — 완주 기록 호출(naver-pipeline)", () => {
   it("경고(non-fatal) 블록마다 WARN 누적 — 경고 줄 수 = 누적 수", () => {
     const warnEcho = lines.filter((l) => l.includes("WARNING:") && l.includes("non-fatal"));
     const incs = lines.filter((l) => l.trim() === "set /a WARN+=1");
-    expect(warnEcho).toHaveLength(3);
+    expect(warnEcho).toHaveLength(2);
     expect(incs).toHaveLength(warnEcho.length);
     expect(lines.some((l) => l.trim() === "set WARN=0")).toBe(true);
     // 지연 확장이 켜져 있어야 블록 안 !WARN_NAMES! 누적이 동작한다

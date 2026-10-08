@@ -23,7 +23,7 @@
  *
  * 일자 매핑 = 기존 UTC cron 이 실제 발화하던 KST 날짜 보존 (UTC 20~22시 = KST 익일 새벽):
  *   2일 housing-supply / 3일 emergency / 5일 population·population-sex-age /
- *   6일 market-stats·molit-units·trades / 7일 migration / 9일 unsold /
+ *   6일 market-stats·trades(molit-units 는 세션612 에 빼 네이버 러너 한 곳) / 7일 migration / 9일 unsold /
  *   10일 fertility·building-info(토요일에도 — 세션603) / 11일 housing-permits /
  *   12일 regional-economy / 13일 avg-income / 14일 medical-access /
  *   15~19일 maintenance(--limit=300 --budget-min=40 배치, 세션589) / 15일 building-hub(1·4·7·10월만) /
@@ -187,7 +187,8 @@ export const DAY_TABLE = [
   { day: 6, script: "collect-market-stats.mjs" },
   // 세션 515: MOLIT(1613000) 해외 IP 차단 → GH collect-molit-units.yml·collect-trades.yml 삭제.
   // trades 는 가장 오래 걸려(실측 74~120분) 같은 날 마지막에 둔다.
-  { day: 6, script: "molit-units.mjs" },
+  // 세션612: 6일 molit-units 를 뺐다 — 네이버 러너(run-naver-local.bat 4/5, 월·목)가 같은 수집기를 주 2회 돌려
+  //   세대수는 그 한 곳에서만 받는다(감시 ⑤ molit-units stale 14 = 그 주기 기준이라 그대로).
   { day: 6, script: "collect-trades.mjs" },
   { day: 7, script: "migration.mjs" },
   // 세션521: 외부 API 를 안 쓰는 유일한 등재분(data/crime-safety-index.csv 파싱).

@@ -6,8 +6,10 @@ set "LOG=%~dp0..\naver-collect.log"
 set "PYLOG=%~dp0..\naver-collect-py.log"
 echo [%date% %time%] naver collect start >> "%LOG%"
 REM Session 570: record pipeline start/finish in collector_runs as "naver-pipeline" so the
-REM monitor can tell whether all 6 steps finished (steps 4-6 were cut 3 weeks in a row by PC
+REM monitor can tell whether all steps finished (steps 4-6 were cut 3 weeks in a row by PC
 REM restarts and nothing alerted). record-pipeline-run.mjs always exits 0.
+REM Session 612: 5 steps. The old step 6 (score recompute) was removed - scores are baked
+REM only by the daily-deploy workflow at 03:00 KST, so this runner no longer touches them.
 call node scripts\record-pipeline-run.mjs start >> "%LOG%" 2>&1
 set WARN=0
 set "WARN_NAMES="
@@ -31,15 +33,15 @@ REM Sibling runners kosis-local-runner.bat / childcare-local-runner.bat already 
 REM run-naver-local.sh is intentionally left alone: it is the hand-run path where the
 REM operator watches the console, so redirecting would hide progress.
 
-echo === 1/6 naver listing collect (Python) ===
-echo [%date% %time%] === 1/6 naver listing collect (Python) === >> "%LOG%"
+echo === 1/5 naver listing collect (Python) ===
+echo [%date% %time%] === 1/5 naver listing collect (Python) === >> "%LOG%"
 REM Session 118: use MIBUNYANG_PYTHON if set, else py -3 (avoid Windows Store stub loop).
 if defined MIBUNYANG_PYTHON (
   set "PY_CMD=%MIBUNYANG_PYTHON%"
 ) else (
   set "PY_CMD=py -3"
 )
-REM --max-minutes: cap step 1 so steps 2-6 always get to run (see scripts/CLAUDE.md, session 493).
+REM --max-minutes: cap step 1 so steps 2-5 always get to run (see scripts/CLAUDE.md, session 493).
 %PY_CMD% scripts/collectors/naver-collect.py --max-minutes=120 >> "%PYLOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] ERROR: naver-collect.py failed - reason in naver-collect-py.log >> "%LOG%"
@@ -47,8 +49,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo === 2/6 sync naver to apartments ===
-echo [%date% %time%] === 2/6 sync naver to apartments === >> "%LOG%"
+echo === 2/5 sync naver to apartments ===
+echo [%date% %time%] === 2/5 sync naver to apartments === >> "%LOG%"
 call node scripts/collectors/sync-naver-complex.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] ERROR: sync-naver-complex.mjs failed >> "%LOG%"
@@ -56,8 +58,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo === 3/6 naver presale info (pre.land) ===
-echo [%date% %time%] === 3/6 naver presale info (pre.land) === >> "%LOG%"
+echo === 3/5 naver presale info (pre.land) ===
+echo [%date% %time%] === 3/5 naver presale info (pre.land) === >> "%LOG%"
 call node scripts/collectors/naver-presale.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] WARNING: naver-presale.mjs failed - non-fatal >> "%LOG%"
@@ -67,8 +69,8 @@ if errorlevel 1 (
 REM reset errorlevel so a non-fatal WARNING above does not fail the next step
 verify >nul
 
-echo === 4/6 units correction (molit-units) ===
-echo [%date% %time%] === 4/6 units correction (molit-units) === >> "%LOG%"
+echo === 4/5 units correction (molit-units) ===
+echo [%date% %time%] === 4/5 units correction (molit-units) === >> "%LOG%"
 call node scripts/collectors/molit-units.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] WARNING: molit-units.mjs failed - non-fatal >> "%LOG%"
@@ -78,8 +80,8 @@ if errorlevel 1 (
 REM reset errorlevel
 verify >nul
 
-echo === 5/6 exclusive ratio ===
-echo [%date% %time%] === 5/6 exclusive ratio === >> "%LOG%"
+echo === 5/5 exclusive ratio ===
+echo [%date% %time%] === 5/5 exclusive ratio === >> "%LOG%"
 call node scripts/collectors/calc-exclusive-ratio.mjs >> "%LOG%" 2>&1
 if errorlevel 1 (
   echo [%date% %time%] ERROR: calc-exclusive-ratio.mjs failed >> "%LOG%"
@@ -87,17 +89,8 @@ if errorlevel 1 (
   exit /b 1
 )
 
-echo === 6/6 recompute scores ===
-echo [%date% %time%] === 6/6 recompute scores === >> "%LOG%"
-call node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs >> "%LOG%" 2>&1
-if errorlevel 1 (
-  echo [%date% %time%] WARNING: compute-scores.mjs failed - non-fatal >> "%LOG%"
-  set /a WARN+=1
-  set "WARN_NAMES=!WARN_NAMES!,compute-scores"
-)
-
 REM finish record: ok = steps without a warning, skip = warned (non-fatal) steps
-set /a OK_STEPS=6-WARN
+set /a OK_STEPS=5-WARN
 call node scripts\record-pipeline-run.mjs done --collector=naver-pipeline --ok=!OK_STEPS! --skip=!WARN! "--warn=!WARN_NAMES!" >> "%LOG%" 2>&1
 echo [%date% %time%] naver collect done >> "%LOG%"
 echo Done!

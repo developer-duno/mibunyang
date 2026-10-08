@@ -22,6 +22,16 @@
 [[doc-diet]] 판별 질문 ①②에 전부 "아니오": 파일을 안 읽고는 못 어기고, 그 파일을 고치기
 직전에 필요). 이 파일 자체는 색인 전용으로 200줄 아래를 유지한다.
 
+## 수집 주기 (세션612 다이어트 — 결정 ⑧⑨)
+
+| 대상 | 전 → 후 | 같이 바꾼 것 |
+|---|---|---|
+| `run-naver-local.bat` 점수 굽기(옛 6/6) | 월·목 → **삭제**(점수는 03:00 daily-deploy 만) | `record-pipeline-run.mjs` `PIPELINE_TOTAL_STEPS` 6→5 · 손 실행 `.sh` 는 그대로 |
+| `childcare-local-runner.mjs` 3종 | 매일 → **화요일만**(`--force` 보충) | 감시 ⑤ childcare 3종 stale 14 |
+| `collect-naver-listings-incremental.yml` | 매일 → **주 2회(화·금 05:30)** — 월·목 러너가 만든 새 단지 다음 날 | schools `--limit 1200` 도 같이 |
+| `collect-nearby-childcare.yml` | 매주 수 05:30 **그대로**(세션615 — 외부 호출 0, 입력은 화요일 러너) | — |
+| `kosis-local-runner.mjs` 6일 molit-units | 삭제(네이버 러너 월·목 한 곳) | 감시 molit-units 14 그대로 |
+
 ## 권한 지문 도구 · 감시 번호 (세션569)
 
 - `_perm-fingerprint.mjs` — 권한 지문 비교·경보 판정·주의 항목(A1~A9) 추출. 순수 함수(DB 호출 없음), 감시 ⑩ 이 쓴다.

@@ -1286,10 +1286,14 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
   });
 
   // 세션606: 어린이집 상세가 매일 시군구 단위 호출로 바뀌어 air-quality 와 같은 기준(3).
-  it("childcare-detail 은 stale 3 으로 등재돼 있다 — 매일 러너가 죽으면 3일 안에 ⑤-b (세션606)", () => {
-    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "childcare-detail");
-    expect(entry, "childcare-detail 미등재").toBeTruthy();
-    expect(entry?.stale_days).toBe(3);
+  // 세션612(결정 ⑨): 어린이집 러너가 화요일만 돈다(주 1회) → 3종 전부 주간 기준 14.
+  //   3 으로 두면 수~월 매일 거짓 경보 + dedup 으로 진짜 정지가 가려진다. 7 도 화→화 정상 간격(7일)에 걸린다.
+  it("childcare 3종은 stale 14(주간)로 등재돼 있다 — 러너가 화요일만 돈다 (세션612)", () => {
+    for (const name of ["childcare-detail", "childcare-info", "childcare-info-jeju"]) {
+      const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === name);
+      expect(entry, `${name} 미등재`).toBeTruthy();
+      expect(entry?.stale_days, name).toBe(14);
+    }
   });
 
   // 세션605: 대기질이 매일 러너로 바뀌어 이 행이 러너의 생존 신호가 됐다 — 일일 기준표(14)의 예외.
