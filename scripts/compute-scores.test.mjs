@@ -12,8 +12,30 @@
  * ⚠️ 소스 grep 가드는 주석·선언부에 매칭되면 통째로 무효다(guards-must-be-mutation-tested §소스 grep).
  *    주석을 걷어낸 사본에 검사하고, 패턴은 호출 문장 전체를 고정한다.
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
+
+// main() 행동 시험(세션611 B1)용 — DB·환경·기록만 갈아 끼운다. 순수 함수 시험은 영향 없다(log 만 조용해짐).
+const mocks = vi.hoisted(() => ({ sb: /** @type {any} */ (null), recordCollectorRun: /** @type {any} */ (null) }));
+vi.mock("./collectors/_shared.mjs", async (importOriginal) => {
+  const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
+  mocks.recordCollectorRun = vi.fn(async () => {});
+  return {
+    ...orig,
+    loadEnv: () => {},
+    getSupabase: () => mocks.sb,
+    recordCollectorRun: mocks.recordCollectorRun,
+    log: () => {},
+    logError: () => {},
+  };
+});
+vi.mock("@/scoring/engine", () => {
+  const cat = { total: 50, subs: [{ name: "x" }], label: "보통" };
+  return {
+    computeRegionalMedians: () => ({}),
+    calcCats: () => ({ price: cat, location: cat, product: cat, benefit: cat, risk: cat, future: cat }),
+  };
+});
 // 순수 함수만 골라 import — isCLI 가드가 있어 import 만으로 main() 이 돌지 않는다.
 import {
   findStaleScoreIds,
@@ -24,6 +46,8 @@ import {
   UPDATE_BATCH_DELAY_MS,
   CMP_SCOPE_MIN_FILL,
   assertCmpScopeReady,
+  EXIT_CMP_NOT_READY,
+  main,
 } from "./compute-scores.mjs";
 
 const src = readFileSync(new URL("./compute-scores.mjs", import.meta.url), "utf8")
@@ -310,9 +334,9 @@ describe("compute-scores — 점수 입력 준비 확인 (세션607)", () => {
     expect(CMP_SCOPE_MIN_FILL).toBeLessThanOrEqual(1);
   });
 
-  it("main() 배선 — 로드 직후·UPDATE 전에 확인하고, 멈출 때 failure 기록 + exit 1", () => {
+  it("main() 배선 — 로드 직후·UPDATE 전에 확인하고, 멈출 때 failure 기록 + exit 2(EXIT_CMP_NOT_READY, 세션611)", () => {
     expect(src).toMatch(
-      /const\s+notReady\s*=\s*assertCmpScopeReady\(\s*allApartments\s*\)\s*;\s*if\s*\(\s*notReady\s*\)\s*\{\s*logError\([^)]*\)\s*;\s*await\s+recordCollectorRun\(\s*PHASE\s*,\s*\{\s*\.\.\.reporter\.summary\(\)\s*,\s*status:\s*["']failure["']\s*,\s*errorMessage:\s*notReady\s*\}\s*\)\s*;\s*process\.exit\(1\)/,
+      /const\s+notReady\s*=\s*assertCmpScopeReady\(\s*allApartments\s*\)\s*;\s*if\s*\(\s*notReady\s*\)\s*\{\s*logError\([^)]*\)\s*;\s*await\s+recordCollectorRun\(\s*PHASE\s*,\s*\{\s*\.\.\.reporter\.summary\(\)\s*,\s*status:\s*["']failure["']\s*,\s*errorMessage:\s*notReady\s*\}\s*\)\s*;\s*process\.exit\(\s*EXIT_CMP_NOT_READY\s*\)/,
     );
     const checkAt = src.indexOf("assertCmpScopeReady(allApartments)");
     expect(checkAt).toBeGreaterThan(src.indexOf("allApartments.length === 0"));
@@ -320,13 +344,97 @@ describe("compute-scores — 점수 입력 준비 확인 (세션607)", () => {
     expect(checkAt).toBeLessThan(src.indexOf('.update({ cats_cache: row.cats_cache })'));
   });
 
-  it("daily-deploy 배선 — compute-scores 단계는 continue-on-error (F1 멈춤이 공개 JSON 갱신·배포까지 막지 않게, 세션608 재검사관 🟠)", () => {
+  it("F1 전용 종료 코드는 2 — 0·1 과 겹치면 daily-deploy 가 F1 과 다른 실패를 못 가른다(세션611)", () => {
+    expect(EXIT_CMP_NOT_READY).toBe(2);
+  });
+
+  it("F1 밖의 실패(로드 실패·저장 실패·도중 예외)는 exit 1 — daily-deploy 가 배포를 멈추는 쪽(세션611)", () => {
+    // 로드 실패: failure 기록 직후 exit 1
+    expect(src).toMatch(
+      /status:\s*["']failure["']\s*,\s*errorMessage:\s*error\.message\s*\}\s*\)\s*;\s*process\.exit\(1\)/,
+    );
+    // 도중 예외: main().catch → exit 1
+    expect(src).toMatch(/main\(\)\.catch\([\s\S]*?process\.exit\(1\)/);
+    // F1 코드는 F1 한 자리에서만 쓴다
+    expect(src.match(/process\.exit\(\s*EXIT_CMP_NOT_READY\s*\)/g)).toHaveLength(1);
+    // 로드 실패 · 저장 실패(B1) · 도중 예외
+    expect(src.match(/process\.exit\(1\)/g)).toHaveLength(3);
+    // 2 는 상수로만 — 리터럴 exit(2) 가 생기면 F1 아닌 실패가 배포를 통과한다
+    expect(src.match(/process\.exit\(\s*2\s*\)/g)).toBeNull();
+  });
+
+  it("daily-deploy 배선 — compute-scores 단계는 exit 2(F1)만 통과, 그 밖 실패는 배포 멈춤(세션611 · 점수 섞임 방지)", () => {
     const yml = readFileSync(new URL("../.github/workflows/daily-deploy.yml", import.meta.url), "utf8");
     const stepAt = yml.indexOf("- name: Compute apartment scores (cats_cache)");
     expect(stepAt).toBeGreaterThan(-1);
     const nextStepAt = yml.indexOf("- name:", stepAt + 1);
     const step = yml.slice(stepAt, nextStepAt === -1 ? undefined : nextStepAt);
-    expect(step).toMatch(/^\s*continue-on-error:\s*true\s*$/m);
-    expect(step).toContain("scripts/compute-scores.mjs");
+    // 단계 통째 통과(continue-on-error)는 저장 도중 죽은 날도 배포를 보내 점수가 섞인다
+    expect(step).not.toMatch(/continue-on-error/);
+    const runLine = step.split(/\r?\n/).find((l) => /^\s*run:/.test(l)) ?? "";
+    expect(runLine).toContain("scripts/compute-scores.mjs");
+    // exit 2 만 삼키고 그 밖은 같은 코드로 다시 죽는다 — 숫자는 상수와 묶는다
+    expect(runLine.match(/-eq\s+\d+/g)).toEqual([`-eq ${EXIT_CMP_NOT_READY}`]);
+    expect(runLine).toMatch(/\|\|\s*\{\s*rc=\$\?;/);
+    expect(runLine).toMatch(/else\s+exit\s+"\$rc";/);
+  });
+});
+
+/**
+ * 세션611 B1 — 저장(UPDATE) 결과에 따른 main() 종료. 가짜 DB 로 실제 main() 경로를 돈다.
+ * error 1건 이상 = 점수가 일부만 구워짐 → failure 기록 + exit 1(daily-deploy 가 배포를 멈춤).
+ * error 없는 빈 응답(행 없음)만 = 화면 밖 행 → exit 0(배포 계속), 실패 수로만 센다.
+ */
+describe("compute-scores — 저장 실패 시 종료 (세션611 B1)", () => {
+  /** @param {(id: string) => { data: unknown, error: unknown }} updateResult */
+  const fakeSb = (updateResult) => {
+    const flatRows = [
+      { id: "a1", name: "단지1", cmpScope: "complex" },
+      { id: "a2", name: "단지2", cmpScope: "complex" },
+    ];
+    const build = (/** @type {string} */ table) => {
+      const st = { isUpdate: false, id: "" };
+      /** @type {any} */
+      const b = {
+        select: () => b, order: () => b, range: () => b, not: () => b, limit: () => b, gt: () => b, in: () => b,
+        update: () => { st.isUpdate = true; return b; },
+        eq: (/** @type {string} */ _k, /** @type {string} */ v) => { st.id = v; return b; },
+        then: (/** @type {any} */ res, /** @type {any} */ rej) => {
+          const out = table === "apartments_flat"
+            ? { data: flatRows, error: null }
+            : st.isUpdate ? updateResult(st.id) : { data: [], error: null };
+          return Promise.resolve(out).then(res, rej);
+        },
+      };
+      return b;
+    };
+    return { from: build };
+  };
+
+  afterEach(() => { vi.restoreAllMocks(); mocks.recordCollectorRun.mockClear(); });
+
+  it("UPDATE error 1건 → failure 기록(저장 실패 1건) + exit 1", async () => {
+    mocks.sb = fakeSb((id) => (id === "a2" ? { data: null, error: { message: "boom" } } : { data: [{ id }], error: null }));
+    vi.spyOn(process, "exit").mockImplementation((code) => { throw new Error(`__EXIT_${code}__`); });
+    await expect(main()).rejects.toThrow("__EXIT_1__");
+    const last = mocks.recordCollectorRun.mock.calls.at(-1);
+    expect(last[1].status).toBe("failure");
+    expect(last[1].errorMessage).toContain("저장 실패 1건");
+    expect(last[1].fail).toBe(1 + 0); // 저장 실패 1 + 행 없음 0
+  });
+
+  it("배선 — 저장 실패 기록을 await 로 끝낸 뒤 exit 1(기록 전에 죽지 않게)", () => {
+    expect(src.match(/await\s+recordCollectorRun\([^;]*저장 실패[^;]*\)\s*;\s*process\.exit\(1\)/g)).toHaveLength(1);
+  });
+
+  it("error 없는 빈 응답(행 없음)만 → exit 하지 않고 끝난다(배포 계속) · 실패 수로는 센다", async () => {
+    mocks.sb = fakeSb((id) => (id === "a2" ? { data: [], error: null } : { data: [{ id }], error: null }));
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation((code) => { throw new Error(`__EXIT_${code}__`); });
+    await expect(main()).resolves.toBeUndefined();
+    expect(exitSpy).not.toHaveBeenCalled();
+    const last = mocks.recordCollectorRun.mock.calls.at(-1);
+    expect(last[1].errorMessage).toBeUndefined();
+    expect(last[1].fail).toBe(1);
+    expect(last[1].ok).toBe(2);
   });
 });

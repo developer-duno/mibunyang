@@ -10,7 +10,7 @@
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
  *
  * ⚠️ 세션607: 마이그 20261007000000(VIEW 점수 입력 9칸) 적용 전에 이 코드를 합치면 여기서 멈춘다
- *   (exit 1 + collector_runs failure) — 아래 `assertCmpScopeReady` 참조.
+ *   (exit 2 = EXIT_CMP_NOT_READY + collector_runs failure) — 아래 `assertCmpScopeReady` 참조.
  */
 import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun, selectAll, sleep } from "./collectors/_shared.mjs";
 import { computeRegionalMedians, calcCats } from "@/scoring/engine";
@@ -80,6 +80,13 @@ export function isStaleClearSafe(staleCount, totalWithScores) {
  * 실데이터로 맞추지 못했다. **10/08 회차 뒤 VIEW 채움률을 재측정해 다시 정한다.**
  */
 export const CMP_SCOPE_MIN_FILL = 0.8;
+
+/**
+ * 점수 입력 준비 확인에서 멈출 때(F1)만 쓰는 종료 코드. daily-deploy 는 이 코드일 때만 배포를 계속한다
+ * (아무것도 안 구웠으니 옛 점수 그대로 = 섞임 없음). 로드 실패·저장 실패(UPDATE error 1건 이상)·도중 예외는
+ * exit 1 로 남겨 배포도 멈춘다 — 세션611 결정. 단지별 계산 실패·행 없음(빈 응답)은 exit 0(그 단지만 옛 점수).
+ */
+export const EXIT_CMP_NOT_READY = 2;
 
 /**
  * 점수 입력 칸(`cmpScope`)이 굽기에 충분한가. 순수 함수 — 멈출지 말지는 호출부가 정한다.
@@ -175,7 +182,7 @@ export async function main() {
   if (notReady) {
     logError("compute-scores", notReady);
     await recordCollectorRun(PHASE, { ...reporter.summary(), status: "failure", errorMessage: notReady });
-    process.exit(1);
+    process.exit(EXIT_CMP_NOT_READY);
   }
 
   // 2) 지역 중앙값 계산
@@ -229,7 +236,9 @@ export async function main() {
     }
   } else {
     log("compute-scores", `${rows.length}건 DB UPDATE 중...`);
-    let updated = 0, failed = 0;
+    // failed = Supabase 가 error 를 돌려준 건(저장 실패) · gone = error 없이 빈 응답(로드와 UPDATE 사이에
+    // 지워진 행 등 — 손님 화면 밖) — 세션611 결정으로 갈라 센다(앞만 배포를 멈춘다).
+    let updated = 0, failed = 0, gone = 0;
     // ⚠️ 이 루프는 **단지 1곳당 요청 1개**를 만든다(약 2,200건). PostgREST 는 서로 다른 값으로
     // 여러 행을 한 번에 UPDATE 하는 문법이 없고, `upsert` 로 {id, cats_cache} 만 보내는 우회는
     // **실측 결과 불가**하다 — INSERT 를 선시도해 `null value in column "name" violates not-null
@@ -266,20 +275,27 @@ export async function main() {
           logError("compute-scores", `UPDATE 실패: ${error.message}`);
           failed++;
         } else if (!data || data.length === 0) {
-          failed++; // RLS에 의해 행이 업데이트되지 않음
+          gone++; // 행 없음 — 로드 뒤 지워진 행 또는 RLS 로 안 바뀐 행
         } else {
           updated++;
         }
       }
       if ((i + BATCH) % 500 === 0 || i + BATCH >= rows.length) {
-        log("compute-scores", `  진행: ${Math.min(i + BATCH, rows.length)}/${rows.length} (성공 ${updated}, 실패 ${failed})`);
+        log("compute-scores", `  진행: ${Math.min(i + BATCH, rows.length)}/${rows.length} (성공 ${updated}, 실패 ${failed}, 행 없음 ${gone})`);
       }
     }
-    if (failed > 0) {
-      logError("compute-scores", `${failed}건 UPDATE 실패 — RLS 정책 또는 ID 불일치 확인 필요`);
+    if (gone > 0) {
+      logError("compute-scores", `${gone}건 행 없음(빈 응답) — 로드 뒤 지워진 행 또는 RLS·ID 불일치. 배포는 계속`);
     }
-    log("compute-scores", `DB UPDATE 완료: ${updated}/${rows.length}건 (실패 ${failed}건)`);
-    dbFailed = failed;
+    log("compute-scores", `DB UPDATE 완료: ${updated}/${rows.length}건 (실패 ${failed}건, 행 없음 ${gone}건)`);
+    // 저장 실패가 1건이라도 있으면 점수가 일부만 구워진 것 — failure 기록 + exit 1 로 daily-deploy 가 배포를 멈춘다
+    // (새 점수·옛 점수가 섞인 화면 방지, 세션611 결정). 행 없음(gone)은 화면 밖이라 아래에서 실패 수로만 센다.
+    if (failed > 0) {
+      reporter.fail(failed + gone);
+      await recordCollectorRun(PHASE, { ...reporter.summary(), status: "failure", errorMessage: `저장 실패 ${failed}건(행 없음 ${gone}건) — 배포 멈춤` });
+      process.exit(1);
+    }
+    dbFailed = gone;
   }
 
   // 5) VIEW 밖에 남은 낡은 점수 정리 (세션502 — 위 STALE_CLEAR_MAX_RATIO 주석 참조)

@@ -48,14 +48,15 @@ jobs:
         run: node scripts/collectors/assign-complex-keys.mjs --apply
 
       - name: Compute apartment scores (cats_cache)
-        # 세션608 재검사관 🟠: compute-scores 가 점수 입력 칸 부재·채움률 미만으로 멈추면(exit 1, F1)
-        #   옛 점수(cats_cache)를 그대로 두는 것이 뜻이지 그날 공개 JSON 갱신·배포까지 막는 것이 아니다 →
-        #   뒤 단계(collect-data·커밋)는 계속한다. 실패 기록은 collector_runs failure 로 남아 감시 ① 이 본다.
-        continue-on-error: true
+        # 세션611 결정(작게 고치기): exit 2(재료 없음 = 점수 입력 칸 부재·채움률 미만, F1)만 통과한다 —
+        #   아무것도 안 구웠으니 옛 점수(cats_cache) 그대로라 공개 JSON 갱신·배포를 계속해도 섞이지 않는다.
+        #   그 밖 실패(로드 실패 · 저장 실패 1건 이상 · 도중 예외 — 모두 exit 1)는 배포를 멈춘다(점수 섞임 방지).
+        #   F1·로드 실패·저장 실패는 collector_runs failure 로 남아 감시 ① 이 본다. 도중 예외(main().catch)는
+        #   collector_runs 기록 없이 죽는다 — 이 워크플로 실패를 monitor-collectors 의 workflow_run 이 알린다.
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs
+        run: node --loader ./scripts/alias-loader.mjs scripts/compute-scores.mjs || { rc=$?; if [ "$rc" -eq 2 ]; then echo "F1 멈춤 — 옛 점수 유지, 배포 계속"; else exit "$rc"; fi; }
 
       - name: collect-data --from-supabase-only
         env:
