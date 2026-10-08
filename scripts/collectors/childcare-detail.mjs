@@ -26,7 +26,7 @@
  *   3. 응답 시설을 stcode 로 최신행 facilities 에 상세만 덧입힌다(시설 추가·삭제 없음 — 목록은 childcare-info 소유)
  *   4. 바뀐 시군구만 UPDATE(같으면 skip — 멱등)
  *   5. 0건 차단기: 시설이 있는데 0건 응답인 시군구 비율 > 10% 면 failure + exit 1
- *   매일 04:30 로컬 러너(childcare-local-runner.mjs) — 정상 회차 호출 ≈260회.
+ *   화요일 04:30 로컬 러너(childcare-local-runner.mjs — 스케줄러는 매일 발화, 다른 요일은 건너뜀) — 정상 회차 호출 ≈260회.
  *
  * 사용:
  *   node scripts/collectors/childcare-detail.mjs                          (regions UPDATE)

@@ -10,7 +10,7 @@ $WorkDir = (Resolve-Path ".").Path
 # 기존 작업 삭제 (멱등 재등록)
 Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
 
-# 트리거: 매일 04:30 KST — 3종 전부 실행 (detail DAILY_LIMIT 누적 + info/jeju 매일 최신).
+# 트리거: 매일 04:30 KST 발화 — 러너가 화요일만 3종 실행, 다른 요일은 건너뜀(childcare-local-runner.mjs shouldRunToday).
 # KOSIS 러너 05:30 / naver 02:00·08:00 와 시간 분리 (집서버 동시 발화 회피).
 $Trigger = New-ScheduledTaskTrigger -Daily -At 4:30AM
 

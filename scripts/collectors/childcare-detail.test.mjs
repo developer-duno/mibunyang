@@ -546,5 +546,10 @@ describe("advanceRunCounters — 반복 한 바퀴 셈 갱신(main 은 이 결�
     expect(main).toMatch(/if\s*\(\s*c\.stopReason\s*\)\s*\{\s*logError\("circuit",[^\n]*\n\s*break;/);
     expect(main).toMatch(/decideRunStatus\(\{\s*attempted:\s*c\.attempted,\s*zeroRegions:\s*c\.zeroRegions,\s*failedRegions:\s*c\.failedRegions,\s*updateFails:\s*c\.updateFails,\s*stopReason:\s*c\.stopReason,/);
     expect(main).not.toMatch(/\b(attempted|processed|zeroRegions|failedRegions|updateFails|consecutiveNetFails)\+\+/);
+    // 응답 셈(fetched)은 0건 분기보다 앞 — 뒤로 가면 0건 시군구가 셈에서 빠져 0건 차단기가 꺼진다(세션611 검사관 변이 M7 생존).
+    const fetchedAt = main.search(/\bc\s*=\s*advanceRunCounters\(\s*c\s*,\s*\{\s*type:\s*"fetched"/);
+    const zeroBranchAt = main.search(/if\s*\(\s*out\.zero\s*\)/);
+    expect(fetchedAt).toBeGreaterThan(0);
+    expect(zeroBranchAt).toBeGreaterThan(fetchedAt);
   });
 });
