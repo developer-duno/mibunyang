@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
+  PRICE_NO_DATA_DEFAULTS,
   tierMax,
   tierMaxLabel,
   tierMin,
@@ -223,6 +224,8 @@ describe("괴리도 눈금 관측값 앵커 (2026-08-24 실측)", () => {
     expect(DEV_SCORE_TIERS.map((t) => t.min)).toEqual([35, 18, 9, 0]);
     expect(DEV_SCORE_NEGATIVE_MULT).toBe(1);
     expect(DEV_SCORE_BASE).toBe(35);
+    // 세션612: 자료 없음 괴리도 = 괴리 0% 와 같은 취급(사장님 결정 10/08) — 둘이 갈라지면 빨강
+    expect(PRICE_NO_DATA_DEFAULTS.dev).toBe(DEV_SCORE_BASE);
     expect(DEV_NEUTRAL_BAND_PCT).toBe(10);
   });
 

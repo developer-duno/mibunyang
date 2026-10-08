@@ -1,12 +1,9 @@
 import { memo } from "react";
 import { C, F, catCol, gr } from "@/theme";
-import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 import { PROFILES } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
-import { DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
-import { getAgeCoeff, getAreaAdj, isPresale } from "@/scoring/engine";
-import { fmtCompletion } from "@/lib/format";
+import { DEV_NEUTRAL_BAND_PCT, TRADE_SCOPE_PEER_YEARS, TRADE_SCOPE_PER_M2_TOL_M2 } from "@/constants/scoringTiers";
 import type { Apt, Profile } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -33,21 +30,9 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
   // catOrder.test.ts 가 6개 전량·중복 0 을 잠근다.
   const catKeys = orderedCatEntries(res.cats as unknown as Record<string, unknown>).map(([k]) => k);
 
-  // 적정가 산출 과정 (구 ExpertScoreBreakdown L13-19 이식)
-  const ageCoeff = getAgeCoeff(apt.completion);
-  // 미준공(분양 예정)은 "연식"이 아니라 "신축 프리미엄"이라 라벨이 달라야 정직하다(세션528
-  // 결함B 처방 — 같은 ageCoeff 가 이제 두 가지 다른 현상을 나타낸다). brands.ts 주석 참조.
-  const presale = isPresale(apt.completion);
-  const areaAdj = getAreaAdj(apt.area);
-  // ⚠️ **`resolveBuilder` 를 반드시 거친다.** 직조회하면 "지에스건설(주)"·"디엘이앤씨 주식회사" 같은
-  //    법인 표기가 미등재 1.0 으로 떨어져, 이 패널이 보여주는 곱셈이 바로 아래 "= 적정가" 와 안 맞는다
-  //    (세션529 적대검증 실측: 2,227곳 중 **50곳** 불일치 — 지에스건설(주) 화면 1.00 vs 엔진 1.05 등).
-  //    세션513이 `scorePrice` 에서 같은 결함을 고치며 남긴 교훈 그대로다 — 정규화는 한 군데가 아니라
-  //    **`builder` 를 읽는 모든 자리**에서 해야 한다.
-  const brand = (BRAND_TIER as Record<string, { adj: number; tier?: string }>)[
-    resolveBuilder(apt.builder as string | null | undefined)
-  ] || { adj: 1.0 };
-  const nearbyMedian = apt.nearbyMedian ?? 0;
+  // 적정가 산출 과정 — 세션607(시세 비교 범위 좁히기 다): 적정가 = 같은 단지 → 같은 동 또래 실거래 중앙값.
+  //   연식·면적·브랜드 계수를 **곱하지 않으므로**(설계서 D8·R5) 옛 "× 연식계수 × 면적보정 × 브랜드보정" 줄은 없앴다.
+  //   대신 엔진이 준 범위·종류·건수(fairPriceScope·fairPriceSrc·fairPriceN)를 그대로 보여 준다.
   // ⚠️ **엔진이 계산한 값을 그대로 쓴다 — 여기서 다시 계산하지 않는다.**
   // 옛 코드는 `nearbyMedian × ageCoeff × areaAdj × brand` 로 자체 재계산했는데, 세션527이
   // fairPrice 1순위를 평형별 실거래 버킷 매칭으로 바꾼 뒤 **같은 모달에 서로 다른 괴리율 두 개**가
@@ -70,8 +55,22 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
   const toneColor = priceTone === "cheap" ? C.green : priceTone === "expensive" ? C.red : C.muted;
   const toneBg = priceTone === "cheap" ? C.greenLight : priceTone === "expensive" ? C.redLight : C.amberLight;
   const toneLabel = priceTone === "cheap" ? "저평가" : priceTone === "expensive" ? "고평가" : "적정가 수준";
-  const fromBucket = priceRes.fairPriceFromAreaBucket === true;
-  const fromSido = priceRes.fairPriceFromSidoAvg === true;
+  const scope = priceRes.fairPriceScope;
+  // 세션607 보완(검사관 B1): scope 칸이 아예 없으면(undefined) 전환 전 옛 점수 캐시다 — "비교할 실거래 없음"과
+  //   섞으면 옛 적정가·괴리도 옆에 "없음"이 같이 떠 거짓이 된다. 다음 03:00 재계산 전까지 따로 알린다.
+  const scopeLabel =
+    scope === undefined
+      ? "점수 캐시 갱신 전 (03:00 재계산 뒤 표시)"
+      : scope === "complex"
+        ? priceRes.fairPriceSrc === "presale"
+          ? "이 단지 분양권 거래"
+          : "이 단지 실거래"
+        : scope === "dong_peer"
+          ? `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·같은 평수 실거래`
+          : "비교할 실거래 없음 (괴리도 중립)";
+  const judged = scope === "complex" || scope === "dong_peer";
+  const months = apt.cmpMonths;
+  const perM2 = apt.cmpAreaMode === "per_m2";
 
   // 도시등급 (구 ExpertAptHeader L11-12 이식 — fieldMeta 141필드에 없는 유일한 헤더 정보)
   const tier =
@@ -126,26 +125,22 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
           적정가 산출 과정
         </div>
         <div style={{ fontSize: F.sm, lineHeight: 1.8, color: C.sub }}>
-          {/* 기준값 줄 — 어느 경로로 구한 fairPrice 인지에 따라 설명이 달라진다.
-              버킷 경로는 이미 그 평형대 실거래라 면적보정을 곱하지 않으므로 그 줄도 감춘다. */}
+          {/* 비교 범위 줄 — 엔진이 준 범위·종류·건수를 그대로(설계서 §5-3·§5-4). */}
           <div>
-            {fromBucket ? "평형별 실거래" : fromSido ? "광역 시도 평균(폴백)" : "주변중위가"}:{" "}
-            <b style={{ color: C.text }}>
-              {fromBucket ? `${apt.area ?? "?"}㎡ 기준` : `${nearbyMedian.toLocaleString("ko-KR")}만원`}
-            </b>
+            비교 범위: <b style={{ color: C.text }}>{scopeLabel}</b>
           </div>
-          <div>
-            × {presale ? "신축 프리미엄" : "연식계수"}: <b style={{ color: C.text }}>{ageCoeff.toFixed(2)}</b> (입주:{" "}
-            {fmtCompletion(apt.completion)})
-          </div>
-          {!fromBucket && (
+          {judged && (
             <div>
-              × 면적보정: <b style={{ color: C.text }}>{areaAdj.toFixed(2)}</b> ({apt.area ?? ""}㎡)
+              건수·기간:{" "}
+              <b style={{ color: C.text }}>
+                {Number(priceRes.fairPriceN ?? 0)}건{months != null ? ` · 최근 ${months}개월` : ""}
+              </b>{" "}
+              (
+              {perM2 ? `면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산 × ${apt.area ?? "?"}㎡` : "같은 평수 중앙값"}
+              )
             </div>
           )}
-          <div>
-            × 브랜드보정: <b style={{ color: C.text }}>{brand.adj.toFixed(2)}</b> ({apt.builder})
-          </div>
+          <div>보정 계수: 없음 (같은 단지·또래 실거래라 연식·면적·브랜드 보정을 곱하지 않음)</div>
           <div
             style={{
               marginTop: 6,

@@ -19,7 +19,8 @@ import type { Apt } from "@/types/scoring";
 const priceSpec = deviationSpec("pp")!;
 const unsoldSpec = deviationSpec("unsoldRate")!;
 const subwaySpec = deviationSpec("subwayDist")!;
-const jeonseSpec = deviationSpec("jeonseRate")!;
+// 세션609 라: 전세가율 편차 줄은 같은 단지 값(complexJeonseRate)을 읽는다(옛 jeonseRate 는 구 전체)
+const jeonseSpec = deviationSpec("complexJeonseRate")!;
 
 function rows(region: string, field: string, values: (number | null)[]): Apt[] {
   return values.map((v) => ({ region, [field]: v }) as unknown as Apt);
@@ -170,7 +171,7 @@ describe("fav — 막대는 항상 오른쪽이 유리", () => {
   });
 
   it("높을수록 좋은 지표는 큰 쪽이 fav 높음", () => {
-    const stats = seoul("jeonseRate", 100);
+    const stats = seoul("complexJeonseRate", 100);
     const high = computeDeviation(jeonseSpec, 95, "서울", stats);
     const low = computeDeviation(jeonseSpec, 5, "서울", stats);
     expect(high.fav!).toBeGreaterThan(low.fav!);

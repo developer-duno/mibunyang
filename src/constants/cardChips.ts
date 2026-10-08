@@ -126,24 +126,22 @@ function rankOf(id: string): number {
  * 적정가가 무엇과 비교됐는지 — 카드만 보고는 알 수 없던 것을 칩 문구에 한 마디로 드러낸다
  * (사장님 결정, 세션 536 — "적정가보다 61% 저렴"이 무엇과 비교한 값인지 손님이 알 수 없던 문제).
  *
- * 실측(2026-08-31, `fairPrice > 0` 인 1,687곳):
- *   평형별 실거래 버킷 88.9%(1,500) · 광역 시도 평균(또는 분양 평당가) 폴백 8.5%(143) ·
- *   인근(구) 실거래 중위가 2.6%(44, 그 중 면적 미상 31 · 면적 있음 13).
- *
- * `scorePrice.ts` 의 `areaBucketNotice`/`sidoNotice`/`noAreaNotice`(엔진 detail 접미사)와
- * 같은 판단을 그대로 따른다 — 한 축을 두 자리가 다르게 말하지 않는다
- * (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md).
- *
- * ⚠️ `_noArea`(면적 미상 원 플래그)는 sanitize 내부 값이라 목록 JSON 에 안 남는다 — 대신
- * 살아남는 `area` 필드로 같은 판정을 재현한다(engine.ts:66 `_noArea` 정의와 동일 조건).
+ * 세션607(시세 비교 범위 좁히기 다): 적정가가 **같은 단지 → 같은 동 또래** 실거래로 좁혀지고 옛 폴백
+ * (평형별 버킷·인근(구) 실거래 중위가·광역 시도 평균)이 없어져, 근거도 엔진이 준 범위(`fairPriceScope`)·
+ * 종류(`fairPriceSrc`)에서 읽는다 — `scorePrice.ts` 괴리도 detail(`fairBasisText`)과 같은 판단이라
+ * 한 축을 두 자리가 다르게 말하지 않는다(.claude/rules/meta/score-meaning-and-wording-are-a-pair.md).
+ * 범위가 none 이면 판정 칩 자체를 안 그리므로(설계서 §5-4) 빈 글자를 돌려준다.
  */
-export function priceBasisLabel(
-  price: { fairPriceFromAreaBucket?: boolean; fairPriceFromSidoAvg?: boolean },
-  areaKnown: boolean
-): string {
-  if (price.fairPriceFromAreaBucket) return "비슷한 평형 기준";
-  if (price.fairPriceFromSidoAvg) return "지역 평균 기준";
-  return areaKnown ? "인근 실거래 기준" : "면적 미상, 지역 평균 기준";
+export function priceBasisLabel(price: { fairPriceScope?: unknown; fairPriceSrc?: unknown }): string {
+  if (price.fairPriceScope === "complex")
+    return price.fairPriceSrc === "presale" ? "이 단지 분양권 거래 기준" : "이 단지 실거래 기준";
+  if (price.fairPriceScope === "dong_peer") return "같은 동 또래 실거래 기준";
+  return "";
+}
+
+/** '저렴/수준/비쌈' 판정 칩을 그려도 되는 범위 — 같은 단지·같은 동 또래만(설계서 §5-4·R1) */
+function isJudgedScope(scope: unknown): boolean {
+  return scope === "complex" || scope === "dong_peer";
 }
 
 /* ── 기존 카드의 상수 (AptCard.tsx 에서 그대로 옮김) ── */
@@ -229,8 +227,8 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
         subs?: Array<{ info?: string; detail?: string }>;
         deviation?: unknown;
         fairPrice?: unknown;
-        fairPriceFromAreaBucket?: boolean;
-        fairPriceFromSidoAvg?: boolean;
+        fairPriceScope?: unknown;
+        fairPriceSrc?: unknown;
       }
     | undefined;
   const priceSub0 = price?.subs?.[0];
@@ -242,13 +240,14 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   //    (scorePrice.ts:116, catVerdict.ts 와 같은 규약).
   const fairPrice = Number(price?.fairPrice ?? 0);
   const dev = price?.deviation != null ? Number(price.deviation) : NaN;
-  if (fairPrice > 0 && Number.isFinite(dev)) {
+  // 세션607: 판정 칩은 비교 범위가 같은 단지·같은 동 또래일 때만(범위 none = 비교할 실거래 없음 → 판정하지 않는다)
+  if (fairPrice > 0 && Number.isFinite(dev) && isJudgedScope(price?.fairPriceScope)) {
     // ⚠️ 경계는 **0 이 아니라 `DEV_NEUTRAL_BAND_PCT`** 다(세션531). 0 으로 가르면 +1% 짜리 차이에도
     //    초록 굵은 `core` 칩이 붙는데, 그 폭은 **우리 적정가 추정 자체의 흔들림(중앙 ±11.5%p)보다
     //    한참 작다** — 알 수 없는 것을 강점이라 말하는 셈이다. 같은 단지를 점수 탭은 "적정가 수준"
     //    이라 부르는데 카드만 "저렴"이라 부르던 어긋남도 여기서 없어진다
     //    (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md — 같은 축을 말하는 자리는 한 쌍).
-    const basis = priceBasisLabel(price ?? {}, (a.area as number | null | undefined) != null);
+    const basis = priceBasisLabel(price ?? {});
     if (dev > DEV_NEUTRAL_BAND_PCT) {
       out.push({
         id: "priceCheap",
@@ -268,8 +267,11 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     } else {
       out.push({ id: "priceFair", text: `적정가 수준 (${basis})`, tone: "plain", layer: "core" });
     }
-  } else if (priceSub0?.detail) {
+  } else if (price?.fairPriceScope !== undefined && priceSub0?.detail) {
     // 가격 데이터가 없을 때만 안내 문구를 그 자리에 둔다 — 빈칸으로 두면 왜 없는지 알 수 없다
+    // 세션607 보완(검사관 B1): `fairPriceScope` 칸이 **아예 없으면** 옛 점수 캐시(전환 전 03:00 굽기)다.
+    //   그 detail 은 옛 원문(`+18.8% (±10% 적정 · …)`·시도 평균 안내)이라 새 화면에 칩으로 내면 거짓 —
+    //   다음 재계산까지 칩을 비운다. 'none' 은 새 캐시의 정상 값이라 기존대로 안내 문구를 둔다.
     out.push({ id: "fairPriceDetail", text: priceSub0.detail, tone: "plain", layer: "core" });
   }
   const locSub0 = (cats.location as { subs?: Array<{ info?: string }> } | undefined)?.subs?.[0];
@@ -347,7 +349,10 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   }
 
   /* ── 상품 ── */
-  const jeonseRate = a.jeonseRate as number | null | undefined;
+  // 전세가율 = **같은 단지** 같은 평수 전세 중앙 ÷ 매매 중앙(`complexJeonseRate`, 세션609 라 · R3).
+  //   옛 소스 `jeonseRate` 는 구(區) 전체 값이라 이 단지 사정이 아니었다 — 이제 읽지 않는다.
+  //   값이 없으면 칩도 없다(동·구 값으로 대신하지 않는다 — 빈자리 처리는 라) 그림으로 사장님께 보인다).
+  const jeonseRate = a.complexJeonseRate as number | null | undefined;
   if (jeonseRate != null) {
     const v = Number(jeonseRate);
     const text = `전세가율 ${jeonseRate}%`;

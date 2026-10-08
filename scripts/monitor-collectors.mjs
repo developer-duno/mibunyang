@@ -1867,6 +1867,106 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
 }
 
 /**
+ * ⑥-b 점수 입력(시세 비교 범위) 채움 하한 — 세션607 다) 보완(검사관 B3).
+ * 가격 점수의 적정가·전세가율 입력이 trade_stats.cmp_scope … → VIEW apartments_flat.cmpScope … 로 바뀌었다.
+ * 이 칸이 비면 점수는 에러 없이 괴리도 중립으로 구워진다(⑥ 과 같은 "원본 있는데 VIEW 없음" 꼴).
+ *
+ * - `TRADE_SCOPE_FILL_MIN` = VIEW cmpScope 채움**률** ÷ trade_stats cmp_scope 채움**률** 하한.
+ *   개수끼리 나누지 않는다 — trade_stats(3,068행)와 VIEW(2,656행)는 모수가 달라 꽉 차도 0.87 이 된다.
+ * - `TRADE_SCOPE_JUDGED_MIN` = (complex + dong_peer) ÷ VIEW cmpScope 채움 하한. 근거 = 세션606 dry-run
+ *   (3,271곳: complex 1,030 · dong_peer 883 · none 1,358 → 판정 범위 약 58%). 'none' 이 급증하면 묶기·통계 회귀.
+ * ⚠️ 둘 다 잠정값 — 2026-10-07 기준 cmp_scope 채움 0(첫 실제 쓰기 10/08 01:00). **10/08 회차 뒤 재측정.**
+ */
+export const TRADE_SCOPE_FILL_MIN = 0.9;
+export const TRADE_SCOPE_JUDGED_MIN = 0.4;
+
+/**
+ * ⑥-b 점수 입력 채움 판정(순수 함수). 경보 3종: VIEW 에 cmpScope 칸 없음 · 원본 대비 VIEW 채움 부족 · 판정 범위 비율 부족.
+ * 원본(trade_stats.cmp_scope)이 0 이면 ②·⑤·compute-scores 멈춤(세션607 F1)의 몫이라 여기서는 울리지 않는다.
+ * @param {{ statsTotal: number, statsScoped: number, viewTotal: number, viewScoped: number | null, viewJudged: number | null }} counts
+ *   viewScoped === null = VIEW 에 cmpScope 칸이 없다(조회가 42703 으로 실패)
+ * @returns {Issue[]}
+ */
+export function checkTradeScopeFill({ statsTotal, statsScoped, viewTotal, viewScoped, viewJudged }) {
+  /** @type {Issue[]} */
+  const issues = [];
+  if (viewScoped == null) {
+    issues.push({
+      kind: "nulls",
+      collector: "점수 입력 칸 (cmpScope)",
+      detail: "apartments_flat VIEW 에 cmpScope 칸이 없음 — 가격 점수가 전 단지 괴리도 중립으로 구워진다",
+      lines: [
+        "VIEW apartments_flat 에 점수 입력 9칸(cmpScope … complexSaleN)이 없다 — 마이그 20261007000000 미적용 또는 VIEW 롤백.",
+        "compute-scores 는 이 상태면 굽지 않고 멈춘다(세션607 F1) — 옛 점수가 그대로 남는다.",
+        "[조치] 마이그 20261007000000 적용 여부 확인 → 적용 뒤 compute-scores 1회",
+      ],
+    });
+    return issues;
+  }
+  if (statsTotal > 0 && statsScoped > 0 && viewTotal > 0) {
+    const statsRate = statsScoped / statsTotal;
+    const viewRate = viewScoped / viewTotal;
+    if (viewRate / statsRate < TRADE_SCOPE_FILL_MIN) {
+      issues.push({
+        kind: "nulls",
+        collector: "점수 입력 채움 (cmpScope)",
+        detail: `점수 입력 VIEW 채움 ${(viewRate * 100).toFixed(1)}% 인데 trade_stats 원본 ${(statsRate * 100).toFixed(1)}% — VIEW 가 비교 범위를 못 가져오는 회귀 의심`,
+        lines: [
+          `apartments_flat.cmpScope 채움 ${viewScoped}/${viewTotal} 인데 trade_stats.cmp_scope 원본은 ${statsScoped}/${statsTotal} 채워짐.`,
+          `채움률 비 ${(viewRate / statsRate).toFixed(2)} < 하한 ${TRADE_SCOPE_FILL_MIN} — 채워지지 않은 단지는 괴리도·전세가율이 중립으로 구워진다.`,
+          "[조치] VIEW 의 trade_stats 조인(ts.apartment_id = a.id)·trade-stats 회차 대상 단지 확인",
+        ],
+      });
+    }
+  }
+  if (viewScoped > 0 && viewJudged != null && viewJudged / viewScoped < TRADE_SCOPE_JUDGED_MIN) {
+    const judgedRate = viewJudged / viewScoped;
+    issues.push({
+      kind: "nulls",
+      collector: "점수 판정 범위 (complex+dong_peer)",
+      detail: `가격 판정 범위(같은 단지·같은 동 또래) ${(judgedRate * 100).toFixed(1)}% < 하한 ${TRADE_SCOPE_JUDGED_MIN * 100}% — '비교할 실거래 없음' 급증`,
+      lines: [
+        `apartments_flat.cmpScope 채움 ${viewScoped}곳 중 complex+dong_peer ${viewJudged}곳 — 나머지는 괴리도 중립·판정 칩 없음.`,
+        "평소 약 58%(세션606 dry-run). 묶기(apartment_trade_links)·trade_deals 수집 회귀를 먼저 의심한다.",
+        "[조치] ⑯ trade_deals·⑰ 연결 표 경보 확인 → trade-stats 회차 로그의 범위별 건수 확인",
+      ],
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑥-b 조회 — 개수만 센다(5회). VIEW 의 cmpScope 칸 존재는 head 요청으로 못 가린다(빈 본문이라 오류 코드가
+ * 안 온다 — probe-must-be-self-verified §4) → 그 한 번만 1행 GET 으로 count 와 오류를 함께 받는다.
+ * @param {any} [sb]
+ * @returns {Promise<{ statsTotal: number, statsScoped: number, viewTotal: number, viewScoped: number | null, viewJudged: number | null }>}
+ */
+export async function fetchTradeScopeFillCounts(sb = getSupabase()) {
+  /** @param {{ count: number | null, error: { message: string } | null }} r @param {string} what */
+  const need = (r, what) => {
+    if (r.error) throw new Error(`${what} 조회 실패: ${r.error.message}`);
+    if (r.count == null) throw new Error(`${what} 개수를 못 받음(count=null)`);
+    return r.count;
+  };
+  const statsTotal = need(await sb.from("trade_stats").select("*", { count: "exact", head: true }), "trade_stats 전체");
+  const statsScoped = need(
+    await sb.from("trade_stats").select("*", { count: "exact", head: true }).not("cmp_scope", "is", null),
+    "trade_stats cmp_scope 채움",
+  );
+  const viewTotal = need(await sb.from("apartments_flat").select("*", { count: "exact", head: true }), "apartments_flat 전체");
+  const vs = await sb.from("apartments_flat").select("cmpScope", { count: "exact" }).not("cmpScope", "is", null).limit(1);
+  if (vs.error && (vs.error.code === "42703" || /does not exist/i.test(vs.error.message ?? ""))) {
+    return { statsTotal, statsScoped, viewTotal, viewScoped: null, viewJudged: null };
+  }
+  const viewScoped = need(vs, "apartments_flat cmpScope 채움");
+  const viewJudged = need(
+    await sb.from("apartments_flat").select("*", { count: "exact", head: true }).in("cmpScope", ["complex", "dong_peer"]),
+    "apartments_flat 판정 범위",
+  );
+  return { statsTotal, statsScoped, viewTotal, viewScoped, viewJudged };
+}
+
+/**
  * ⑦ VIEW 의 시군구 조인(`rg`)으로 노출되는 컬럼 목록.
  *
  * `apartments_flat` 은 `LEFT JOIN latest_regions_gu rg ON rg.region = a.region
@@ -3718,6 +3818,18 @@ async function main() {
 
     // ⑥ VIEW 회귀 — regions 원본 채움 but VIEW NULL (세션 391 멀티 collector 새-행 lag)
     issues = issues.concat(checkViewRegionStale(audit.fields, regionStats));
+
+    // ⑥-b 점수 입력 채움 — trade_stats.cmp_scope 원본 vs VIEW cmpScope (세션607 다) 보완 B3).
+    //    조회 실패가 다른 점검을 막지 않게 fail-open(⑦ 이하와 같은 결).
+    issues = issues.concat(await runFailOpenCheck("⑥-b 점수 입력 채움 점검", async () => {
+      const counts = await fetchTradeScopeFillCounts();
+      const scopeIssues = checkTradeScopeFill(counts);
+      console.log(
+        `[monitor] ⑥-b 점수 입력 채움: trade_stats ${counts.statsScoped}/${counts.statsTotal} · ` +
+        `VIEW ${counts.viewScoped ?? "칸 없음"}/${counts.viewTotal} · 판정 범위 ${counts.viewJudged ?? "-"} → 이상 ${scopeIssues.length}건`,
+      );
+      return scopeIssues;
+    }));
 
     // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다

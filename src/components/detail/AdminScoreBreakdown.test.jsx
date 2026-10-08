@@ -3,44 +3,52 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { AdminScoreBreakdown } from "./AdminScoreBreakdown";
 import { makeScoredItem } from "@/__tests__/factories";
-import { getAgeCoeff } from "@/scoring/engine";
-import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 
 // 세션 405: 구 ExpertScoreBreakdown.test + ExpertScoreSummary.test 단언 이식 (전문가 대시보드 폐지·관리자 이식)
 
 describe("AdminScoreBreakdown", () => {
   // ── 구 ExpertScoreBreakdown 단언 ──
-  it("적정가 산출 과정을 표시한다", () => {
-    const { apt, res } = /** @type {any} */ (makeScoredItem({ nearbyMedian: 55000, price: 50000 }));
+  // 세션607(시세 비교 범위 좁히기 다): 옛 단언 = "주변중위가 × 연식계수(미준공은 '신축 프리미엄') × 면적보정 ×
+  //   브랜드보정" 줄이 보인다(세션405·528). 적정가가 같은 단지·같은 동 또래 실거래라 계수를 곱하지 않게 되어
+  //   (설계서 D8·R5) 그 줄은 거짓이 된다 → 엔진이 준 비교 범위·건수를 보여 주고 계수 줄은 없다.
+  it("적정가 산출 과정 = 비교 범위·건수·기간, 계수 곱셈 줄은 없다", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ price: 50000, cmpMonths: 12 }));
+    res.cats.price.fairPriceN = 7;
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
     expect(screen.getByText("적정가 산출 과정")).toBeTruthy();
-    expect(screen.getByText(/주변중위가/)).toBeTruthy();
-    expect(screen.getByText(/연식계수/)).toBeTruthy();
-    expect(screen.getByText(/면적보정/)).toBeTruthy();
-    expect(screen.getByText(/브랜드보정/)).toBeTruthy();
+    expect(screen.getByText("이 단지 실거래")).toBeTruthy();
+    expect(screen.getByText("7건 · 최근 12개월")).toBeTruthy();
+    expect(screen.getByText(/보정 계수: 없음/)).toBeTruthy();
+    for (const old of [/주변중위가/, /연식계수/, /신축 프리미엄/, /면적보정/, /브랜드보정/]) {
+      expect(screen.queryByText(old)).toBeNull();
+    }
   });
 
-  /**
-   * 세션528 결함B 처방 — 미준공(분양 예정) 단지는 "연식계수"가 아니라 "신축 프리미엄" 라벨이어야
-   * 정직하다(같은 ageCoeff 값이 이제 두 가지 다른 현상을 나타내므로, brands.ts 주석 참조).
-   * 적대검증(세션528)이 잡은 가드 갭: 팩토리 기본 completion(2025-06-01)이 과거로 고정돼 있어
-   * 위 테스트는 항상 "연식계수" 분기만 지나고, presale=true 분기(신축 프리미엄)는 이 파일의
-   * 어떤 테스트도 렌더하지 않아 그 분기를 지워도 전체 테스트가 초록불을 유지했다.
-   */
-  it("미준공(분양 예정) 단지는 '신축 프리미엄' 라벨을 표시한다 (연식계수 아님)", () => {
-    const future = new Date();
-    future.setFullYear(future.getFullYear() + 1); // 실행 시점 기준 상대값 — 하드코딩 날짜 금지
-    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion: future.toISOString().slice(0, 10) }));
+  it.each([
+    [{ fairPriceScope: "complex", fairPriceSrc: "presale" }, "이 단지 분양권 거래"],
+    [{ fairPriceScope: "dong_peer", fairPriceSrc: "sale" }, "같은 동 비슷한 연식(±10년)·같은 평수 실거래"],
+    [{ fairPriceScope: "none", fairPriceSrc: null }, "비교할 실거래 없음 (괴리도 중립)"],
+  ])("범위 %o → '%s'", (scopeRes, label) => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem());
+    Object.assign(res.cats.price, scopeRes);
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
-    expect(screen.getByText(/신축 프리미엄/)).toBeTruthy();
-    expect(screen.queryByText(/^×\s*연식계수/)).toBeNull();
+    expect(screen.getByText(label)).toBeTruthy();
   });
 
-  it("준공된 단지는 '연식계수' 라벨을 표시한다 (신축 프리미엄 아님)", () => {
-    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion: "2020-01-01" }));
+  it("세션607 보완(B1) — 범위 칸이 아예 없으면(옛 점수 캐시) '갱신 전'으로 알리고 '실거래 없음'과 섞지 않는다", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem());
+    delete res.cats.price.fairPriceScope;
+    delete res.cats.price.fairPriceSrc;
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
-    expect(screen.getByText(/연식계수/)).toBeTruthy();
-    expect(screen.queryByText(/신축 프리미엄/)).toBeNull();
+    expect(screen.getByText("점수 캐시 갱신 전 (03:00 재계산 뒤 표시)")).toBeTruthy();
+    expect(screen.queryByText(/비교할 실거래 없음/)).toBeNull();
+  });
+
+  it("범위 none 이면 건수·기간 줄을 그리지 않는다", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem());
+    res.cats.price.fairPriceScope = "none";
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    expect(screen.queryByText(/건수·기간/)).toBeNull();
   });
 
   it("6개 카테고리 섹션의 총점을 표시한다", () => {
@@ -64,7 +72,7 @@ describe("AdminScoreBreakdown", () => {
     expect(screen.getByText(/프로필 가중치: 45%/)).toBeTruthy();
   });
 
-  it("nearbyMedian이 0이면 괴리도 N/A로 표시된다", () => {
+  it("엔진 fairPrice 가 0(판정 못 함)이면 괴리도 N/A로 표시된다", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem({ nearbyMedian: 0 }));
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
     expect(screen.getByText(/괴리도 N\/A%/)).toBeTruthy();
@@ -86,15 +94,11 @@ describe("AdminScoreBreakdown", () => {
     expect(screen.getByText(/괴리도 -88\.8%/)).toBeTruthy();
   });
 
-  it("버킷 경로면 '평형별 실거래' 로 설명하고 면적보정 줄을 감춘다", () => {
-    const { apt, res } = /** @type {any} */ (makeScoredItem({ nearbyMedian: 55000, price: 50000, area: 100 }));
-    res.cats.price.fairPrice = 200000;
-    res.cats.price.deviation = "10.0";
-    res.cats.price.fairPriceFromAreaBucket = true;
+  // 세션607: 옛 "버킷 경로면 '평형별 실거래' 로 설명하고 면적보정 줄을 감춘다" 는 버킷 경로 삭제로 대상이 없어졌다.
+  it("㎡당 환산(per_m2)이면 그 방식을 밝힌다 — 같은 평수 거래가 모자라 넓힌 값", () => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ area: 100, cmpAreaMode: "per_m2", cmpMonths: 12 }));
     render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
-    expect(screen.getByText(/평형별 실거래/)).toBeTruthy();
-    // 버킷은 이미 그 평형대 실거래라 면적보정을 곱하지 않는다 — 그 줄이 뜨면 거짓 설명이 된다.
-    expect(screen.queryByText(/면적보정/)).toBeNull();
+    expect(screen.getByText(/면적 20㎡ 이내 ㎡당 환산 × 100㎡/)).toBeTruthy();
   });
 
   it("존재하지 않는 프로필이면 크래시 없이 렌더링한다", () => {
@@ -230,76 +234,20 @@ describe("AdminScoreBreakdown", () => {
 });
 
 /**
- * 세션529: **운영 실제 형식(대시 없는 "YYYYMM")** 으로 라벨 분기를 검사한다.
- *
- * ⚠️ 위 세션528 테스트들은 completion 을 전부 `"2020-01-01"` 같은 대시 형식으로 넣는데,
- * 그 형식은 **운영 DB 에 0건**이다(2026-08-24 실측 `apartments_flat` 2,227행: YYYYMM 1,802 ·
- * 빈값 374 · 비정형 51 · 대시 0). 세션529가 고친 결함이 정확히 "가드는 있는데 넣은 값이
- * 실전 형식이 아니라 결함 분기를 안 지났다"는 것이었으므로(`guards-must-be-mutation-tested.md`
- * §"테스트가 실제 경로를 지나는가"), 같은 씨앗을 여기서 뽑는다.
- *
- * 날짜는 **실행 시점 상대값**으로 만든다 — 고정 YYYYMM 을 박으면 그 달이 지나는 순간
- * 경계 케이스가 조용히 다른 뜻이 된다(`timezone-consistency.md` §4).
+ * 세션607: 옛 블록 "운영 실제 형식(YYYYMM) 라벨 분기"(세션529 — 준공월에 따라 '신축 프리미엄'/'연식계수' 라벨,
+ * 화면 계수 = getAgeCoeff, 브랜드보정 = resolveBuilder 정규화 값)는 적정가에 계수를 곱하지 않게 되어(설계서 D8·R5)
+ * 대상이 없어졌다. 남는 뜻 = **어떤 준공월·시공사 표기에서도 계수 줄이 되살아나지 않는다**(실전 형식 YYYYMM 포함).
  */
-describe("AdminScoreBreakdown — 운영 실제 형식(YYYYMM) 라벨 분기", () => {
+describe("AdminScoreBreakdown — 계수 줄이 되살아나지 않는다 (세션607)", () => {
   const kst = new Date(Date.now() + 9 * 60 * 60 * 1000);
   /** @param {number} y @param {number} m */
   const ym = (y, m) => `${y}${String(m).padStart(2, "0")}`;
   const Y = kst.getUTCFullYear();
   const M = kst.getUTCMonth() + 1;
-  const thisMonth = ym(Y, M);
-  const lastMonth = M === 1 ? ym(Y - 1, 12) : ym(Y, M - 1);
-  const future = ym(Y + 2, M);
-  const old6y = ym(Y - 6, M);
 
-  /** 화면에 실제로 찍힌 "× <라벨>: <값>" 을 뽑는다. */
-  /** @param {string | null | undefined} completion */
-  const readCoeffRow = (completion) => {
-    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion, nearbyMedian: 55000, price: 50000 }));
+  it.each([[ym(Y + 2, M)], [ym(Y, M)], [ym(Y - 6, M)], ["미정"], [""]])("준공 %s → 계수 줄 없음", (completion) => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem({ completion, builder: "지에스건설(주)" }));
     const { container } = render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
-    const m = (container.textContent ?? "").match(/×\s*(신축 프리미엄|연식계수)\s*:\s*([\d.]+)/);
-    return m ? { label: m[1], value: m[2] } : null;
-  };
-
-  it.each([
-    [() => future, "신축 프리미엄", "2년 뒤 예정 = 미준공"],
-    [() => thisMonth, "신축 프리미엄", "이번 달 준공 — 화면(classify.ts `>= NOW_YM`)과 같은 경계라 '입주예정' 쪽"],
-    [() => lastMonth, "연식계수", "지난 달 준공 = 준공완료 (경계 바로 아래)"],
-    [() => old6y, "연식계수", "6년 전 준공"],
-    [() => "미정", "연식계수", "비정형 — 미상(중립)으로 빠진다"],
-    [() => "", "연식계수", "빈값 — 미상(중립)으로 빠진다"],
-  ])("%s → %s 라벨 (%s)", (getComp, expectedLabel) => {
-    const row = readCoeffRow(getComp());
-    expect(row).not.toBeNull();
-    expect(row?.label).toBe(expectedLabel);
-  });
-
-  it("화면은 엔진의 계수를 그대로 표시한다 (역산·재계산하지 않는다)", () => {
-    for (const comp of [future, thisMonth, lastMonth, old6y, "미정", ""]) {
-      const row = readCoeffRow(comp);
-      expect(row?.value).toBe(getAgeCoeff(comp).toFixed(2));
-    }
-  });
-
-  it("이번 달과 지난 달은 서로 다른 라벨로 갈린다 (경계가 한 칸이라도 밀리면 red)", () => {
-    expect(readCoeffRow(thisMonth)?.label).toBe("신축 프리미엄");
-    expect(readCoeffRow(lastMonth)?.label).toBe("연식계수");
-  });
-
-  /**
-   * 세션529 적대검증: 이 패널이 `BRAND_TIER[apt.builder]` 를 **직조회**해서, 법인 표기를 쓰는
-   * 단지에서 화면 곱셈이 바로 밑 "= 적정가" 와 안 맞았다(운영 2,227곳 중 **50곳** — 예:
-   * "지에스건설(주)" 화면 1.00 vs 엔진 1.05). 엔진은 `resolveBuilder` 를 거친다.
-   * 세션513이 `scorePrice` 에서 고친 것과 같은 결함 — 정규화는 `builder` 를 읽는 **모든 자리**에서.
-   */
-  it("브랜드보정이 엔진과 같은 값이다 — 법인 표기도 정규화해서 조회한다", () => {
-    // 별칭이 필요한 실제 표기(운영 DB 실측). 직조회하면 1.00 으로 떨어진다.
-    const { apt, res } = /** @type {any} */ (makeScoredItem({ builder: "지에스건설(주)" }));
-    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
-    const expected = BRAND_TIER[resolveBuilder("지에스건설(주)")]?.adj ?? 1.0;
-    expect(expected).toBeGreaterThan(1.0); // 별칭 해석이 실제로 필요한 표기인지 먼저 잠근다
-    expect(screen.getByText(new RegExp(`브랜드보정`))).toBeTruthy();
-    const shown = screen.getByText(expected.toFixed(2));
-    expect(shown).toBeTruthy();
+    expect(container.textContent ?? "").not.toMatch(/×\s*(신축 프리미엄|연식계수|면적보정|브랜드보정)/);
   });
 });

@@ -828,18 +828,39 @@ export const POLICE_DIST_NULL_SCORE = 35; // 데이터 없음 중립
 // 대체 = `FUTURE_WEIGHTS`(고정 가중치, 위쪽 정의). 각 항이 비음수 가산이라 채우면 오르기만 한다.
 
 // === Price: 데이터 부재 시 기본값 ===
-export const PRICE_NO_DATA_DEFAULTS: { dev: number; jr: number; pir: number; psr: number } = {
-  dev: 30,
+// psr 키는 지웠다(세션609 라) — PSR 축이 세션607 다) 에서 없어져 읽는 곳이 없다(R4).
+// dev 35 = 괴리 0%(DEV_SCORE_BASE)와 같은 취급 — 사장님 결정 2026-10-08 세션612(설계서 D10 "중립" 복원 · 옛 30 은 '모름'이 '약간 비쌈'보다 낮게 채점됐다)
+export const PRICE_NO_DATA_DEFAULTS: { dev: number; jr: number; pir: number } = {
+  dev: 35,
   jr: 50,
   pir: 50,
-  psr: 50,
 };
 
 // 세션114: 인근 실거래 중위값(nearbyMedian) 부재로 시도 평균 avgPriceSqm을
 // fairPrice 폴백으로 사용할 때 적용. 섬·군 지역에서 시도 평균이 실시세의
 // 2~3배로 과대평가되는 왜곡을 사용자에게 알리기 위해 dataReliability 차감 +
 // detail 문자열 경고 접미를 부여. 점수 로직(괴리도/PIR/PSR/전세가율 계산) 불변.
+// ⚠️ 세션607(시세 비교 범위 좁히기 다)부터 **쓰는 곳 0** — 적정가 폴백 자체가 없어졌다(설계서 D10).
+//    상수 삭제는 정리 PR(라 뒤).
 export const PRICE_FALLBACK_RELIABILITY_PENALTY = 15;
+
+/**
+ * 가격 점수 하위 가중치 (시세 비교 범위 좁히기 다, 세션607 — 설계서 R4·D12). **합 1.00.**
+ *
+ * 옛 6축(괴리도 0.30 · 전세가율 0.20 · PIR 0.15 · PSR 0.25 · 신뢰도 0.07 · 택지비 0.03)에서
+ * PSR(분양가 ÷ **구 전체** ㎡당 중위) 축을 없애고 그 0.25 를 괴리도(같은 단지·같은 동 또래 실거래 대비)로
+ * 합쳤다 — PSR 은 구 전체와 비교해 1,736곳 중 81% 를 "비쌈"이라 불렀다(설계서 §1).
+ * `scorePrice` 가 이 표를 읽고, `engine.test.js` 가 합 1.00 과 total = Σ(점수×가중치)를 잠근다.
+ */
+export const PRICE_SUB_WEIGHTS = { dev: 0.55, jr: 0.2, pir: 0.15, rel: 0.07, land: 0.03 } as const;
+
+/**
+ * 적정가 비교 범위 규칙의 숫자 — **정본은 `scripts/collectors/_trade-scope.mjs`**(`PER_M2_TOL_M2`·`PEER_YEARS`).
+ * 화면·점수 문구가 숫자를 손으로 적지 않게 여기 짝을 둔다(세션565 관습) —
+ * `_trade-scope.test.mjs` 가 두 값이 같은지 잠근다(한쪽만 바뀌면 문구가 거짓이 된다).
+ */
+export const TRADE_SCOPE_PER_M2_TOL_M2 = 20;
+export const TRADE_SCOPE_PEER_YEARS = 10;
 
 // === Price: PIR (소득대비 가격비율) 점수 구간 ===
 // 세션108 재설계: KOSIS 1인당 개인소득(만원/월) 기준. 기존 ≤3/≤5/≤7 구간은
@@ -912,6 +933,8 @@ export const DEV_SCORE_BASE = 35;
  * 판정 분포도 함께 고르게 된다(손님 노출 전체): 저렴 38.1/수준 15.7/비쌈 46.2 →
  * **저렴 31.4 / 수준 28.8 / 비쌈 39.8**. 어느 한 라벨이 사라지거나 삼키지 않는다.
  * ⚠️ 더 넓히면(±12.5 → 수준 34.9%) "적정가 수준"이 최다가 되어 축이 말을 덜 하게 된다.
+ * ⚠️ 세션607: 위 근거(계수 흔들림)의 전제가 바뀌었다 — 적정가에 계수를 곱하지 않는다(같은 단지·또래 실거래).
+ *    폭은 그대로 두고 10/08 실데이터 분포로 재측정한다(등급 전이표와 함께).
  */
 export const DEV_NEUTRAL_BAND_PCT = 10;
 

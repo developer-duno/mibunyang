@@ -8,6 +8,9 @@
  *
  * 효과:
  *   프론트엔드 calcCats() 355,440 ops → 0 ops (서버 캐시 사용)
+ *
+ * ⚠️ 세션607: 마이그 20261007000000(VIEW 점수 입력 9칸) 적용 전에 이 코드를 합치면 여기서 멈춘다
+ *   (exit 1 + collector_runs failure) — 아래 `assertCmpScopeReady` 참조.
  */
 import { loadEnv, getSupabase, upsertBatch, log, logError, createReporter, recordCollectorRun, selectAll, sleep } from "./collectors/_shared.mjs";
 import { computeRegionalMedians, calcCats } from "@/scoring/engine";
@@ -62,6 +65,41 @@ export function isStaleClearSafe(staleCount, totalWithScores) {
   if (!Number.isFinite(staleCount) || !Number.isFinite(totalWithScores)) return false;
   if (staleCount < 0 || totalWithScores <= 0) return false;
   return staleCount / totalWithScores <= STALE_CLEAR_MAX_RATIO;
+}
+
+// ── 점수 입력 준비 확인 (세션607 다) 보완 — 검사관 A🟠) ─────────────
+// ⚠️ 마이그 20261007000000(VIEW apartments_flat 끝 12칸(점수 입력 9 + 화면 3) cmpScope …)을 적용하기 전에 이 코드를 합치면
+//    **여기서 멈춘다**. 그대로 굽게 두면 칸이 없어(또는 비어) 전 단지 괴리도가 중립으로 cats_cache 에
+//    구워지고, 손님 화면의 '저렴/수준/비쌈' 판정 칩이 한꺼번에 사라진다 — 에러 없이 조용히.
+//    같은 일이 VIEW 롤백·trade-stats 범위 판정 실패(채움 0) 때도 난다.
+
+/**
+ * VIEW 행 중 `cmpScope` 가 채워진 비율의 하한. 'none'(비교할 실거래 없음)도 trade-stats 가 판정한
+ * 결과이므로 **채움으로 센다** — 비어 있는 것은 판정 자체가 안 된 행뿐이다.
+ * 0.8 은 잠정값이다: 2026-10-07 기준 trade_stats.cmp_scope 채움이 0(첫 실제 쓰기 10/08 01:00 회차)이라
+ * 실데이터로 맞추지 못했다. **10/08 회차 뒤 VIEW 채움률을 재측정해 다시 정한다.**
+ */
+export const CMP_SCOPE_MIN_FILL = 0.8;
+
+/**
+ * 점수 입력 칸(`cmpScope`)이 굽기에 충분한가. 순수 함수 — 멈출지 말지는 호출부가 정한다.
+ * @param {Array<Record<string, unknown>>} rows apartments_flat 에서 읽은 전체 행
+ * @returns {string | null} 멈춰야 하면 그 이유, 괜찮으면 null. 0건이면 null(0건 경로는 기존 처리 그대로)
+ */
+export function assertCmpScopeReady(rows) {
+  if (rows.length === 0) return null;
+  if (!Object.prototype.hasOwnProperty.call(rows[0], "cmpScope")) {
+    return "VIEW apartments_flat 에 cmpScope 칸 없음 — 마이그 20261007000000 미적용 또는 VIEW 롤백. 점수를 굽지 않고 멈춘다";
+  }
+  const filled = rows.filter((r) => r.cmpScope != null).length;
+  const rate = filled / rows.length;
+  if (rate < CMP_SCOPE_MIN_FILL) {
+    return (
+      `cmpScope 채움 ${filled}/${rows.length}(${(rate * 100).toFixed(1)}%) < 하한 ${CMP_SCOPE_MIN_FILL * 100}% — ` +
+      "trade-stats 범위 판정이 VIEW 에 안 닿음 의심. 점수를 굽지 않고 멈춘다"
+    );
+  }
+  return null;
 }
 
 // ── cats_cache 검증 ──────────────────────────────────────────
@@ -131,6 +169,14 @@ export async function main() {
   }
 
   log("compute-scores", `${allApartments.length}건 로드 완료`);
+
+  // 1-1) 점수 입력 준비 확인 — 칸이 없거나 비었으면 옛 점수를 그대로 두고 멈춘다(위 CMP_SCOPE_MIN_FILL 주석)
+  const notReady = assertCmpScopeReady(allApartments);
+  if (notReady) {
+    logError("compute-scores", notReady);
+    await recordCollectorRun(PHASE, { ...reporter.summary(), status: "failure", errorMessage: notReady });
+    process.exit(1);
+  }
 
   // 2) 지역 중앙값 계산
   const regionMedians = computeRegionalMedians(allApartments);

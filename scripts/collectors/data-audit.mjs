@@ -593,6 +593,33 @@ function mergeRelated(aptRows, relatedRows, joinKey, targetKey, colMap) {
   }
 }
 
+/** 신뢰도 거울 식이 "판정 범위"로 세는 비교 범위 — VIEW `ts.cmp_scope IN ('complex', 'dong_peer')` 와 같다 */
+const RELIABILITY_JUDGED_SCOPES = new Set(["complex", "dong_peer"]);
+
+/**
+ * VIEW `apartments_flat."dataReliability"`(마이그 20261007000000) 식의 JS 거울 — 항 하나씩 짝.
+ *   VIEW 항 ↔ 거울 칸: p.price > 0 ↔ price · i.hospital > 0 ↔ hospital · sc.school_score ↔ schoolScore ·
+ *   t.bus_stop_names ↔ busStopNames · b.debt_ratio ↔ builderDebtRatio · r.pop_growth ↔ popGrowth ·
+ *   ts.cmp_scope ↔ cmpScope · ts.complex_jeonse_rate ↔ complexJeonseRate · a.units > 1 ↔ units (합 100).
+ *   세션609 정정 전엔 nearbyMedian 15 를 두 번 세고 price 항이 없었다(재검사 🟢 · 보완 보고 4).
+ *   VIEW 식을 바꾸면 이 함수도 같이 바꾼다 — 시험 = data-audit.test.mjs "computeReliabilityMirror".
+ * @param {FlatRow} apt
+ * @returns {number}
+ */
+export function computeReliabilityMirror(apt) {
+  return Math.max(0, Math.min(100,
+    (Number(apt.price) > 0 ? 15 : 0) +
+    (Number(apt.hospital) > 0 ? 12 : 0) +
+    (apt.schoolScore != null ? 12 : 0) +
+    (apt.busStopNames != null ? 10 : 0) +
+    (apt.builderDebtRatio != null ? 8 : 0) +
+    (apt.popGrowth != null ? 8 : 0) +
+    (RELIABILITY_JUDGED_SCOPES.has(/** @type {string} */ (apt.cmpScope)) ? 15 : 0) +
+    (apt.complexJeonseRate != null ? 10 : 0) +
+    ((typeof apt.units === "number" && apt.units > 1) ? 10 : 0)
+  ));
+}
+
 /**
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string | null} regionFilter
@@ -632,7 +659,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
     fetchAllFromTable(sb, "regions", "id,region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio,housing_price", null, null),
-    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m", null, null),
+    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m,cmp_scope,complex_jeonse_rate", null, null),
   ]);
 
   // merge prices (latest per apartment — prices 테이블은 시계열, 최신 1건만)
@@ -745,21 +772,13 @@ export async function fetchAllFromView(sb, regionFilter) {
     price_by_area: "priceByArea", rent_by_area: "rentByArea",
     jeonse_by_area: "jeonseByArea", price_by_floor: "priceByFloor",
     cancel_ratio_6m: "cancelRatio6m",
+    // 세션609: VIEW 신뢰도 식(20261007000000)이 새 비교 칸을 센다 — 거울도 같은 칸을 받아야 한다
+    cmp_scope: "cmpScope", complex_jeonse_rate: "complexJeonseRate",
   });
 
-  // dataReliability 계산 (VIEW의 SQL 로직 재현)
+  // dataReliability 계산 (VIEW의 SQL 로직 재현 — 식은 computeReliabilityMirror 한 곳)
   for (const apt of apts) {
-    apt.dataReliability = Math.max(0, Math.min(100,
-      (apt.nearbyMedian != null ? 15 : 0) +
-      (apt.hospital != null ? 12 : 0) +
-      (apt.schoolScore != null ? 12 : 0) +
-      (apt.busRoutes != null ? 10 : 0) +
-      (apt.builderDebtRatio != null ? 8 : 0) +
-      (apt.popGrowth != null ? 8 : 0) +
-      (apt.nearbyMedian != null ? 15 : 0) +
-      (apt.jeonseRate != null ? 10 : 0) +
-      ((typeof apt.units === "number" && apt.units > 1) ? 10 : 0)
-    ));
+    apt.dataReliability = computeReliabilityMirror(apt);
   }
 
   log(PHASE, `  merge 완료: ${apts.length}건`);

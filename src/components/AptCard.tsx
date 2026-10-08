@@ -440,7 +440,8 @@ export const AptCard = memo(
     // infoRow/alertRow 칩 신호 (세션 430) — 역세권·전세가율·주차·혐오안심
     if (pa.subwayDist !== na.subwayDist) return false;
     if (pa.subwayName !== na.subwayName) return false;
-    if (pa.jeonseRate !== na.jeonseRate) return false;
+    // 세션609 라: 전세가율 칩 재료가 같은 단지 값(complexJeonseRate)으로 바뀌었다 — 비교도 그 칸을 본다.
+    if (pa.complexJeonseRate !== na.complexJeonseRate) return false;
     if (pa.parkingRatio !== na.parkingRatio) return false;
     if (pa.noxiousDist !== na.noxiousDist) return false;
     if (pa.corridorType !== na.corridorType) return false;

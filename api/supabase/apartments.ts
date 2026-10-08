@@ -300,7 +300,7 @@ function sanitizeRegion(row: any) {
   };
 }
 
-/** 실거래 위험 필드 + 규제/보증 + 시세 배열 (16개, 네이버 폴백 포함) */
+/** 실거래 위험 필드 + 시세 비교 범위 점수 입력 9개(세션607) + 규제/보증 + 시세 배열 (네이버 폴백 포함) */
 function sanitizeTransaction(row: any) {
   return {
     // 실거래 (위험 필드 → 비관적 기본값, 네이버 폴백)
@@ -316,6 +316,22 @@ function sanitizeTransaction(row: any) {
     pir: row.pir ?? 10,
     psr: row.psr ?? 1.5,
     cancelRatio6m: row.cancelRatio6m ?? null,
+    // 시세 비교 범위 좁히기 다(세션607) — 가격 점수 입력 칸 9개(VIEW 20261007000000). null 보존:
+    //   점수는 칸이 없으면 괴리도·전세가율을 중립으로 둔다 — 여기서 기본값을 지어 넣으면 없는 비교를 만든다.
+    cmpScope: row.cmpScope ?? null,
+    cmpFairPrice: row.cmpFairPrice ?? null,
+    cmpN: row.cmpN ?? null,
+    cmpMonths: row.cmpMonths ?? null,
+    cmpAreaMode: row.cmpAreaMode ?? null,
+    cmpSrc: row.cmpSrc ?? null,
+    complexJeonseRate: row.complexJeonseRate ?? null,
+    complexJeonseN: row.complexJeonseN ?? null,
+    complexSaleN: row.complexSaleN ?? null,
+    // 시세 비교 범위 좁히기 라(세션609) — 시세 탭 화면 칸 3개(VIEW 20261007000000 끝 3줄). null 보존:
+    //   없으면 화면이 그 줄·표를 안 그린다(빈 배열·0 을 지어 넣으면 "거래 0건" 이라는 없는 사실이 된다).
+    dongFact: row.dongFact ?? null,
+    complexTable: row.complexTable ?? null,
+    complexJeonseTable: row.complexJeonseTable ?? null,
     // 규제/보증 (engine.js scoreRisk에서 사용)
     isRegulated: row.isRegulated ?? false,
     // dsr40pass 는 null 보존 (세션513, 아래 hugGuarantee 세션508 선례와 동형). 미산정 121곳은

@@ -95,8 +95,8 @@ const parseTradeCount = (info?: string): number | null => {
 export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
   price: {
     // `deviation` 은 **적정가**와의 괴리이지 주변 단지와의 직접 비교가
-    // 아니다. (적정가 = 1순위 그 평형대 실거래 × 연식/신축 계수 × 브랜드 계수 — 이 경로는 면적보정을
-    //  곱하지 않는다. 2순위 이하만 주변 중앙가 × 계수 × 면적보정 × 브랜드. `scorePrice.ts` 참조.) 세션487이 이 라벨을 이미 거짓으로 판정해 `cardChips`·`catVerdict` 는 "적정가 대비"로
+    // 아니다. (세션607부터 적정가 = 같은 단지 실거래 → 없으면 같은 동 또래·같은 평수 실거래의 중앙값, 계수 곱셈 없음 ·
+    //  둘 다 없으면 괴리도 중립. `scorePrice.ts` 참조.) 세션487이 이 라벨을 이미 거짓으로 판정해 `cardChips`·`catVerdict` 는 "적정가 대비"로
     // 고쳤는데 이 표만 남아 같은 거짓을 1,572곳(95.5%)에 재생산하고 있었다.
     // ⚠️ 점수로 가르면 값과 어긋난다 — 바로 아래 전세가율과 같은 자리다. 실측(운영 n=1,646):
     //    괴리도가 **양수(+0.9% 등)인데 "적정가보다 비쌈"** 10곳, "적정가 수준" 91곳 중 45곳이 ±5% 밖.
@@ -145,12 +145,10 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
       interpret: (sc) => (sc >= 70 ? "소득 대비 부담 적음" : sc >= 40 ? "보통 부담" : "소득 대비 부담 큼"),
       benchmark: `${PIR_SCORE_TIERS.EXCELLENT_MAX}배 이하 우수 (1인당 개인소득 기준)`,
     },
-    PSR: {
-      interpret: (sc) => (sc >= 70 ? "주변 대비 합리적" : sc >= 40 ? "시세 수준" : "주변 대비 고가"),
-      benchmark: "0.85 이하 우수",
-    },
+    // `PSR` 항목은 지웠다(세션609 라) — 가격 점수에 PSR 서브가 더는 없다(세션607 다) · R4).
     "데이터 신뢰도": {
-      interpret: (sc) => (sc >= 70 ? "데이터 충분" : sc >= 40 ? "일부 추정치 포함" : "데이터 부족"),
+      interpret: (sc) =>
+        sc >= 70 ? "핵심 자료·비교 실거래 충분" : sc >= 40 ? "비교 실거래 일부 없음" : "핵심 자료 부족",
       benchmark: "70% 이상 권장",
     },
     // ⚠️ 두 가지가 어긋나 있었다.

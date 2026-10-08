@@ -50,7 +50,8 @@
           "label": "가격 매력도",
           "total": 46,
           "deviation": "0.0",
-          "fairPrice": 0
+          "fairPrice": 0,
+          "fairPriceScope": "none"
         },
         "future": {
           "key": "future",

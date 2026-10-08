@@ -303,16 +303,17 @@ describe("useDataPipeline", () => {
       expect(order.slice(3).sort()).toEqual(["ah-c", "ah-e"]);
     });
 
-    it("sortKey=jeonseHigh → 전세가율 높은순(내림차순), null 은 맨 뒤 (세션 444)", () => {
+    // 세션609 라 — 소스 = 같은 단지 전세가율(complexJeonseRate). 옛 구 jeonseRate 만 있는 카드는 값 없음 = 맨 뒤.
+    it("sortKey=jeonseHigh → 같은 단지 전세가율 높은순(내림차순), 값 없는 카드는 맨 뒤 (세션 444 · 609)", () => {
       const apts = [
-        makeApt({ id: "ah-a", region: "서울", price: 30000, jeonseRate: 60 }),
-        makeApt({ id: "ah-b", region: "서울", price: 30000, jeonseRate: 85 }),
-        makeApt({ id: "ah-c", region: "서울", price: 30000, jeonseRate: null }),
-        makeApt({ id: "ah-d", region: "서울", price: 30000, jeonseRate: 72 }),
+        makeApt({ id: "ah-a", region: "서울", price: 30000, complexJeonseRate: 60 }),
+        makeApt({ id: "ah-b", region: "서울", price: 30000, complexJeonseRate: 85 }),
+        makeApt({ id: "ah-c", region: "서울", price: 30000, complexJeonseRate: null, jeonseRate: 99 }),
+        makeApt({ id: "ah-d", region: "서울", price: 30000, complexJeonseRate: 72 }),
       ];
       const { result } = renderPipeline({ apartments: apts, sortKey: "jeonseHigh" });
       const order = result.current.filtered.map((x) => x.apt.id);
-      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 85 > 72 > 60 > null(-1)
+      expect(order).toEqual(["ah-b", "ah-d", "ah-a", "ah-c"]); // 85 > 72 > 60 > 값 없음(-1) — 옛 jeonseRate 99 는 안 읽는다
     });
 
     it("sortKey=maintenanceLow → 관리비 낮은순(오름차순), null 은 맨 뒤 (세션 474)", () => {

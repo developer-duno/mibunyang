@@ -125,13 +125,14 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
  *
  * ⚠️ `supplyRatio` 는 영구 제외 — 재실측 채움률 **0.0%**(1,581행 전부 null).
  *    `computeRegionalMedians` 가 계산은 하지만 쓸 수 있는 값이 없다.
- * ⚠️ `psr`(46.8%)·`pir` 는 성격이 다르다. `pir` 만 넣는다 — 둘 다 소득 대비 지표라
- *    나란히 두면 같은 말을 두 번 하는 셈이고, `psr` 은 채움률도 절반이다.
+ * ⚠️ `psr` 은 넣지 않는다 — PSR 축은 세션607 다) 에서 삭제(R4). `pir` 만 남는다.
+ * ⚠️ 전세가율 줄은 **같은 단지** 값(`complexJeonseRate`, 세션609 라 · R3) — 옛 `jeonseRate`(구 전체)를 읽지 않는다.
+ *    값이 없는 단지는 편차 줄이 비는 기존 동작 그대로(구 값으로 대신하지 않는다).
  */
 export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   ...CARD_DEVIATION_FIELDS,
   {
-    field: "jeonseRate",
+    field: "complexJeonseRate",
     valueUnit: "%",
     label: "전세가율",
     better: "high",

@@ -3,6 +3,7 @@
  * supabase/apartments.ts 테스트 — sanitize 함수 null 기본값, 필터링, 캐시 헤더, 배치 페이지네이션
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 // rateLimit 모킹 — withHandler의 checkRateLimit 경로 우회
 vi.mock('../_lib/rateLimit.js', () => ({
@@ -396,6 +397,23 @@ describe('sanitize (null → 기본값)', () => {
     expect(d.isRegulated).toBe(false);
   });
 
+  // 세션607(시세 비교 범위 좁히기 다): 가격 점수 입력 9칸은 화이트리스트에 있어야 라이브 API 에서도 점수에 닿는다.
+  //   값은 그대로, 없으면 null(기본값을 지어 넣으면 없는 비교가 생긴다).
+  it('시세 비교 범위 9칸 — 값은 그대로 통과 · 없으면 null', async () => {
+    const scoped = {
+      cmpScope: 'complex', cmpFairPrice: 61000, cmpN: 4, cmpMonths: 12, cmpAreaMode: 'same_area', cmpSrc: 'sale',
+      complexJeonseRate: 72.5, complexJeonseN: 3, complexSaleN: 5,
+    };
+    mockQuery.range.mockResolvedValue({ data: [{ id: 1, name: 'A', region: '경기', ...scoped }, { id: 2, name: 'B', region: '경기' }], error: null, count: 2 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const [a, b] = res.json.mock.calls[0][0].data;
+    for (const [k, v] of Object.entries(scoped)) {
+      expect(a[k], k).toBe(v);
+      expect(b[k], k).toBeNull();
+    }
+  });
+
   // 세션 513: recentTrades6m·dsr40pass 도 null 보존 (hugGuarantee 세션508 선례와 동형).
   //   `?? 0`/`?? false` 는 "안 재봤다"를 "재봤더니 0건/미통과"로 굳혀 화면에 거짓을 낸다.
   it('recentTrades6m null → 0 으로 강제되지 않고 null 보존', async () => {
@@ -521,6 +539,75 @@ describe('sanitize (null → 기본값)', () => {
     ];
     for (const key of expectedKeys) {
       expect(d).toHaveProperty(key);
+    }
+  });
+});
+
+// 세션607 다) 보완(검사관 A M12 · 사장님 결정 B4) — VIEW 마이그 파일을 직접 읽는 정적 가드.
+//   VIEW 별칭 하나가 오타면 그 칸은 화이트리스트에서 늘 undefined → null 이 되어 점수가 조용히 중립이 된다.
+//   주석(-- …)은 걷어내고 본다 — 머리말에 칸 이름·옛 식이 설명으로 적혀 있어 그대로 세면 무효다.
+//   세션609 라): 화면 칸 3개(dongFact·complexTable·complexJeonseTable)가 끝에 붙어 9 → 12. `dong_fact` 는
+//   `cmp_`·`complex_` 접두가 아니라 정규식에 `dong_` 를 더했다(빠뜨리면 11 로 세어 빨강).
+describe('VIEW 마이그 20261007000000 ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
+  const stripSql = (p: string) =>
+    readFileSync(new URL(p, import.meta.url), 'utf8')
+      .split(/\r?\n/)
+      .map((l) => l.replace(/--.*$/, ''))
+      .join('\n');
+  const mig = stripSql('../../supabase/migrations/20261007000000_view_add_trade_scope.sql');
+  const rollback = stripSql('../../supabase/migrations/_rollbacks/20261007000001_rollback_view_add_trade_scope.sql');
+  const aliasesOf = (sql: string) =>
+    [...sql.matchAll(/\bts\.(?:cmp_|complex_|dong_)[a-z_]+\s+AS\s+"([A-Za-z]+)"/g)].map((m) => m[1]);
+  const count = (sql: string, needle: string) => sql.split(needle).length - 1;
+
+  it('마이그가 내보내는 별칭 12개(점수 입력 9 + 라) 화면 3) = 화이트리스트가 받는 12칸 (집합·개수 둘 다)', async () => {
+    const viewAliases = aliasesOf(mig);
+    expect(viewAliases).toHaveLength(12);
+    // 화이트리스트 이름은 실제 sanitize 출력에서 읽는다(소스 문자열이 아니라 동작)
+    mockQuery.range.mockResolvedValue({ data: [{ id: 1, name: 'A', region: '경기' }], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    const whitelist = Object.keys(d).filter((k) => /^(cmp|complex|dong)[A-Z]/.test(k));
+    expect(whitelist).toHaveLength(12);
+    expect(new Set(viewAliases)).toEqual(new Set(whitelist));
+  });
+
+  it('롤백 파일에는 그 12칸이 없다', () => {
+    expect(aliasesOf(rollback)).toHaveLength(0);
+    for (const a of aliasesOf(mig)) expect(count(rollback, `"${a}"`), a).toBe(0);
+  });
+
+  it('dataReliability 는 새 비교 칸을 센다 — 옛 칸(nearby_median·jeonse_rate) 0건, 롤백엔 옛 식 1건씩', () => {
+    expect(count(mig, 'ts.nearby_median IS NOT NULL')).toBe(0);
+    expect(count(mig, 'ts.jeonse_rate IS NOT NULL')).toBe(0);
+    expect(count(mig, "ts.cmp_scope IN ('complex', 'dong_peer') THEN 15")).toBe(1);
+    expect(count(mig, 'ts.complex_jeonse_rate IS NOT NULL THEN 10')).toBe(1);
+    expect(count(rollback, 'ts.nearby_median IS NOT NULL')).toBe(1);
+    expect(count(rollback, 'ts.jeonse_rate IS NOT NULL')).toBe(1);
+  });
+
+  // 세션609(재검사 🟡3): 신뢰도 식은 "합계 100" 이 머리말 약속인데 시험이 없었다 — 한 항만 바뀌어도
+  //   LEAST(100, …) 가 넘침을 조용히 깎아 화면엔 티가 안 난다. 앵커를 못 찾으면 실패한다(조용한 통과 금지).
+  const reliabilityWeights = (sql: string) => {
+    const startAnchor = 'GREATEST(0, LEAST(100, (';
+    const endAnchor = '))) AS "dataReliability"';
+    expect(count(sql, startAnchor)).toBe(1);
+    const start = sql.indexOf(startAnchor);
+    const end = sql.indexOf(endAnchor, start);
+    expect(end).toBeGreaterThan(start);
+    const block = sql.slice(start + startAnchor.length, end);
+    return [...block.matchAll(/\bTHEN\s+(\d+)\b/g)].map((m) => Number(m[1]));
+  };
+
+  it('dataReliability 식 — 항 9개·합 100 (마이그·롤백 둘 다)', () => {
+    for (const [name, sql] of [
+      ['마이그', mig],
+      ['롤백', rollback],
+    ] as const) {
+      const w = reliabilityWeights(sql);
+      expect(w, name).toHaveLength(9);
+      expect(w.reduce((s, x) => s + x, 0), name).toBe(100);
     }
   });
 });

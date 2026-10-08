@@ -4,15 +4,14 @@ import { FIELD_META } from "@/constants/fieldMeta";
 import { Bar } from "@/components/primitives";
 import type { HighlightFieldProps } from "@/types/detail";
 
-// 4필드 한정 도메인 설명 (pir/psr/unsoldRate/dataReliability)
+// 3필드 한정 도메인 설명 (pir/unsoldRate/dataReliability) — psr 은 가격 점수 PSR 축째 지웠다(세션607 다) · R4)
 // ⚠️ 세션 507: `popGrowth` 를 뺐다 — 그 필드가 강조줄에서 내려가 분양 탭 "이 지역 통계"
 //    서랍으로 옮겨졌기 때문이다(단지 값이 아니라 시·도 통계라서). "양수면 유입 지역"이라는
 //    설명 취지는 그 서랍의 ? 도움말이 이어받았다(`detail/RegionStats` SECTION_HINT).
 const HIGHLIGHT_DESC: Record<string, string> = {
   pir: "연소득 대비 분양가 비율. 낮을수록 부담 적음",
-  psr: "주변 시세 대비 분양가 비율. 1 미만이면 저평가",
   unsoldRate: "총 세대 중 미분양 비율. 낮을수록 인기",
-  dataReliability: "핵심 데이터 수집 완성도",
+  dataReliability: "핵심 자료·비교 실거래 갖춤 정도",
 };
 
 // 점수 박스 1개 (강조 필드용)

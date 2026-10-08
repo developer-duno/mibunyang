@@ -133,10 +133,11 @@ describe("CatPanel", () => {
     });
 
     it("값이 있으면 판정 문구가 그대로 뜬다 (숨김이 과하지 않은지 확인)", () => {
-      const cat = makeCat({ subs: [{ name: "PSR", score: 75, info: "0.82" }] });
+      // 세션609 라: 옛 대상 PSR 은 서브째 지웠다(세션607 다) · R4) — 같은 경로의 PIR 로 옮겼다
+      const cat = makeCat({ subs: [{ name: "PIR", score: 75, info: "8.2배" }] });
       render(<CatPanel cat={cat} k="price" />);
       expand();
-      expect(count(/주변 대비 합리적/)).toBeGreaterThan(0);
+      expect(count(/소득 대비 부담 적음/)).toBeGreaterThan(0);
     });
 
     // 세션568: scoreRisk 가 unsoldUnknown 을 원인별로 가른 문구("세대수 미확인" / "미분양 자료 없음")

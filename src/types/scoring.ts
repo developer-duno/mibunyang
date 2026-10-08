@@ -32,6 +32,16 @@ export interface NearbyChildcare {
  * sanitize() 후의 a 객체 = 모든 위험·가격·인프라 필드 num()/str() 처리 완료.
  * 본 타입은 sanitize 입력·출력 둘 다 커버 (보수적 partial).
  */
+/** 같은 단지 면적별 거래 한 줄(`trade_stats.complex_table` — 세션609 라). 금액 만원 총액. */
+export interface TradeScopeAreaRow {
+  area: number;
+  n: number;
+  min: number;
+  median: number | null;
+  max: number;
+  last_month: string;
+}
+
 export interface Apt {
   // 식별자
   id?: string;
@@ -61,6 +71,44 @@ export interface Apt {
    * avg/min/max=만원, count=거래건수. `sanitize` 를 거치지 않으므로 원본 그대로.
    */
   priceByArea?: Array<{ area: number; min: number; avg: number; max: number; count: number }> | null;
+  /**
+   * 시세 비교 범위 좁히기 다(세션607) — `trade_stats` 새 칸이 VIEW `apartments_flat` 으로 노출된 값.
+   * 가격 점수(괴리도·전세가율)는 **이 칸만** 읽는다(옛 `nearbyMedian`·`priceByArea`·`jeonseRate` 는 점수 입력 아님).
+   * 설계서 `docs/superpowers/specs/2026-10-03-trade-scope-narrowing.md` §4-3·§5-3.
+   * - `cmpScope`: 적정가의 범위 — complex(같은 단지) / dong_peer(같은 동 또래) / none(비교 거래 없음)
+   * - `cmpFairPrice`: 적정가(만원 총액, 계수 없음) · `cmpN`·`cmpMonths`: 건수·기간 · `cmpAreaMode`: same_area / per_m2
+   * - `cmpSrc`: 적정가에 쓴 거래 종류 sale(매매) / presale(분양권)
+   * - `complexJeonseRate`: 같은 단지 전세 중앙 ÷ 매매 중앙(%) · `complexJeonseN`·`complexSaleN`: 그 건수
+   */
+  cmpScope?: "complex" | "dong_peer" | "none" | null;
+  cmpFairPrice?: number | null;
+  cmpN?: number | null;
+  cmpMonths?: number | null;
+  cmpAreaMode?: "same_area" | "per_m2" | null;
+  cmpSrc?: "sale" | "presale" | null;
+  complexJeonseRate?: number | null;
+  complexJeonseN?: number | null;
+  complexSaleN?: number | null;
+  /**
+   * 시세 비교 범위 좁히기 라(세션609) — 시세 탭 **상세 전용** 3칸(VIEW 20261007000000 끝 3줄).
+   * 목록 JSON 에는 없고 상세 버킷(`apartments-detail-16-N.json`)·라이브 API 에만 온다 — 옛 캐시·목록에서는 undefined.
+   * - `dongFact`: 같은 동·같은 평수 매매(나이 제한 없음) 사실. `age_gap_years` = 이 단지 연도 − 그 집들 건축년도
+   *   중앙값(양수 = 그 집들이 오래됨, `scripts/collectors/_trade-scope.mjs`). 금액은 만원 총액.
+   * - `complexTable`·`complexJeonseTable`: 같은 단지 면적별 매매(또는 분양권)·전세 행. `last_month` = "YYYYMM".
+   */
+  dongFact?: {
+    n: number;
+    min: number;
+    median: number | null;
+    max: number;
+    build_year_min: number | null;
+    build_year_max: number | null;
+    age_gap_years: number | null;
+    peer_n: number;
+    peer_median: number | null;
+  } | null;
+  complexTable?: TradeScopeAreaRow[] | null;
+  complexJeonseTable?: TradeScopeAreaRow[] | null;
 
   // 위험 (sanitize 후 num + 비관 폴백)
   // unsold = 미분양 세대 수(원시), unsoldRate = 미분양률(%). 100% 초과 폭발값은 null 로 무력화(세션 445).
@@ -180,7 +228,7 @@ export interface Apt {
 
 /**
  * 단일 카테고리 점수 결과 (모든 scoreXxx 함수의 공통 반환).
- * scorePrice 는 fairPrice/deviation/fairPriceFromSidoAvg 추가, scoreBenefit 은 totalWon/rate/noData 추가.
+ * scorePrice 는 fairPrice/deviation/fairPriceScope/fairPriceSrc/fairPriceN 추가, scoreBenefit 은 totalWon/rate/noData 추가.
  */
 export interface Res {
   total: number;
@@ -188,13 +236,17 @@ export interface Res {
   // scorePrice
   fairPrice?: number;
   deviation?: string | number;
-  fairPriceFromSidoAvg?: boolean;
   /**
-   * fairPrice 를 `priceByArea` **평형별 실거래 버킷 매칭**으로 구했는가(1순위 경로).
-   * 화면이 "적정가 산출 과정"을 설명할 때 필요하다 — 이 플래그가 없으면 화면이 제 나름대로
-   * 다시 계산해 같은 모달에 서로 다른 괴리율이 뜬다(세션527 적대검증이 잡은 결함).
+   * 적정가를 **무엇과 비교해** 구했는가 — complex(같은 단지) / dong_peer(같은 동 또래) / none(비교 거래 없음).
+   * 화면이 "적정가 산출 과정"·칩 근거를 설명할 때 이 값을 그대로 쓴다 — 없으면 화면이 제 나름대로
+   * 다시 계산해 같은 모달에 서로 다른 괴리율이 뜬다(세션527 적대검증이 잡은 결함). 세션607 에
+   * 옛 `fairPriceFromAreaBucket`·`fairPriceFromSidoAvg`(폴백 경로 플래그)를 대신한다.
    */
-  fairPriceFromAreaBucket?: boolean;
+  fairPriceScope?: "complex" | "dong_peer" | "none";
+  /** 적정가에 쓴 거래 종류 — sale(매매) / presale(분양권) / null(범위 none) */
+  fairPriceSrc?: "sale" | "presale" | null;
+  /** 적정가에 쓴 거래 건수(범위 none 이면 0) */
+  fairPriceN?: number;
   // scoreBenefit
   totalWon?: number;
   /** 합계 금액의 실제 구성 — 단일 항목이면 그 이름, 둘 이상이면 "혜택 합계" (세션512) */
@@ -258,7 +310,7 @@ export interface ScoringContext {
     string,
     {
       pir: number | null;
-      psr: number | null;
+      // psr 중앙값은 세션609 라) 에 뺐다(computeRegionalMedians — PSR 축 삭제, 세션607 다) · R4)
       unsoldRate: number | null;
       supplyRatio: number | null;
       maint: number | null;

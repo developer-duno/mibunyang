@@ -2,13 +2,13 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { DataSectionBlock, NearbyFacilitiesBlock, PriceByFloorBlock, AnnouncementLink } from "./DataSectionBlock";
-import { LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, OVERVIEW_SECTIONS } from "@/lib/dataSections";
+import { LOCATION_SECTIONS, PRESALE_SECTIONS, OVERVIEW_SECTIONS } from "@/lib/dataSections";
 import { makeApt } from "@/__tests__/factories";
 
 // 그룹 상수에서 제목으로 섹션 찾기 (구 DATA_SECTIONS 단언을 섹션 단위로 이전)
 /** @param {string} title */
 const find = (title) =>
-  [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
+  [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRESALE_SECTIONS].find((s) => s.title === title);
 
 /**
  * 일반 동작(헤더·접힘·키보드·도넛) 검증용 섹션 — 세션591 이전 실제 "치안/환경" 섹션과 같은 모양.
@@ -123,12 +123,10 @@ describe("DataSectionBlock", () => {
 
   // 옛 hideWhenEmpty 시험(세션 505)은 세션595 에 칸이 빠지며 위 "모든 필드가 null 이면 렌더 없음" 시험으로 합쳤다 —
   //   플래그 없이도(전 섹션 기본) 같은 결과다. 실제 섹션 하나로도 확인한다.
-  it("실제 섹션('이 동네 거래 시세')도 값이 전부 없으면 렌더하지 않는다 (라이브 5곳 자리)", () => {
-    const section = find("이 동네 거래 시세");
-    expect(section).toBeTruthy();
-    const apt = /** @type {any} */ (makeApt({ pir: null, psr: null, housingPrice: null }));
-    const { container } = render(<DataSectionBlock section={/** @type {any} */ (section)} apt={apt} />);
-    expect(container.firstChild).toBeNull();
+  //   ⚠️ 세션609 라: 그 실제 섹션('이 동네 거래 시세')은 세션589 에 접힘째 없어졌다(사장님 결정 V1·V11 — 시세 탭은
+  //   섹션 0). 빈 섹션 숨김은 위 합성 섹션 시험이 지키고, 여기는 그 섹션이 되살아나지 않는지만 잠근다.
+  it("시세 탭 '이 동네 거래 시세' 섹션은 되살아나지 않는다 (세션589 — 시세 탭 섹션 0)", () => {
+    expect(find("이 동네 거래 시세")).toBeUndefined();
   });
 
   // ⚠️ 세션508 PR-3c C3: 옛 대상이던 경쟁률 콤마 포맷 2건은 그림(`charts/PresaleTimeline`)
@@ -146,23 +144,21 @@ describe("DataSectionBlock", () => {
   // 세션508 PR-3b: 교통 필드 null → "—" 검증은 TransportCard.test.tsx 로 이관했다
   // (subwayName·subwayLines·busStopNames 는 이제 LOCATION_SECTIONS 를 안 거친다).
 
-  // 이 동네 거래 시세 — highlight 섹션 (세션 507: 옛 "시장/투자 지표" 를 갈아 낀 이름)
-  it("'이 동네 거래 시세' 섹션은 펼치면 PIR 등 강조 필드를 표시한다", () => {
+  // highlight 섹션 — 강조줄 분기 검증.
+  // ⚠️ 세션589: 옛 대상이던 시세 탭 "이 동네 거래 시세"(PIR·PSR 강조줄)는 접힘째 없앴다
+  //    (PSR 은 시세 탭 맨 위 게이지, PIR 은 종합 탭 편차 줄). 강조줄 분기 자체는 그대로라
+  //    남은 highlight 섹션("단지 기본정보" — 데이터 신뢰도)으로 옮겨 검증한다.
+  it("'단지 기본정보' 섹션은 펼치면 강조 필드(데이터 신뢰도)를 표시한다", () => {
     const apt = /** @type {any} */ (makeApt());
-    render(<DataSectionBlock section={/** @type {any} */ (find("이 동네 거래 시세"))} apt={apt} />);
-    fireEvent.click(screen.getByText("이 동네 거래 시세"));
-    // pir=5 (HighlightField 도메인 설명 포함)
-    expect(screen.getByText(/연소득 대비 분양가/)).toBeTruthy();
+    render(<DataSectionBlock section={/** @type {any} */ (find("단지 기본정보"))} apt={apt} />);
+    fireEvent.click(screen.getByText("단지 기본정보"));
+    // HighlightField 도메인 설명 포함
+    expect(screen.getByText(/핵심 자료·비교 실거래 갖춤 정도/)).toBeTruthy();
   });
 
-  // 세션 507 — 인구증감률은 이 단지 값이 아니라 시·도 통계라 이 표에서 내려갔다.
-  // 강조줄에 되돌아오면 다시 단지 값처럼 읽히므로 그 자리를 잠근다.
-  it("'이 동네 거래 시세' 강조줄에 인구증감률이 없다 (지역 통계로 이동)", () => {
-    const apt = /** @type {any} */ (makeApt({ popGrowth: 0.3 }));
-    render(<DataSectionBlock section={/** @type {any} */ (find("이 동네 거래 시세"))} apt={apt} />);
-    fireEvent.click(screen.getByText("이 동네 거래 시세"));
-    expect(screen.queryByText("인구증감률")).toBeNull();
-    expect(screen.queryByText(/양수면 유입 지역/)).toBeNull();
+  // 세션589 — 그 접힘이 섹션 목록으로 되돌아오면(= 시세 탭에 접힘이 되살아나면) red.
+  it("'이 동네 거래 시세' 섹션은 더는 없다 (시세 탭 접힘 삭제, 세션589)", () => {
+    expect(find("이 동네 거래 시세")).toBeUndefined();
   });
 
   // defaultOpen=true 면 처음부터 펼침
@@ -229,7 +225,7 @@ describe("부가블록 3종", () => {
       })
     );
     render(<PriceByFloorBlock apt={apt} />);
-    expect(screen.getByText("층별 매매가 (주변 실거래)")).toBeTruthy();
+    expect(screen.getByText("층별 매매가 (시·군·구 전체 실거래)")).toBeTruthy();
     expect(screen.getByText("저층")).toBeTruthy();
     // 거래 건수를 "N건"으로 병기한다 (세션508 PR-3b B3)
     expect(screen.getByText("3건")).toBeTruthy();

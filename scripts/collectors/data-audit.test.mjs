@@ -22,7 +22,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   };
 });
 
-const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion, pickLatestNonNullByRegionGu, filterToViewRows } = await import("./data-audit.mjs");
+const { isFieldNull, computeAudit, AUDIT_FIELDS, fetchAllFromView, pickLatestNonNullByRegion, pickLatestNonNullByRegionGu, filterToViewRows, computeReliabilityMirror } = await import("./data-audit.mjs");
 
 // 팩토리: 모든 필드가 채워진 아파트 행
 function createFullRow(overrides = {}) {
@@ -695,5 +695,78 @@ describe("computeAudit — 껍데기만 있는 행은 채움률에 안 들어간
     const r = computeAudit(rows);
     expect(r.fields["air.airQuality"].filled).toBe(1);
     expect(r.fields["air.airQuality"].missing).toBe(2);
+  });
+});
+
+// 세션609(재검사 🟢 · 보완 보고 4): 거울 식이 VIEW 마이그 20261007000000 의 신뢰도 식과 항 하나씩 짝인지.
+//   기대값의 출처 = 그 마이그 `GREATEST(0, LEAST(100, (` 블록(15·12·12·10·8·8·15·10·10 = 100).
+describe("computeReliabilityMirror — VIEW dataReliability 식 거울 (세션609)", () => {
+  const full = () => /** @type {any} */ ({
+    id: "ah-1", price: 50000, hospital: 3, schoolScore: 70, busStopNames: ["정류장"],
+    builderDebtRatio: 120, popGrowth: 0.5, cmpScope: "complex", complexJeonseRate: 62.5, units: 300,
+  });
+
+  it("전부 채운 입력 → 100", () => {
+    expect(computeReliabilityMirror(full())).toBe(100);
+    expect(computeReliabilityMirror({ ...full(), cmpScope: "dong_peer" })).toBe(100);
+  });
+
+  it("cmpScope 'none' 만 다르면 85 — 판정 범위(complex·dong_peer)만 15점", () => {
+    expect(computeReliabilityMirror({ ...full(), cmpScope: "none" })).toBe(85);
+  });
+
+  it("항마다 빠지면 그 가중치만큼 준다 — VIEW 의 > 0 조건(price·hospital·units)도 짝", () => {
+    /** @type {Array<[string, unknown, number]>} */
+    const cases = [
+      ["price", 0, 85], ["price", null, 85],
+      ["hospital", 0, 88], ["hospital", null, 88],
+      ["schoolScore", null, 88],
+      ["busStopNames", null, 90],
+      ["builderDebtRatio", null, 92],
+      ["popGrowth", null, 92],
+      ["cmpScope", null, 85],
+      ["complexJeonseRate", null, 90],
+      ["units", 1, 90], ["units", null, 90],
+    ];
+    for (const [key, val, want] of cases) {
+      expect(computeReliabilityMirror({ ...full(), [key]: val }), `${key}=${val}`).toBe(want);
+    }
+    // 옛 거울이 세던 칸만 있고 새 칸이 없으면 높게 나오면 안 된다(nearbyMedian 두 번 세던 결함)
+    expect(computeReliabilityMirror(/** @type {any} */ ({ id: "ah-2", nearbyMedian: 40000, jeonseRate: 60, busRoutes: 5 }))).toBe(0);
+  });
+
+  it("배선 — fetchAllFromView 가 trade_stats 의 cmp_scope·complex_jeonse_rate 를 조회·merge 해 100 을 낸다", async () => {
+    // PostgREST 처럼 select 에 적힌 칸만 돌려주는 mock — 조회 칸 목록에서 빠지면 그 칸은 안 온다
+    const tables = /** @type {Record<string, Record<string, unknown>[]>} */ ({
+      apartments: [{ id: "ah-1", region: "서울", gu: "강남구", builder: "테스트건설", units: 300 }],
+      prices: [{ id: 1, apartment_id: "ah-1", price: 50000 }],
+      infra: [{ apartment_id: "ah-1", hospital: 3 }],
+      schools: [{ apartment_id: "ah-1", school_score: 70 }],
+      transport: [{ apartment_id: "ah-1", bus_stop_names: ["정류장"] }],
+      builders: [{ name: "테스트건설", debt_ratio: 120 }],
+      regions: [{ id: 1, region: "서울", gu: null, recorded_at: "2026-03-20", pop_growth: 0.5 }],
+      trade_stats: [{ apartment_id: "ah-1", cmp_scope: "complex", complex_jeonse_rate: 62.5 }],
+    });
+    const sb = {
+      from(/** @type {string} */ table) {
+        /** @type {string[]} */
+        let cols = [];
+        const project = () => (tables[table] ?? []).map((r) =>
+          Object.fromEntries(Object.entries(r).filter(([k]) => cols.includes(k))));
+        /** @type {any} */
+        const builder = {
+          select: (/** @type {string} */ c) => { cols = c.split(","); return builder; },
+          eq: () => builder, order: () => builder, gt: () => builder,
+          limit: () => Promise.resolve({ data: project(), error: null }),
+          range: () => Promise.resolve({ data: project(), error: null }),
+        };
+        return builder;
+      },
+    };
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].cmpScope).toBe("complex");
+    expect(rows[0].complexJeonseRate).toBe(62.5);
+    expect(rows[0].dataReliability).toBe(100);
   });
 });

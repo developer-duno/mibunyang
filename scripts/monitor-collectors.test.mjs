@@ -23,6 +23,7 @@ const {
   fetchAhCompetitionCounts, AH_ID_PREFIX,
   QUARTERLY_CRON_WORKFLOWS, SCHEDULELESS_WORKFLOWS, checkExternalApiStale, EXTERNAL_API_COLLECTORS,
   checkViewRegionStale, VIEW_REGION_STALE_TARGETS, REGION_KEY_COLUMNS,
+  checkTradeScopeFill, TRADE_SCOPE_FILL_MIN, TRADE_SCOPE_JUDGED_MIN, fetchTradeScopeFillCounts,
   checkOrphanGuPairs, GU_JOIN_COLUMNS, fetchGuPairStats,
   checkTradeMonthGaps, TRADE_GAP_LOOKBACK, TRADE_GAP_MIN_BASELINE,
   dedupKey, filterUnsent, hasGithubApiAuth, idempotentCollectorSet,
@@ -1571,6 +1572,104 @@ describe("checkViewRegionStale — ⑥ VIEW 회귀 (regions 원본 채움 but VI
       [{ column: "x", total: 100, filled: 21 }],
       targets,
     )).toHaveLength(1);
+  });
+});
+
+// 세션607 다) 보완(검사관 B3) — 가격 점수의 새 입력(cmpScope …)이 VIEW 에서 비면 점수가 조용히 중립으로 구워진다.
+// ⚠️ 기대값은 리터럴(상수에서 파생하면 상수를 바꿀 때 단언도 같이 밀린다 — guards-must-be-mutation-tested).
+describe("checkTradeScopeFill — ⑥-b 점수 입력 채움 (세션607)", () => {
+  it("정상 — 원본·VIEW 꽉 참 + 판정 범위 58% 면 경보 없음(모수가 달라도 채움률끼리 비교)", () => {
+    // trade_stats 3,068행 vs VIEW 2,656행 — 개수끼리 나누면 0.87 로 헛경보가 난다
+    expect(checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 2656, viewJudged: 1540 })).toHaveLength(0);
+    expect(TRADE_SCOPE_FILL_MIN).toBe(0.9);
+    expect(TRADE_SCOPE_JUDGED_MIN).toBe(0.4);
+  });
+
+  it("VIEW 에 cmpScope 칸 없음(viewScoped=null) — 마이그 미적용·롤백 경보 1건만", () => {
+    const issues = checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: null, viewJudged: null });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("nulls");
+    expect(issues[0].collector).toBe("점수 입력 칸 (cmpScope)");
+    expect(issues[0].detail).toContain("cmpScope 칸이 없음");
+    expect(issues[0].lines?.join(" ")).toContain("20261007000000");
+  });
+
+  it("원본은 찼는데 VIEW 채움률이 하한(원본의 90%) 미만 — 채움 경보", () => {
+    // 원본 100% · VIEW 1,000/2,656 = 37.7% → 비 0.38
+    const issues = checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 1000, viewJudged: 580 });
+    expect(issues.map((i) => i.collector)).toEqual(["점수 입력 채움 (cmpScope)"]);
+    expect(issues[0].detail).toContain("37.7%");
+    // 경계 — 비 0.9 정확히면 통과, 0.89 면 경보 (원본 100% 기준)
+    expect(checkTradeScopeFill({ statsTotal: 100, statsScoped: 100, viewTotal: 100, viewScoped: 90, viewJudged: 50 })).toHaveLength(0);
+    expect(checkTradeScopeFill({ statsTotal: 100, statsScoped: 100, viewTotal: 100, viewScoped: 89, viewJudged: 50 })).toHaveLength(1);
+    // 원본이 0 이면 여기서 울리지 않는다(②·⑤·compute-scores 멈춤의 몫)
+    expect(checkTradeScopeFill({ statsTotal: 3068, statsScoped: 0, viewTotal: 2656, viewScoped: 0, viewJudged: 0 })).toHaveLength(0);
+  });
+
+  it("판정 범위(complex+dong_peer) 비율이 하한 40% 미만 — '비교할 실거래 없음' 급증 경보", () => {
+    // 2,656곳 중 30% 만 판정
+    const issues = checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 2656, viewJudged: 797 });
+    expect(issues.map((i) => i.collector)).toEqual(["점수 판정 범위 (complex+dong_peer)"]);
+    expect(issues[0].detail).toContain("30.0%");
+    // 경계 — 정확히 40% 면 통과
+    expect(checkTradeScopeFill({ statsTotal: 100, statsScoped: 100, viewTotal: 100, viewScoped: 100, viewJudged: 40 })).toHaveLength(0);
+  });
+
+  it("fetchTradeScopeFillCounts — VIEW 칸 없음(42703)은 viewScoped=null, 그 밖의 오류는 던진다", async () => {
+    /** @param {(table: string, filters: string[], opts: any) => any} respond */
+    const fakeSb = (respond) => ({
+      from: (/** @type {string} */ table) => {
+        /** @type {string[]} */ const filters = [];
+        /** @type {any} */ let opts;
+        /** @type {any} */ const b = {
+          select: (/** @type {string} */ _c, /** @type {any} */ o) => { opts = o; return b; },
+          not: (/** @type {string} */ c) => { filters.push(`not:${c}`); return b; },
+          in: (/** @type {string} */ c) => { filters.push(`in:${c}`); return b; },
+          limit: () => b,
+          then: (/** @type {any} */ res, /** @type {any} */ rej) => Promise.resolve(respond(table, filters, opts)).then(res, rej),
+        };
+        return b;
+      },
+    });
+    const missingCol = fakeSb((table, filters) =>
+      table === "apartments_flat" && filters.includes("not:cmpScope")
+        ? { count: null, error: { code: "42703", message: 'column apartments_flat.cmpScope does not exist' } }
+        : { count: table === "trade_stats" ? 3068 : 2656, error: null },
+    );
+    expect(await fetchTradeScopeFillCounts(missingCol)).toEqual({
+      statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: null, viewJudged: null,
+    });
+    const ok = fakeSb((table, filters, opts) => {
+      // 칸 존재 확인 조회만 head 가 아니어야 한다(head 요청은 오류 코드를 못 받는다)
+      if (filters.includes("not:cmpScope")) expect(opts?.head).toBeFalsy();
+      if (filters.includes("in:cmpScope")) return { count: 1500, error: null };
+      return { count: table === "trade_stats" ? 3068 : 2656, error: null };
+    });
+    expect(await fetchTradeScopeFillCounts(ok)).toEqual({
+      statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 2656, viewJudged: 1500,
+    });
+    const broken = fakeSb(() => ({ count: null, error: { code: "57014", message: "statement timeout" } }));
+    await expect(fetchTradeScopeFillCounts(broken)).rejects.toThrow("statement timeout");
+  });
+
+  it("배선 가드 — runAll 이 ⑥ 뒤에서 ⑥-b 를 부르고 그 결과를 issues 에 합친다 (세션609 · 재검사 🟡1)", () => {
+    // 순수 함수 시험은 main() 이 이 점검을 안 불러도 초록이다 — 소스 본문을 읽어 배선을 고정한다.
+    //   줄머리 `//` 주석 줄은 걷어내고 본다(배선 줄을 주석 처리하면 빨강이 나게).
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8")
+      .split(/\r?\n/)
+      .filter((l) => !/^\s*\/\//.test(l))
+      .join("\n");
+    const viewStaleAt = src.search(/issues\s*=\s*issues\.concat\(\s*checkViewRegionStale\(/);
+    const blockAt = src.search(/issues\s*=\s*issues\.concat\(\s*await\s+runFailOpenCheck\(\s*"⑥-b/);
+    expect(viewStaleAt).toBeGreaterThan(-1);
+    expect(blockAt).toBeGreaterThan(viewStaleAt);
+    // runFailOpenCheck 콜백 본문만 잘라 본다(닫는 `}));` 까지)
+    const end = src.indexOf("}));", blockAt);
+    expect(end).toBeGreaterThan(blockAt);
+    const block = src.slice(blockAt, end);
+    expect(block).toMatch(/const\s+counts\s*=\s*await\s+fetchTradeScopeFillCounts\(\s*\)/);
+    expect(block).toMatch(/const\s+scopeIssues\s*=\s*checkTradeScopeFill\(\s*counts\s*\)/);
+    expect(block).toMatch(/return\s+scopeIssues\s*;/);
   });
 });
 

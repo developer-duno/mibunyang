@@ -1,4 +1,4 @@
-import { BRAND_TIER, AGE_PREMIUM, PRESALE_PREMIUM_COEFF, resolveBuilder } from "@/constants/brands";
+import { AGE_PREMIUM, PRESALE_PREMIUM_COEFF } from "@/constants/brands";
 import {
   tierMin,
   DEV_SCORE_TIERS,
@@ -10,13 +10,12 @@ import {
   LAND_COST_NULL,
   PRICE_NO_DATA_DEFAULTS,
   PIR_SCORE_TIERS,
-  PRICE_FALLBACK_RELIABILITY_PENALTY,
+  PRICE_SUB_WEIGHTS,
+  TRADE_SCOPE_PER_M2_TOL_M2,
+  TRADE_SCOPE_PEER_YEARS,
   AREA_BUCKET_TOLERANCE_M2,
 } from "@/constants/scoringTiers";
 import type { Apt, Res } from "@/types/scoring";
-
-const IS_DEV =
-  typeof import.meta !== "undefined" && !!(import.meta as ImportMeta & { env?: { DEV?: boolean } }).env?.DEV;
 
 /** 한국 시간(UTC+9, 서머타임 없음) 고정 오프셋 — 준공 판정을 러너 시간대에 맡기지 않는다. */
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -90,7 +89,10 @@ export function isPresale(completion: string | null | undefined): boolean {
 }
 
 /**
- * 준공시점 기반 연식 보정계수 — `fairPrice` 에 곱해진다.
+ * 준공시점 기반 연식 보정계수.
+ * ⚠️ 세션607(시세 비교 범위 좁히기 다)부터 `scorePrice` 의 적정가에 **곱하지 않는다** — 적정가가 같은 단지·
+ *   같은 동 또래 실거래라 연식 보정이 이중이 된다(설계서 D8·R5). 남은 소비처 = 화면 설명용(grep 으로 확인) ·
+ *   안 쓰게 되면 `AGE_PREMIUM` 과 함께 정리 PR 에서 삭제.
  * 미준공(예정) → `PRESALE_PREMIUM_COEFF`. 준공 후 → `AGE_PREMIUM` 구간값.
  * 미입력·형식 불명 → 1.05 (약간 보수적 중립).
  *
@@ -110,6 +112,7 @@ export function getAgeCoeff(completion: string | null | undefined): number {
 
 /**
  * 평형별 가격 보정계수. 소형 프리미엄·대형 디스카운트 반영.
+ * ⚠️ 세션607 부터 `scorePrice` 는 이 계수를 쓰지 않는다(적정가 = 같은 평수 실거래 · 설계서 D8) — 정리 PR 에서 삭제 후보.
  * 면적 미등록(0 또는 null) → 1.0 중립 (평균 평형 가정).
  * 구간: 60㎡ 미만 1.08 (소형), 60~85 1.0 (국민평형), 85~115 0.97, 115+ 0.94.
  */
@@ -123,6 +126,7 @@ export function getAreaAdj(area: number | null | undefined): number {
 
 /**
  * `priceByArea`(5㎡ 버킷별 실거래) 에서 이 단지 면적에 가장 가까운 버킷의 평균가를 찾는다.
+ * ⚠️ 세션607 부터 `scorePrice` 의 적정가 경로가 아니다(구 전체 버킷 = 폴백 삭제, 설계서 §5-3) — 정리 PR 에서 삭제 후보.
  * 옛 fairPrice(`nearbyMedian × getAreaAdj`)는 구 전체 거래 총액 중위값에 ±3~8% 계수만 곱해
  * 대형 평형을 자동으로 "비싸다"고 채점하던 구조적 편향이 있었다(corr(면적,괴리도) = −0.704,
  * src/constants/scoringTiers.ts AREA_BUCKET_TOLERANCE_M2 주석 참조) — 이 함수가 그 1순위 대체.
@@ -156,7 +160,7 @@ export function matchAreaPrice(
 }
 
 // 세션111: price=0 구조적 사유별 UX 분기 확장.
-// 점수 로직(devSc=30 중립)은 불변, 문구만 정교화.
+// 점수 로직(devSc=PRICE_NO_DATA_DEFAULTS.dev 중립)은 불변, 문구만 정교화.
 // 판정 순서: 임대 → 정비사업 → 후분양 → 오피스텔 → 분양계획 → 택지지구 블록 → 공공분양 → 기본.
 // presaleStage "분양계획"은 모집공고 전 예정 단지 신호 — naver-presale 수집기가
 // price=0으로 저장하는 정상 동작. 이름 패턴보다 구체적이라 택지블록 앞에 위치.
@@ -176,143 +180,88 @@ function classifyNoPrice(apt: Apt): string {
 }
 
 /**
- * 가격 매력도 점수 (가중치 합 1.00, total 0~100 클램핑).
- * 서브스코어: 괴리도 0.30 / 전세가율 0.20 / PIR 0.15 / PSR 0.25 / 신뢰도 0.07 / 택지비 0.03.
- * fairPrice 폴백 (src/scoring/CLAUDE.md "fairPrice 폴백 + 신뢰도 차감"):
- *   1순위: trade_stats.price_by_area 평형별 실거래 버킷 매칭 (matchAreaPrice) → areaAdj 미적용
- *   2순위: trade_stats.nearby_median × areaAdj
- *   3순위: regions.avg_price_sqm × 면적 → fairPriceFromSidoAvg=true
- *   4순위: presale_pp × 면적/3.3058 → fairPriceFromSidoAvg=true
- * 2~4순위 폴백 사용 시: dataReliability -= PRICE_FALLBACK_RELIABILITY_PENALTY (기본 15).
- *   1순위(버킷 매칭)는 신뢰도 차감 없음 — 시도 평균보다 정밀한 그 평형대 실거래이기 때문.
+ * 적정가 근거 한 마디 — 괴리도 `detail` 끝에 붙는다. 숫자(건수·기간·연식·면적 폭)는 값·상수에서 읽는다
+ * (문구에 숫자를 손으로 적지 않는다 — 세션565 관습). 문구 안은 설계서 §5-4(라 그림에서 확정).
+ */
+function fairBasisText(
+  scope: "complex" | "dong_peer",
+  src: "sale" | "presale" | null,
+  n: number,
+  months: number | null,
+  areaMode: unknown
+): string {
+  const period = months != null && months > 0 ? `(최근 ${months}개월)` : "";
+  const base =
+    scope === "dong_peer"
+      ? `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·같은 평수 실거래 ${n}건 대비`
+      : src === "presale"
+        ? `이 단지 분양권 거래 ${n}건${period} 대비`
+        : `이 단지 실거래 ${n}건${period} 대비`;
+  const perM2 = areaMode === "per_m2" ? ` (면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산)` : "";
+  return `${base}${perM2}`;
+}
+
+/**
+ * 가격 매력도 점수 (가중치 `PRICE_SUB_WEIGHTS` 합 1.00, total 0~100 클램핑).
+ * 서브스코어 5개: 괴리도 0.55 / 전세가율 0.20 / PIR 0.15 / 신뢰도 0.07 / 택지비 0.03
+ *   (세션607 시세 비교 범위 좁히기 다 — 설계서 R4·D12. PSR 축은 없앴다).
+ *
+ * 적정가(설계서 §5-3 · D8 · D10 · R1·R5):
+ *   - 입력 = `cmpFairPrice`(trade_stats.cmp_fair_price) — `cmpScope` 가 complex(같은 단지) 또는
+ *     dong_peer(같은 동 또래)이고 값 > 0 일 때만. 연식·면적·브랜드 계수를 **곱하지 않는다**(자기 단지·또래 값).
+ *   - 폴백 없음 — 옛 평수대 버킷(`priceByArea`)·구 중위(`nearbyMedian`)·시도 평균(`avgPriceSqm`)·
+ *     분양 평당가(`presalePp`)는 점수에서 읽지 않는다. 그래서 신뢰도 차감도 없다.
+ *   - 적정가가 없거나 분양가가 없으면 **괴리도만 중립**(`PRICE_NO_DATA_DEFAULTS.dev`) —
+ *     전세가율·PIR·신뢰도·택지비는 각자 판정한다(옛 코드는 넷 다 중립이었다).
+ * 전세가율 입력 = `complexJeonseRate`(같은 단지 전세 ÷ 매매, R3) — null 이면 중립. 옛 `jeonseRate`(구)는 안 읽는다.
  * PIR 구간: ≤10→100, ≤20→80~100 선형, ≤30→60~80 선형, >30→60-(pir-30)×2 (0 하한, 세션108).
- * priceIndex(분양가격지수) 보정은 세션592 에 껐다 — 원천(KOSIS)이 2025-10 에서 멈췄고, 정적 사본 1,918곳이
- *   전부 130 초과라 모두에게 +5 를 주는 동점 가산이었다(가격 점수 631곳 −1). 신뢰도 = dataReliability(폴백 차감)만.
+ * priceIndex(분양가격지수) 보정은 세션592 에 껐다 — 원천(KOSIS)이 2025-10 에서 멈췄다.
  */
 export function scorePrice(apt: Apt): Res {
-  // ⚠️ 이 자리는 **선재 결함**이다 — #400(세션513)이 만든 게 아니라, #400 이 브랜드 정규화를
-  //   세 자리 중 두 자리(`scoreProduct`·카드 칩)에만 넣어 **불일치가 드러난** 것이다.
-  //   `scorePrice` 는 처음부터 `apt.builder` 를 BRAND_TIER 에 직조회해 왔다.
-  //   결과: 같은 단지가 상품성축에서는 1군Super(20점)인데 가격축 적정가 계수 `adj` 는
-  //   미등재 1.0 으로 남는 **이중 잣대**가 68곳에 생겼다(운영 catsCache 대조 실측).
-  //   정규화는 한 군데서만 하는 게 아니라 `builder` 를 읽는 **모든 자리**에서 해야 한다.
-  const builder = resolveBuilder(apt.builder as string | null | undefined);
-  const brand = (BRAND_TIER as Record<string, { adj?: number }>)[builder];
-  if (!brand && IS_DEV) console.warn(`[scoring] Unknown builder: "${builder}"`);
-  const b = brand || { adj: 1.0 };
-  const bAdj = b.adj ?? 1.0;
-  const ageCoeff = getAgeCoeff(apt.completion);
-  const area = (apt.area ?? 84) as number;
-  const areaAdj = getAreaAdj(area);
-  let fairPrice = 0;
-  // 세션114: nearbyMedian 부재로 시도 평균 폴백(avgPriceSqm/presalePp) 사용 여부.
-  // 섬·군 지역에서 시도 평균이 실시세의 2~3배로 왜곡 → 신뢰도 차감 + detail 경고.
-  let fairPriceFromSidoAvg = false;
-  // 면적 편향 수정: 1순위 = 평형별 실거래 버킷 매칭(priceByArea). 이미 그 평형대 실거래이므로
-  // areaAdj(±3~8%)를 다시 곱하지 않는다 — 곱하면 corr(면적,괴리도) −0.147 대신 −0.237로 악화(실측).
-  // `_noArea`(면적 미상, sanitize 가 84 로 누르기 전 플래그)면 매칭 대상에서 제외 — 안 잰 것을
-  // "84㎡ 단지"로 오매칭하지 않기 위함.
-  let fairPriceFromAreaBucket = false;
-  if (!apt._noArea) {
-    const bucketAvg = matchAreaPrice(apt.priceByArea, area);
-    if (bucketAvg != null && bucketAvg > 0) {
-      fairPrice = bucketAvg * ageCoeff * bAdj;
-      fairPriceFromAreaBucket = true;
-    }
-  }
-  // 2순위 이하: 현행 3단 폴백 그대로 (nearbyMedian → avgPriceSqm → presalePp)
-  if (!fairPriceFromAreaBucket) {
-    fairPrice = (apt.nearbyMedian ?? 0) * ageCoeff * areaAdj * bAdj;
-  }
-  // fairPrice=0 폴백: avgPriceSqm(천원/㎡) 또는 presalePp(만원/평) → 만원 총가
-  if (fairPrice <= 0 && apt.avgPriceSqm != null && area > 0) {
-    fairPrice = Math.round((apt.avgPriceSqm * area) / 10) * ageCoeff * areaAdj * bAdj;
-    if (fairPrice > 0) fairPriceFromSidoAvg = true;
-  }
-  if (fairPrice <= 0 && apt.presalePp != null && apt.presalePp > 0 && area > 0) {
-    fairPrice = apt.presalePp * (area / 3.3058) * ageCoeff * areaAdj * bAdj;
-    if (fairPrice > 0) fairPriceFromSidoAvg = true;
-  }
+  const W = PRICE_SUB_WEIGHTS;
+  const scopeIn = apt.cmpScope === "complex" || apt.cmpScope === "dong_peer" ? apt.cmpScope : null;
+  const cmpFair = Number(apt.cmpFairPrice);
+  const scope: "complex" | "dong_peer" | null = scopeIn && cmpFair > 0 ? scopeIn : null;
+  const fairPrice = scope ? cmpFair : 0;
+  const fairPriceSrc: "sale" | "presale" | null =
+    scope == null ? null : scope === "dong_peer" ? "sale" : apt.cmpSrc === "presale" ? "presale" : "sale";
+  const fairPriceN = scope ? Number(apt.cmpN ?? 0) || 0 : 0;
+
   // 택지비 비율 서브스코어 (공통)
   const landSc: number =
     apt.landCostRatio != null ? tierMin(apt.landCostRatio, LAND_COST_TIERS, LAND_COST_LOW) : LAND_COST_NULL;
-  // 방안 A: 시도 평균 폴백 사용 시 dataReliability 차감(세션114)
   const dataReliability = (apt.dataReliability ?? 30) as number;
-  const relBase = fairPriceFromSidoAvg
-    ? Math.max(0, dataReliability - PRICE_FALLBACK_RELIABILITY_PENALTY)
-    : dataReliability;
-  const relSc = Math.min(relBase, 100);
+  const relSc = Math.min(dataReliability, 100);
   const price = (apt.price ?? 0) as number;
-  if (fairPrice <= 0 || !price || price <= 0) {
-    const devSc = PRICE_NO_DATA_DEFAULTS.dev;
-    const jrSc = PRICE_NO_DATA_DEFAULTS.jr;
-    const pirSc = PRICE_NO_DATA_DEFAULTS.pir;
-    const psrSc = PRICE_NO_DATA_DEFAULTS.psr;
-    const total = devSc * 0.3 + jrSc * 0.2 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
-    const noPriceDetail = !price || price <= 0 ? classifyNoPrice(apt) : "주변 시세 없음 — 적정가 산출 불가";
-    return {
-      total: Math.round(Math.max(0, Math.min(total, 100))),
-      fairPrice: 0,
-      deviation: "0.0",
-      subs: [
-        { name: "적정가 괴리도", score: devSc, info: "데이터 부재", detail: noPriceDetail },
-        {
-          name: "전세가율",
-          score: Math.round(jrSc),
-          info: apt.jeonseRate == null ? "데이터 부재" : `${apt.jeonseRate}%`,
-          detail:
-            apt.jeonseRate == null ? "전세가율 데이터 없음 (중립 50점)" : `${apt.jeonseRate}% (적정 70~80%, 위험 40%↓)`,
-        },
-        {
-          name: "PIR",
-          score: Math.round(pirSc),
-          info: apt.pir == null ? "데이터 부재" : `${apt.pir}배`,
-          detail:
-            apt.pir == null ? "PIR 데이터 없음 (중립 50점)" : `${apt.pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)`,
-        },
-        {
-          name: "PSR",
-          score: Math.round(psrSc),
-          info: apt.psr == null ? "데이터 부재" : `${(apt.psr * 100).toFixed(0)}%`,
-          detail:
-            apt.psr == null
-              ? "PSR 데이터 없음 (중립 50점)"
-              : `${(apt.psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓)`,
-        },
-        {
-          name: "데이터 신뢰도",
-          score: relSc,
-          info: `${dataReliability}%`,
-          detail: `${dataReliability}% (80%↑신뢰, 30%↓추정)`,
-        },
-        {
-          name: "택지비비율",
-          score: landSc,
-          info: apt.landCostRatio != null ? `${apt.landCostRatio}%` : "정보 없음",
-          detail:
-            apt.landCostRatio != null
-              ? `${apt.landCostRatio}% (${LAND_COST_TIERS[0].min}%↑안정, ${LAND_COST_TIERS[1].min}%↑양호, ${LAND_COST_TIERS[2].min}%↓위험)` // 경계 숫자는 표에서 읽는다(세션565)
-              : "택지비 데이터 없음 (중립 50점)",
-        },
-      ],
-    };
-  }
-  const dev = ((fairPrice - price) / fairPrice) * 100;
-  type DevTier = { min: number; score?: number; base?: number; span?: number; range?: number };
-  const tiers = DEV_SCORE_TIERS as DevTier[];
-  let devSc =
-    dev >= tiers[0].min
-      ? (tiers[0].score as number)
-      : dev >= tiers[1].min
-        ? (tiers[1].base as number) + ((dev - tiers[1].min) / (tiers[1].span as number)) * (tiers[1].range as number)
-        : dev >= tiers[2].min
-          ? (tiers[2].base as number) + ((dev - tiers[2].min) / (tiers[2].span as number)) * (tiers[2].range as number)
-          : dev >= tiers[3].min
-            ? (tiers[3].base as number) + (dev / (tiers[3].span as number)) * (tiers[3].range as number)
-            : Math.max(0, DEV_SCORE_BASE + dev * DEV_SCORE_NEGATIVE_MULT);
-  devSc = Math.max(0, Math.min(devSc, 100));
 
-  const jr = apt.jeonseRate;
+  // 괴리도 — 적정가와 분양가가 둘 다 있을 때만 판정, 아니면 중립(D10)
+  const hasDev = fairPrice > 0 && price > 0;
+  const dev = hasDev ? ((fairPrice - price) / fairPrice) * 100 : 0;
+  let devSc: number = PRICE_NO_DATA_DEFAULTS.dev;
+  if (hasDev) {
+    type DevTier = { min: number; score?: number; base?: number; span?: number; range?: number };
+    const tiers = DEV_SCORE_TIERS as DevTier[];
+    devSc =
+      dev >= tiers[0].min
+        ? (tiers[0].score as number)
+        : dev >= tiers[1].min
+          ? (tiers[1].base as number) + ((dev - tiers[1].min) / (tiers[1].span as number)) * (tiers[1].range as number)
+          : dev >= tiers[2].min
+            ? (tiers[2].base as number) +
+              ((dev - tiers[2].min) / (tiers[2].span as number)) * (tiers[2].range as number)
+            : dev >= tiers[3].min
+              ? (tiers[3].base as number) + (dev / (tiers[3].span as number)) * (tiers[3].range as number)
+              : Math.max(0, DEV_SCORE_BASE + dev * DEV_SCORE_NEGATIVE_MULT);
+    devSc = Math.max(0, Math.min(devSc, 100));
+  }
+  const devDetail = hasDev
+    ? `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (${DEV_BAND_LABEL}) — ${fairBasisText(scope as "complex" | "dong_peer", fairPriceSrc, fairPriceN, apt.cmpMonths ?? null, apt.cmpAreaMode)}`
+    : !price || price <= 0
+      ? classifyNoPrice(apt)
+      : `비교할 실거래가 아직 없어요 (중립 ${PRICE_NO_DATA_DEFAULTS.dev}점)`;
+
+  // 전세가율 — 같은 단지 전세 ÷ 같은 단지 매매(R3). 구 전세가율(jeonseRate)·네이버 값은 쓰지 않는다.
+  const jr = apt.complexJeonseRate ?? null;
   let jrSc: number;
   if (jr == null) jrSc = PRICE_NO_DATA_DEFAULTS.jr;
   else if (jr >= 70 && jr <= 80) jrSc = 80 + (1 - Math.abs(jr - 75) / 5) * 20;
@@ -334,78 +283,50 @@ export function scorePrice(apt: Apt): Res {
           : pir <= MODERATE_MAX
             ? 60 + ((MODERATE_MAX - pir) / (MODERATE_MAX - GOOD_MAX)) * 20
             : Math.max(0, 60 - (pir - MODERATE_MAX) * BURDEN_PENALTY);
-  const psr = apt.psr;
-  const psrSc =
-    psr == null
-      ? PRICE_NO_DATA_DEFAULTS.psr
-      : Math.min(
-          psr < 0.85
-            ? 85 + ((0.85 - psr) / 0.15) * 15
-            : psr <= 1.0
-              ? 50 + ((1.0 - psr) / 0.15) * 35
-              : Math.max(0, 50 - ((psr - 1.0) / 0.2) * 50),
-          100
-        );
-  const total = devSc * 0.3 + jrSc * 0.2 + pirSc * 0.15 + psrSc * 0.25 + relSc * 0.07 + landSc * 0.03;
-  // 방안 B: 시도 평균 폴백 사용 시 detail 접미 경고(세션114)
-  // 두 플래그는 서로 배타적(버킷 매칭 성공 시 sidoAvg 폴백 경로 자체를 안 탐) — 접미는 둘 다
-  // 넣어도 실제로는 하나만 붙는다.
-  const sidoNotice = fairPriceFromSidoAvg ? " — 광역 시도 평균 기준(실시세 왜곡 가능)" : "";
-  const areaBucketNotice = fairPriceFromAreaBucket ? " — 평수대별 실거래 기준" : "";
-  // 면적을 모르면 `areaAdj` 가 1.0(중립)이라 **동네 전체 거래의 총액 중위값과 그대로 비교**된다.
-  // 그러면 이 축은 "비싼가"가 아니라 **"큰가"** 를 잰다 — 같은 단지 892곳을 경로만 바꿔 잰 대조
-  // 실험에서 corr(면적, 괴리도) 가 버킷 −0.097 vs 폴백 **−0.699**, 115㎡+ 괴리도 중앙이
-  // −35.6% vs **−182.1%** 였다(세션531). 위 두 경로는 이미 자기 출처를 밝히는데 이 경로만
-  // 침묵해서, 가장 못 믿을 값이 가장 당당하게 표시되고 있었다.
-  // 값을 지어내 메우지 않고 **사실을 말한다** — 근본 해소는 면적 수집이다(scripts/CLAUDE.md).
-  const noAreaNotice =
-    !fairPriceFromAreaBucket && !fairPriceFromSidoAvg && apt._noArea
-      ? " — 면적 미상이라 동네 전체 실거래 총액과 비교(평형 차이 반영 안 됨)"
-      : "";
-  const relNotice = fairPriceFromSidoAvg ? ` -폴백차감${PRICE_FALLBACK_RELIABILITY_PENALTY}` : "";
+
+  const total = devSc * W.dev + jrSc * W.jr + pirSc * W.pir + relSc * W.rel + landSc * W.land;
   return {
     total: Math.round(Math.max(0, Math.min(total, 100))),
-    fairPrice: Math.round(fairPrice),
-    deviation: dev.toFixed(1),
-    // 어느 경로로 fairPrice 를 구했는지 **밖으로 알린다**. 화면이 "산출 과정"을 설명하려면
+    // `fairPrice > 0` = "괴리도를 판정했다"의 판별자(카드 칩·catVerdict 규약) — 판정 못 하면 0 · "0.0"
+    fairPrice: hasDev ? Math.round(fairPrice) : 0,
+    deviation: hasDev ? dev.toFixed(1) : "0.0",
+    // 어느 범위로 적정가를 구했는지 **밖으로 알린다**. 화면이 "산출 과정"·칩 근거를 설명하려면
     // 이 사실이 필요한데, 없으면 `AdminScoreBreakdown` 처럼 **화면이 제 나름대로 다시 계산**해
     // 같은 모달 안에서 서로 다른 괴리율 두 개가 뜬다(세션527 적대검증이 실제로 잡은 결함).
-    // detail 문자열을 정규식으로 훑어 판정하면 문구를 고칠 때 조용히 깨지므로 플래그로 준다.
-    fairPriceFromAreaBucket,
-    fairPriceFromSidoAvg,
+    // detail 문자열을 정규식으로 훑어 판정하면 문구를 고칠 때 조용히 깨지므로 값으로 준다.
+    fairPriceScope: scope ?? "none",
+    fairPriceSrc,
+    fairPriceN,
     subs: [
       {
         name: "적정가 괴리도",
         score: Math.round(devSc),
-        info: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`,
-        detail: `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (${DEV_BAND_LABEL})${sidoNotice}${areaBucketNotice}${noAreaNotice}`,
+        info: hasDev ? `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%` : "데이터 부재",
+        detail: devDetail,
       },
       {
         name: "전세가율",
         score: Math.round(jrSc),
         info: jr == null ? "데이터 부재" : `${jr}%`,
-        detail: jr == null ? "전세가율 데이터 없음 (중립 50점)" : `${jr}% (적정 70~80%, 위험 40%↓, 과열 90%↑)`,
+        detail:
+          jr == null
+            ? `같은 단지 전세·매매 거래 부족 (중립 ${PRICE_NO_DATA_DEFAULTS.jr}점)`
+            : `${jr}% — 이 단지 전세 ${apt.complexJeonseN ?? "?"}건 ÷ 매매 ${apt.complexSaleN ?? "?"}건 (적정 70~80%, 위험 40%↓, 과열 90%↑)`,
       },
       {
         name: "PIR",
         score: Math.round(pirSc),
         info: pir == null ? "데이터 부재" : `${pir}배`,
-        detail: pir == null ? "PIR 데이터 없음 (중립 50점)" : `${pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)`,
-      },
-      {
-        name: "PSR",
-        score: Math.round(psrSc),
-        info: psr == null ? "데이터 부재" : `${(psr * 100).toFixed(0)}%`,
         detail:
-          psr == null
-            ? "PSR 데이터 없음 (중립 50점)"
-            : `${(psr * 100).toFixed(0)}% (저평가 85%↓, 적정 100%↓, 고평가 100%↑)`,
+          pir == null
+            ? `PIR 데이터 없음 (중립 ${PRICE_NO_DATA_DEFAULTS.pir}점)`
+            : `${pir}배 (우수 10↓, 양호 20↓, 보통 30↓, 부담 30↑)`,
       },
       {
         name: "데이터 신뢰도",
         score: relSc,
-        info: `${dataReliability}%${relNotice}`,
-        detail: `${dataReliability}%${relNotice} (80%↑신뢰, 50%↑보통, 30%↓추정)`,
+        info: `${dataReliability}%`,
+        detail: `${dataReliability}% (80%↑충분, 50%↑비교 실거래 일부 없음, 30%↓핵심 자료 부족)`,
       },
       {
         name: "택지비비율",

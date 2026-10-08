@@ -8,6 +8,7 @@ import { HighlightField } from "./HighlightField";
 import { CompletenessDonut } from "./CompletenessDonut";
 import { HelpHint } from "@/components/HelpHint";
 import { ChartFrame } from "@/components/charts/ChartFrame";
+import { StepBars } from "@/components/charts/StepBars";
 import type { Apt } from "@/types/scoring";
 import type { DataSection } from "@/types/components/DataSections.types";
 
@@ -149,13 +150,13 @@ export const NearbyFacilitiesBlock = memo(function NearbyFacilitiesBlock({ apt }
   );
 });
 
-// 층별 매매가 (주변 실거래) — 계단 칸 + 평균 거래 층수·거래 층 범위 흡수 (→ 시세 탭, 세션508 PR-3b B3)
+// 층별 매매가 (시·군·구 전체 실거래) — 계단 칸 + 평균 거래 층수·거래 층 범위 흡수 (→ 시세 탭, 세션508 PR-3b B3)
 //
 // 왜 계단 칸인가 — 층이 오를수록 값이 뚜렷이 오른다(1-5층/6-15층/16층+ 3구간 실측,
 // 세션508). 표로 세 줄 늘어놓으면 그 오름세가 안 읽히는데, 막대 높이로 그리면 한눈에 든다.
 //
 // 왜 이 블록이 avgFloor·floorRange 까지 떠맡나 — 셋이 **정확히 같은 1,488 단지**에서만 성립하기
-// 때문이다(개수만 같은 게 아니라 행 집합이 동일 — 같은 "주변 실거래" 계산에서 함께 나온다).
+// 때문이다(개수만 같은 게 아니라 행 집합이 동일 — 같은 "시·군·구 전체 실거래" 계산에서 함께 나온다).
 // ⚠️ 비율로 적을 땐 모수를 같이 적는다: 정적 JSON n=1,597 기준 93.2% / 운영 API n=1,646 기준
 // 90.4%(2026-08-10 실측). 초안의 "94.2%" 는 어느 모수로도 재현되지 않았다(모수 1,579~1,580 이
 // 필요한데 그런 필드가 없다) — 세션509 적대검증에서 정정. 구조 주장(셋이 같다)은 참이었다.
@@ -166,11 +167,9 @@ export const PriceByFloorBlock = memo(function PriceByFloorBlock({ apt }: { apt:
   const rows = (apt.priceByFloor as Array<{ group: string; avg: number; count: number }> | undefined) ?? [];
   if (rows.length === 0) return null;
 
-  const maxAvg = Math.max(...rows.map((r) => r.avg));
-
   // SourceComparison 이 하던 폴백 은폐를 그대로 이관한다 — 우리 값이 없어 네이버 값을 대신
   // 앉힌 상태(`_fallbackAvgFloor`)면 "N층"이 아니라 "미수집"으로 적어야 한다. 안 그러면
-  // 네이버 값을 우리가 잰 값처럼 말하게 된다(§SourceComparison.tsx 헤더 주석과 같은 원칙).
+  // 네이버 값을 우리가 잰 값처럼 말하게 된다(옛 두 출처 대조표의 원칙 — 그 표는 세션589 에 `detail/NaverListingLine` 한 줄로 바뀌었다).
   const isAvgFloorFallback = apt._fallbackAvgFloor === true;
   const avgFloor = isAvgFloorFallback ? null : (apt.avgFloor as number | null | undefined);
   // floorRange 는 대응하는 폴백 플래그가 없다(확인 완료) — 값이 있으면 그대로 쓴다.
@@ -188,33 +187,10 @@ export const PriceByFloorBlock = memo(function PriceByFloorBlock({ apt }: { apt:
     (summaryParts.length > 0 ? ` ${summaryParts.join(", ")}.` : "");
 
   return (
-    <ChartFrame title="층별 매매가 (주변 실거래)" ariaLabel={aria} height={140}>
-      <div style={{ display: "flex", alignItems: "flex-end", gap: 10, height: 84 }} aria-hidden>
-        {rows.map((r) => {
-          const pct = maxAvg > 0 ? Math.max(8, (r.avg / maxAvg) * 100) : 8;
-          return (
-            <div
-              key={r.group}
-              style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", height: "100%" }}
-            >
-              <span style={{ fontSize: F.micro, fontWeight: 700, color: C.text, marginBottom: 4 }}>
-                {fmtPrice(r.avg)}
-              </span>
-              <div style={{ flex: 1, display: "flex", alignItems: "flex-end", width: "70%" }}>
-                <div style={{ width: "100%", height: `${pct}%`, background: C.blue, borderRadius: "4px 4px 0 0" }} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      <div style={{ display: "flex", gap: 10, marginTop: 6 }}>
-        {rows.map((r) => (
-          <div key={r.group} style={{ flex: 1, textAlign: "center" }}>
-            <div style={{ fontSize: F.xs, fontWeight: 700, color: C.sub }}>{r.group}</div>
-            <div style={{ fontSize: F.micro, color: C.muted }}>{r.count}건</div>
-          </div>
-        ))}
-      </div>
+    <ChartFrame title="층별 매매가 (시·군·구 전체 실거래)" ariaLabel={aria} height={140}>
+      <StepBars
+        items={rows.map((r) => ({ label: r.group, value: r.avg, valueText: fmtPrice(r.avg), sub: `${r.count}건` }))}
+      />
       {summaryParts.length > 0 && (
         <div style={{ marginTop: 8, fontSize: F.xs, color: C.sub }}>{summaryParts.join(" · ")}</div>
       )}

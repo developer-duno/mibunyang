@@ -58,10 +58,12 @@ export const SORTERS: Record<SortKey, (_a: ScoredApt, _b: ScoredApt) => number> 
       db = norm(b.apt.subwayDist);
     return da === db ? b.res.total - a.res.total : da - db;
   },
-  // 전세가율 높은순 (jeonseRate 내림차순, 채움률 99.4%) — 전세 끼고 투자(갭) 유리. null=-1 로 맨뒤, 동률은 종합점수 tie-break (세션 444)
+  // 전세가율 높은순 (complexJeonseRate 내림차순 — 같은 단지 전세÷매매, 세션609 라 · R3) — 전세 끼고 투자(갭) 유리.
+  //   같은 단지 전세가율 ≈15%(10/07 dry-run 499/3,271)만 값이 있다 — null=-1 로 맨뒤, 동률은 종합점수 tie-break (세션 444).
+  //   옛 소스 jeonseRate(구 전체, 채움 99.4%)는 이 단지 값이 아니라 읽지 않는다.
   jeonseHigh: (a, b) => {
-    const ra = a.apt.jeonseRate ?? -1,
-      rb = b.apt.jeonseRate ?? -1;
+    const ra = a.apt.complexJeonseRate ?? -1,
+      rb = b.apt.complexJeonseRate ?? -1;
     return ra === rb ? b.res.total - a.res.total : Number(rb) - Number(ra);
   },
   // 관리비 낮은순 (avgMaintenanceCost 오름차순, 만원, 채움률 71.3%) — 월 고정비 낮은 집 먼저. 실거주·은퇴 프로필 관심.

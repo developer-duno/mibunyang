@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRICE_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "./dataSections";
+import { OVERVIEW_SECTIONS, LOCATION_SECTIONS, PRESALE_SECTIONS, fieldsOf } from "./dataSections";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import { FIELDS_SHOWN_IN_DETAIL_CARDS } from "./tabExtraFields";
 
@@ -36,11 +36,12 @@ describe("dataSections hint", () => {
   // 세션 505 에 6 → 5(입지 "생활인프라" 표 폐지), 세션 507 에 5 → 4
   // (시세의 "네이버 교차검증" 표를 `detail/SourceComparison` 대조표가 대체),
   // 세션508 PR-3b B1 에 4 → 3(입지 "교통 상세" 격자를 전용 카드로 승격 — LOCATION_SECTIONS 는
-  // 이제 "치안/환경" 하나뿐), 세션591 L5 에 3 → 2(그 "치안/환경"도 `detail/LocationEnvBlock` 칩으로 해체).
-  it("종합·시세 섹션 2개 모두 hint 가 채워져 있다 (입지 섹션은 0개 — 세션591)", () => {
+  // 이제 "치안/환경" 하나뿐), 세션591 L5 에 3 → 2(그 "치안/환경"도 `detail/LocationEnvBlock` 칩으로 해체),
+  // 세션589 에 2 → 1(시세 "이 동네 거래 시세" 접힘 삭제 — 시세 탭은 섹션 0, PRICE_SECTIONS 없음).
+  it("종합 섹션 1개 hint 가 채워져 있다 (입지 섹션 0개 — 세션591 · 시세 섹션 없음 — 세션589)", () => {
     expect(LOCATION_SECTIONS).toEqual([]);
-    const all = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRICE_SECTIONS];
-    expect(all).toHaveLength(2);
+    const all = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS];
+    expect(all).toHaveLength(1);
     for (const s of all) {
       expect(typeof s.hint).toBe("string");
       expect((s.hint ?? "").length).toBeGreaterThan(10);
@@ -55,8 +56,9 @@ describe("dataSections hint", () => {
 // 세션 459 — 수집/점수반영됐으나 손님 데이터 탭에 미노출이던 필드 노출 (표시 전용).
 describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
   const locationFields = LOCATION_SECTIONS.flatMap(fieldsOf);
-  const priceFields = PRICE_SECTIONS.flatMap(fieldsOf);
   const presaleFields = PRESALE_SECTIONS.flatMap(fieldsOf);
+  // 접힘 표(섹션)가 그리는 필드 전부 — 시세 탭은 세션589 에 섹션이 없어졌다(아래).
+  const allSectionFields = [...OVERVIEW_SECTIONS, ...LOCATION_SECTIONS, ...PRESALE_SECTIONS].flatMap(fieldsOf);
 
   // 세션591 L5: 표가 없어지고 치안·환경 칩(`detail/LocationEnvBlock`)이 그린다 — 노출 자체는 그대로여야 한다.
   it("입지 탭에 조망·소음(view/noise) 노출 — 이제 표가 아니라 치안·환경 칩·게이지", () => {
@@ -73,36 +75,26 @@ describe("dataSections 노출 필드 (세션 459 표시 공백 메움)", () => {
   });
 
   // 세션 507 — 주택보급률은 이 단지 값이 아니라 시·도 통계라 분양 탭 "이 지역 통계"로 옮겼다.
-  // 시세 탭에 되돌아오면 다시 단지 값처럼 읽히므로 그 자리를 잠근다.
-  it("주택보급률(housingSupplyLevel)은 시세 탭에 없다 (지역 통계로 이동)", () => {
-    expect(priceFields).not.toContain("housingSupplyLevel");
+  // 접힘 표에 되돌아오면 다시 단지 값처럼 읽히므로 그 자리를 잠근다.
+  it("주택보급률(housingSupplyLevel)은 어느 접힘 표에도 없다 (지역 통계로 이동)", () => {
+    expect(allSectionFields).not.toContain("housingSupplyLevel");
   });
 
-  // 세션 505 PR-C — 공시가격을 손님 화면에 처음 올린 자리. 표에서 빠지면 수집기·VIEW 가
-  // 멀쩡해도 손님은 영영 못 본다(등재가 곧 노출이라 이 한 줄이 도달 가드다).
-  //
-  // ⚠️ 세션 507 에 인접성 단언("nearbyMedian 바로 옆")을 버렸다 — `nearbyMedian` 이
-  //    두 출처 대조표(`detail/SourceComparison`)로 나가 시세 탭 표에 더는 없기 때문이다.
-  //    "공시가격을 시세로 오해하지 않게"라는 취지는 라벨 "(시군구 평균)" 과 아래 hint
-  //    문구 가드가 그대로 맡는다.
-  it("시세 탭에 공시가격이 남고, 주변 시세는 대조표로 나갔다", () => {
-    expect(priceFields).toContain("housingPrice");
-    expect(priceFields).not.toContain("nearbyMedian");
+  // 세션589 — 시세 탭의 접힘 "이 동네 거래 시세"(PIR·PSR 강조줄 + 공시가격)를 없앴다
+  // ("접힘 없이 한눈에", 사장님 결정 V1·V11). PIR 은 종합 탭 편차 줄, PSR 은 시세 탭 맨 위 게이지가 그리고,
+  // 공시가격은 손님 화면에서 뺐다(관리자 표·DB 는 그대로 — `tabExtraFields` INTERNAL_ONLY_FIELDS).
+  // 이 셋이 어느 접힘 표로든 되돌아오면 접힘이 되살아난 것이다.
+  // ⚠️ 뜻이 뒤집힌 시험이다 — 세션 505 에는 "시세 탭에 공시가격이 남는다"가 도달 가드였다.
+  it("PIR·PSR·공시가격은 어느 접힘 표에도 없다 (시세 탭 접힘 삭제, 세션589)", () => {
+    for (const f of ["pir", "psr", "housingPrice", "nearbyMedian"]) {
+      expect(allSectionFields, `${f} 가 접힘 표로 되돌아왔다`).not.toContain(f);
+    }
   });
 
-  // 세션508 PR-3b B3 — 거래 층수 범위는 바로 아래 층별가 계단 카드가 "거래 층 X~Y층"
+  // 세션508 PR-3b B3 — 거래 층수 범위는 층별가 계단 카드가 "거래 층 X~Y층"
   // 문장으로 흡수했다. 표에 되돌아오면 카드와 두 번 말하는 자리가 된다.
   it("거래 층수 범위(floorRange)는 표에서 뺐다 (층별가 계단 카드가 문장으로 그린다)", () => {
-    expect(priceFields).not.toContain("floorRange");
-  });
-
-  // 공시가격은 실거래·호가와 잣대가 달라 나란히 놓으면 "셋 중 뭘 믿나" 혼란이 난다.
-  // 안내문이 그 차이를 설명하지 않으면 노출 자체가 손님을 헷갈리게 만든다.
-  it("시세 탭 안내문이 공시가격이 왜 시세보다 낮은지 설명한다", () => {
-    const hint = PRICE_SECTIONS.map((s) => s.hint ?? "").join(" ");
-    expect(hint).toContain("공시가격");
-    expect(hint).toMatch(/세금/);
-    expect(hint).toMatch(/낮은 게 정상/);
+    expect(allSectionFields).not.toContain("floorRange");
   });
 
   // 세션591 P3: 표가 아니라 "이 지역 통계" 묶음 눈금이 그린다 — 노출 자체는 그대로여야 한다.

@@ -66,6 +66,14 @@ function sanitize(apt: Apt, rm?: RegionMedian): Apt {
     jeonseRate: num(apt.jeonseRate, null),
     nearbyMedian: num(apt.nearbyMedian, null),
     price: num(apt.price, 0),
+    // 시세 비교 범위 좁히기 다(세션607) — 가격 점수의 괴리도·전세가율 입력은 이 칸뿐이다.
+    //   없으면 null(점수는 중립). 범위·종류·면적 방식(cmpScope·cmpSrc·cmpAreaMode)은 문자열이라 `...apt` 그대로.
+    cmpFairPrice: num(apt.cmpFairPrice, null),
+    cmpN: num(apt.cmpN, null),
+    cmpMonths: num(apt.cmpMonths, null),
+    complexJeonseRate: num(apt.complexJeonseRate, null),
+    complexJeonseN: num(apt.complexJeonseN, null),
+    complexSaleN: num(apt.complexSaleN, null),
     // area 를 84 로 누르기 전에 사실을 남긴다(세션508 `_no*` 관례) — scorePrice 의 평형별
     // 실거래 버킷 매칭이 "안 잰 것"을 "84㎡ 단지"로 오매칭하지 않게 하기 위함.
     _noArea: apt.area == null || !(Number(apt.area) > 0),

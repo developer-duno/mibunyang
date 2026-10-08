@@ -22,6 +22,8 @@ function makeItem(overrides = {}) {
           total: 70,
           fairPrice: 48000,
           deviation: "-3.2",
+          // 세션607 다) 부터 엔진은 늘 범위를 함께 낸다 — 팩토리 apt 의 cmpScope(complex)와 같은 세대의 캐시
+          fairPriceScope: "complex",
           subs: [{ info: "-3.2%", name: "적정가괴리", score: 70 }],
         },
         location: { label: "입지·생활권", total: 80, subs: [{ info: "역세권", name: "지하철", score: 80 }] },
@@ -379,28 +381,105 @@ describe("DetailModal StickyJumpNav", () => {
     expect(loc?.querySelectorAll("[aria-expanded]").length).toBe(0);
   });
 
-  it("시세 탭에 '이 동네 거래 시세' 데이터 섹션 헤더가 보인다 (D2a, 세션 507 개명)", () => {
-    const { container } = render(<DetailModal {...makeProps()} />);
-    fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    const price = container.querySelector("#sec-price");
-    expect(price?.textContent).toContain("이 동네 거래 시세");
-    // 옛 이름은 세 가지 성격(단지 파생값·동네 값·지역 통계)을 한 표에 섞어 부르던 이름이다
-    expect(price?.textContent).not.toContain("시장/투자 지표");
-  });
-
-  // 세션 507 PR-2 — 우리 값과 네이버 값을 같은 줄에 놓는 대조표가 옛 "네이버 교차검증" 표를 대체
-  it("시세 탭에 두 출처 대조표가 보이고 '네이버 교차검증' 표는 없다 (세션 507)", () => {
-    // 네이버 값이 하나도 없으면 대조 자체가 성립하지 않아 컴포넌트가 null 이다
-    // (기본 팩토리에는 naver* 가 없다) — 대조가 성립하는 단지로 연다.
+  // ── 세션589 "접힘 없이 한눈에" — 시세 탭 ─────────────────────────────────────────────
+  // 접힘 "이 동네 거래 시세"(PIR·PSR·공시가격)와 두 출처 대조표를 없앴다. 아래 시험들은 세션 408·507 의
+  // "그 접힘/표가 보인다" 를 뒤집은 것이다 — 되살아나면 red.
+  /** 값이 다 있는 단지로 시세 탭을 연다 (매물 수·건축연도·공시가격·PIR·PSR·주변 시세)
+   * @param {Record<string, unknown>} [aptOver] */
+  const openPriceTab = (aptOver = {}) => {
     const item = makeScoredItem(
-      { naverNearbyMedian: 55000, naverJeonseRate: 68, naverBuildYear: 2012, naverAvgFloor: 11 },
+      {
+        naverNearbyMedian: 55000,
+        naverJeonseRate: 68,
+        naverBuildYear: 2012,
+        naverSellCount: 12,
+        naverJeonseCount: 5,
+        naverWolseCount: 3,
+        naverFetchedAt: "2026-08-01T00:00:00Z",
+        housingPrice: 570,
+        ...aptOver,
+      },
       { cats: makeItem().res.cats }
     );
     const { container } = render(<DetailModal {...makeProps({ item })} />);
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    const price = container.querySelector("#sec-price");
-    expect(price?.textContent).toContain("같은 값을 두 곳에서 재봤어요");
-    expect(price?.textContent).not.toContain("네이버 교차검증");
+    return /** @type {HTMLElement} */ (container.querySelector("#sec-price"));
+  };
+
+  it("시세 탭에 접힘이 하나도 없다 — '이 동네 거래 시세' 접힘 삭제 (세션589)", () => {
+    const price = openPriceTab();
+    expect(price.textContent).not.toContain("이 동네 거래 시세");
+    expect(price.textContent).not.toContain("시장/투자 지표");
+    // 접힘 단추(aria-expanded)가 0 — 서랍("아직 안 보여드린 자료")이 되살아나도 여기서 잡힌다
+    expect(price.querySelectorAll("[aria-expanded]").length).toBe(0);
+  });
+
+  it("시세 탭에 공시가격이 없다 — 값이 있어도 손님 화면에서 뺐다 (V11)", () => {
+    const price = openPriceTab();
+    expect(price.textContent).not.toContain("공시가격");
+    expect(price.textContent).not.toContain("570만원/㎡");
+  });
+
+  // 세션609 라) — PSR 축은 세션607 다) 에서 점수째 지웠다(R4). 세션589 에 올렸던 PSR 게이지 줄도 함께 지운다.
+  it("시세 탭에 PSR 줄이 없다 — psr 값이 있어도 (세션607 다) PSR 축 삭제)", () => {
+    const price = openPriceTab({ psr: 0.38 });
+    expect(price.textContent).not.toContain("구 실거래가");
+    expect(price.textContent).not.toContain("PSR");
+    expect(price.querySelector('[data-testid="psr-gauge"]')).toBeNull();
+    // 적정가 줄은 그대로다(양성 앵커 — 이 픽스처는 새 칸이 없는 옛 JSON 경로)
+    expect(price.textContent).toContain("적정가 대비 위치");
+  });
+
+  // 세션609 라) §5-4 — 새 칸(cmpScope 등)이 오면 맨 위 상자가 비교 범위를 문장으로 말한다(문장 자체는
+  //   `detail/PricePositionBox.test.tsx` 가 범위별로 잠근다). 여기는 모달이 상자에 apt 를 넘기는 배선을 본다.
+  it("새 칸이 있으면 시세 탭 맨 위에 비교 범위 머리 줄이 보인다 (배선)", () => {
+    const price = openPriceTab({
+      cmpScope: "dong_peer",
+      cmpFairPrice: 52000,
+      cmpN: 5,
+      cmpMonths: 12,
+      cmpAreaMode: "same_area",
+      cmpSrc: "sale",
+      dongFact: {
+        n: 4,
+        min: 30000,
+        median: 35000,
+        max: 41000,
+        build_year_min: 1996,
+        build_year_max: 2004,
+        age_gap_years: 22,
+        peer_n: 5,
+        peer_median: 50000,
+      },
+    });
+    const head = price.querySelector('[data-testid="price-scope-head"]');
+    expect(head?.textContent).toContain("같은 동 비슷한 연식(±10년)·같은 평수 실거래 5건 기준");
+    expect(price.querySelector('[data-testid="dong-fact-line"]')?.textContent).toContain("1996~2004년에 지은 집");
+  });
+
+  it("시세 탭에 네이버 매물 현황 한 줄이 보이고 두 출처 대조표는 없다 (V10)", () => {
+    const price = openPriceTab();
+    expect(price.textContent).toContain("네이버 매물 현황");
+    expect(price.textContent).toContain("매매 12건 · 전세 5건 · 월세 3건");
+    expect(price.textContent).not.toContain("같은 값을 두 곳에서 재봤어요");
+    expect(price.textContent).not.toContain("네이버 교차검증");
+    // 대조표의 '주변 시세'·'전세가율' 줄과 열 머리가 되살아나면 red
+    expect(price.textContent).not.toContain("주변 시세");
+    expect(price.textContent).not.toContain("공공데이터");
+    expect(price.querySelector("table")).toBeNull();
+  });
+
+  it("시세 탭 첫 블록이 붙박이 탭 줄에 붙지 않게 위 여백이 있다", () => {
+    const price = openPriceTab();
+    expect(price.style.paddingTop).toBe("12px");
+  });
+
+  it("미분양 추이와 층별 매매가가 한 격자에 들어 있다 (PC 2열 · 좁으면 위아래)", () => {
+    const price = openPriceTab({ priceByFloor: [{ group: "저층", avg: 50000, count: 3 }] });
+    const grid = /** @type {HTMLElement} */ (price.querySelector('[data-testid="price-two-col"]'));
+    expect(grid).not.toBeNull();
+    expect(grid.style.gridTemplateColumns).toContain("auto-fit");
+    expect(grid.textContent).toContain("층별 매매가");
   });
 
   // 세션 507 PR-2 — 지역 통계 7종은 분양 탭으로. 세션591 에 접힘 없는 묶음이 됐다 — 제목 줄이 "이 단지 값이 아니다"를 먼저 말한다
@@ -1022,7 +1101,10 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     expect(screen.getByText("핵심 지표")).toBeVisible();
     expect(container.textContent).toContain("경기 수원시 영통동");
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
-    expect(container.querySelector("#sec-price")?.textContent).toContain("이 동네 거래 시세");
+    // 시세 탭 맨 위 상자는 점수가 아니라 값이라 비로그인에게도 그대로 보인다(세션589 · 세션609 — PSR 줄은 지웠다).
+    const price = container.querySelector("#sec-price");
+    expect(price?.textContent).toContain("적정가 대비 위치");
+    expect(price?.textContent).not.toContain("구 실거래가");
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     // 세션591: 옛 "교통 상세" 접힘 대신 거리 점 그림·치안·환경 칩이 공개 본문이다
     expect(container.querySelector("#sec-location")?.textContent).toContain("주변 시설까지 거리");

@@ -19,7 +19,14 @@ function mkRes(over: Record<string, unknown> = {}): ScoringResult {
   return {
     total: 70,
     cats: {
-      price: cat(70, { subs: [{ info: "+18.8%" }], fairPrice: 94500, deviation: 18.8 }),
+      price: cat(70, {
+        subs: [{ info: "+18.8%" }],
+        fairPrice: 94500,
+        deviation: 18.8,
+        fairPriceScope: "complex",
+        fairPriceSrc: "sale",
+        fairPriceN: 5,
+      }),
       location: cat(70, { subs: [{ info: "지하철 777m" }] }),
       product: cat(70),
       benefit: cat(70),
@@ -62,8 +69,16 @@ describe("buildCardChips — 늘 보이는 핵심 값(core)", () => {
   it("가격 데이터가 없으면(fairPrice=0) 판정 대신 안내 문구가 그 자리를 지킨다", () => {
     // 데이터 부재 분기만 정확히 fairPrice=0 + deviation="0.0" 을 낸다 — deviation 만 보면
     // 진짜 0% 괴리와 구분되지 않아 "적정가 수준"이라는 거짓말이 된다.
+    // 세션607 보완(B1): 옛 픽스처엔 fairPriceScope 칸이 없었다 — 이제 그 꼴은 "옛 캐시"라 칩을 비운다(아래 시험).
+    //   새 엔진은 데이터 부재일 때 늘 'none' 을 내므로 그 값을 넣는다(단언 자체는 그대로).
     const res = mkRes({
-      price: { total: 70, subs: [{ info: "데이터 부재", detail: "시세 미수집" }], fairPrice: 0, deviation: "0.0" },
+      price: {
+        total: 70,
+        subs: [{ info: "데이터 부재", detail: "시세 미수집" }],
+        fairPrice: 0,
+        deviation: "0.0",
+        fairPriceScope: "none",
+      },
     });
     const chips = build({}, res);
     expect(find(chips, "priceFair")).toBeUndefined();
@@ -71,9 +86,34 @@ describe("buildCardChips — 늘 보이는 핵심 값(core)", () => {
     expect(find(chips, "fairPriceDetail")?.layer).toBe("core");
   });
 
+  it("세션607 보완(B1) — 옛 점수 캐시(fairPriceScope 칸 없음)면 detail 폴백 칩도 그리지 않는다", () => {
+    // 전환 직후 03:00 재계산 전의 캐시는 옛 원문(`+18.8% (±10% 적정 · …)`·시도 평균 안내)을 detail 로 들고 있다.
+    const oldDetail = "+18.8% (±10% 적정 · 인근 실거래 중위가 기준)";
+    const stale = mkRes({
+      price: { total: 70, subs: [{ info: "+18.8%", detail: oldDetail }], fairPrice: 94500, deviation: 18.8 },
+    });
+    const staleChips = build({}, stale);
+    expect(find(staleChips, "fairPriceDetail")).toBeUndefined();
+    expect(staleChips.some((c) => c.text.includes(oldDetail))).toBe(false);
+    // 같은 detail 이라도 새 캐시('none')면 기존대로 안내 칩을 둔다
+    const fresh = mkRes({
+      price: {
+        total: 70,
+        subs: [{ info: "데이터 부재", detail: "비교할 실거래가 아직 없어요 (중립 35점)" }],
+        fairPrice: 0,
+        deviation: "0.0",
+        fairPriceScope: "none",
+      },
+    });
+    expect(find(build({}, fresh), "fairPriceDetail")?.text).toBe("비교할 실거래가 아직 없어요 (중립 35점)");
+  });
+
   it("적정가와 정확히 같으면(fairPrice 있음 + 괴리 0) '적정가 수준'", () => {
-    const res = mkRes({ price: { total: 70, subs: [{ info: "0.0%" }], fairPrice: 50000, deviation: 0 } });
-    expect(find(build({}, res), "priceFair")?.text).toBe("적정가 수준 (면적 미상, 지역 평균 기준)");
+    // 세션607: 옛 기대 "적정가 수준 (면적 미상, 지역 평균 기준)"(플래그 없음 + 면적 미상 경로) → 범위 문구
+    const res = mkRes({
+      price: { total: 70, subs: [{ info: "0.0%" }], fairPrice: 50000, deviation: 0, fairPriceScope: "complex" },
+    });
+    expect(find(build({}, res), "priceFair")?.text).toBe("적정가 수준 (이 단지 실거래 기준)");
   });
 
   it("비로그인이면 안전 등급이 물음표로 가려진다 (점수 블라인드 정책)", () => {
@@ -87,44 +127,67 @@ describe("buildCardChips — 늘 보이는 핵심 값(core)", () => {
   });
 });
 
-describe("buildCardChips — 적정가 비교 근거 (세션536)", () => {
-  // "적정가보다 61% 저렴"만 보면 무엇과 비교했는지 손님이 알 수 없다. 실측(fairPrice>0 인
-  // 1,687곳)상 88.9%는 평형별 실거래 버킷, 8.5%는 광역 시도 평균 폴백이라 한 문구로 뭉뚱그리면
-  // 143곳에 거짓이 된다 — 칩 문구에 경로별 근거를 드러낸다.
+describe("buildCardChips — 적정가 비교 근거 (세션536 · 세션607)", () => {
+  // "적정가보다 61% 저렴"만 보면 무엇과 비교했는지 손님이 알 수 없다(세션536) — 칩 문구에 근거를 드러낸다.
+  // 세션607: 옛 단언 4건(버킷 '비슷한 평형 기준' · 시도 평균 폴백 '지역 평균 기준' · 플래그 없음+면적 앎 '인근 실거래 기준' ·
+  //   면적 미상 '면적 미상, 지역 평균 기준')은 폴백 경로 삭제(설계서 §5-3)로 대상이 없어졌다 → 범위(fairPriceScope) 문구.
   const priceRes = (extra: Record<string, unknown>) =>
-    mkRes({ price: { total: 70, subs: [{ info: "x" }], fairPrice: 9e4, deviation: 19, ...extra } });
+    mkRes({
+      price: {
+        total: 70,
+        subs: [{ info: "x", detail: "비교할 실거래가 아직 없어요 (중립 35점)" }],
+        fairPrice: 9e4,
+        deviation: 19,
+        ...extra,
+      },
+    });
 
-  it("평형별 실거래 버킷 매칭이면 '비슷한 평형 기준'", () => {
-    const chips = build({}, priceRes({ fairPriceFromAreaBucket: true }));
-    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (비슷한 평형 기준)");
+  it("같은 단지 매매면 '이 단지 실거래 기준'", () => {
+    const chips = build({}, priceRes({ fairPriceScope: "complex", fairPriceSrc: "sale" }));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (이 단지 실거래 기준)");
   });
 
-  it("광역 시도 평균(또는 분양 평당가) 폴백이면 '지역 평균 기준'", () => {
-    const chips = build({}, priceRes({ fairPriceFromSidoAvg: true }));
-    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (지역 평균 기준)");
+  it("같은 단지 분양권이면 '이 단지 분양권 거래 기준'", () => {
+    const chips = build({}, priceRes({ fairPriceScope: "complex", fairPriceSrc: "presale" }));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (이 단지 분양권 거래 기준)");
   });
 
-  it("두 플래그 모두 없고 면적을 아는 단지(인근 중위가 경로)면 '인근 실거래 기준'", () => {
-    const chips = build({ area: 84.97 }, priceRes({}));
-    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (인근 실거래 기준)");
+  it("같은 동 또래면 '같은 동 또래 실거래 기준'", () => {
+    const chips = build({}, priceRes({ fairPriceScope: "dong_peer", fairPriceSrc: "sale" }));
+    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (같은 동 또래 실거래 기준)");
   });
 
-  it("두 플래그 모두 없고 면적 미상이면 '면적 미상' 을 밝힌다 — 평형 반영된 것처럼 읽히면 안 된다", () => {
-    const chips = build({ area: null }, priceRes({}));
-    expect(find(chips, "priceCheap")?.text).toBe("적정가보다 19% 저렴 (면적 미상, 지역 평균 기준)");
+  it("범위 none(또는 범위 없음 — 옛 catsCache)이면 '저렴/수준/비쌈' 칩을 그리지 않는다", () => {
+    for (const extra of [{ fairPriceScope: "none" }, {}, { fairPriceFromAreaBucket: true }]) {
+      const chips = build({}, priceRes(extra));
+      expect(find(chips, "priceCheap"), JSON.stringify(extra)).toBeUndefined();
+      expect(find(chips, "priceFair"), JSON.stringify(extra)).toBeUndefined();
+      expect(find(chips, "priceExpensive"), JSON.stringify(extra)).toBeUndefined();
+    }
+  });
+
+  it("옛 근거 문구(평형·지역 평균·인근·면적 미상)는 어느 범위에서도 나오지 않는다", () => {
+    for (const extra of [
+      { fairPriceScope: "complex", fairPriceSrc: "sale" },
+      { fairPriceScope: "complex", fairPriceSrc: "presale" },
+      { fairPriceScope: "dong_peer" },
+    ]) {
+      const t = find(build({ area: null }, priceRes(extra)), "priceCheap")?.text ?? "";
+      expect(t).not.toMatch(/비슷한 평형|지역 평균|인근|면적 미상/);
+    }
   });
 
   it("'적정가 수준'도 같은 근거 문구를 단다", () => {
     const chips = build(
       {},
       mkRes({
-        price: { total: 70, subs: [{ info: "x" }], fairPrice: 5e4, deviation: 0, fairPriceFromAreaBucket: true },
+        price: { total: 70, subs: [{ info: "x" }], fairPrice: 5e4, deviation: 0, fairPriceScope: "dong_peer" },
       })
     );
-    expect(find(chips, "priceFair")?.text).toBe("적정가 수준 (비슷한 평형 기준)");
+    expect(find(chips, "priceFair")?.text).toBe("적정가 수준 (같은 동 또래 실거래 기준)");
   });
 
-  // ⚠️ 뮤테이션 대상: priceBasisLabel 을 안 부르고 옛 문구(접미 없음)로 되돌리면 위 5건이 전부 red 여야 한다
+  // ⚠️ 뮤테이션 대상: priceBasisLabel 을 안 부르거나 범위 게이트(isJudgedScope)를 빼면 위가 red 여야 한다
   // (.claude/rules/meta/guards-must-be-mutation-tested.md).
 });
 
@@ -202,34 +265,51 @@ describe("buildCardChips — 상태(status) 층", () => {
 
 describe("buildCardChips — 강점/약점 판정", () => {
   it("가격 판정은 저렴·비쌈 중 하나만 뜨고, 둘 다 core 라 접히지 않는다", () => {
-    const cheap = build({}, mkRes({ price: { total: 70, subs: [{ info: "x" }], fairPrice: 9e4, deviation: 19 } }));
+    const cheap = build(
+      {},
+      mkRes({ price: { total: 70, subs: [{ info: "x" }], fairPrice: 9e4, deviation: 19, fairPriceScope: "complex" } })
+    );
     expect(find(cheap, "priceCheap")?.layer).toBe("core");
     expect(find(cheap, "priceExpensive")).toBeUndefined();
 
-    const pricey = build({}, mkRes({ price: { total: 40, subs: [{ info: "x" }], fairPrice: 9e4, deviation: -12 } }));
-    expect(find(pricey, "priceExpensive")?.text).toBe("적정가보다 12% 비쌈 (면적 미상, 지역 평균 기준)");
+    const pricey = build(
+      {},
+      mkRes({
+        price: { total: 40, subs: [{ info: "x" }], fairPrice: 9e4, deviation: -12, fairPriceScope: "dong_peer" },
+      })
+    );
+    expect(find(pricey, "priceExpensive")?.text).toBe("적정가보다 12% 비쌈 (같은 동 또래 실거래 기준)");
     expect(find(pricey, "priceExpensive")?.layer).toBe("core");
     expect(find(pricey, "priceCheap")).toBeUndefined();
   });
 
   it("전세가율은 70~80 만 강점 / 80 초과·50 미만은 약점 / 사이는 회색", () => {
-    expect(find(build({ jeonseRate: 72 }), "jeonseHigh")?.layer).toBe("good");
-    expect(find(build({ jeonseRate: 44 }), "jeonseLow")?.layer).toBe("bad");
-    expect(find(build({ jeonseRate: 60 }), "jeonseRate")?.layer).toBe("neutral");
+    expect(find(build({ complexJeonseRate: 72 }), "jeonseHigh")?.layer).toBe("good");
+    expect(find(build({ complexJeonseRate: 44 }), "jeonseLow")?.layer).toBe("bad");
+    expect(find(build({ complexJeonseRate: 60 }), "jeonseRate")?.layer).toBe("neutral");
   });
 
   it("전세가율 80 초과는 초록이 아니라 주황이다 — 점수 곡선이 급락하는 구간", () => {
     // 옛 카드는 92% 를 초록 강점으로 칠했는데, 그 구간 서브점수 평균은 5.5점이다.
     // 실측 310곳(초록 칩의 45.8%)이 그렇게 반대 색으로 칠해져 있었다.
-    const tooHigh = find(build({ jeonseRate: 92 }), "jeonseTooHigh");
+    const tooHigh = find(build({ complexJeonseRate: 92 }), "jeonseTooHigh");
     expect(tooHigh?.layer).toBe("bad");
     expect(tooHigh?.tone).toBe("amber");
-    expect(find(build({ jeonseRate: 92 }), "jeonseHigh")).toBeUndefined();
+    expect(find(build({ complexJeonseRate: 92 }), "jeonseHigh")).toBeUndefined();
+  });
+
+  // 세션609 라 — 칩 소스는 같은 단지 전세가율(complexJeonseRate). 없으면 칩이 없다(옛 구 jeonseRate 로 대신하지 않는다).
+  it("전세가율 칩 소스 = complexJeonseRate — 있음/없음/옛 jeonseRate 만 있음", () => {
+    expect(find(build({ complexJeonseRate: 72 }), "jeonseHigh")?.text).toBe("전세가율 72%");
+    const ids = (chips: ReturnType<typeof build>) => chips.map((c) => c.id).filter((id) => id.startsWith("jeonse"));
+    expect(ids(build({ complexJeonseRate: null }))).toEqual([]);
+    expect(ids(build({ jeonseRate: 72 }))).toEqual([]);
+    expect(ids(build({ jeonseRate: 92, complexJeonseRate: 60 }))).toEqual(["jeonseRate"]);
   });
 
   it("경계값 80 은 아직 강점 (곡선 정점의 끝)", () => {
-    expect(find(build({ jeonseRate: 80 }), "jeonseHigh")?.layer).toBe("good");
-    expect(find(build({ jeonseRate: 80.1 }), "jeonseTooHigh")?.layer).toBe("bad");
+    expect(find(build({ complexJeonseRate: 80 }), "jeonseHigh")?.layer).toBe("good");
+    expect(find(build({ complexJeonseRate: 80.1 }), "jeonseTooHigh")?.layer).toBe("bad");
   });
 
   it("주차는 1.5 이상 강점 / 1 미만 약점 / 사이는 회색", () => {
@@ -491,7 +571,7 @@ describe("buildCardChips — 추가 모집은 청약홈(ah-) 단지만", () => {
 describe("splitCardChips — 상한을 걸어도 정보가 사라지지 않는다", () => {
   const many = build({
     // 강점 4개
-    jeonseRate: 75,
+    complexJeonseRate: 75,
     parkingRatio: 1.8,
     exclusiveRatio: 85,
     dsr40pass: true,
@@ -587,7 +667,7 @@ describe("splitCardChips — 흔한 경고가 진짜 위험을 밀어내지 않�
 
   it("돈으로 환산되는 강점(할인·교통호재)이 취향 강점(전용률·전세가율)보다 앞선다", () => {
     const s = splitCardChips(
-      build({ discountPct: 5, exclusiveRatio: 88, jeonseRate: 75, transitDev: "GTX-A 동탄역", devDist: 1 })
+      build({ discountPct: 5, exclusiveRatio: 88, complexJeonseRate: 75, transitDev: "GTX-A 동탄역", devDist: 1 })
     );
     expect(s.good.map((c) => c.id)).toEqual(["discount", "transitDev"]);
     expect(s.hidden.map((c) => c.id)).toEqual(expect.arrayContaining(["jeonseHigh", "exclusiveHigh"]));
@@ -625,9 +705,9 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
     // 그 키를 쓰는 테스트는 undefined 를 비교하며 조용히 통과한다.
     const everyId = new Set<string>();
     const variants: Array<Record<string, unknown>> = [
-      { discountPct: 5, jeonseRate: 75, parkingRatio: 1.8, exclusiveRatio: 88, naverSchoolWalkMin: 3 },
-      { jeonseRate: 40, parkingRatio: 0.7, exclusiveRatio: 60, naverSchoolWalkMin: 20 },
-      { jeonseRate: 92 },
+      { discountPct: 5, complexJeonseRate: 75, parkingRatio: 1.8, exclusiveRatio: 88, naverSchoolWalkMin: 3 },
+      { complexJeonseRate: 40, parkingRatio: 0.7, exclusiveRatio: 60, naverSchoolWalkMin: 20 },
+      { complexJeonseRate: 92 },
       { corridorType: "복도식", heatFuel: "LPG", schoolGrade: "D", primaryDirection: "북향" },
       { unsoldRate: 45, builderDebtRatio: 171.9, crimeSafetyGrade: 5 },
       { crimeSafetyGrade: 4 },

@@ -87,12 +87,12 @@ describe("FUTURE_WEIGHTS (고정 가중치)", () => {
 });
 
 describe("PRICE_NO_DATA_DEFAULTS", () => {
-  // 4개 키 존재
-  it("dev, jr, pir, psr 4개 키가 존재한다", () => {
+  // 3개 키 존재 — psr 은 PSR 축 삭제(세션607 다) · R4)와 함께 세션609 라) 에 지웠다
+  it("dev, jr, pir 3개 키가 존재하고 psr 은 없다", () => {
     expect(PRICE_NO_DATA_DEFAULTS).toHaveProperty("dev");
     expect(PRICE_NO_DATA_DEFAULTS).toHaveProperty("jr");
     expect(PRICE_NO_DATA_DEFAULTS).toHaveProperty("pir");
-    expect(PRICE_NO_DATA_DEFAULTS).toHaveProperty("psr");
+    expect(PRICE_NO_DATA_DEFAULTS).not.toHaveProperty("psr");
   });
 
   // 모든 기본값이 0~100 범위

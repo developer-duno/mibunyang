@@ -4,8 +4,8 @@
 
 ## on-demand 1개로 전량 이관 (세션568)
 
-이 디렉토리의 상세 규칙(파일 구조·함수 시그니처·가중치 합계·클램핑·PIR 구간·fairPrice
-폴백·연식/신축 계수·괴리도·scoreFuture 3축·서브지표 점수 테이블·null 처리)은
+이 디렉토리의 상세 규칙(파일 구조·함수 시그니처·가중치 합계·클램핑·PIR 구간·적정가
+(같은 단지 → 같은 동 또래, 세션607 — 옛 폴백 삭제)·연식/신축 계수(세션607 부터 미사용)·괴리도·scoreFuture 3축·서브지표 점수 테이블·null 처리)은
 **전부 [.claude/rules/scoring/scoring-engine.md](../../.claude/rules/scoring/scoring-engine.md)** 로 옮겼다
 (`paths: src/scoring/**`, `src/constants/{scoringTiers,brands,profiles}*` — 이 디렉토리를 수정·조회할 때 자동 로드).
 
@@ -13,3 +13,7 @@
 
 ## 세션576 (2026-09-26) — 주차 산식 위치
 - 주차 비율 **추정 산식은 `src/constants/parkingEstimate.ts` 한 곳**(`estimateParkingRatio(presaleParking, units, presaleGeneralSupply)` = 주차대수 ÷ max(총세대, 일반분양, 1), `0 < r ≤ 3` 만 값). `scoreProduct.ts` 는 이 함수를 부른다(값·문구 무변경, 리팩터 전후 동일성 시험 `parkingEstimate.test.js`). constants → scoring 방향 import 금지(순환) — 그래서 constants 층에 둔다.
+
+## 세션607 (2026-10-07) — 가격 점수 입력 교체
+
+- `scorePrice` 의 괴리도·전세가율 입력은 VIEW 새 칸 `cmpFairPrice`·`cmpScope`·`cmpSrc`·`cmpN`·`cmpMonths`·`cmpAreaMode`·`complexJeonseRate`(+ 건수 2칸) **뿐**이다 — 옛 `nearbyMedian`·`priceByArea`·`avgPriceSqm`·`presalePp`·`jeonseRate`·`psr` 는 점수 입력 아님. 가중치 = `PRICE_SUB_WEIGHTS`(scoringTiers.ts). 상세 = scoring-engine.md 「적정가 = 같은 단지 → 같은 동 또래 실거래」.

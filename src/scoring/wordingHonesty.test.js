@@ -59,7 +59,7 @@ describe("엔진 문구 정직성 (세션512)", () => {
       /** @param {Record<string, unknown>} o @param {number|undefined} [maint] */
       const cats = (o, maint) =>
         calcCats(apt({ id: 1, price: 50000, region: "경기", ...o }), {
-          regionMedians: maint == null ? {} : { 경기: { pir: 5, psr: 0.8, unsoldRate: 15, supplyRatio: 100, maint } },
+          regionMedians: maint == null ? {} : { 경기: { pir: 5, unsoldRate: 15, supplyRatio: 100, maint } },
         });
       /** @param {Record<string, unknown>} o @param {number} [maint] */
       const maintDetail = (o, maint) => sub(cats(o, maint).benefit, "관리비 절감")?.detail;
@@ -172,45 +172,59 @@ describe("엔진 문구 정직성 (세션512)", () => {
   });
 });
 
-// ── 괴리도 — 어느 잣대로 잰 값인지 말한다 (세션531) ───────────────────────────
+/// ── 괴리도 — 어느 잣대로 잰 값인지 말한다 (세션531 · 세션607 개정) ─────────────────
 //
-// 면적을 모르면 `getAreaAdj` 가 1.0(중립)이라 fairPrice 가 **동네 전체 거래의 총액 중위값**이 된다.
-// 그러면 이 축은 "비싼가"가 아니라 **"큰가"** 를 잰다 — 같은 단지 892곳을 경로만 바꿔 잰 대조
-// 실험에서 corr(면적, 괴리도) 가 버킷 −0.097 vs 폴백 **−0.699**, 115㎡+ 괴리도 중앙이
-// −35.6% vs **−182.1%** 였다. 버킷·시도평균 두 경로는 이미 자기 출처를 밝히는데 이 경로만
-// 침묵해서, 가장 못 믿을 값이 가장 당당하게 표시되고 있었다.
+// 세션531: 면적을 모르면 옛 적정가가 **동네 전체 거래의 총액 중위값**이 되어 이 축이 "비싼가"가 아니라
+// "큰가"를 쟀다(corr(면적, 괴리도) 버킷 −0.097 vs 폴백 −0.699). 그래서 경로마다 출처를 밝혔다.
+// 세션607(시세 비교 범위 좁히기 다): 그 폴백 경로가 **전부 없어졌다** — 적정가는 같은 단지·같은 동 또래
+// 실거래(`cmpFairPrice`)뿐이다(설계서 §5-3). 옛 단언("면적 미상"·"평수대별 실거래 기준" 문구가 붙는다)은
+// 대상이 없어졌고, 남는 뜻 = **문구가 그 비교 범위를 그대로 말한다**·옛 출처 문구가 돌아오지 않는다.
 //
-// ⚠️ **반드시 `calcCats` 를 지난다.** `_noArea` 는 `sanitize` 가 area 를 84 로 누르기 **전에**
-//    남기는 플래그라, `scorePrice` 를 직접 부르는 테스트는 이 분기를 지나지 않는다.
-describe("괴리도 — 잰 잣대를 밝힌다 (세션531)", () => {
-  /** 폴백 경로(주변 중앙가)를 타게 하는 최소 입력 — priceByArea 없음 */
-  const fallbackApt = (over = {}) =>
-    apt({ id: 1, region: "경기", price: 50000, nearbyMedian: 50000, completion: "202001", ...over });
+// ⚠️ **반드시 `calcCats` 를 지난다** — 실전 경로(sanitize → scorePrice).
+describe("괴리도 — 잰 잣대를 밝힌다 (세션531 · 세션607)", () => {
+  /** 같은 단지 매매 5건(최근 12개월) 기준 최소 입력 */
+  const scopedApt = (over = {}) =>
+    apt({
+      id: 1,
+      region: "경기",
+      price: 50000,
+      completion: "202001",
+      cmpScope: "complex",
+      cmpSrc: "sale",
+      cmpFairPrice: 50000,
+      cmpN: 5,
+      cmpMonths: 12,
+      cmpAreaMode: "same_area",
+      ...over,
+    });
 
-  it("면적 미상이면 '면적 미상'이라고 적는다", () => {
-    const cats = calcCats(fallbackApt({ area: null }), { regionMedians: {} });
-    const d = sub(cats.price, "적정가 괴리도")?.detail;
-    expect(d).toContain("면적 미상");
-    expect(d).toContain("평형 차이 반영 안 됨"); // 무엇이 빠졌는지까지 말한다
+  it("같은 단지 실거래 기준이면 그 범위·건수·기간을 적는다", () => {
+    const cats = calcCats(scopedApt({ area: 84 }), { regionMedians: {} });
+    expect(sub(cats.price, "적정가 괴리도")?.detail).toContain("이 단지 실거래 5건(최근 12개월) 대비");
   });
 
-  it("면적을 알면 그 문구를 붙이지 않는다 (없는 결함을 만들지 않는다)", () => {
-    const cats = calcCats(fallbackApt({ area: 84 }), { regionMedians: {} });
+  it("면적 미상이어도 옛 '면적 미상' 문구를 붙이지 않는다 (같은 평수 실거래라 면적 편향 경로가 없다)", () => {
+    const cats = calcCats(scopedApt({ area: null }), { regionMedians: {} });
     expect(sub(cats.price, "적정가 괴리도")?.detail).not.toContain("면적 미상");
   });
 
-  it("평형별 실거래 버킷을 탔으면 그쪽만 밝힌다", () => {
+  it("버킷(priceByArea)·시도 평균이 있어도 옛 출처 문구는 돌아오지 않는다", () => {
     const cats = calcCats(
-      fallbackApt({ area: 84, priceByArea: [{ area: 85, min: 40000, avg: 50000, max: 60000, count: 12 }] }),
+      scopedApt({
+        area: 84,
+        avgPriceSqm: 7000,
+        priceByArea: [{ area: 85, min: 40000, avg: 50000, max: 60000, count: 12 }],
+      }),
       { regionMedians: {} }
     );
-    const d = sub(cats.price, "적정가 괴리도")?.detail;
-    expect(d).toContain("평수대별 실거래 기준");
-    expect(d).not.toContain("면적 미상"); // 두 출처를 동시에 말하면 어느 쪽인지 알 수 없다
+    const d = sub(cats.price, "적정가 괴리도")?.detail ?? "";
+    expect(d).not.toContain("평수대별 실거래 기준");
+    expect(d).not.toContain("광역 시도 평균");
+    expect(d).not.toContain("주변 시세");
   });
 
   it("밴드 안내는 상수에서 계산된다 — 옛 하드코딩 문구는 돌아오면 안 된다", () => {
-    const cats = calcCats(fallbackApt({ area: 84 }), { regionMedians: {} });
+    const cats = calcCats(scopedApt({ area: 84 }), { regionMedians: {} });
     const d = sub(cats.price, "적정가 괴리도")?.detail ?? "";
     expect(d).toContain(DEV_BAND_LABEL);
     // 옛 문구는 음수 쪽 산식과 어긋나 있었다 — dev ≤ −8.75% 면 이미 0점인데
@@ -222,14 +236,12 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531)", () => {
   it("밴드 안내가 실제 산식과 맞는다 — 만점·바닥 경계를 그대로 말한다", () => {
     // 파생 문자열이므로 **산식 쪽에서** 두 경계를 독립 재현해 맞댄다.
     // (표에서 읽어 표와 비교하면 항등식이 된다 — [[guards-must-be-mutation-tested]])
-    // ⚠️ fairPrice = nearbyMedian × **연식계수** × 면적보정 × 브랜드보정 이라, 분양가를
-    //    `nearbyMedian × (1−dev)` 로 잡으면 계수만큼 어긋난다(이 가드를 처음 쓸 때 실제로 그랬다).
-    //    엔진이 낸 fairPrice 에서 역산해 목표 괴리율을 정확히 맞춘다.
+    // 세션607: 적정가 = cmpFairPrice 그대로(계수 없음)지만, 엔진이 낸 fairPrice 에서 역산하는 꼴은 그대로 둔다
+    //   (계수가 다시 끼어들면 이 가드가 먼저 어긋난다).
     /** @param {Record<string, unknown>} over */
-    const probe = (over) =>
-      /** @type {any} */ (calcCats(fallbackApt({ area: 84, nearbyMedian: 50000, ...over }), { regionMedians: {} }));
+    const probe = (over) => /** @type {any} */ (calcCats(scopedApt({ area: 84, ...over }), { regionMedians: {} }));
     const fair = Number(probe({ price: 1 }).price.fairPrice);
-    expect(fair).toBeGreaterThan(0);
+    expect(fair).toBe(50000);
     /** @param {number} dev */
     const at = (dev) =>
       /** @type {any} */ (sub(probe({ price: fair * (1 - dev / 100) }).price, "적정가 괴리도"))?.score ?? -1;
