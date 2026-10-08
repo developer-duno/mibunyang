@@ -51,8 +51,9 @@ jobs:
         # 세션611 결정(작게 고치기): exit 2(재료 없음 = 점수 입력 칸 부재·채움률 미만, F1)만 통과한다 —
         #   아무것도 안 구웠으니 옛 점수(cats_cache) 그대로라 공개 JSON 갱신·배포를 계속해도 섞이지 않는다.
         #   그 밖 실패(로드 실패 · 저장 실패 1건 이상 · 도중 예외 — 모두 exit 1)는 배포를 멈춘다(점수 섞임 방지).
-        #   F1·로드 실패·저장 실패는 collector_runs failure 로 남아 감시 ① 이 본다. 도중 예외(main().catch)는
-        #   collector_runs 기록 없이 죽는다 — 이 워크플로 실패를 monitor-collectors 의 workflow_run 이 알린다.
+        #   알림 경로: exit 1(로드·저장 실패·도중 예외)은 이 워크플로가 실패로 끝나 monitor-collectors 의
+        #   workflow_run(①)이 바로 알린다. exit 2(F1)는 워크플로가 성공으로 끝나 즉시 알림이 없다 —
+        #   collector_runs failure 행을 KST 09:00 매일 스윕의 ⑬(checkLocalFailures, 50시간 창)이 본다(최대 약 6시간 뒤).
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

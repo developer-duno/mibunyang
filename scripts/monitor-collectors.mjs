@@ -284,7 +284,7 @@ const KO_FIELD = {
  * recordCollectorRun 첫 인자와 정확히 일치해야 함 — 대부분 PHASE 상수이나 일부(transport-tago 등)는
  * 리터럴을 따로 박으니 PHASE 값과 다를 수 있음. 신규/수정 시 recordCollectorRun 인자 직독 의무
  * (세션 439: "transport" 라벨 ≠ 기록명 "transport-tago" 드리프트로 ⑤ 영구 무력 사고).
- * stale_days = 해당 collector cron 주기 + 1주 여유 (일일=14, 월간=38, 분기=100). NEIS schools = incremental yml 매일 발화 + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
+ * stale_days = 해당 collector cron 주기 + 1주 여유 (일일=14, 월간=38, 분기=100). NEIS schools = incremental yml 주 2회(화·금, 세션615 #712) + 월간 collect-schools.yml 자매 = 14 (세션 339 정정, 세션 338 3주 cancelled 사고가 35일 한계 안에 묻힌 진앙 해소).
  * ⚠️ 월간 cron 에 14 를 박으면 ⑤-b 미발화 분기가 발화일+14일부터 다음 발화까지 매일 거짓 경보 + continue 로 진짜 outage 판정까지 가림 (세션 463 정정: housing-permits·building-hub 14→38).
  * 신규 외부 API collector 추가 시 이 배열 1줄 박힘 + checkExternalApiStale 회귀 답습 의무.
  */
@@ -453,10 +453,10 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "kosis-medical-access",       stale_days: 38,  owner: "KOSIS 의료접근성 (로컬 매월 14일)" },
   { collector: "kosis-sale-price-index",     stale_days: 100, owner: "KOSIS 매매가격지수 (로컬 1·4·7·10월 17일)" },
   { collector: "kosis-jeonse-price-index",   stale_days: 38,  owner: "KOSIS 전세가격지수 (로컬 매월 18일)" },
-  // ── childcare 3종 = 집서버 로컬 러너 수집기 (childcare-local-runner.mjs, 매일 04:30 KST 전부 실행).
+  // ── childcare 3종 = 집서버 로컬 러너 수집기 (childcare-local-runner.mjs, 04:30 KST — 세션612 결정 ⑨ 뒤 화요일만 실행).
   //    api.childcare.go.kr 해외 IP 차단으로 GH collect-childcare-detail/jeju.yml 삭제 +
   //    collect-childcare.yml info step 제거 (세션 399) — GH run 이 없어 collector_runs 신선도가
-  //    유일한 "안 돌면 알림". 매일 발화 = 14 (1주 여유).
+  //    유일한 "안 돌면 알림". 화요일 주 1회 실행 = 14 (1주 여유).
   // 세션606: childcare-detail 은 매일 러너의 시군구 단위 호출로 바뀌어 air-quality(세션605)와 같은 3.
   // 세션612(결정 ⑨): 러너가 화요일만 3종을 돌린다(주 1회) → 3종 전부 주간 14. 러너 생존 신호는
   //   kosis 러너의 air-quality(3)가 맡는다 — childcare 는 신호가 아니다.
@@ -1304,7 +1304,7 @@ export const LOCAL_FAILURE_RATIO_LIMIT = 0.1;
  *   - 울림: kosis-unsold 차단기(ok 0) · naver-pipeline 치명 단계 실패(STEP_FAILED 마커, ok ≤ 4 · fail 1 → 비율 ≥ 20%)
  *   - 침묵: naver-presale 4/1301(0.3%) · naver-collect `partial`(시간 상한 정상 중단) · success 행
  * ⚠️ GitHub 워크플로 수집기가 failure 행을 남기면 ① 과 겹쳐 두 번 알릴 수 있다(판정은 이름이 아니라 상태로 한다).
- * `at` = `finished_at` 이라 같은 행은 한 번만 알리고(dedup), 창(26시간) 밖으로 나가면 자연 소멸한다.
+ * `at` = `finished_at` 이라 같은 행은 한 번만 알리고(dedup), 창(50시간 — LOCAL_FAILURE_WINDOW_HOURS) 밖으로 나가면 자연 소멸한다.
  *
  * @param {Array<{ collector?: string|null, status?: string|null, ok_count?: number|null, fail_count?: number|null, error_message?: string|null, finished_at?: string|null }>} rows
  *   최근 창 안의 collector_runs 행(status 무관).
@@ -2160,7 +2160,7 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
  * 수집기 이름으로 묶으면 그쪽 리마인드까지 막힌다 — 그래서 종류로 가른다.
  */
 // ⑫ 도 사람이 고쳐야 풀린다(세션569). ⑬ local-failure 는 at=finished_at(행마다 고유)이라 같은 실패 행을
-// 창(26시간)이 겹친 이튿날 한 번 더 알리지 않게 dedup 한다(세션570) — 새 실패 행은 새 키라 그대로 울린다.
+// 창(50시간)이 겹친 이튿날 한 번 더 알리지 않게 dedup 한다(세션570) — 새 실패 행은 새 키라 그대로 울린다.
 // ⑮ kapt-window 도 at=최근 실행 finished_at — 같은 실행은 한 번만, 다음 회차가 또 건너뛰면 새로 울린다(세션589).
 // ⑱ sgis-map-* 도 at=그 실행의 finished_at — 같은 화요일 행은 한 번만, 다음 화요일 행이 또 그러면 새로 울린다(세션614 보완 W2).
 export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch"]);
