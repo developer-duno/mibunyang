@@ -649,6 +649,53 @@ export function parseInfraRowMissing(message) {
   return null;
 }
 
+// ── SGIS 행정동 매핑 표시 (세션614 · 보완 W2·W4) ──
+// 수집기(sgis-map-emd)가 남기고 감시 ⑱(monitor-collectors checkSgisMapMarkers)가 **이 상수·함수**로 읽는다 —
+// 한쪽만 바꾸면 기록은 되는데 감시가 못 읽어 조용히 사라진다(INFRA_ROW_MISSING 짝과 같은 이유).
+
+/** 첫 회차 관문에 걸려 아무것도 안 쓴 실행의 error_message(전체가 이 문자열 — status 는 success · skip 1). */
+export const SGIS_FIRST_RUN_PENDING_MARKER = "FIRST_RUN_PENDING";
+
+/** 응답 시도 코드가 우리 지역과 달라 안 쓴 단지 수 표시(status 는 그대로). */
+export const SGIS_SIDO_MISMATCH_MARKER = "SGIS_SIDO_MISMATCH=";
+
+/**
+ * @param {number} n 시도 불일치로 안 쓴 단지 수
+ * @returns {string} 예: `SGIS_SIDO_MISMATCH=3`
+ */
+export function formatSgisSidoMismatch(n) {
+  return `${SGIS_SIDO_MISMATCH_MARKER}${n}`;
+}
+
+/**
+ * error_message 에서 시도 불일치 수를 읽는다. ` | ` 로 다른 사유가 붙어 있어도 찾는다.
+ * 마커가 없거나·숫자 형식이 아니거나·0 이하면 null(parseInfraRowMissing 과 같은 꼴).
+ * @param {string | null | undefined} message
+ * @returns {number | null}
+ */
+export function parseSgisSidoMismatch(message) {
+  if (typeof message !== "string") return null;
+  for (const part of message.split(" | ")) {
+    const s = part.trim();
+    if (!s.startsWith(SGIS_SIDO_MISMATCH_MARKER)) continue;
+    const digits = s.slice(SGIS_SIDO_MISMATCH_MARKER.length);
+    if (!/^[0-9]+$/.test(digits)) continue;
+    const n = Number(digits);
+    if (Number.isSafeInteger(n) && n > 0) return n;
+  }
+  return null;
+}
+
+/**
+ * error_message 가 첫 회차 대기 표시를 품었나(` | ` 조각 중 하나가 정확히 그 문자열).
+ * @param {string | null | undefined} message
+ * @returns {boolean}
+ */
+export function hasSgisFirstRunPending(message) {
+  if (typeof message !== "string") return false;
+  return message.split(" | ").some((p) => p.trim() === SGIS_FIRST_RUN_PENDING_MARKER);
+}
+
 // ── 청약홈(applyhome) 출처 미분양 값의 만료 기준 C6 (세션569, 사장님 결정 2026-09-24 🟡8) ──
 // 수집기(collect-unsold-kosis)와 감시(monitor-collectors ⑫)가 **이 함수 하나**를 같이 쓴다 —
 // 한쪽만 기간을 바꾸면 수집기는 덮는데 감시는 "아직 유효"라고 보거나 그 반대가 된다.

@@ -1352,7 +1352,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 36 후보 박힘 (기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550 + naver-pipeline, 세션 570)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 37 후보 박힘 (sgis-map-emd, 세션 614 +기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550 + naver-pipeline, 세션 570)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "air-quality",
@@ -1384,6 +1384,8 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       // 자기 collector_runs 행을 남기므로 **둘 다** 등재한다 — 하나만 넣으면 나머지가 조용히 죽는다.
       "population", "population-sex-age",
       "schools", "transport-tago",
+      // 세션 614: SGIS 좌표→행정동 매핑 — 로컬 러너 매주 화요일 + 이 신선도 감시(14일·since)가 한 쌍.
+      "sgis-map-emd",
     ].sort());
     for (const c of EXTERNAL_API_COLLECTORS) {
       expect(c.stale_days).toBeGreaterThan(0);

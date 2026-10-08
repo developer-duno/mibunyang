@@ -128,6 +128,7 @@ describe("runDailyGuardedChecks 배선", () => {
     fetchKeyHealth: async () => ({ gapRows: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: { finished_at: new Date().toISOString() } }),
     fetchKaptWindowRuns: async () => ({}),
     fetchTradeDeals: async () => ({ empty: true, rows: [], tradesCounts: {}, latest: "202609", prev: "202608" }),
+    fetchSgisMapRun: async () => [], // ⑱(세션614) — 같은 이유: 없으면 운영 조회로 새어 check-failed 가 하나 더 생긴다
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
   /** @param {any[]} issues */

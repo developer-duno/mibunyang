@@ -95,6 +95,7 @@ KOSIS 에러 코드(개발가이드 PDF 16p): 10/11 인증키 누락·만료 · 
 | 환경변수 | 수집기 | 발급처 |
 |---|---|---|
 | `DART_KEY` | dart-builders | 금융감독원 OpenDART: https://opendart.fss.or.kr/intro/main.do |
+| `SGIS_CONSUMER_KEY` · `SGIS_CONSUMER_SECRET` | sgis-map-emd (`_sgis-api.mjs`, 세션614) | 국가데이터처 SGIS 오픈API: https://sgis.mods.go.kr/developer/html/newOpenApi/api/dataApi/introMajorApi.html (API 호스트 `https://sgisapi.mods.go.kr/OpenAPI3/` · 일일 5만 회(공식 두 페이지 상충 — 미확인) · 2u·상가와 키 공용) |
 | `FINLIFE_API_KEY` | api/finlife/* (rates·loans·rent-loans — 수집기 아님, Vercel 함수) | 금융감독원 금융상품통합비교공시 오픈API: https://finlife.fss.or.kr/finlife/main/contents.do?menuNo=700029 |
 | `NEIS_KEY` | schools-neis | 나이스 교육정보 개방포털: https://open.neis.go.kr |
 | `SCHOOLINFO_KEY` | schools-neis | 학교알리미 (별도) |

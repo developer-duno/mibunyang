@@ -60,6 +60,8 @@
 | `NEIS_KEY` | schools-neis | - | 나이스 교육정보 개방포털 |
 | `SCHOOLINFO_KEY` | schools-neis | - | 학교알리미 학생수(학군 밀도 보정 ±5 원점수). ⚠️ **운영 워크플로 2개(`collect-schools.yml`·`collect-naver-listings-incremental.yml`)에만 있고 로컬 `.env.local` 엔 없다** — 없으면 같은 단지 학군 점수가 달라진다(세션567 실측 63 vs 68). 그래서 로컬 **실제 쓰기**는 시작 전에 멈춘다(`--dry-run`·`--rescale-only`·CI 는 그대로). 학교 점수 반영은 `collect-schools.yml`(`ids` 입력)로 |
 | `DART_KEY` | dart-builders | O (DART 활성 시) | OpenDART 시공사 신용 |
+| `SGIS_CONSUMER_KEY` | sgis-map-emd (`_sgis-api.mjs`) | O (SGIS 매핑 활성 시) | SGIS(국가데이터처) 오픈API 서비스 ID — 인증 토큰 발급용. 이름은 2u·상가와 같게 합의(세션614). 키 하나를 세 레포가 공용 · 일일 5만 회(공식 두 페이지 상충 — 미확인) |
+| `SGIS_CONSUMER_SECRET` | sgis-map-emd (`_sgis-api.mjs`) | O (SGIS 매핑 활성 시) | SGIS 오픈API 보안키 — `SGIS_CONSUMER_KEY` 와 짝. 없으면 수집기가 시작 전에 exit 1 |
 
 ## MCP 서버 운영 메모 (세션 439 감사 기록)
 
