@@ -16,7 +16,7 @@
 4. 이 저장소엔 이미 정답 모양의 선례가 있다 — `src/data/regulation-zones.json` 하나를 화면과
    수집기가 같이 읽는 구조(세션506 PR-1). 새 별칭표도 그 모양을 따른다.
 5. `regions`는 `naver-estate-web`이 안 읽는 **mibunyang 전용** 테이블이다(`supabase/CLAUDE.md`
-   L93). 공용 테이블 위험은 이 트랙에는 해당하지 않는다 — 대신 위험은 다른 데 있다(§7).
+   L93). 공용 테이블 위험은 이 트랙에는 해당하지 않는다 — 대신 위험은 다른 데 있다(§7). (옛 기록 — 지금 소유권은 `supabase/ownership.json`)
 
 ---
 
@@ -269,7 +269,7 @@ L424-427) ② "시/군/구" 접미사를 뗀 접두 매칭(L429-436)까지 시�
 `supabase/CLAUDE.md` L93 "테이블 소유권" 표를 직접 읽었다: `regions`는 **"mibunyang 전용"**
 목록에 있고, `naver-estate-web 전용` 목록(L94)에는 없다. 공용 테이블은 `complexes`·`articles`·
 `complex_price_history`·`trades` 넷뿐이다(L89-93). **`regions`를 고쳐도 naver-estate-web에
-영향이 없다** — 이 문서가 다루는 작업은 mibunyang 단독 범위다.
+영향이 없다** — 이 문서가 다루는 작업은 mibunyang 단독 범위다. (옛 기록 — 지금 소유권은 `supabase/ownership.json`)
 
 > 다만 이건 문서(`CLAUDE.md`)를 근거로 한 판단이다. naver-estate-web의 실제 쿼리 코드를 직접
 > 열어 `regions`를 안 읽는지 확인하지는 못했다(레포 경로가 이 세션의 작업 디렉터리 밖). 문서

@@ -2,7 +2,7 @@
 
 > 스키마/마이그레이션 수정 시 반드시 이 규칙을 따를 것.
 
-## 테이블 (25개+ · 2 VIEW — 세션 548 라이브 실측, 아래 표 19 + 운영 표 6)
+## 테이블 (표 55 + 없는 표 2 + VIEW 2 — 목록·소유 정본 = `supabase/ownership.json`, 세션617)
 
 > ⚠️ 개수를 단정하지 말 것 — 마이그레이션 grep 으로는 못 센다(CREATE/DROP·rename 혼재). 존재 확인은
 > `sb.from('<이름>').select('*').limit(1)` 의 에러 코드로(`PGRST205` = 없음). `{count:'exact', head:true}` 는
@@ -117,31 +117,21 @@ presale_housing_type TEXT, presale_fetched_at TIMESTAMPTZ
 
 인스턴스 `rwdtljipvmqpazrimyns`는 **mibunyang + naver-estate-web 공유**.
 
-### 테이블 소유권
+### 테이블 소유권 — 정본 = `supabase/ownership.json` (세션617)
 
-> ⚠️ **이 표는 세션556 에 자매 레포를 직접 훑어 다시 썼다.** 그 전 판은 두 군데가 틀렸다 —
-> `infra` 를 "쓰기는 mibunyang 만" 이라 했지만 **자매도 쓰고**, "mibunyang 전용" 목록의 표
-> 대부분은 자매가 **읽고 있었다**. 실측 방법(자매 레포에서):
-> `grep -rn "__tablename__" backend/db/mb_models.py` (자매가 아는 우리 표 17개) +
-> 그 심볼을 import 하는 파일에서 `db.add(`·`commit()` 여부.
+> 이 자리에 있던 손으로 쓴 소유권 표는 지웠다 — 문서 13곳에 흩어진 소유권 서술 중 16곳이 이미 틀려 있었다
+> (09-22 지도가 `naver-collect.py` 를 못 세어 "칸 분리" 라고 적었지만 실제로는 같은 칸 10개를 양쪽이 쓴다).
+> **표·칸 이름을 여기 다시 적지 않는다.** 설계 = `docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md`.
 
-| 소유 | 테이블 | 쓰기 |
-|------|--------|------|
-| **공용** | complexes | 양쪽 upsert (컬럼 분리: mibunyang→nearby_apartment_ids, naver-estate-web→cortar/detail) |
-| **공용** | articles | 양쪽 upsert |
-| **공용** | complex_price_history | 양쪽 upsert |
-| **공용 (컬럼 분리)** | **infra** | **양쪽 쓰기.** mibunyang = kakao 계열 17컬럼(8종×2 + `subway_dist`) + `updated_at` + **`air_station_name`·`air_station_dist`**(세션604부터 — `collect-air-quality.mjs --station-only`, 세션605부터 **매일** 05:30 로컬 러너, 2u 가 읽는 자리) / 자매 = `crime_*`·`childcare_*`·`emergency_*` (`env_crime.py`·`env_childcare.py`·`env_emergency.py` 가 `db.add(infra)`). `air_pm10/pm25/o3/grade/air_updated_at/air_attempted_at` 는 **쓰는 곳 없음**(2u `env_air.py` 폐지, 2u PR #675). ⚠️ 칸은 비어 있지 않다 — 2026-10-06 02:00 까지 2u 가 쓴 실시간 값(3,152행에 grade)이 **그대로 남아 있고 아무도 안 읽는다**. 칸 삭제 마이그는 후속(두 레포 모델·직렬화·스키마 동기화 시험 같이) |
-| **공용** | air_quality_stations | **쓰는 곳 없음**(2u `env_air.py` 폐지 세션604). mibunyang 은 안 건드린다 |
-| **mibunyang 쓰기 · 자매 읽기** | air_station_annual | 측정소별 3년 평균(연 1회 `air-annual-load.mjs`). **2u 백엔드가 단지 상세마다 `station_name` 으로 조회**(`backend/routers/mb.py` → `mb_air_annual.py`, 예외 격리 없음) — 표 이름·칸(`station_name·pm25·pm10·o3·years·updated_at`)을 바꾸거나 지우면 2u 모든 단지 상세가 500. 등급 경계(PM2.5 15/19 등)는 2u 에 복제돼 있다(`src/constants/scoringTiers.ts` 주석 참조) |
-| **mibunyang 쓰기 · 자매 읽기** | presale_schedule_official, applyhome_unit_supply | 아파트 청약 전용 — 자매는 V045(2026-08)부터 오피스텔을 아래 독립 표로 옮겨 이 두 표에 안 쓴다(세션603 확인: 자매 `V045__officetel_presale_own_table.sql`) |
-| **자매 쓰기 · mibunyang 안 씀** | rental_schedule_official, rental_unit_supply, officetel_presale_schedule, officetel_unit_supply | 자매 `service_applyhome_rental.py`(V041·V042)·`service_applyhome_officetel.py`(V045) 전용 독립 표 |
-| **mibunyang 쓰기 · 자매 읽기** | apartments, prices, unsold_history, schools, transport, builders, regions, trades, trade_stats | 쓰기는 mibunyang 만. **자매가 `mb_models.py` 로 읽으므로 컬럼 삭제·이름 변경 금지** |
-| **mibunyang 전용** | consults, site_feedback, api_quota_log, collector_runs, trade_deals, apartment_trade_links 등 | mibunyang만 |
-| **naver-estate-web 전용** | user_profiles, audit_logs, crawler_checkpoints, complex_pyeong_details, crawl_jobs, payments, billing_keys 등 | naver-estate-web만 |
-
-**읽기도 계약이다.** "자매가 안 쓰니 마음대로 바꿔도 된다" 가 성립하는 표는 마지막
-`mibunyang 전용` 줄뿐이다. 그 위 표들은 **컬럼을 지우거나 이름을 바꾸면 자매가 깨진다** —
-쓰기 주체가 우리뿐이어도 마찬가지다.
+- **무엇이 들었나**: 표마다 `owner`(mibunyang·2u·shared·orphan)·`readers`(그 표를 읽는 상대 레포) · 공유 표는 칸별
+  묶음(`columns.key`(열쇠 — 중립)·`mibunyang`·`2u`·`contested`·`orphan`·`clock`) · `writers` = 파일 → 표 → 지금 쓰는 칸(기준선) ·
+  `delete_allowed` · `known_conflicts`(C1~C5 — 알려진 충돌과 해소 트랙).
+- **읽는 법**: `node scripts/audit-shared-db-ownership.mjs --print <표>`(그 표 항목 + 쓰는 파일) 또는
+  `node -e "console.log(require('./supabase/ownership.json').tables['<표>'])"`. 2u 는 raw 주소로 읽는다(약 5분 캐시).
+- **바꾸는 법**: 정본을 고치는 PR → CI `shared DB ownership audit` 이 코드·새 마이그와 대조 → 합치면
+  `notify-sister.yml` 이 2u 에 통보 이슈(`cross-repo-notice`)를 자동으로 연다. 2u 가 자기 파일을 등록할 때도 이 레포에 PR.
+- **읽기도 계약이다.** `readers` 가 있는 표는 쓰기 주체가 우리뿐이어도 칸을 지우거나 이름을 바꾸면 상대가 깨진다 —
+  CI 감사 ④ 가 새 마이그의 `DROP COLUMN`·`RENAME`·`DROP TABLE` 을 막는다. 대시보드 손 DDL 은 감시 ⑲(월요일)가 잡는다.
 
 ### 컬럼명 정규화
 
@@ -160,9 +150,9 @@ DB는 naver-estate-web 기준 컬럼명으로 정규화됨:
 
 ## 마이그레이션 체크리스트
 
-⚠️ 대상은 위 소유권 표의 **`mibunyang 전용` 줄을 뺀 전부**다(세션556 정정). 옛 판은
-`complexes/articles/complex_price_history/trades` 4개만 적었지만, 자매는 `apartments`·
-`regions`·`infra`·`schools`·`transport` 등 **17개 표를 읽고 그중 여럿에 쓴다.**
+⚠️ 대상 = 정본 `supabase/ownership.json` 에서 `readers` 에 `2u` 가 있거나 `owner` 가 `shared`·`2u` 인 표 전부
+(`node scripts/audit-shared-db-ownership.mjs --print <표>` 로 확인 — 세션617). 옛 판들이 표 목록을 손으로 적었다가
+두 번 틀렸다(세션556·617).
 
 해당 테이블 변경 시:
 
@@ -231,7 +221,7 @@ CLI 가 없거나 사용자가 직접 적용할 때:
 
 mibunyang ↔ naver-estate-web 공유 instance `rwdtljipvmqpazrimyns`. 어느 프로젝트
 컨텍스트로 진입해도 동일 적용. 마이그 본문에 RLS/공용 테이블 영향 있으면 위 "공유 DB
-규칙" 절 사전 확인 의무. 공용 테이블(complexes/articles/complex_price_history) 의
+규칙" 절 사전 확인 의무. 공용 테이블(정본 `owner: shared` 중 2u 가 RLS 를 만든 표) 의
 RLS·정책은 **naver-estate-web 소유** (`V007`/`V001` 마이그) — mibunyang 에서 정책
 생성 금지.
 

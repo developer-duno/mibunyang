@@ -606,8 +606,6 @@ catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 │                                                              │
 │  complexes ──→ articles (매물, 소프트 삭제)       │
 │                  └──→ complex_price_history (시세 이력)         │
-│                                                              │
-│  nearby_apartment_ids (JSONB) ← apartments.id 참조           │
 ├──────────────────────────────────────────────────────────────┤
 │                    상담 신청 데이터                            │
 │                                                              │
