@@ -21,6 +21,8 @@ import { loadEnv, getSupabase, getMibuyangSupabase, log, logError, createSemapho
 import { fetchTradeDealsWindow } from "./_trade-deals.mjs";
 import { computeScopeStats, indexDeals, scopeColsEmpty } from "./_trade-scope.mjs";
 import { existsSync, writeFileSync } from "node:fs";
+// 대출 규정의 정본 = 화면과 같은 파일(세션619 PR-E). 복사하지 않는다 — Node 24 는 .ts 를 그대로 연다(형 지우기).
+import { calcLTV, zoneOf } from "../../src/constants/regulations.ts";
 
 // ── 세션590 새 칸 배선 도우미(보완 F3·F4·F11 — 시험이 직접 부른다) ──────────────
 /** 새 칸 13개(trade_stats `cmp_*`·`complex_*`·`dong_fact`). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
@@ -333,6 +335,56 @@ export function buildLatestPriceMap(rawPrices) {
   return latestPriceMap;
 }
 
+// ── DSR 40% 통과 여부 (세션619 PR-E) ─────────────────────────────
+// 대출액 = 화면과 같은 규정 `calcLTV(집값, zoneOf(단지), 시도)` — 비규제 70% · 규제 40%(15억 초과 4억 /
+// 25억 초과 2억 뚜껑) · 수도권 최대 6억. 옛 코드는 집값의 70% 고정이라 규제지역·수도권 한도를 몰랐다
+// (사장님 결정 2026-10-05 세션592 "규정대로 다시 계산"). 구역은 `zoneOf` 와 같은 순서 — DB `is_regulated`
+// 참/거짓이 먼저, 비면 이름 조회. 그대로 둔 가정: 금리 4% · 30년 원리금균등 · 연소득 = 집값 ÷ PIR · 기준 40%.
+/**
+ * @param {{ price: number | null | undefined, pir: number | null | undefined, is_regulated?: boolean | null, region?: string | null, gu?: string | null }} apt
+ * @returns {{ zone: string, loan: number | null, dsr40pass: boolean | null }}
+ */
+export function calcDsr40pass(apt) {
+  const zone = zoneOf({ isRegulated: apt.is_regulated ?? null, region: apt.region, gu: apt.gu });
+  const { price, pir } = apt;
+  if (pir == null || !(pir > 0) || price == null || !(price > 0)) return { zone, loan: null, dsr40pass: null };
+  const loan = calcLTV(price, zone, apt.region); // 만원
+  const monthlyRate = 0.04 / 12;
+  const months = 30 * 12;
+  const monthlyPayment = loan * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
+  const annualPayment = monthlyPayment * 12;
+  const annualIncome = price / pir;
+  const dsr = (annualPayment / annualIncome) * 100;
+  return { zone, loan, dsr40pass: dsr <= 40 };
+}
+
+/** DSR 전이 종류 — 지금 DB 값 → 새 값. 새 값이 null 이면 DB 값을 null 로 비운다(세션620 사장님 결정 · 원래 빈칸이던 곳은 안 씀). */
+export const DSR_TRANSITION_KINDS = Object.freeze(["true_to_false", "false_to_true", "null_to_value", "value_to_null", "same"]);
+
+/**
+ * @param {boolean | null | undefined} oldVal 지금 DB 값
+ * @param {boolean | null} newVal 새로 계산한 값
+ * @returns {"true_to_false" | "false_to_true" | "null_to_value" | "value_to_null" | "same"}
+ */
+export function dsrTransitionKind(oldVal, newVal) {
+  const o = oldVal ?? null;
+  if (o === newVal) return "same";
+  if (o === null) return "null_to_value";
+  if (newVal === null) return "value_to_null";
+  return o ? "true_to_false" : "false_to_true";
+}
+
+/**
+ * @param {Array<{ dsr_old: boolean | null | undefined, dsr_new: boolean | null }>} rows
+ * @returns {Record<string, number>}
+ */
+export function summarizeDsrTransitions(rows) {
+  /** @type {Record<string, number>} */
+  const counts = Object.fromEntries(DSR_TRANSITION_KINDS.map((k) => [k, 0]));
+  for (const r of rows) counts[dsrTransitionKind(r.dsr_old, r.dsr_new)]++;
+  return counts;
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   // 새 칸 검수 파일(세션590 — 메인 운영 반영 재료). 미리보기에서만, 있는 파일은 덮지 않는다(flag wx).
@@ -351,7 +403,8 @@ async function main() {
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
   const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
   const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades, scopeDeals, scopeLinks] = await Promise.all([
-    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate,completion,bjd_code", {}, sbMibunyang),
+    // is_regulated = DSR 대출액의 구역 · dsr40pass = 지금 DB 값(미리보기 전이 비교용, 세션619 PR-E)
+    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate,completion,bjd_code,is_regulated,dsr40pass", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at,house_type", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
@@ -492,6 +545,8 @@ async function main() {
   log("calc", "아파트별 거래 통계 계산...");
   const results = [];
   const dsrUpdates = [];
+  /** @type {Array<Record<string, any>>} DSR 전이 명단(요약·--out 에만 — 쓰기와 무관) */
+  const dsrRows = [];
   let processed = 0;
   /** @type {Map<string, { presale_n_if_moved_in: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
   const scopeDiagById = new Map();
@@ -614,17 +669,20 @@ async function main() {
     }
 
     // ── dsr40pass (DSR 40% 통과 여부) ──────────────────────────
-    // 70% LTV, 30년 원리금균등, 금리 4% 가정
-    let dsr40pass = null;
-    if (pir != null && pir > 0 && aptPrice != null && aptPrice > 0) {
-      const loanAmount = aptPrice * 0.7; // 만원
-      const monthlyRate = 0.04 / 12;
-      const months = 30 * 12;
-      const monthlyPayment = loanAmount * (monthlyRate * Math.pow(1 + monthlyRate, months)) / (Math.pow(1 + monthlyRate, months) - 1);
-      const annualPayment = monthlyPayment * 12;
-      const annualIncome = aptPrice / pir;
-      const dsr = (annualPayment / annualIncome) * 100;
-      dsr40pass = dsr <= 40;
+    // 대출액 = 화면과 같은 규정(calcDsr40pass 머리 주석) · 30년 원리금균등 · 금리 4%
+    const dsrCalc = calcDsr40pass({ price: aptPrice, pir, is_regulated: apt.is_regulated, region: apt.region, gu: apt.gu });
+    const dsr40pass = dsrCalc.dsr40pass;
+    dsrRows.push({
+      id: apt.id, name: apt.name ?? null, region: apt.region ?? null, gu: apt.gu ?? null, zone: dsrCalc.zone,
+      // 옛 대출액 = 세션619 전 식(집값 × 0.7 고정) — 비교용으로만
+      loan_old: dsrCalc.loan == null ? null : Math.round(aptPrice * 0.7), loan_new: dsrCalc.loan,
+      dsr_old: apt.dsr40pass ?? null, dsr_new: dsr40pass, kind: dsrTransitionKind(apt.dsr40pass, dsr40pass),
+    });
+    // 새 규정으로 계산 불가(빈칸)인데 DB 에 옛 값이 남아 있으면 null 로 비운다(사장님 결정 세션620 —
+    // 옛 70% 고정 값이 "DSR 통과만" 필터에 쓰이지 않게). 원래 빈칸이던 곳은 쓰지 않는다.
+    // 아래 skipStatRow(통계 전부 빈 행 건너뛰기)보다 앞 — 미리보기 명단(dsrRows)과 쓰기 명단이 같은 행을 보게(검사관 세션620).
+    if (dsr40pass != null || apt.dsr40pass != null) {
+      dsrUpdates.push({ id: apt.id, dsr40pass });
     }
 
     // ── 시세 배열 (DetailModal 시세 테이블용) ─────────────────────
@@ -718,10 +776,6 @@ async function main() {
     });
     if (scope) scopeDiagById.set(apt.id, scope.diag);
 
-    if (dsr40pass != null) {
-      dsrUpdates.push({ id: apt.id, dsr40pass });
-    }
-
     processed++;
     if (processed % 100 === 0) {
       log("calc", `${processed}/${apartments.length}건 처리...`);
@@ -745,7 +799,9 @@ async function main() {
   log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + (r.jeonse_rate ?? 0), 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
   log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + (r.cancel_ratio_6m ?? 0), 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
-  log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass).length}통과 / ${dsrUpdates.filter(d => !d.dsr40pass).length}미통과 (총 ${dsrUpdates.length}건)`);
+  log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass === true).length}통과 / ${dsrUpdates.filter(d => d.dsr40pass === false).length}미통과 / ${dsrUpdates.filter(d => d.dsr40pass === null).length}비움 (총 ${dsrUpdates.length}건)`);
+  const dsrCounts = summarizeDsrTransitions(/** @type {any} */ (dsrRows));
+  log("summary", `dsr40pass 전이(지금 DB → 새 값, ${dsrRows.length}곳): true→false ${dsrCounts.true_to_false} · false→true ${dsrCounts.false_to_true} · 빈칸→값 ${dsrCounts.null_to_value} · 값→빈칸 ${dsrCounts.value_to_null}(비움) · 그대로 ${dsrCounts.same}`);
 
   // 세션590 새 칸 요약(범위별 수 · ㎡당 · 같은 단지 전세가율 · 100% 초과 · 동네 사실 · 입주 후 분양권 진단)
   if (scopeSkipReason) {
@@ -780,8 +836,9 @@ async function main() {
       o.diag = scopeDiagById.get(r.apartment_id) ?? null;
       return o;
     });
-    writeFileSync(outPath, JSON.stringify({ takenAt: new Date().toISOString(), scopeSkipReason, rows }, null, 1) + "\n", { flag: "wx" });
-    log("dry-run", `새 칸 검수 파일 저장: ${outPath} (${rows.length}곳)`);
+    // dsr = DSR 전이 명단(세션619 PR-E) — 계산이 닿은 단지 전부(kind 로 거른다) + 종류별 개수
+    writeFileSync(outPath, JSON.stringify({ takenAt: new Date().toISOString(), scopeSkipReason, rows, dsr: { counts: dsrCounts, rows: dsrRows } }, null, 1) + "\n", { flag: "wx" });
+    log("dry-run", `새 칸 검수 파일 저장: ${outPath} (${rows.length}곳 · DSR 전이 명단 ${dsrRows.length}곳)`);
   }
 
   if (dryRun) {
