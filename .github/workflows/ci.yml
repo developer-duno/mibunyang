@@ -105,6 +105,11 @@ jobs:
       - name: Node ESM 사슬 import audit
         run: node --loader ./scripts/alias-loader.mjs scripts/audit-node-esm-chain.mjs
 
+      # 세션619: trade-stats 는 로더 없이 돈다(collect-trade-stats.yml) — 위 감사는 로더를 끼고 돌아
+      # src/constants/regulations.ts 를 확장자째 불러오는 그 경로를 못 지킨다. 로더 없이 한 번 불러 본다.
+      - name: trade-stats 로더 없는 import
+        run: node --input-type=module -e "await import('./scripts/collectors/trade-stats.mjs')"
+
       # 세션 551~552: .claude/rules/ 의 paths frontmatter 는 "그 파일을 읽을 때만" 규칙을 불러온다.
       # 패턴이 실제 파일에 0개 매칭이면 그 규칙은 영영 안 불려오는데, frontmatter 가 붙어 있으니
       # "on-demand 로 잘 되고 있다"고 오해하게 된다 = 조용한 무력화(세션551 에 실제 2건 발견).

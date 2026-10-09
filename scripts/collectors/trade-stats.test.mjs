@@ -560,3 +560,115 @@ describe("새 칸 배선 — 옛 칸이 전부 빈 행은 옛 칸 키 없이 따
     expect("nearby_median" in batches[1][0]).toBe(false);
   });
 });
+
+// ── 세션619 PR-E — DSR 대출액을 화면과 같은 규정(calcLTV·zoneOf)으로 ─────────────────
+// 사장님 결정 2026-10-05 세션592 "규정대로 다시 계산". 옛 식은 집값 × 0.7 고정이라 규제지역(40%·뚜껑)과
+// 수도권 6억 한도를 몰랐다. 값(만원)은 src/constants/regulations.ts 의 규정에서 손으로 계산했다.
+const { calcDsr40pass, dsrTransitionKind, summarizeDsrTransitions, DSR_TRANSITION_KINDS } = await import("./trade-stats.mjs");
+
+/** 30년 원리금균등 · 금리 4% — 연 상환액(만원). 시험 쪽 독립 계산(구현 식을 가져다 쓰지 않는다). */
+const annualPay = (/** @type {number} */ loan) => {
+  const r = 0.04 / 12;
+  const f = Math.pow(1 + r, 360);
+  return ((loan * r * f) / (f - 1)) * 12;
+};
+
+describe("calcDsr40pass — 대출액은 화면 규정과 같다 (세션619 PR-E)", () => {
+  it("비규제 지방 5억 → 70% = 3.5억", () => {
+    expect(calcDsr40pass({ price: 50000, pir: 10, is_regulated: false, region: "부산", gu: "해운대구" }).loan).toBe(35000);
+  });
+  it("비규제 경기 10억 → 70% = 7억이지만 수도권 6억 뚜껑", () => {
+    const r = calcDsr40pass({ price: 100000, pir: 10, is_regulated: false, region: "경기", gu: "평택시" });
+    expect(r.zone).toBe("normal");
+    expect(r.loan).toBe(60000);
+  });
+  it("규제 서울 20억 → 40% = 8억이 15억 초과 4억 뚜껑", () => {
+    const r = calcDsr40pass({ price: 200000, pir: 30, is_regulated: true, region: "서울", gu: "강남구" });
+    expect(r.zone).toBe("overheated");
+    expect(r.loan).toBe(40000);
+  });
+  it("지방 비규제 15억 → 한도 없이 70% = 10.5억", () => {
+    expect(calcDsr40pass({ price: 150000, pir: 10, is_regulated: false, region: "부산", gu: "해운대구" }).loan).toBe(105000);
+  });
+  it("규제 30억 → 25억 초과 2억 뚜껑", () => {
+    expect(calcDsr40pass({ price: 300000, pir: 30, is_regulated: true, region: "서울", gu: "강남구" }).loan).toBe(20000);
+  });
+  it("is_regulated 가 비면 이름으로 — 서울 강남구는 규제", () => {
+    const r = calcDsr40pass({ price: 200000, pir: 30, is_regulated: null, region: "서울", gu: "강남구" });
+    expect(r.zone).toBe("overheated");
+    expect(r.loan).toBe(40000);
+    // 칸이 아예 없어도(undefined) 같은 길
+    expect(calcDsr40pass({ price: 200000, pir: 30, region: "서울", gu: "강남구" }).zone).toBe("overheated");
+  });
+  it("is_regulated 가 참/거짓이면 이름보다 먼저 — 서울 강남구라도 false 면 비규제(70% → 수도권 6억)", () => {
+    const r = calcDsr40pass({ price: 200000, pir: 30, is_regulated: false, region: "서울", gu: "강남구" });
+    expect(r.zone).toBe("normal");
+    expect(r.loan).toBe(60000);
+  });
+  it("통과 판정 = (연 상환액 ÷ 연소득) ≤ 40% — 규제 서울 20억·PIR 30 은 이제 통과(옛 70% 식이면 미통과)", () => {
+    const r = calcDsr40pass({ price: 200000, pir: 30, is_regulated: true, region: "서울", gu: "강남구" });
+    const income = 200000 / 30;
+    expect((annualPay(40000) / income) * 100).toBeLessThan(40); // 새 대출액 4억 → 약 34%
+    expect((annualPay(200000 * 0.7) / income) * 100).toBeGreaterThan(40); // 옛 14억 → 약 120%
+    expect(r.dsr40pass).toBe(true);
+  });
+  it("지방 비규제 5억·PIR 10 — 3.5억 대출이면 약 40.1% 라 미통과(경계 바로 위)", () => {
+    const r = calcDsr40pass({ price: 50000, pir: 10, is_regulated: false, region: "부산", gu: "해운대구" });
+    expect((annualPay(35000) / 5000) * 100).toBeGreaterThan(40);
+    expect(r.dsr40pass).toBe(false);
+  });
+  it("PIR 이나 집값이 없으면 null(쓰지 않는다)", () => {
+    expect(calcDsr40pass({ price: 50000, pir: null, region: "부산", gu: "해운대구" })).toEqual({ zone: "normal", loan: null, dsr40pass: null });
+    expect(calcDsr40pass({ price: null, pir: 10, region: "부산", gu: "해운대구" }).dsr40pass).toBeNull();
+    expect(calcDsr40pass({ price: 0, pir: 10, region: "부산", gu: "해운대구" }).dsr40pass).toBeNull();
+    expect(calcDsr40pass({ price: 50000, pir: 0, region: "부산", gu: "해운대구" }).dsr40pass).toBeNull();
+  });
+});
+
+describe("DSR 전이 집계 — 미리보기 명단 (세션619 PR-E)", () => {
+  it("지금 DB 값 → 새 값을 다섯 종류로 가른다", () => {
+    expect(dsrTransitionKind(true, false)).toBe("true_to_false");
+    expect(dsrTransitionKind(false, true)).toBe("false_to_true");
+    expect(dsrTransitionKind(null, true)).toBe("null_to_value");
+    expect(dsrTransitionKind(undefined, false)).toBe("null_to_value");
+    expect(dsrTransitionKind(true, null)).toBe("value_to_null");
+    expect(dsrTransitionKind(true, true)).toBe("same");
+    expect(dsrTransitionKind(null, null)).toBe("same");
+    expect(dsrTransitionKind(undefined, null)).toBe("same");
+  });
+  it("개수 요약 — 종류마다 세고, 없는 종류는 0", () => {
+    const rows = [
+      { dsr_old: true, dsr_new: false },
+      { dsr_old: true, dsr_new: false },
+      { dsr_old: false, dsr_new: true },
+      { dsr_old: null, dsr_new: true },
+      { dsr_old: true, dsr_new: null },
+      { dsr_old: false, dsr_new: false },
+      { dsr_old: null, dsr_new: null },
+    ];
+    expect(summarizeDsrTransitions(rows)).toEqual({ true_to_false: 2, false_to_true: 1, null_to_value: 1, value_to_null: 1, same: 2 });
+    expect(summarizeDsrTransitions([])).toEqual(Object.fromEntries(DSR_TRANSITION_KINDS.map((k) => [k, 0])));
+  });
+
+  // main() 은 DB 를 통째로 읽어 단위로 못 돌린다 → 배선을 소스에서 본다(주석은 걷어낸다).
+  it("배선 — 조회 칸·계산 호출·--out 의 dsr 명단·쓰기 경로", () => {
+    const code = readFileSync(new URL("./trade-stats.mjs", import.meta.url), "utf8")
+      .split(/\r?\n/)
+      .map((l) => l.replace(/\/\/.*$/, ""))
+      .join("\n");
+    expect(code).toMatch(/fetchAll\("apartments", "[^"]*\bis_regulated\b[^"]*\bdsr40pass\b[^"]*"/);
+    expect(code).toMatch(/const\s+dsr40pass\s*=\s*dsrCalc\.dsr40pass\s*;/);
+    expect(code).toMatch(/calcDsr40pass\(\{\s*price:\s*aptPrice,\s*pir,\s*is_regulated:\s*apt\.is_regulated,\s*region:\s*apt\.region,\s*gu:\s*apt\.gu\s*\}\)/);
+    expect(code).toMatch(/dsr:\s*\{\s*counts:\s*dsrCounts,\s*rows:\s*dsrRows\s*\}/);
+    expect(code).toMatch(/from\("apartments"\)\.update\(\{\s*dsr40pass\s*\}\)\.eq\("id",\s*id\)/); // 쓰기 경로 그대로
+    // 새 값이 있거나, 새 값은 빈칸인데 DB 에 옛 값이 있으면 쓴다(= null 로 비움, 사장님 결정 세션620) · 원래 빈칸이던 곳은 안 쓴다
+    expect(code).toMatch(/if\s*\(\s*dsr40pass\s*!=\s*null\s*\|\|\s*apt\.dsr40pass\s*!=\s*null\s*\)\s*\{\s*dsrUpdates\.push\(\{\s*id:\s*apt\.id,\s*dsr40pass\s*\}\)/);
+    // 쓰기 명단은 skipStatRow 건너뛰기보다 앞에서 쌓는다 — 뒤면 통계가 빈 행(옹진 국민임대 2곳)이 미리보기엔 있고 쓰기엔 빠진다(검사관 세션620)
+    const pushAt = code.indexOf("dsrUpdates.push(");
+    const skipAt = code.search(/if\s*\(\s*skipStatRow\(/);
+    expect(pushAt).toBeGreaterThan(-1);
+    expect(skipAt).toBeGreaterThan(-1);
+    expect(pushAt).toBeLessThan(skipAt);
+    expect(code).not.toMatch(/loanAmount\s*=\s*aptPrice\s*\*\s*0\.7/); // 옛 고정 70% 식이 되살아나지 않는다
+  });
+});
