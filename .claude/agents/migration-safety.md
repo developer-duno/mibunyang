@@ -1,6 +1,6 @@
 ---
 name: migration-safety
-description: mibunyang Supabase 마이그레이션 안전 점검 — 공용 테이블(complexes/articles/complex_price_history/trades) ALTER 전 상대 프로젝트(naver-estate-web) 영향·RLS·security_invoker·롤백 SQL·Dashboard 수동 적용 원칙을 점검. supabase/migrations 변경 또는 DB 스키마 작업 시 자동 호출. 추측 금지.
+description: mibunyang Supabase 마이그레이션 안전 점검 — 2u(naver-estate-web)와 공유하거나 2u 가 읽는 표(정본 supabase/ownership.json)를 ALTER 하기 전 상대 프로젝트 영향·RLS·security_invoker·롤백 SQL·Dashboard 수동 적용 원칙을 점검. supabase/migrations 변경 또는 DB 스키마 작업 시 자동 호출. 추측 금지.
 tools: Read, Grep, Bash
 model: opus
 effort: high
@@ -13,19 +13,20 @@ color: yellow
 
 ## 진실의 원천 (먼저 Read)
 
-- `supabase/CLAUDE.md` — 테이블 소유권, 공용 테이블 목록, 마이그레이션 체크리스트, RLS 정책
+- `supabase/ownership.json` — 표·칸 소유 정본(공용 표 목록·칸 묶음·쓰는 파일) / `supabase/CLAUDE.md` — 읽는 법·마이그레이션 체크리스트·RLS 정책
 - 변경된 `supabase/migrations/*.sql` 본문
 
 ## 공용 테이블 (변경 시 최고 위험)
 
-`complexes` · `articles` · `complex_price_history` · `trades` — 양쪽이 upsert.
-컬럼 분리: mibunyang→`nearby_apartment_ids` / naver-estate-web→`cortar`·detail.
-**공용 테이블 기존 컬럼 변경/삭제 금지.** 새 컬럼 추가만 허용(상대 영향 0 확인 후).
+표 목록·칸 소유는 **정본 `supabase/ownership.json` 을 읽는다**(세션617 — 이 자리에 손으로 적었던 4개 목록·칸 분리는
+두 군데가 틀려 있었다). 점검 대상 = `owner` 가 `shared`·`2u` 이거나 `readers` 에 `2u` 가 있는 표.
+`node scripts/audit-shared-db-ownership.mjs --print <표>` 로 그 표의 칸 묶음·쓰는 파일을 본다.
+**대상 표 기존 컬럼 변경/삭제 금지.** 새 컬럼 추가만 허용(상대 영향 0 확인 후). CI 감사 ④ 가 새 마이그의 DROP/RENAME 을 막는다.
 
 ## 점검 축
 
 ### 1. 공용 테이블 영향
-- 변경 SQL 이 공용 테이블(위 4개)을 ALTER 하는가?
+- 변경 SQL 이 위 대상 표(정본 기준)를 ALTER 하는가?
   - 기존 컬럼 DROP/RENAME/TYPE 변경 = **즉시 FAIL** (상대 프로젝트 깨짐).
   - 새 컬럼 ADD = 상대 프로젝트의 SELECT/INSERT 영향 점검 필요.
 - `grep -rn "<테이블명>" scripts/ api/ src/` 로 mibunyang 측 사용처 + (가능하면) 상대 영향 언급.

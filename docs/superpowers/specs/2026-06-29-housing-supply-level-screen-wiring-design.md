@@ -47,7 +47,7 @@ API에서 `?? null`(점수 강제 안 함), 타입 `number | null`, fieldMeta "�
 - rollback 짝 파일: `20260629000001_rollback_*.sql`(직전 `20260627000000` 본문으로 되돌리는
   CREATE OR REPLACE — 기존 rollback 마이그 `20260627000001` 패턴 답습)
 - **적용**: supabase CLI `db query --file`(BEGIN;…ROLLBACK; 시뮬 1회 후) 또는 Dashboard 수동.
-  regions = mibunyang 전용 테이블이라 상대 프로젝트(naver-estate-web) 영향 0.
+  regions = mibunyang 전용 테이블이라 상대 프로젝트(naver-estate-web) 영향 0. (옛 기록 — 지금 소유권은 `supabase/ownership.json`)
 
 ### B. API 매핑 (`api/supabase/apartments.ts`)
 

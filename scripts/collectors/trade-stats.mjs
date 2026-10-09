@@ -1,4 +1,7 @@
 // @ts-check
+// ownership-guard: allow articles 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인 · 쓰기는 trade_stats)
+// ownership-guard: allow complexes 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인)
+// ownership-guard: allow complex_price_history 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인)
 /**
  * 거래 통계 산출 — PIR, 전세가율, 인근 시세 중위값 (PSR 은 세션609 라 부터 늘 null — PSR 축 삭제)
  *

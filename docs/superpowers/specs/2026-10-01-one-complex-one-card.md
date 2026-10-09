@@ -298,7 +298,7 @@
 | 세대수가 남의 단지 값 | 네이버 총세대수를 앞세움(D7) + 국토부 이름 맞추기 처방(§4-6) |
 | 미분양 이중 배분이 남음 | KOSIS 묶음 단위 배분을 같은 PR 묶음에 |
 | 끊으면 안 되는 연결을 끊음(§4-4) | 끊음 규칙을 보수적으로(애매하면 보류) · 명단 승인 · 도구 역계획 |
-| 공유 DB(2u) | `apartments`·`apartments_flat` 은 미분양 소유 · 칸 추가·VIEW 변경은 `migration-safety` 검토. **2u 는 VIEW 가 아니라 원본 표 `apartments` 를 직접 읽고 중복 제거도 따로 한다**(`D:/naver-estate-web/backend/db/mb_query_helpers.py:24-39` — 열쇠 = 끝 괄호 뗀 이름+시도+구, 최신 created_at). 그래서 조합은 2u 화면에 닿지 않고 같은 열쇠 규칙의 네 번째 사본이 된다 → 2u 에 인계(열쇠 칸을 읽게) · 10/01 의 34곳 끊기도 2u 분양 목록에 그대로 보인다 · `complexes.nearby_apartment_ids` 영향 확인 |
+| 공유 DB(2u) | `apartments`·`apartments_flat` 은 미분양 소유 · 칸 추가·VIEW 변경은 `migration-safety` 검토. **2u 는 VIEW 가 아니라 원본 표 `apartments` 를 직접 읽고 중복 제거도 따로 한다**(`D:/naver-estate-web/backend/db/mb_query_helpers.py:24-39` — 열쇠 = 끝 괄호 뗀 이름+시도+구, 최신 created_at). 그래서 조합은 2u 화면에 닿지 않고 같은 열쇠 규칙의 네 번째 사본이 된다 → 2u 에 인계(열쇠 칸을 읽게) · 10/01 의 34곳 끊기도 2u 분양 목록에 그대로 보인다 · `complexes.nearby_apartment_ids` 영향 확인(옛 기록 — 이 칸은 DB 에 없다 · 지금 소유권은 `supabase/ownership.json`) |
 
 ## 8. 검증 계획
 

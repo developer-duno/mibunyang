@@ -1,4 +1,6 @@
 // @ts-check
+// ownership-guard: allow complexes 읽기만(평면 추정 재료 공유 표는 select 만 — 세션617 fix1 grep 확인 · 쓰기는 apartments)
+// ownership-guard: allow articles 읽기만(평면 추정 재료 공유 표는 select 만 — 세션617 fix1 grep 확인)
 /**
  * 평면구조(layout) 추정기 — 면적 + 건물 특성 기반
  *

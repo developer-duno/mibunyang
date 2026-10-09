@@ -1,0 +1,52 @@
+name: Notify Sister Repo (shared DB)
+
+# 같은 Supabase DB 를 2u(naver-estate-web)와 같이 쓴다(세션617 · 설계서
+# docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md §3).
+# main 에 합쳐진 커밋이 공유 표·2u 가 읽는 표를 건드렸으면 **이 레포에** `cross-repo-notice` 라벨 이슈를
+# 하나 열고, 2u 세션 시작 훅이 그 이슈를 읽는다(닫음 = 읽음). 14일 넘게 안 닫힌 통보는
+# `stale-unread` 라벨을 붙여 닫는다. 판정은 scripts/notify-sister.mjs(정본 supabase/ownership.json 기준).
+# ⚠️ 사후 기록이다 — 공유 표 DDL 을 적용하기 **전**의 통보는 사람 쪽지로 한다.
+on:
+  push:
+    branches: [main]
+
+# 레포 기본 워크플로 권한이 read 라 이슈·라벨 쓰기를 명시한다(실측 2026-10-09).
+permissions:
+  issues: write
+  contents: read
+
+# concurrency 는 두지 않는다(fix1 🟠F) — 같은 그룹에서는 대기 중인 실행이 최대 1개라 연달아 합치면
+# 앞서 대기하던 실행이 취소돼 통보가 빠진다(docs.github.com "using concurrency"). 이슈 생성은 겹쳐 돌아도 안전하다.
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # 기본 비교 = HEAD~1(squash 합침 = PR 전체가 한 커밋)
+          fetch-depth: 2
+
+      # 한 번에 여러 커밋을 밀었으면 push 직전 커밋(github.event.before)과 비교한다 — 그 커밋만 얕게 받는다.
+      # 새 가지 첫 push(0 만 40자)거나 받기 실패면 scripts/notify-sister.mjs 가 HEAD~1 로 돌아간다.
+      - name: Fetch push base
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags --depth=1 origin "$BEFORE" || echo "before 커밋 받기 실패 — HEAD~1 로 비교"
+          fi
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # node 내장 모듈만 써서 npm ci 가 필요 없다.
+      - name: Notify 2u if shared DB changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          NOTIFY_BEFORE: ${{ github.event.before }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        run: node scripts/notify-sister.mjs

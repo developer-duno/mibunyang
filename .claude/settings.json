@@ -79,6 +79,16 @@
             "command": "pwd | grep -qi 'mibunyang' || echo '[hook] cwd가 mibunyang 아님 — 경로 확인' >&2"
           }
         ]
+      },
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "timeout": 10,
+            "command": "bash \"${CLAUDE_PROJECT_DIR}/.claude/hooks/sister-notices.sh\""
+          }
+        ]
       }
     ],
     "PostToolUse": [
