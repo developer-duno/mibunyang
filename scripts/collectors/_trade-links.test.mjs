@@ -18,6 +18,7 @@ import {
 } from "./_trade-links.mjs";
 import { stringSimilarity } from "./_shared.mjs";
 import { romanPhaseNumbers } from "./_match-gates.mjs";
+import { parseComplexExceptions, assignComplexKeys } from "./_same-complex.mjs";
 
 const DIR = path.join(path.dirname(fileURLToPath(import.meta.url)), "__fixtures__", "trade-links");
 const APTS = JSON.parse(readFileSync(path.join(DIR, "apartments.json"), "utf8")).rows;
@@ -805,5 +806,143 @@ describe("나) 후속 ⑤ 주소 동 이름 뒤 닫는 괄호도 경계(세션59
     expect(resolveDongName(apt({ id: "a", name: "x", address: "인천 계양구 계산동 1(작전동)", dong: "행정1동" }), dictWith(["계산동", "작전동"]))).toBe(null);
     expect(resolveDongName(apt({ id: "a", name: "x", address: "인천 계양구 계산동 1(작전동)", dong: "작전동" }), dictWith(["계산동", "작전동"])))
       .toEqual({ name: "작전동", via: "dong", sggs: ["41000"] });
+  });
+});
+
+describe("세션619 A1 폴백 · A2 — 법정동코드 동에 후보가 없거나 코드가 없는 단지(조사 세션598 원인 D·N)", () => {
+  const YEMIJI = "이천 중리지구 B3블록 금성백조 예미지";
+  /** 이천(41500): 증일동(umd_cd 10400 — 매매 행) · 중리동(umd_cd 10500 — 매매 행) + 분양권(umd_cd 없음). @param {any[]} rows */
+  const dictOf = (rows) => buildKeyDictionary(/** @type {any} */ ([
+    { trade_type: "sale", sgg_cd: "41500", umd_cd: "10400", umd_nm: "증일동", apt_seq: "Z0", apt_name: "증일주공", jibun: "10", jibun_main: "10", jibun_sub: "0", build_year: 1995 },
+    { trade_type: "sale", sgg_cd: "41500", umd_cd: "10500", umd_nm: "중리동", apt_seq: "J0", apt_name: "중리주공", jibun: "20", jibun_main: "20", jibun_sub: "0", build_year: 1995 },
+    ...rows,
+  ]));
+  /** @param {string} umd @param {string} name @param {string} jibun */
+  const pre = (umd, name, jibun) => ({ trade_type: "presale", sgg_cd: "41500", umd_cd: null, umd_nm: umd, apt_seq: null, apt_name: name, jibun, jibun_main: jibun, jibun_sub: "0", build_year: null });
+  /** 법정동코드는 증일동(4150010400) · 주소는 중리동 — 예미지 꼴. @param {any} [o] */
+  const ours = (o = {}) => apt({ id: "y", name: YEMIJI, gu: "이천시", bjd_code: "4150010400", address: "경기 이천시 중리동 518", dong: "중리동", lot_main: 518, completion: "202611", ...o });
+  const presaleKey = (/** @type {string} */ umd, /** @type {string} */ name, /** @type {string} */ jibun) => presaleKeyOf(/** @type {any} */ (pre(umd, name, jibun)));
+
+  it("A1 폴백 — ① 법정동코드 동(증일동)에 후보 0 → 주소 동(중리동)의 같은 이름 분양권에 name 으로 붙는다(dong_via address)", () => {
+    const d = dictOf([pre("중리동", YEMIJI, "518")]);
+    const m = matchApartment(ours(), d, { now: NOW });
+    expect(m.candidates.map((c) => [c.link_key, c.method])).toEqual([[presaleKey("중리동", YEMIJI, "518"), "name"]]);
+    expect(m.dongVia).toBe("address");
+    const r = planLinks([ours()], d, [], { now: NOW });
+    expect(r.desired.map((l) => [l.link_key, l.status, l.method])).toEqual([[presaleKey("중리동", YEMIJI, "518"), "active", "name"]]);
+  });
+
+  it("A1 폴백은 지번을 버린다 — 주소 동에 같은 지번 518 · 유사도 0.78(지번 경로면 0.6 통과) 후보는 안 붙음 + 사유에 'A1 폴백'", () => {
+    const ourName = "한빛마을센트럴자이", theirName = "한빛마을 센트럴 파크";
+    const sim = stringSimilarity(normLinkName(ourName), normLinkName(theirName));
+    expect(sim).toBeGreaterThanOrEqual(JIBUN_NAME_MIN);
+    expect(sim).toBeLessThan(NAME_ONLY_MIN);
+    const r = planLinks([ours({ name: ourName })], dictOf([pre("중리동", theirName, "518")]), [], { now: NOW });
+    expect(r.desired).toEqual([]);
+    expect(r.dropped.some((x) => x.apartment_id === "y" && x.key == null && /주소 동 중리동\(A1 폴백\)/.test(x.why))).toBe(true);
+  });
+
+  it("바꿔치기 회귀 — ① 동에 후보가 있으면 주소 동을 안 본다(신천역 한라비발디 꼴: 거래가 법정동코드 쪽 동에 있다)", () => {
+    const name = "신천역 한라비발디";
+    const o = ours({ name, address: "경기 이천시 중리동 77", lot_main: 10, completion: "202001" });
+    // 주소 동(중리동)에 거래가 없으면 — 바꿔치기는 이 줄을 지운다
+    const a = matchApartment(o, dictOf([{ trade_type: "sale", sgg_cd: "41500", umd_cd: "10400", umd_nm: "증일동", apt_seq: "Z2", apt_name: "신천역한라비발디", jibun: "10", jibun_main: "10", jibun_sub: "0", build_year: 2020 }]), { now: NOW });
+    expect(a.candidates.map((c) => c.link_key)).toEqual(["Z2"]);
+    expect(a.dongVia).toBe("umd_cd");
+    // 주소 동에도 같은 이름 열쇠가 있어도 — ① 후보가 있으니 덧붙이지 않는다(폴백은 후보 0 일 때만)
+    const b = matchApartment(o, dictOf([
+      { trade_type: "sale", sgg_cd: "41500", umd_cd: "10400", umd_nm: "증일동", apt_seq: "Z2", apt_name: "신천역한라비발디", jibun: "10", jibun_main: "10", jibun_sub: "0", build_year: 2020 },
+      { trade_type: "sale", sgg_cd: "41500", umd_cd: "10500", umd_nm: "중리동", apt_seq: "W9", apt_name: "신천역한라비발디", jibun: "77", jibun_main: "77", jibun_sub: "0", build_year: 2020 },
+    ]), { now: NOW });
+    expect(b.candidates.map((c) => c.link_key)).toEqual(["Z2"]);
+  });
+
+  it("바꿔치기 회귀 — 환호공원 2블록 꼴(① 동에 매매·분양권 두 열쇠)도 두 줄 그대로 · 주소 동 열쇠는 안 붙음", () => {
+    const name = "힐스테이트 환호공원 2블록";
+    const o = ours({ name, address: "경기 이천시 중리동 300", lot_main: 30, completion: "202501" });
+    const d = dictOf([
+      { trade_type: "sale", sgg_cd: "41500", umd_cd: "10400", umd_nm: "증일동", apt_seq: "H2", apt_name: name, jibun: "30", jibun_main: "30", jibun_sub: "0", build_year: 2025 },
+      pre("증일동", name, "30"),
+      pre("중리동", name, "300"),
+    ]);
+    const r = planLinks([o], d, [], { now: NOW });
+    expect(r.desired.map((l) => [l.link_key, l.status]).sort()).toEqual([["H2", "active"], [presaleKey("증일동", name, "30"), "active"]].sort());
+  });
+
+  it("A2 — 법정동코드가 없으면 region·gu 시군구(이천 41500)의 주소 동으로 이름 경로(지번 버림)", () => {
+    const d = dictOf([pre("중리동", YEMIJI, "518")]);
+    const m = matchApartment(ours({ bjd_code: null }), d, { now: NOW });
+    expect(m.candidates.map((c) => [c.link_key, c.method])).toEqual([[presaleKey("중리동", YEMIJI, "518"), "name"]]);
+    expect(m.dongVia).toBe("address");
+    // 지번 버림 — 같은 지번 · 유사도 0.78 은 안 붙고 사유에 (A2)
+    const r = planLinks([ours({ bjd_code: null, name: "한빛마을센트럴자이" })], dictOf([pre("중리동", "한빛마을 센트럴 파크", "518")]), [], { now: NOW });
+    expect(r.desired).toEqual([]);
+    expect(r.dropped.some((x) => x.apartment_id === "y" && x.key == null && /법정동코드 없음 → 시군구 41500\(A2\)/.test(x.why))).toBe(true);
+  });
+
+  it("A2 — 주소·dong 으로도 동을 못 얻으면 사다리 ④(시군구 안 정확한 이름) · 화성시는 새 4코드 거래를 본다", () => {
+    const d = dictOf([pre("중리동", YEMIJI, "518")]);
+    const m = matchApartment(ours({ bjd_code: null, address: "경기 이천시 어딘가로 1", dong: "행정1동" }), d, { now: NOW });
+    expect(m.candidates.map((c) => c.link_key)).toEqual([presaleKey("중리동", YEMIJI, "518")]);
+    expect(m.dongVia).toBe("sgg_name");
+    const hw = buildKeyDictionary(/** @type {any} */ ([{ trade_type: "jeonse", sgg_cd: "41597", umd_nm: "오산동", apt_seq: "H7", apt_name: "동탄 시험 리버뷰", jibun: "900", jibun_main: "900", jibun_sub: "0", build_year: 2020 }]));
+    const h = matchApartment(apt({ id: "h", name: "동탄 시험 리버뷰", gu: "화성시", bjd_code: null, address: "경기 화성시 오산동 900" }), hw, { now: NOW });
+    expect(h.candidates.map((c) => c.link_key)).toEqual(["H7"]);
+  });
+
+  it("A2 — region·gu 로도 시군구 코드를 못 얻으면 예전 그대로 '법정동코드 없음'", () => {
+    const m = matchApartment(ours({ bjd_code: null, region: "없는시도", gu: null }), dictOf([pre("중리동", YEMIJI, "518")]), { now: NOW });
+    expect(m).toEqual({ candidates: [], dropped: [{ apartment_id: "y", key: null, why: "법정동코드 없음" }] });
+  });
+
+  it("A2 — getLawdCd 가 남의 시도 구(전남+북구 → 부산 26320)나 시도 전체(경기 41000)를 주면 쓰지 않는다(세션621)", () => {
+    // 부산 북구(26320)에 같은 이름 매매가 있어도 — 전남 단지가 거기 붙으면 안 된다
+    const busan = buildKeyDictionary(/** @type {any} */ ([{ trade_type: "sale", sgg_cd: "26320", umd_nm: "화명동", apt_seq: "B1", apt_name: "화명 시험 리버뷰", jibun: "1", jibun_main: "1", jibun_sub: "0", build_year: 2020 }]));
+    const nb = matchApartment(apt({ id: "n", name: "화명 시험 리버뷰", region: "전남", gu: "북구", bjd_code: null, address: "전남 북구 화명동 1" }), busan, { now: NOW });
+    expect(nb).toEqual({ candidates: [], dropped: [{ apartment_id: "n", key: null, why: "법정동코드 없음" }] });
+    const whole = matchApartment(ours({ bjd_code: null, gu: null }), dictOf([pre("중리동", YEMIJI, "518")]), { now: NOW });
+    expect(whole).toEqual({ candidates: [], dropped: [{ apartment_id: "y", key: null, why: "법정동코드 없음" }] });
+    // 표에 없는 시도 + 남의 시도에 있는 구 이름(26320) — 표 없음 검사가 빠지면 Object.values(null) 로 계획 전체가 멈춘다
+    const noRegion = matchApartment(apt({ id: "z", name: "화명 시험 리버뷰", region: "없는시도", gu: "북구", bjd_code: null, address: "북구 화명동 1" }), busan, { now: NOW });
+    expect(noRegion).toEqual({ candidates: [], dropped: [{ apartment_id: "z", key: null, why: "법정동코드 없음" }] });
+  });
+
+  it("A2 — 접두 표와 구 코드가 다른 강원(42 → 51110)·전북(45 → 52111)도 시군구를 얻는다(앞 2자리 맞대기 금지 · 세션621)", () => {
+    const d = buildKeyDictionary(/** @type {any} */ ([
+      { trade_type: "sale", sgg_cd: "51110", umd_nm: "퇴계동", apt_seq: "G1", apt_name: "퇴계 시험 리버뷰", jibun: "1", jibun_main: "1", jibun_sub: "0", build_year: 2020 },
+      { trade_type: "sale", sgg_cd: "52111", umd_nm: "효자동", apt_seq: "J1", apt_name: "효자 시험 리버뷰", jibun: "1", jibun_main: "1", jibun_sub: "0", build_year: 2020 },
+    ]));
+    const g = matchApartment(apt({ id: "g", name: "퇴계 시험 리버뷰", region: "강원", gu: "춘천시", bjd_code: null, address: "강원 춘천시 퇴계동 1" }), d, { now: NOW });
+    expect(g.candidates.map((c) => c.link_key)).toEqual(["G1"]);
+    const j = matchApartment(apt({ id: "j", name: "효자 시험 리버뷰", region: "전북", gu: "전주시 완산구", bjd_code: null, address: "전북 전주시 완산구 효자동 1" }), d, { now: NOW });
+    expect(j.candidates.map((c) => c.link_key)).toEqual(["J1"]);
+  });
+
+  it("A1 폴백은 주소로 얻은 동일 때만 — 주소로는 못 얻고 dong 칸(중리동)으로만 얻은 다른 동이면 그쪽 이름을 보지 않는다(세션621)", () => {
+    const d = dictOf([pre("중리동", YEMIJI, "518")]);
+    const o = ours({ address: "경기 이천시 어딘가로 1", dong: "중리동" });
+    expect(resolveDongName(o, d, { skipUmdCd: true })).toMatchObject({ name: "중리동", via: "dong" }); // 전제 — 폴백 후보는 dong 경로
+    const m = matchApartment(o, d, { now: NOW });
+    expect(m.candidates).toEqual([]);
+    expect(m.dongVia).toBe("umd_cd");
+  });
+
+  it("예미지 열쇠 — 운영 예외 명단 always 한 줄로 두 행이 한 묶음(ap-6026986 의 열쇠 그대로) → 같은 분양권 열쇠가 형제 보류가 아니라 둘 다 active", () => {
+    const ex = parseComplexExceptions(JSON.parse(readFileSync(path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..", "docs", "audits", "same-complex-exceptions.json"), "utf8")));
+    const rows = [
+      ours({ id: "ah-2026910029", lat: 37.27, lng: 127.45 }),
+      apt({ id: "ap-6026986", name: "이천중리B3블록금성백조예미지", gu: "이천시", bjd_code: "4150010999", address: "경기 이천시 중리동 518", dong: "중리동", lot_main: 518, completion: "202611", lat: 37.2705, lng: 127.4505 }),
+    ];
+    const bare = assignComplexKeys(/** @type {any} */ (rows), {});
+    expect(bare.get("ah-2026910029")).not.toBe(bare.get("ap-6026986")); // 규칙만으로는 '지구' 한 낱말 차이로 갈라진다
+    const keyed = withComputedComplexKeys(rows, ex);
+    expect(keyed[0].complex_key).toBe(keyed[1].complex_key);
+    expect(keyed[1].complex_key).toBe(bare.get("ap-6026986")); // 이미 연결된 쪽 열쇠가 그대로(형제 쪽이 따라온다)
+    const d = dictOf([pre("중리동", YEMIJI, "518")]);
+    const key = presaleKey("중리동", YEMIJI, "518");
+    expect(planLinks(keyed, d, [], { now: NOW }).desired.filter((l) => l.link_key === key).map((l) => [l.apartment_id, l.status]))
+      .toEqual([["ah-2026910029", "active"], ["ap-6026986", "active"]]);
+    expect(planLinks(withComputedComplexKeys(rows, {}), d, [], { now: NOW }).desired.filter((l) => l.link_key === key).map((l) => l.status))
+      .toEqual(["hold", "hold"]); // 예외 없으면 형제 보류(세션598 흉내의 🟠)
   });
 });
