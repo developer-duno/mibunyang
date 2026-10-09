@@ -1,0 +1,43 @@
+name: Notify Sister Repo (shared DB)
+
+# 같은 Supabase DB 를 2u(naver-estate-web)와 같이 쓴다(세션617 · 설계서
+# docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md §3).
+# main 에 합쳐진 커밋이 공유 표·2u 가 읽는 표를 건드렸으면 **이 레포에** `cross-repo-notice` 라벨 이슈를
+# 하나 열고, 2u 세션 시작 훅이 그 이슈를 읽는다(닫음 = 읽음). 14일 넘게 안 닫힌 통보는
+# `stale-unread` 라벨을 붙여 닫는다. 판정은 scripts/notify-sister.mjs(정본 supabase/ownership.json 기준).
+# ⚠️ 사후 기록이다 — 공유 표 DDL 을 적용하기 **전**의 통보는 사람 쪽지로 한다.
+on:
+  push:
+    branches: [main]
+
+# 레포 기본 워크플로 권한이 read 라 이슈·라벨 쓰기를 명시한다(실측 2026-10-09).
+permissions:
+  issues: write
+  contents: read
+
+# 연달아 합쳐도 커밋마다 한 번씩 판정해야 하므로 취소하지 않는다.
+concurrency:
+  group: notify-sister
+  cancel-in-progress: false
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # HEAD~1 과 비교한다(squash 합침 = PR 전체가 한 커밋)
+          fetch-depth: 2
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      # node 내장 모듈만 써서 npm ci 가 필요 없다.
+      - name: Notify 2u if shared DB changed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
+        run: node scripts/notify-sister.mjs

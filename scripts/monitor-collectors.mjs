@@ -21,6 +21,7 @@
  *   GITHUB_REPOSITORY                     — "owner/repo" (Actions 기본 제공)
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
+import { readFileSync } from "node:fs";
 import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, HWASEONG_LAWD_CODES, parseSgisSidoMismatch, hasSgisFirstRunPending } from "./collectors/_shared.mjs";
 import { isMissingTable } from "./collectors/_trade-deals.mjs";
 import { isLeaseUnit } from "../src/constants/leaseTypes.mjs";
@@ -268,7 +269,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1901,6 +1902,84 @@ export async function fetchSgisMapLatestRun(sbArg) {
   return data ?? [];
 }
 
+// ── ⑲ 공유 DB 소유권 정본 대조 (세션617) ────────────────────────────────────
+/** ⑲ 정본 — 레포 뿌리의 supabase/ownership.json(Actions 는 checkout 이 있어 그대로 읽힌다). */
+const OWNERSHIP_REGISTRY_URL = new URL("../supabase/ownership.json", import.meta.url);
+
+/** @returns {any} */
+export function loadOwnershipRegistry() {
+  return JSON.parse(readFileSync(OWNERSHIP_REGISTRY_URL, "utf8"));
+}
+
+/**
+ * ⑲ 재료 — 공유 표마다 `select("*").limit(1)` 한 행의 키 = DB 의 칸 목록(PostgREST 는 빈 칸도 null 로 돌려준다).
+ * information_schema 는 PostgREST 로 못 읽고 칸 목록을 주는 RPC 도 없어(⑩ 의 두 RPC 는 권한만 준다)
+ * 이 읽기 경로를 쓴다 — 쓰기 0, 표마다 한 행. 표가 비면 null(판정 안 함).
+ * @param {string[]} tables
+ * @param {any} [sbArg]
+ * @returns {Promise<Record<string, string[] | null>>}
+ */
+export async function fetchSharedTableColumns(tables, sbArg) {
+  const sb = sbArg ?? getSupabase();
+  /** @type {Record<string, string[] | null>} */
+  const out = {};
+  for (const t of tables) {
+    const { data, error } = await sb.from(t).select("*").limit(1);
+    if (error) throw new Error(`${t} 칸 목록 조회 실패: ${error.message}`);
+    out[t] = data?.length ? Object.keys(data[0]) : null;
+  }
+  return out;
+}
+
+/**
+ * ⑲ 판정 — 공유(owner shared) 표의 정본 칸(모든 묶음 합) vs DB 칸.
+ * 정본에 없는 칸(대시보드에서 손으로 친 DDL 포함)·정본에 있는데 DB 에 없는 칸 → 표마다 이슈 1건.
+ * 마이그로 바뀐 칸은 CI ④ 가 합치기 전에 보지만, 손 DDL 은 이 점검만 잡는다(설계서 §1-2·§2-3).
+ * @param {any} registry
+ * @param {Record<string, string[] | null>} dbCols
+ * @returns {Issue[]}
+ */
+export function checkOwnershipColumns(registry, dbCols) {
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const [t, entry] of Object.entries(registry?.tables ?? {})) {
+    if (entry?.owner !== "shared") continue;
+    const db = dbCols[t];
+    if (!db) continue;
+    const reg = new Set(Object.values(entry.columns ?? {}).flat());
+    const dbSet = new Set(db);
+    const extra = db.filter((c) => !reg.has(c)).sort();
+    const missing = [...reg].filter((c) => !dbSet.has(c)).sort();
+    if (!extra.length && !missing.length) continue;
+    issues.push({
+      kind: "ownership-drift",
+      collector: "ownership",
+      detail: `${t}: 정본에 없는 칸 ${extra.length} · DB 에 없는 칸 ${missing.length}`,
+      lines: [
+        ...(extra.length ? [`정본에 없는 칸(누가 쓰는지 모름): ${extra.join(", ")}`] : []),
+        ...(missing.length ? [`정본엔 있는데 DB 에 없는 칸: ${missing.join(", ")}`] : []),
+      ],
+    });
+  }
+  return issues;
+}
+
+/**
+ * ⑲ 본체 — fail-open(조회 실패는 check-failed 1건). main 이 KST 월요일에 ⑱ 바로 뒤에서 부른다.
+ * @param {{ loadRegistry?: () => any, fetchColumns?: (tables: string[]) => Promise<Record<string, string[] | null>> }} [deps] 시험 주입용
+ * @returns {Promise<Issue[]>}
+ */
+export async function runOwnershipCheck(deps = {}) {
+  return runFailOpenCheck("⑲ 소유권 정본 대조", async () => {
+    const registry = (deps.loadRegistry ?? loadOwnershipRegistry)();
+    const shared = Object.keys(registry?.tables ?? {}).filter((t) => registry.tables[t]?.owner === "shared").sort();
+    const dbCols = await (deps.fetchColumns ?? ((/** @type {string[]} */ tables) => fetchSharedTableColumns(tables)))(shared);
+    const ownIssues = checkOwnershipColumns(registry, dbCols);
+    console.log(`[monitor] ⑲ 소유권 정본 대조: 공유 표 ${shared.length}개(${shared.join(",")}) → 이상 ${ownIssues.length}건`);
+    return ownIssues;
+  });
+}
+
 /**
  * ⑥ VIEW 회귀 — regions 원본엔 채워졌는데 apartments_flat VIEW 노출 컬럼은 NULL.
  *
@@ -3071,6 +3150,8 @@ export async function runFailOpenCheck(label, run) {
 
 /**
  * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614)을 돌려 이슈를 합친다.
+ * ⑲(소유권 정본 대조, 세션617)는 KST 월요일에만 돌아 이 열 밖 `runOwnershipCheck` 로 main 이 바로 뒤에 부른다
+ * (이 열에 넣으면 요일에 따라 이 열의 시험 결과가 달라진다).
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
  * @param {{
  *   fetchGuPairs?: () => ReturnType<typeof fetchGuPairStats>,
@@ -3925,10 +4006,17 @@ async function main() {
       return scopeIssues;
     }));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ⑲ 소유권 정본 대조(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
+
+    // ⑲ 공유 DB 소유권 정본 대조 — KST 월요일만(설계서 §1-2 "월요일 감시", 세션617). 공유 4표의 DB 칸 vs
+    //    supabase/ownership.json 칸. 마이그로 바뀐 칸은 CI 소유권 감사 ④ 가 합치기 전에 보고, 대시보드 손 DDL 은
+    //    이 점검만 잡는다. 수동 강제 = ⑩ 과 같은 입력(force_db_permission_audit). fail-open.
+    if (isKstMonday() || process.env.FORCE_DB_PERMISSION_AUDIT === "1") {
+      issues = issues.concat(await runOwnershipCheck());
+    }
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
     //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를
