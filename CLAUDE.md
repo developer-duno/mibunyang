@@ -27,7 +27,7 @@ npm run format            # prettier --write src/
 npm run format:check      # prettier --check src/ (CI 게이트, endOfLine auto 라 로컬 CRLF 도 통과)
 ```
 
-> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×12(env-key·monitor·collector·fill-matrix·orphan-collectors·hooks-wiring·declared-deps·playwright-cache·cron-concurrency·node-esm-chain·rules-paths·customer-facing-excuses) → test → build. 머지 전 전부 green 필수. ⚠️ 개수는 늘어난다 — 단정 전 `grep -oE 'scripts/audit-[a-z-]+\.mjs' .github/workflows/ci.yml | sort -u | wc -l` 로 실측(`node-esm-chain` 은 `--loader` 를 거쳐 실행돼 `run: node scripts/audit-` 만 세면 빠진다).
+> CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×13(env-key·monitor·collector·fill-matrix·orphan-collectors·hooks-wiring·declared-deps·playwright-cache·cron-concurrency·node-esm-chain·rules-paths·customer-facing-excuses·shared-db-ownership) → test → build. 머지 전 전부 green 필수. ⚠️ 개수는 늘어난다 — 단정 전 `grep -oE 'scripts/audit-[a-z-]+\.mjs' .github/workflows/ci.yml | sort -u | wc -l` 로 실측(`node-esm-chain` 은 `--loader` 를 거쳐 실행돼 `run: node scripts/audit-` 만 세면 빠진다).
 
 ## 아키텍처 개요
 
@@ -41,7 +41,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **상태/훅** | useMemo 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
 | **컴포넌트** | React.memo 다수 + icons.tsx (SVG) | 소비자/홈/섹션/상세/필터/관리자 그룹 — 섹션 KakaoMapView 점 보기 지도 + MapView 패스스루(네이버 세션 449 전면 제거[카카오 단일화]·GPS 내 동네), 상세 ProfileWeightBar, 홈 RecentlyViewedWidget, 전문가 그룹 세션 405 폐지. 정확한 개수·구성은 `src/components/CLAUDE.md` 참조 |
 | **API** | Vercel Serverless (25개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합). Redis 순단 fail-open 차등(login·subscribers만 fail-close, 세션 427) |
-| **DB** | Supabase PostgreSQL | **20+ 테이블**(옛 "15개" 박제는 세션 498 실측으로 stale 확인) + 2 VIEW + presale 19컬럼 |
+| **DB** | Supabase PostgreSQL | **표 55 + VIEW 2**(2u 와 공유 — 표·칸 소유 정본 = `supabase/ownership.json`, 세션617) + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지. 손님 마케팅 수신 동의·전화번호(선택, VITE_KAKAO_PHONE_SCOPE 토글) 수집 세션 427 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
 | **수집** | GitHub Actions (KOSIS·childcare 로컬 이전) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
@@ -76,7 +76,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
 | `.github/workflows/` | 워크플로우 목록, GitHub Secrets, 스케줄 |
-| `supabase/` | 테이블(20+) + 2 VIEW + presale 19컬럼, RLS 정책 |
+| `supabase/` | 표 55 + VIEW 2(소유 정본 `ownership.json`) + presale 19컬럼, RLS 정책 |
 
 ## `.claude/rules/` — 상시 14개 + on-demand 18개 색인 (세션551·568·571)
 

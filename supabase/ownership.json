@@ -1,0 +1,1565 @@
+{
+  "version": 1,
+  "updated": "2026-10-09",
+  "note": "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/probes/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
+  "repos": {
+    "mibunyang": "developer-duno/mibunyang",
+    "2u": "developer-duno/naver-estate-web"
+  },
+  "tables": {
+    "admin_settings": {
+      "owner": "2u",
+      "note": "쓰는 곳 0 — 2u 저장 라우트 삭제(2u backend/routers/admin/data.py:87), 표는 기록 보존용."
+    },
+    "agent_verifications": {
+      "owner": "2u"
+    },
+    "air_quality_stations": {
+      "owner": "orphan",
+      "note": "쓰는 곳 0 · 읽는 곳 0(2u 모델 AirQualityStation 은 정의만, import 0) — 고아 표 321행."
+    },
+    "air_station_annual": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "apartment_trade_links": {
+      "owner": "mibunyang",
+      "note": "미분양 소유(세션590) · Service write 만."
+    },
+    "apartments": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ],
+      "note": "미분양 단독 쓰기(수십 개 수집기 · 표가 넓어 칸 단위 생략). 2u 는 Apartment 모델 59칸을 읽는다(db_only 52칸은 2u 미사용). 새 칸 sgis_emd_cd·sgis_mapped_at = sgis-map-emd.mjs(화요일). FK 자식 10개 표가 ON DELETE CASCADE."
+    },
+    "api_quota_log": {
+      "owner": "mibunyang"
+    },
+    "applyhome_cancel_respl": {
+      "owner": "mibunyang",
+      "note": "미분양 소유(collect-applyhome-remndr) — 09-22 지도에서 빠져 있던 표."
+    },
+    "applyhome_events": {
+      "owner": "mibunyang"
+    },
+    "applyhome_unit_supply": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ],
+      "note": "2u V040 이 house_type 칸 추가(기본 'apt') — 지금 쓰는 곳 0. 미분양 쓰기 = collect-applyhome-detail + collect-applyhome-remndr(표 이름이 배열로 전달 — 09-22 지도 누락 원인)."
+    },
+    "article_price_history": {
+      "owner": "2u"
+    },
+    "articles": {
+      "owner": "shared",
+      "readers": [
+        "2u",
+        "mibunyang"
+      ],
+      "columns": {
+        "key": [
+          "article_no"
+        ],
+        "2u": [
+          "building_name",
+          "deal_or_warrant_prc",
+          "rent_prc",
+          "article_feature_desc",
+          "tags",
+          "realtor_name",
+          "article_confirm_ymd",
+          "latitude",
+          "longitude",
+          "complex_name",
+          "article_name",
+          "realtor_id",
+          "realtor_phone",
+          "is_verified",
+          "article_real_estate_type_name",
+          "is_presale",
+          "detail_description",
+          "room_count",
+          "bathroom_count",
+          "move_in_date",
+          "maintenance_cost",
+          "parking_count",
+          "photo_urls",
+          "representative_img_url",
+          "realtor_phone_display",
+          "realtor_address",
+          "heating_type",
+          "total_floor_count",
+          "jibun_address",
+          "use_approve_ymd",
+          "acquisition_tax",
+          "broker_fee",
+          "numeric_maintenance_cost",
+          "previous_price",
+          "price_changed_at",
+          "detail_crawled",
+          "first_seen_at",
+          "created_at",
+          "updated_at",
+          "floor_number",
+          "price_change_state",
+          "article_status",
+          "same_addr_cnt",
+          "same_addr_min_prc",
+          "same_addr_max_prc",
+          "verification_type_code",
+          "is_direct_trade",
+          "cp_name",
+          "site_image_count",
+          "same_addr_premium_min",
+          "same_addr_premium_max",
+          "premium_prc",
+          "walking_time_to_subway",
+          "isale_right_type_name",
+          "detail_status_code",
+          "trade_complete",
+          "detail_fail_count"
+        ],
+        "contested": [
+          "complex_no",
+          "trade_type_name",
+          "floor_info",
+          "area1_m2",
+          "area2_m2",
+          "direction",
+          "numeric_price",
+          "numeric_rent_price",
+          "price_per_pyeong",
+          "last_seen_at",
+          "is_active"
+        ]
+      },
+      "note": "양쪽이 같은 12칸을 쓴다. 행 수명 규칙이 다르다 — 미분양은 안 보이면 is_active=false(소프트), 2u 는 delete_missing_articles 로 물리 삭제. 미분양 행은 deal_or_warrant_prc(문자) 없이 numeric_price 만(770,593행이 이 모양 — 출처 추정). updated_at 은 2u ORM onupdate 만 올린다.",
+      "row_lifecycle": {
+        "mibunyang": "is_active=false",
+        "2u": "delete"
+      }
+    },
+    "audit_logs": {
+      "owner": "2u"
+    },
+    "billing_keys": {
+      "owner": "2u"
+    },
+    "builders": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "collector_runs": {
+      "owner": "mibunyang"
+    },
+    "complex_links": {
+      "owner": "mibunyang",
+      "absent": true,
+      "note": "DB 에 없음(설계상 부재)."
+    },
+    "complex_official_prices": {
+      "owner": "2u"
+    },
+    "complex_price_history": {
+      "owner": "shared",
+      "readers": [
+        "2u",
+        "mibunyang"
+      ],
+      "columns": {
+        "key": [
+          "complex_no",
+          "trade_type",
+          "area_no",
+          "base_month"
+        ],
+        "2u": [
+          "recorded_at"
+        ],
+        "contested": [
+          "price_upper",
+          "price_lower",
+          "price_avg"
+        ],
+        "clock": [
+          "id"
+        ]
+      },
+      "note": "같은 열쇠(complex_no,trade_type,area_no,base_month)로 양쪽 upsert. 2u 는 area_no 없으면 '' 로, 미분양은 None 그대로(실측: NULL 0행 · '' 243,472행 · 열쇠 중복 0). recorded_at 은 2u 만 갱신. 2u 공공 실거래 경로(service_public)도 같은 표에 A1·area_no='' 로 쓴다.",
+      "sources": {
+        "2u-public": "base_month 6자리 · area_no=''",
+        "naver": "base_month 8자리"
+      }
+    },
+    "complex_pyeong_details": {
+      "owner": "2u"
+    },
+    "complexes": {
+      "owner": "shared",
+      "readers": [
+        "2u",
+        "mibunyang"
+      ],
+      "columns": {
+        "key": [
+          "complex_no"
+        ],
+        "mibunyang": [
+          "corridor_type"
+        ],
+        "2u": [
+          "cortar_no",
+          "real_estate_type_name",
+          "high_floor",
+          "low_floor",
+          "total_dong_count",
+          "min_supply_area_m2",
+          "max_supply_area_m2",
+          "cortar_address",
+          "sido",
+          "sigungu",
+          "dong",
+          "total_parking_count",
+          "floor_area_ratio",
+          "building_coverage_ratio",
+          "detail_crawled_at",
+          "address",
+          "road_address",
+          "parking_count_by_household",
+          "management_office_tel",
+          "nearby_median_price",
+          "jeonse_rate",
+          "recent_trades_6m",
+          "updated_at",
+          "public_data_attempted_at",
+          "articles_crawled_at",
+          "last_viewed_at",
+          "sgis_emd_cd",
+          "sgis_mapped_at"
+        ],
+        "contested": [
+          "complex_name",
+          "real_estate_type_code",
+          "latitude",
+          "longitude",
+          "total_household_count",
+          "use_approve_ymd",
+          "last_crawled_at",
+          "heat_method_type",
+          "construction_company",
+          "heat_fuel_type"
+        ],
+        "orphan": [
+          "has_pool",
+          "heat_fuel",
+          "earthquake_design",
+          "entrance_type",
+          "heat_method"
+        ],
+        "clock": [
+          "created_at"
+        ]
+      },
+      "note": "같은 칸을 양쪽이 쓴다(complex_name·좌표·세대수·준공·last_crawled_at·construction_company·heat_*_type). 미분양 naver-collect.py 는 단지 메타 upsert + 상세 3칸 UPDATE. 2u 모델에 sgis_emd_cd·sgis_mapped_at 없음(raw SQL 로만 씀). heat_fuel·heat_method·earthquake_design·entrance_type·corridor_type·has_pool = 66,287행 전부 비어 있음(쓰는 곳 0 또는 원천 미제공). 옛 문서의 nearby_apartment_ids 칸은 DB 에 없다. — contested = C1(등재만, 해소는 별도 트랙). complex_no(열쇠)는 2u 칸으로 분류."
+    },
+    "consults": {
+      "owner": "mibunyang"
+    },
+    "crawl_jobs": {
+      "owner": "2u"
+    },
+    "crawler_checkpoints": {
+      "owner": "2u"
+    },
+    "dev_plans": {
+      "owner": "mibunyang"
+    },
+    "infra": {
+      "owner": "shared",
+      "readers": [
+        "2u",
+        "mibunyang"
+      ],
+      "columns": {
+        "key": [
+          "apartment_id"
+        ],
+        "mibunyang": [
+          "hospital",
+          "hospital_dist",
+          "mart",
+          "mart_dist",
+          "conv",
+          "conv_dist",
+          "cafe",
+          "cafe_dist",
+          "culture",
+          "culture_dist",
+          "bank",
+          "bank_dist",
+          "pharmacy",
+          "pharmacy_dist",
+          "park",
+          "park_dist",
+          "subway_dist",
+          "air_station_name",
+          "air_station_dist",
+          "childcare",
+          "childcare_dist",
+          "emergency",
+          "emergency_dist",
+          "police",
+          "police_dist",
+          "emergency_name",
+          "emergency_type"
+        ],
+        "2u": [
+          "emergency_hospital",
+          "emergency_hospital_dist",
+          "emergency_beds",
+          "emergency_level",
+          "childcare_count",
+          "childcare_nearest_dist",
+          "childcare_nearest_name",
+          "childcare_nearest_capacity",
+          "crime_score",
+          "crime_grade",
+          "crime_updated_at",
+          "childcare_nearest_type",
+          "childcare_nearest_teachers",
+          "childcare_updated_at",
+          "emergency_updated_at"
+        ],
+        "orphan": [
+          "nearby_facilities",
+          "air_pm10",
+          "air_pm25",
+          "air_o3",
+          "air_grade",
+          "air_updated_at",
+          "air_attempted_at"
+        ],
+        "clock": [
+          "updated_at"
+        ]
+      },
+      "note": "칸은 대체로 나뉘었지만 ① updated_at 공유 시계(트리거가 모든 UPDATE 에 now) ② 행 생성은 양쪽(미분양 upsert · 2u Infra(apartment_id) db.add) ③ 미분양 fix-sosa-coordinates.mjs:73 은 infra 행을 통째 삭제(2u 칸 포함) ④ apartments 삭제 시 ON DELETE CASCADE. air_pm10/pm25/o3/grade/air_updated_at/air_attempted_at·nearby_facilities 는 쓰는 곳 0. — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3).",
+      "row_create": [
+        "mibunyang",
+        "2u"
+      ],
+      "fk_cascade_from": "apartments"
+    },
+    "kapt_complex_map": {
+      "owner": "2u"
+    },
+    "kapt_management_costs": {
+      "owner": "2u"
+    },
+    "market_stats_history": {
+      "owner": "mibunyang"
+    },
+    "monitor_alert_state": {
+      "owner": "mibunyang"
+    },
+    "monitor_alerts": {
+      "owner": "2u"
+    },
+    "monitor_daily_snapshot": {
+      "owner": "mibunyang"
+    },
+    "naver_api_call_counts": {
+      "owner": "2u"
+    },
+    "notification_logs": {
+      "owner": "mibunyang",
+      "absent": true,
+      "note": "DB 에 없음 — notify-subscribers.mjs:413 이 매주 upsert 를 시도(생성 대기)."
+    },
+    "officetel_presale_schedule": {
+      "owner": "2u"
+    },
+    "officetel_unit_supply": {
+      "owner": "2u"
+    },
+    "payments": {
+      "owner": "2u"
+    },
+    "permission_baseline": {
+      "owner": "mibunyang"
+    },
+    "permission_baseline_item": {
+      "owner": "mibunyang"
+    },
+    "presale_schedule_official": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ],
+      "note": "2u V040·V043 이 이 표에 house_type(기본 'apt')·house_nm 칸을 더했지만 지금 쓰는 곳 0(V045 로 오피스텔 분리)."
+    },
+    "prices": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "rate_limit_counters": {
+      "owner": "2u"
+    },
+    "regions": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ],
+      "note": "2u env_crime.py 는 regions 를 읽기만 한다(스캐너가 regions.crime_grade 쓰기로 오탐 — 실제는 infra.crime_grade)."
+    },
+    "rental_schedule_official": {
+      "owner": "2u"
+    },
+    "rental_unit_supply": {
+      "owner": "2u"
+    },
+    "schools": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "sgis_area_stats": {
+      "owner": "2u",
+      "note": "2u 소유(V071, 2026-10-08) · load_sgis_stats.py 적재 + map_complex_sgis.py 가 adm_nm 행 upsert. 미분양은 아직 안 읽음(계획만). RLS 켬·정책 0·service_role 만."
+    },
+    "site_feedback": {
+      "owner": "mibunyang"
+    },
+    "site_opinions": {
+      "owner": "2u",
+      "note": "2u 소유(V069·V070) · RLS 켬·정책 0·service_role 만. 미분양 site_feedback 과 별개 표."
+    },
+    "subscribers": {
+      "owner": "mibunyang"
+    },
+    "subway_stations": {
+      "owner": "2u"
+    },
+    "trade_deals": {
+      "owner": "mibunyang",
+      "note": "미분양 소유(세션589) · 2u 영향 0 · Service write 만."
+    },
+    "trade_stats": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "trades": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "transport": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "unsold_history": {
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ]
+    },
+    "user_profiles": {
+      "owner": "2u"
+    }
+  },
+  "views": {
+    "apartments_flat": {
+      "owner": "mibunyang",
+      "reads_from": [
+        "apartments",
+        "prices",
+        "regions",
+        "infra",
+        "schools",
+        "transport",
+        "builders",
+        "trade_stats",
+        "applyhome_events",
+        "presale_schedule_official"
+      ],
+      "note": "읽는 곳은 미분양뿐(2u 레포 전체 grep 0건 · 세션617). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261007000000_view_add_trade_scope.sql"
+    },
+    "api_quota_daily": {
+      "owner": "mibunyang",
+      "reads_from": [
+        "api_quota_log"
+      ],
+      "note": "정의 = supabase/migrations/20260329100000_api_quota_log.sql"
+    }
+  },
+  "writers": {
+    "mibunyang": {
+      "api/consults.ts": {
+        "consults": [
+          "*"
+        ]
+      },
+      "api/feedback.ts": {
+        "site_feedback": [
+          "*"
+        ]
+      },
+      "api/subscribers.ts": {
+        "subscribers": [
+          "*"
+        ]
+      },
+      "scripts/backfill-completion-from-movein.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/backfill-exclusive-ratio.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/backfill-presale-area-applyhome.mjs": {
+        "prices": [
+          "*"
+        ]
+      },
+      "scripts/backfill-presale-area-notices.mjs": {
+        "prices": [
+          "*"
+        ]
+      },
+      "scripts/backfill-presale-area.mjs": {
+        "prices": [
+          "*"
+        ]
+      },
+      "scripts/backfill-presale-prices.mjs": {
+        "prices": [
+          "*"
+        ]
+      },
+      "scripts/backfill-unsold-source.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/cleanup-energy-grade.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/cleanup-listing-based-unsold.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/cleanup-presale-links.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "prices": [
+          "*"
+        ]
+      },
+      "scripts/cleanup-unsold-by-ids.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/cleanup-unsold-history-by-ids.mjs": {
+        "unsold_history": [
+          "*"
+        ]
+      },
+      "scripts/collectors/_shared.mjs": {
+        "api_quota_log": [
+          "*"
+        ],
+        "collector_runs": [
+          "*"
+        ]
+      },
+      "scripts/collectors/_trade-deals.mjs": {
+        "trade_deals": [
+          "*"
+        ]
+      },
+      "scripts/collectors/air-annual-attach.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/air-annual-load.mjs": {
+        "air_station_annual": [
+          "*"
+        ]
+      },
+      "scripts/collectors/assign-complex-keys.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/assign-trade-links.mjs": {
+        "apartment_trade_links": [
+          "*"
+        ]
+      },
+      "scripts/collectors/calc-exclusive-ratio.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/calc-floors.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/calc-layout.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/calc-school-walk.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/childcare-detail.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/childcare-info-jeju.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/childcare-info.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-air-quality.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "infra": [
+          "air_station_dist",
+          "air_station_name",
+          "apartment_id"
+        ]
+      },
+      "scripts/collectors/collect-applyhome-detail.mjs": {
+        "applyhome_unit_supply": [
+          "*"
+        ],
+        "presale_schedule_official": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-applyhome-remndr.mjs": {
+        "applyhome_cancel_respl": [
+          "*"
+        ],
+        "applyhome_unit_supply": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-applyhome-seed.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-applyhome.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "applyhome_events": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-avg-income.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-building-hub.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-childcare.mjs": {
+        "infra": [
+          "apartment_id",
+          "childcare",
+          "childcare_dist",
+          "updated_at"
+        ]
+      },
+      "scripts/collectors/collect-crime-safety.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-emergency.mjs": {
+        "infra": [
+          "apartment_id",
+          "emergency",
+          "emergency_dist",
+          "emergency_name",
+          "emergency_type",
+          "updated_at"
+        ]
+      },
+      "scripts/collectors/collect-fertility-rate.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-housing-price.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-housing-supply-ratio.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-jeonse-price-index.mjs": {
+        "market_stats_history": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-maintenance.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-market-stats.mjs": {
+        "market_stats_history": [
+          "*"
+        ],
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-medical-access.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-nearby-childcare.mjs": {
+        "schools": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-police.mjs": {
+        "infra": [
+          "apartment_id",
+          "police",
+          "police_dist",
+          "updated_at"
+        ]
+      },
+      "scripts/collectors/collect-regional-economy.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-sale-price-index.mjs": {
+        "market_stats_history": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-trades.mjs": {
+        "trades": [
+          "*"
+        ]
+      },
+      "scripts/collectors/collect-unsold-kosis.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "regions": [
+          "*"
+        ],
+        "unsold_history": [
+          "*"
+        ]
+      },
+      "scripts/collectors/dart-builders.mjs": {
+        "builders": [
+          "*"
+        ]
+      },
+      "scripts/collectors/environment.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/flag-shared-coords.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/geocode-missing.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/housing-permits.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/industry-match.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/infra-kakao.mjs": {
+        "infra": [
+          "apartment_id",
+          "bank",
+          "bank_dist",
+          "cafe",
+          "cafe_dist",
+          "conv",
+          "conv_dist",
+          "culture",
+          "culture_dist",
+          "hospital",
+          "hospital_dist",
+          "mart",
+          "mart_dist",
+          "park",
+          "park_dist",
+          "pharmacy",
+          "pharmacy_dist",
+          "subway_dist",
+          "updated_at"
+        ]
+      },
+      "scripts/collectors/lhzone-status.mjs": {
+        "dev_plans": [
+          "*"
+        ]
+      },
+      "scripts/collectors/migration.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/molit-building-info.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/molit-units.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/naver-collect.py": {
+        "articles": [
+          "area1_m2",
+          "area2_m2",
+          "article_no",
+          "complex_no",
+          "direction",
+          "floor_info",
+          "is_active",
+          "last_seen_at",
+          "numeric_price",
+          "numeric_rent_price",
+          "price_per_pyeong",
+          "trade_type_name"
+        ],
+        "collector_runs": [
+          "*"
+        ],
+        "complex_price_history": [
+          "area_no",
+          "base_month",
+          "complex_no",
+          "price_avg",
+          "price_lower",
+          "price_upper",
+          "trade_type"
+        ],
+        "complexes": [
+          "complex_name",
+          "complex_no",
+          "construction_company",
+          "corridor_type",
+          "heat_fuel_type",
+          "heat_method_type",
+          "last_crawled_at",
+          "latitude",
+          "longitude",
+          "real_estate_type_code",
+          "total_household_count",
+          "use_approve_ymd"
+        ]
+      },
+      "scripts/collectors/naver-devplan.mjs": {
+        "dev_plans": [
+          "*"
+        ]
+      },
+      "scripts/collectors/naver-listings.mjs": {
+        "articles": [
+          "area1_m2",
+          "area2_m2",
+          "article_confirm_ymd",
+          "article_no",
+          "bathroom_count",
+          "building_name",
+          "complex_no",
+          "direction",
+          "floor_info",
+          "heating_type",
+          "is_active",
+          "is_presale",
+          "is_verified",
+          "last_seen_at",
+          "move_in_date",
+          "numeric_maintenance_cost",
+          "numeric_price",
+          "numeric_rent_price",
+          "price_per_pyeong",
+          "room_count",
+          "trade_type_name",
+          "use_approve_ymd"
+        ],
+        "complexes": [
+          "complex_name",
+          "complex_no",
+          "construction_company",
+          "floor_area_ratio",
+          "has_pool",
+          "high_floor",
+          "last_crawled_at",
+          "latitude",
+          "longitude",
+          "low_floor",
+          "max_supply_area_m2",
+          "min_supply_area_m2",
+          "real_estate_type_code",
+          "total_household_count",
+          "total_parking_count",
+          "use_approve_ymd"
+        ]
+      },
+      "scripts/collectors/naver-presale.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "prices": [
+          "*"
+        ]
+      },
+      "scripts/collectors/noise-estimate.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/noxious.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/population-sex-age.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/population.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/regulation-seed.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/reverse-geocode.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/schools-neis.mjs": {
+        "schools": [
+          "*"
+        ]
+      },
+      "scripts/collectors/sgis-map-emd.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/sync-naver-complex.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/trade-stats-regions.mjs": {
+        "regions": [
+          "*"
+        ]
+      },
+      "scripts/collectors/trade-stats.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "trade_stats": [
+          "*"
+        ]
+      },
+      "scripts/collectors/transit-match.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/collectors/transport-tago.mjs": {
+        "infra": [
+          "apartment_id",
+          "subway_dist",
+          "updated_at"
+        ],
+        "transport": [
+          "*"
+        ]
+      },
+      "scripts/compute-scores.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/dedupe-trades-buckets.mjs": {
+        "trades": [
+          "*"
+        ]
+      },
+      "scripts/fix-exclusive-ratio-outliers.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/fix-orphan-trade-regions.mjs": {
+        "trades": [
+          "*"
+        ]
+      },
+      "scripts/fix-placeholder-addresses.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "infra": [
+          "updated_at"
+        ]
+      },
+      "scripts/fix-sosa-coordinates.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "infra": [
+          "apartment_id",
+          "bank",
+          "bank_dist",
+          "cafe",
+          "cafe_dist",
+          "conv",
+          "conv_dist",
+          "culture",
+          "culture_dist",
+          "hospital",
+          "hospital_dist",
+          "mart",
+          "mart_dist",
+          "park",
+          "park_dist",
+          "pharmacy",
+          "pharmacy_dist",
+          "subway_dist",
+          "updated_at"
+        ]
+      },
+      "scripts/fix-sosa-derived-restore.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "infra": [
+          "updated_at"
+        ]
+      },
+      "scripts/fix_hwaseong_gu.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/migrate-to-supabase.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "builders": [
+          "*"
+        ],
+        "infra": [
+          "apartment_id",
+          "bank",
+          "bank_dist",
+          "cafe",
+          "cafe_dist",
+          "conv",
+          "conv_dist",
+          "culture",
+          "culture_dist",
+          "hospital",
+          "hospital_dist",
+          "mart",
+          "mart_dist",
+          "nearby_facilities",
+          "park",
+          "park_dist",
+          "pharmacy",
+          "pharmacy_dist",
+          "subway_dist"
+        ],
+        "prices": [
+          "*"
+        ],
+        "regions": [
+          "*"
+        ],
+        "schools": [
+          "*"
+        ],
+        "trade_stats": [
+          "*"
+        ],
+        "transport": [
+          "*"
+        ]
+      },
+      "scripts/monitor-collectors.mjs": {
+        "monitor_alert_state": [
+          "*"
+        ],
+        "monitor_daily_snapshot": [
+          "*"
+        ]
+      },
+      "scripts/notify-subscribers.mjs": {
+        "notification_logs": [
+          "*"
+        ],
+        "subscribers": [
+          "*"
+        ]
+      },
+      "scripts/perm-baseline.mjs": {
+        "permission_baseline": [
+          "*"
+        ],
+        "permission_baseline_item": [
+          "*"
+        ]
+      },
+      "scripts/refresh-infra-monthly-one.mjs": {
+        "infra": [
+          "police_dist",
+          "updated_at"
+        ]
+      },
+      "scripts/refresh-noxious-one.mjs": {
+        "apartments": [
+          "*"
+        ]
+      },
+      "scripts/remap-incheon-2026.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "trades": [
+          "*"
+        ]
+      },
+      "scripts/remap-jeonnam-gwangju-codes.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "trades": [
+          "*"
+        ]
+      },
+      "scripts/seed-from-json.mjs": {
+        "apartments": [
+          "*"
+        ],
+        "infra": [
+          "apartment_id",
+          "bank",
+          "cafe",
+          "conv",
+          "culture",
+          "hospital",
+          "mart",
+          "park",
+          "pharmacy",
+          "subway_dist",
+          "updated_at"
+        ],
+        "prices": [
+          "*"
+        ],
+        "regions": [
+          "*"
+        ],
+        "schools": [
+          "*"
+        ],
+        "trade_stats": [
+          "*"
+        ],
+        "transport": [
+          "*"
+        ]
+      }
+    },
+    "2u": {
+      "backend/auth/audit.py": {
+        "audit_logs": [
+          "*"
+        ]
+      },
+      "backend/crawler/billing_charge.py": {
+        "payments": [
+          "*"
+        ]
+      },
+      "backend/crawler/env_childcare.py": {
+        "infra": [
+          "apartment_id",
+          "childcare_count",
+          "childcare_nearest_capacity",
+          "childcare_nearest_dist",
+          "childcare_nearest_name",
+          "childcare_nearest_teachers",
+          "childcare_nearest_type",
+          "childcare_updated_at"
+        ]
+      },
+      "backend/crawler/env_common.py": {
+        "crawl_jobs": [
+          "*"
+        ]
+      },
+      "backend/crawler/env_crime.py": {
+        "infra": [
+          "crime_grade",
+          "crime_score",
+          "crime_updated_at"
+        ]
+      },
+      "backend/crawler/env_emergency.py": {
+        "infra": [
+          "apartment_id",
+          "emergency_beds",
+          "emergency_hospital",
+          "emergency_hospital_dist",
+          "emergency_level",
+          "emergency_updated_at"
+        ]
+      },
+      "backend/crawler/field_drift_monitor.py": {
+        "monitor_alerts": [
+          "*"
+        ]
+      },
+      "backend/crawler/monitor.py": {
+        "crawl_jobs": [
+          "*"
+        ],
+        "monitor_alerts": [
+          "*"
+        ]
+      },
+      "backend/crawler/quota_db.py": {
+        "rate_limit_counters": [
+          "*"
+        ]
+      },
+      "backend/crawler/service_applyhome_officetel.py": {
+        "officetel_presale_schedule": [
+          "*"
+        ],
+        "officetel_unit_supply": [
+          "*"
+        ]
+      },
+      "backend/crawler/service_applyhome_rental.py": {
+        "rental_schedule_official": [
+          "*"
+        ],
+        "rental_unit_supply": [
+          "*"
+        ]
+      },
+      "backend/crawler/service_common.py": {
+        "complex_price_history": [
+          "area_no",
+          "base_month",
+          "complex_no",
+          "price_avg",
+          "price_lower",
+          "price_upper",
+          "recorded_at",
+          "trade_type"
+        ]
+      },
+      "backend/crawler/service_discover.py": {
+        "articles": [
+          "bathroom_count",
+          "heating_type",
+          "move_in_date",
+          "numeric_maintenance_cost",
+          "room_count",
+          "use_approve_ymd"
+        ],
+        "complexes": [
+          "articles_crawled_at",
+          "last_crawled_at",
+          "last_viewed_at"
+        ]
+      },
+      "backend/crawler/service_kapt.py": {
+        "kapt_complex_map": [
+          "*"
+        ],
+        "kapt_management_costs": [
+          "*"
+        ]
+      },
+      "backend/crawler/service_metrics.py": {
+        "complexes": [
+          "jeonse_rate",
+          "nearby_median_price",
+          "recent_trades_6m",
+          "updated_at"
+        ]
+      },
+      "backend/crawler/service_official_price.py": {
+        "complex_official_prices": [
+          "*"
+        ]
+      },
+      "backend/crawler/service_public.py": {
+        "complexes": [
+          "public_data_attempted_at"
+        ]
+      },
+      "backend/crawler/utils.py": {
+        "crawler_checkpoints": [
+          "*"
+        ]
+      },
+      "backend/crawler/vacuum_maintenance.py": {
+        "articles": [],
+        "site_opinions": [
+          "*"
+        ]
+      },
+      "backend/main.py": {
+        "crawl_jobs": [
+          "*"
+        ]
+      },
+      "backend/routers/admin/data.py": {
+        "rate_limit_counters": [
+          "*"
+        ]
+      },
+      "backend/routers/billing.py": {
+        "billing_keys": [
+          "*"
+        ],
+        "payments": [
+          "*"
+        ]
+      },
+      "backend/routers/live/_crawl_bg.py": {
+        "complexes": [
+          "articles_crawled_at",
+          "last_crawled_at",
+          "last_viewed_at"
+        ]
+      },
+      "backend/routers/live/_detail_worker.py": {
+        "articles": [
+          "bathroom_count",
+          "heating_type",
+          "move_in_date",
+          "numeric_maintenance_cost",
+          "room_count",
+          "use_approve_ymd"
+        ]
+      },
+      "backend/routers/live/crawl.py": {
+        "articles": [
+          "bathroom_count",
+          "heating_type",
+          "move_in_date",
+          "numeric_maintenance_cost",
+          "room_count",
+          "use_approve_ymd"
+        ],
+        "complexes": [
+          "articles_crawled_at",
+          "last_crawled_at",
+          "last_viewed_at"
+        ]
+      },
+      "backend/routers/opinions.py": {
+        "site_opinions": [
+          "*"
+        ]
+      },
+      "backend/routers/payment.py": {
+        "payments": [
+          "*"
+        ]
+      },
+      "backend/routers/users.py": {
+        "user_profiles": [
+          "*"
+        ]
+      },
+      "backend/routers/verify.py": {
+        "agent_verifications": [
+          "*"
+        ]
+      },
+      "backend/scripts/cleanup_b1_price_contamination.py": {
+        "complex_price_history": []
+      },
+      "backend/scripts/import_subway_stations.py": {
+        "subway_stations": [
+          "*"
+        ]
+      },
+      "backend/scripts/load_sgis_stats.py": {
+        "sgis_area_stats": [
+          "*"
+        ]
+      },
+      "backend/scripts/map_complex_sgis.py": {
+        "complexes": [
+          "sgis_emd_cd",
+          "sgis_mapped_at"
+        ],
+        "sgis_area_stats": [
+          "*"
+        ]
+      },
+      "backend/services/enricher.py": {
+        "complex_pyeong_details": [
+          "*"
+        ],
+        "complexes": [
+          "address",
+          "building_coverage_ratio",
+          "construction_company",
+          "detail_crawled_at",
+          "floor_area_ratio",
+          "heat_fuel_type",
+          "heat_method_type",
+          "management_office_tel",
+          "parking_count_by_household",
+          "road_address",
+          "total_parking_count"
+        ]
+      },
+      "backend/services/naver_call_counter.py": {
+        "naver_api_call_counts": [
+          "*"
+        ]
+      },
+      "backend/services/upsert.py": {
+        "article_price_history": [
+          "*"
+        ],
+        "articles": [],
+        "complexes": [
+          "complex_name",
+          "complex_no",
+          "cortar_address",
+          "cortar_no",
+          "dong",
+          "high_floor",
+          "last_crawled_at",
+          "latitude",
+          "longitude",
+          "low_floor",
+          "max_supply_area_m2",
+          "min_supply_area_m2",
+          "real_estate_type_code",
+          "real_estate_type_name",
+          "sido",
+          "sigungu",
+          "total_dong_count",
+          "total_household_count",
+          "updated_at",
+          "use_approve_ymd"
+        ]
+      }
+    }
+  },
+  "delete_allowed": {
+    "mibunyang": {
+      "scripts/fix-placeholder-addresses.mjs": [
+        "transport",
+        "schools"
+      ]
+    },
+    "2u": {
+      "backend/services/upsert.py": [
+        "articles"
+      ]
+    }
+  },
+  "known_conflicts": {
+    "C1": "complexes contested 10칸 — 미분양 naver-collect.py(마커 bbox)와 2u 검색이 같은 칸을 씀. 해소(2u 주인·미분양은 빈칸만)는 2u 합의 뒤 별도 트랙",
+    "C2": "articles 양쪽이 같이 쓰는 12칸(열쇠 article_no + contested 11) + 행 수명(미분양 is_active=false · 2u 물리 삭제) — 별도 트랙",
+    "C3": "infra.updated_at 공유 시계(DB 트리거) — 어느 쪽 수집 시각도 아님. 해소 = infra.kakao_updated_at 칸(별도 트랙)",
+    "C5": "complex_price_history 두 출처(2u 공공 base_month 6자리·area_no='' / 네이버 8자리) — 별도 트랙"
+  },
+  "guard": {
+    "helpers": [
+      "scripts/collectors/_shared.mjs",
+      "scripts/collectors/data-audit.mjs"
+    ],
+    "note": "helpers = 표 이름을 인자로 받는 범용 파일(가드 ①③ 제외). 호출하는 쪽 파일에서 글자가 잡힌다."
+  }
+}

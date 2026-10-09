@@ -33,6 +33,12 @@
  *   `transport-tago.mjs:551-558` 등이 "이미 수집된 단지"를 건너뛴다(`--force` 없으면).
  *   그 15곳의 파생 행을 지워 **미수집 상태로 되돌려야** 다음 정기 수집이 올바른 좌표로 채운다.
  *   → `--purge-derived` 는 **별도 플래그**로 분리했다(삭제는 되돌릴 수 없으므로 사람 확인 후).
+ * - ⚠️ `infra` 는 **행을 지우지 않는다**(세션617 · 공유 DB 소유권 설계서 C4). infra 는 2u 와 함께 쓰는
+ *   공유 표라 한 행에 2u 칸(범죄·응급·어린이집)이 같이 있다 — 행째 지우면 남의 칸까지 사라진다.
+ *   그래서 `transport`·`schools`(미분양 단독)만 지우고, infra 는 미분양 카카오 칸만 null 로 비운다.
+ *   지우는 표·비우는 칸 목록은 `fix-placeholder-addresses.mjs` 의 `SOLE_OWNER_TABLES`·
+ *   `INFRA_KAKAO_COLUMNS` 를 그대로 가져온다(두 도구가 어긋나지 않게 — 정본 `supabase/ownership.json`
+ *   `tables.infra.columns.mibunyang` 의 카카오 칸과 같다).
  *
  * ## 알려진 부작용 (실행 전 반드시 읽을 것)
  *
@@ -54,6 +60,7 @@
  *    (`.claude/rules/collectors/pipe-kills-collector.md`). 파일로 리다이렉트한 뒤 읽을 것.
  */
 import { loadEnv, getSupabase, selectAll, haversineMeters, log, logError } from "./collectors/_shared.mjs";
+import { INFRA_KAKAO_COLUMNS, SOLE_OWNER_TABLES } from "./fix-placeholder-addresses.mjs";
 
 loadEnv();
 
@@ -69,8 +76,8 @@ const TRUTH_ID = "ah-2024910166";
 /** 이 거리를 넘으면 "남의 좌표가 박힌 것"으로 본다. 실측 오염분은 651m, 정상분은 13m 라 여유가 크다. */
 const WRONG_DIST_M = 300;
 
-/** 좌표에서 파생돼 자동 회복되지 않는 표 — 행을 지워야 다음 수집이 다시 채운다. */
-const DERIVED_TABLES = ["transport", "schools", "infra"];
+// 좌표에서 파생돼 자동 회복되지 않는 표 — 미분양 단독 표(SOLE_OWNER_TABLES)는 행을 지우고,
+// 공유 표 infra 는 미분양 카카오 칸(INFRA_KAKAO_COLUMNS)만 비운다(머리 주석 · 설계서 C4).
 
 /**
  * 정정 대상인가 — 이름이 프라힐스 소사역 계열이고, 기준점에서 WRONG_DIST_M 이상 떨어져 있는가.
@@ -130,13 +137,21 @@ async function main() {
 
   // 파생 행 현황은 미리보기에서도 보여준다 — 몇 건이 재수집 대상이 되는지 알고 결정하라고.
   const ids = targets.map((t) => t.id);
-  for (const table of DERIVED_TABLES) {
+  for (const table of SOLE_OWNER_TABLES) {
     const { count, error } = await sb
       .from(table)
       .select("*", { count: "exact", head: true })
       .in("apartment_id", ids);
     if (error) { logError(PHASE, `${table} 조회 실패: ${error.message}`); continue; }
     log(PHASE, `  파생 ${table.padEnd(10)} ${count ?? 0}행 — ${purge ? "삭제 예정" : "그대로 둠(자동 회복 안 됨)"}`);
+  }
+  {
+    const { count, error } = await sb
+      .from("infra")
+      .select("*", { count: "exact", head: true })
+      .in("apartment_id", ids);
+    if (error) logError(PHASE, `infra 조회 실패: ${error.message}`);
+    else log(PHASE, `  파생 ${"infra".padEnd(10)} ${count ?? 0}행 — ${purge ? `카카오 ${INFRA_KAKAO_COLUMNS.length}칸만 null 예정(행 유지 — 2u 칸 보존)` : "그대로 둠(자동 회복 안 됨)"}`);
   }
 
   if (!apply) {
@@ -163,11 +178,16 @@ async function main() {
   log(PHASE, `\n좌표·주소 정정: 성공 ${ok} · 실패 ${fail}`);
 
   if (purge) {
-    for (const table of DERIVED_TABLES) {
+    for (const table of SOLE_OWNER_TABLES) {
       const { error } = await sb.from(table).delete().in("apartment_id", ids);
       if (error) logError(PHASE, `${table} 삭제 실패: ${error.message}`);
       else log(PHASE, `파생 ${table} 삭제 완료 — 다음 정기 수집이 올바른 좌표로 다시 채운다`);
     }
+    // infra 는 공유 표 — 행을 지우면 2u 칸도 사라진다. 미분양 카카오 칸만 비운다(fix-placeholder purgeDerived 와 같은 꼴).
+    const nullPayload = Object.fromEntries(INFRA_KAKAO_COLUMNS.map((c) => [c, null]));
+    const { error } = await sb.from("infra").update(nullPayload).in("apartment_id", ids);
+    if (error) logError(PHASE, `infra 카카오 칸 null 처리 실패: ${error.message}`);
+    else log(PHASE, `infra 카카오 ${INFRA_KAKAO_COLUMNS.length}칸 null 처리 완료(행 유지) — 다음 정기 수집이 다시 채운다`);
   }
 
   log(PHASE, `\n=== 완료 ===`);
