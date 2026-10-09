@@ -14,6 +14,8 @@
  *   ④ 동 이름을 끝내 못 얻은 단지만: 같은 시군구에서 정리한 이름이 완전히 같은 열쇠(6글자 이상 · 한 동에만 있을 때 · 맨 앞의 자기 지역 낱말은
  *   떼고 비교 — 2차 보완 G7·G7-b) ⑤ 모름(dropped).
  *   `apartments.dong` 은 대개 행정동이다(`reverse-geocode.mjs:90` region_type "H" — 세션590 표본 5행 중 4행이 거래 umd_nm 과 다름)
+ *   A1 폴백(세션619): ① 의 동에서 후보가 **0 일 때만** ② 주소 동(①과 다를 때)으로 다시 찾는다(지번 버림 · 이름 경로만)
+ *   A2(세션619): bjd_code 가 없으면 region·gu 의 시군구로 ②③④ 를 탄다(지번 버림)
  * - 지번 경로: 같은 법정동 + 지번 일치 → namesCompatible + 우리만 차수 아님 + 유사도 ≥ JIBUN_NAME_MIN(정확 일치) 또는
  *   ≥ NAME_ONLY_MIN(우리 부번 0 = 부번 없음인데 같은 본번의 다른 부번에 맞은 와일드카드, 보완 F1-a) + 연도 → `jibun+name`
  *   연도: 기본 |차| ≤ YEAR_GAP_MAX. 지번 경로 + 유사도 ≥ 0.85 일 때만 "거래가 우리보다 늦게 지어진 경우만 버림"(C-1 · F1-b)
@@ -40,7 +42,7 @@
  *
  * ⚠️ `_` 접두 = 라이브러리(DB 접근 0). graceful/exit/orphan 감사가 자동 제외한다.
  */
-import { stringSimilarity, HWASEONG_LAWD_CODES } from "./_shared.mjs";
+import { stringSimilarity, HWASEONG_LAWD_CODES, getLawdCd, GU_LAWD_MAP } from "./_shared.mjs";
 import { cleanMatchName, namesCompatible, completionMonthIndex, romanPhaseNumbers } from "./_match-gates.mjs";
 import { extractPhases, stripRoundWords } from "./_kakao-poi.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
@@ -274,20 +276,24 @@ const reEscape = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
  * ③ `apartments.dong` 이 같은 시군구 거래의 `umd_nm` 집합에 있으면 그 이름(행정동 = 법정동인 곳)
  * 모름 → null(그 뒤 `matchApartment` 가 사다리 ④ "시군구 안 정확한 이름"을 본다 — G7)
  * 화성 옛 코드 41590 단지는 새 4코드를 같은 시군구로 본다(`sggCodesOf`). `sggs` = 그 이름이 나온 거래 시군구 코드들(후보 풀 열쇠).
+ * `skipUmdCd` = ① 을 건너뛰고 ②③ 만 본다(A1 폴백·A2 — `matchApartment`, 세션619).
  * @param {LinkApt} apt
  * @param {KeyDictionary} dict
+ * @param {{ skipUmdCd?: boolean }} [opts]
  * @returns {{ name: string; via: DongVia; sggs: string[] } | null}
  */
-export function resolveDongName(apt, dict) {
+export function resolveDongName(apt, dict, { skipUmdCd = false } = {}) {
   const bjd = String(apt.bjd_code ?? "");
   if (!/^\d{10}$/.test(bjd)) return null;
   const codes = sggCodesOf(bjd);
   // ① (화성 41590 이면 새 4코드 + 같은 법정동 5자리로 — 이름이 하나로 모일 때만)
   /** @type {Map<string, string[]>} */
   const byCode = new Map();
-  for (const c of codes) {
-    const nm = dict.umdName.get(`${c}${bjd.slice(5)}`);
-    if (nm) byCode.set(nm, [...(byCode.get(nm) ?? []), c]);
+  if (!skipUmdCd) {
+    for (const c of codes) {
+      const nm = dict.umdName.get(`${c}${bjd.slice(5)}`);
+      if (nm) byCode.set(nm, [...(byCode.get(nm) ?? []), c]);
+    }
   }
   if (byCode.size === 1) { const [[name, sggs]] = [...byCode]; return { name, via: "umd_cd", sggs }; }
   /** 이 단지 시군구(화성은 4코드)의 거래 법정동 이름 → 그 이름이 나온 시군구 코드들. @type {Map<string, string[]>} */
@@ -387,15 +393,63 @@ function prefixSequences(words) {
  *   prefixStripped = 사다리 ④ 에서 지역 접두를 떼서 붙은 후보의 `kind:key`(G7-b, 눈 검수용)
  */
 export function matchApartment(apt, dict, { now, placeholder = false }) {
+  // 입주 여부와 상관없이 apt_seq·분양권 둘 다 묶는다 — 갓 입주한 단지는 12개월 거래가 분양권뿐일 수 있다(운암 1단지 202604).
+  // 판정에 어느 종류를 쓸지는 통계 쪽(_trade-scope.mjs: 입주 후 매매 / 입주 전 분양권)이 고른다.
+  void now;
+  const bjd = String(apt.bjd_code ?? "");
+  if (!/^\d{10}$/.test(bjd)) {
+    // A2(세션619 · 조사 세션598 원인 N): 법정동코드가 없으면 우리 region·gu 의 시군구(화성은 옛 41590 = 새 4코드)로
+    // 사다리 ②(주소)·③(dong)·④(시군구 안 정확한 이름)를 탄다. 지번은 쓰지 않는다(이름 경로만 — 법정동을 모르는 지번).
+    const sgg = sggOfRegionGu(apt);
+    if (!sgg) return { candidates: [], dropped: [{ apartment_id: apt.id, key: null, why: "법정동코드 없음" }] };
+    const r = matchInDong({ ...apt, bjd_code: `${sgg}00000`, lot_main: null, lot_sub: null }, dict, { placeholder, skipUmdCd: true });
+    return r.candidates.length ? r : { ...r, dropped: prefixWhy(r.dropped, `법정동코드 없음 → 시군구 ${sgg}(A2) — `) };
+  }
+  const r = matchInDong(apt, dict, { placeholder, skipUmdCd: false });
+  // A1 폴백(세션619 · 조사 세션598 원인 D): ① 법정동코드의 동으로 찾은 후보가 **0 일 때만** 주소의 동(사다리 ②)으로 다시 찾는다
+  // (지번 버림 — 이름 경로만). 후보가 하나라도 있으면 주소 동을 보지 않는다 — "① ≠ 주소면 늘 주소 동" 바꿔치기는
+  // 맞는 연결(신천역 한라비발디·힐스테이트 환호공원 2블록 ×2 — 거래가 법정동코드 쪽 동에 있다)을 지운다.
+  if (r.candidates.length || r.dongVia !== "umd_cd") return r;
+  const first = resolveDongName(apt, dict);
+  const alt = resolveDongName(apt, dict, { skipUmdCd: true });
+  if (!first || !alt || alt.via !== "address" || alt.name === first.name) return r;
+  const r2 = matchInDong({ ...apt, lot_main: null, lot_sub: null }, dict, { placeholder, skipUmdCd: true });
+  return r2.candidates.length ? r2 : { ...r, dropped: [...r.dropped, ...prefixWhy(r2.dropped, `주소 동 ${alt.name}(A1 폴백) — `)] };
+}
+
+/**
+ * 법정동코드가 없는 단지의 시군구 코드(A2) — `getLawdCd(region, gu)`, 화성(41590·새 4코드)은 옛 41590(= `sggCodesOf` 가 새 4코드로 편다).
+ * @param {LinkApt} apt
+ * @returns {string | null}
+ */
+function sggOfRegionGu(apt) {
+  const region = String(apt.region ?? "");
+  const c = getLawdCd(region, apt.gu ?? null);
+  // getLawdCd 는 못 찾으면 다른 시도의 같은 이름 구(전남+북구 → 부산 26320)나 시도 접두+"000"(시도 전체)을 준다 —
+  // 우리 시도 표(GU_LAWD_MAP[region])에 있는 코드만 쓴다(세션621) — 남의 시도 구로 붙는 길을 막는다(시도 전체 41000 은
+  // 사전이 시군구 코드를 정확히 맞대 원래도 후보 0 — 사유 문구만 "법정동코드 없음"으로 같아진다).
+  // ⚠️ 앞 2자리를 REGION_LAWD_PREFIX 와 맞대면 안 된다 — 강원(42 → 표 51)·전북(45 → 표 52)이 통째로 빠진다.
+  const table = Object.prototype.hasOwnProperty.call(GU_LAWD_MAP, region) ? GU_LAWD_MAP[region] : null;
+  if (!c || !table || !Object.values(table).includes(c)) return null;
+  return c === HWASEONG_OLD_SGG || HWASEONG_LAWD_CODES.includes(c) ? HWASEONG_OLD_SGG : c;
+}
+
+/** 단지 사유(key null)에 앞말을 붙인다 — 어느 길(A1 폴백·A2)에서 실패했는지. @param {Dropped[]} ds @param {string} head */
+const prefixWhy = (ds, head) => ds.map((d) => (d.key == null ? { ...d, why: head + d.why } : d));
+
+/**
+ * `matchApartment` 의 본체 — bjd_code 10자리가 보장된 단지. `skipUmdCd` = 동 이름 사다리 ① 을 건너뜀(A1 폴백·A2).
+ * @param {LinkApt} apt
+ * @param {KeyDictionary} dict
+ * @param {{ placeholder: boolean; skipUmdCd: boolean }} opts
+ * @returns {{ candidates: Candidate[]; dropped: Dropped[]; dongVia?: DongVia; prefixStripped?: string[] }}
+ */
+function matchInDong(apt, dict, { placeholder, skipUmdCd }) {
   /** @type {Dropped[]} */
   const dropped = [];
   /** @type {Candidate[]} */
   const candidates = [];
   const bjd = String(apt.bjd_code ?? "");
-  if (!/^\d{10}$/.test(bjd)) return { candidates, dropped: [{ apartment_id: apt.id, key: null, why: "법정동코드 없음" }] };
-  // 입주 여부와 상관없이 apt_seq·분양권 둘 다 묶는다 — 갓 입주한 단지는 12개월 거래가 분양권뿐일 수 있다(운암 1단지 202604).
-  // 판정에 어느 종류를 쓸지는 통계 쪽(_trade-scope.mjs: 입주 후 매매 / 입주 전 분양권)이 고른다.
-  void now;
 
   const idx = completionMonthIndex(apt.completion);
   const ourYear = idx == null ? null : Math.floor(idx / 12);
@@ -436,7 +490,7 @@ export function matchApartment(apt, dict, { now, placeholder = false }) {
     };
   };
 
-  const dong = resolveDongName(apt, dict);
+  const dong = resolveDongName(apt, dict, { skipUmdCd });
   if (!dong) {
     const why0 = "동 이름 모름(그 법정동에 매매 0 · 주소·dong 에서도 그 시군구 거래의 법정동 이름을 못 찾음 — apartments.dong 은 대개 행정동)";
     // 동 이름 사다리 ④(보완 G7) — 동 이름을 끝내 못 얻은 단지만: 같은 시군구(화성 41590 은 새 4코드) 전체 열쇠 중
