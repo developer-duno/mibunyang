@@ -288,6 +288,17 @@
 - 🟢 2u 매핑엔 시도 검사·coord_shared 건너뛰기가 없다(10-09 00:5x 2u 에 권고 쪽지).
 - ✅ 권한 기준선 **#8**(10-09 00:5x, 152항목 `0cf19e88…`) = 2u V071 `sgis_area_stats` 1건(anon/authenticated 0 · RLS 켬).
 
+### A-17. 세션617 공유 DB 소유권 정본(#719 `896c89e6`) 후속 (2026-10-09)
+
+> 정본(깃 밖) = `.omc/artifacts/session617/followups.md`(검사관 지적 원문) · `review-own-{adv,adv2,blind,halu}.md`. 정본 파일 = `supabase/ownership.json`(알려진 충돌 = `known_conflicts`).
+- ☐ **통보 실증 나머지 절반**: 미분양→2u 첫 통보 = 이슈 #720(자연 발생, 10-09) · 남은 것 = 2u 세션 시작 훅이 `📬 미분양 통보 1건` 을 보이는지 · 2u 가 #720 을 닫아 읽음 처리(안 닫으면 10-23 `stale-unread` 로 자동 닫힘) · 2u→미분양 역방향 1건(2u PR 뒤). 재촉하지 않는다.
+- 🟠 **알려진 충돌 C1·C2·C3·C5 해소 트랙**(등재만 했고 해소는 2u 합의 뒤): C1 `complexes` 10칸 양쪽 쓰기(2u 주인·미분양은 빈칸만 안) · C2 `articles` 12칸 + 행 수명(미분양 `is_active=false` vs 2u 물리 삭제) · C3 `infra.updated_at` 공유 시계(→ `infra.kakao_updated_at` 칸) · C5 `complex_price_history` 두 출처 섞임.
+- 🟠 **좌표 정정 때 infra 비카카오 칸 10개가 옛 값으로 남는다**(적대 C4): `fix-sosa`·`fix-placeholder-addresses.mjs` 는 카카오 17칸만 비운다 — `air_station_name/dist`·`childcare/dist`·`emergency/dist/name/type`·`police/dist` 는 옛 좌표 값 그대로. 재수집 주기(대기 매일·어린이집·경찰 월간)와 [[purge-to-recollect-timing]] 을 본 뒤 비울 칸을 넓힐지 결정.
+- 🟡 감시 ⑲ 는 공유 4표 칸만 본다 — "정본에 있는데 DB 에 없는 표"(나머지 53표·absent 2) 존재 대조는 후속 · 빈 표면 판정을 건너뛰는데 로그 표시가 없다(지금 4표는 행이 있어 오탐 0).
+- 🟡 `supabase/CLAUDE.md:15-40` 손 표 목록이 남아 있어 머리말 "정본 = ownership.json" 과 나중에 어긋날 수 있다(맹점 임무4).
+- 🟡 통보 판정(`scripts/notify-sister.mjs`) 빈틈: 주석 판정이 언어 구분 없음(JS `--i;`·`#private`, py `*args,` 줄을 주석으로 봐 통보 누락 쪽) · main 직접 push 여러 커밋이면 마지막만 · 한 줄 문자열 속 `--` 가 줄 나머지를 지움 · TRUNCATE/DELETE FROM/ALTER TYPE·수정 마이그(M)·`_rollbacks` 경로는 범위 밖 · 2u 훅에서 gh 2회가 10초 넘기면 통보 줄이 조용히 사라짐.
+- 🟡 소유권 가드(`scripts/audit-shared-db-ownership.mjs`) 빈틈: py `SB.insert(` 꼴이 `hasWriteChain` 의 SB 목록에 없음(`update|upsert` 만 · 실제 1곳) → `SB\.(?:update|upsert|insert|delete)` 로 넓히기 · 쓰기 사슬 정규식 `[^;]*?` 가 세미콜론 없는 코드에서 다음 문장까지 건너감(엄격한 쪽 · 기준선 영향 0) · 일부러 꼰 꼴(`sb?.from("x")?.update?.(`·`["update"](`·`"comp"+"lexes"`·대문자·import 상수)과 allow 주석 위치(앞 40줄 안이면 문맥 안 가림)는 못 본다.
+
 ### A. 날짜가 정해진 확인 (놓치면 조용히 틀린 값이 나간다)
 - 🔴 **10/07(수) 아침 — 어린이집 상세 원인 ① 원 응답 확인(세션603)** — 먼저 `childcare-local.log` 그날 회차에 detail 실행이 없었는지(=#701 반영) 본다. 그다음 cpmsapi030 를 지역 5곳(파주·남양주·세종·광주 서구·구례) × (시설번호 앞자리 코드 / `GU_LAWD_MAP` 코드) + 구례·광주는 개편 전후 둘 다 + 정상 지역 양성 대조군 1 = 약 11~13회, 응답을 자료 있음 / 0건 / 오류코드로 가른다. 인자 순서(arcode 먼저·key 나중)와 빈 `stcode` 는 ERROR-100 을 낸다(2u `childcare_api.py:6-7,86,156`). 2u 시 단위 코드 + 모시 폴백 표(`childcare_api.py:268-290`) 참고.
 - ✅ **10/20(화) 전 — 어린이집 상세 고친 PR 합치고 러너 3종 복귀 → #706(bf8b0eff, 10/07) 합침 · 러너 매일 3종 복귀 · 첫 회차 10/08 04:30(확인 = `childcare-local.log` detail 호출 ≈245 · 0건 응답 ≤10% · `collector_runs` childcare-detail success · 10/09 둘째 회차 "바뀜 없음" ≈245)** — 10/20 09:00 감시 ⑤-b 경보는 이제 "안 떠야 함"(뜨면 러너 고장 신호). `childcare-local-runner.test.mjs` "detail 미포함" 단언은 #706 에서 뒤집음.
