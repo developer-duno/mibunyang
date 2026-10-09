@@ -86,14 +86,14 @@
 
 | 단계 | 판정 | 결과 |
 |---|---|---|
-| ① 등록 대상 찾기 | 파일 안에 **공유(`shared`)·2u 소유 표 이름 리터럴**(`"complexes"`·`'infra'`·`DERIVED_TABLES = [... "infra"]` 처럼 글자로 든 것) **과** 쓰기 호출 흔적(`.upsert(`·`.insert(`·`.update(`·`.delete(`·`upsertBatch(`·`ub(`·`SB.update(`·`SB.upsert(`·`.rpc(`)이 **같은 파일**에 있으면 등록 대상 | `writers.mibunyang` 에 없음 → 🔴 미등록 |
+| ① 등록 대상 찾기 | 파일 안에 **공유(`shared`)·2u 소유 표 이름 리터럴**(`"complexes"`·`'infra'`·`DERIVED_TABLES = [... "infra"]` 처럼 글자로 든 것) **과** 쓰기 호출 흔적(`.upsert(`·`.insert(`·`.update(`·`.delete(`·`upsertBatch(`·`ub(`·`SB.update(`·`SB.upsert(`·`.rpc(`)이 **같은 파일**에 있으면 그 **(파일, 표)** 가 등록 대상(호출과 괄호 사이 공백·줄바꿈도 흔적) | `writers.mibunyang[파일][표]` 에 없음 → 🔴 미등록(파일이 다른 표로 등록돼 있어도 — fix1 🟠A) · 읽기만이면 머리 주석 allow |
 | ② 칸 기준선 | 등록된 파일 안의 글자 키(JS `"col":`·`col:`·py `"col":`)가 그 표의 `columns.2u` 에 있고 `writers[파일][표]` 기준선에 없음 → 🔴 / 기준선에 있는 `contested` 칸은 통과 | 새로 늘면 빨강(🔴B 처방) |
 | ③ 행 삭제 | 등록 여부와 무관하게 **삭제가 닿는 표** 단위: 같은 문장 `from("<shared>")….delete(` → 그 표 / `from(<변수>)….delete(` → 파일 안 배열 리터럴·`= "<shared>"` 대입으로 닿는 shared 표. 닿는 표가 `delete_allowed[파일]` 밖이면 🔴(구현 중 정교화 — 파일 단위면 고친 뒤 fix-sosa 도 계속 빨강이라) | C4 `fix-sosa-coordinates.mjs`(`:73 DERIVED_TABLES` 에 `"infra"` + `:167 .delete(`) 가 여기서 빨강 → 이번에 고침(§5) → 고친 뒤는 통과(등록 불필요) |
 | ④ 마이그 | `supabase/migrations/**` 새 파일에서 `DROP COLUMN( IF EXISTS)?`·`RENAME COLUMN`·`DROP TABLE`·`ALTER TABLE … RENAME` 의 표에 `readers` 가 있으면 🔴 · `ADD COLUMN` 을 남의(2u) 표에 → 🟡(통보 대상, 규칙 위반 아님 C7) · `DROP VIEW`/`CREATE OR REPLACE VIEW` 로 2u 가 읽는 VIEW 를 다시 만들면 🟡 통보 | |
 | ⑤ 정본 자체 | §1-2 검증(형식·파일 실재·겹침) | 🔴 |
 
 - 변수 표 이름(`from(table)` 13건)·RPC(4건, 권한 지문용)는 ①의 "리터럴이 파일 어딘가에 있나"로 등록 대상이 되므로 따로 꼴을 풀지 않는다. 리터럴조차 없는 파일(표 이름을 인자로 받는 범용 도구 `_shared.mjs:142 upsertBatch`·`data-audit.mjs`)은 **호출하는 쪽** 파일에서 리터럴이 잡힌다 — 헬퍼 정의 파일은 `helpers` 예외 목록(정본 `guard.helpers`)에 적는다.
-- **끄는 법**: 오탐으로 막히면 파일 머리 주석 `// ownership-guard: allow <표> <사유>` 한 줄(가드가 읽어 🟡 로 내리고 보고에 남김) — `ALLOWLIST` 상수 대신 **파일 안**에 두어 리뷰에서 보이게. 전체 끄기는 없음(CI 단계를 지우는 PR 이 곧 끄기).
+- **끄는 법**: 읽기만 하는 파일이 ① 에 걸리면 파일 머리 주석 `// ownership-guard: allow <표> <사유>` 한 줄(가드가 읽어 **① 만** 🟡 로 내리고 보고에 남김 — 그 표에 쓰기 사슬 `from("표")….update|upsert|insert|delete(`·`ub("표"`·`upsertBatch("표"`·`SB.update|upsert("표"` 가 있으면 ① 도 🔴, ②③ 은 allow 와 무관하게 🔴 · fix2) — `ALLOWLIST` 상수 대신 **파일 안**에 두어 리뷰에서 보이게. 전체 끄기는 없음(CI 단계를 지우는 PR 이 곧 끄기).
 - 가드 자체 시험 `audit-shared-db-ownership.test.mjs`(`meta/guards-must-be-mutation-tested`): 양성 대조군 = **지금 코드베이스에서 실제 꼴 그대로**(`ub("complexes"` · `SB.update("articles"` · `DERIVED_TABLES` 를 돌며 `from(table).delete()` · `upsertBatch("applyhome_cancel_respl"`) 를 임시 파일로 복사해 ①③ 이 잡는지 → 변이 5: (a) 미등록 파일이 `"complexes"` + `.upsert(` → 🔴 (b) 등록 파일에 2u 칸 `"cortar_no":` 추가 → 🔴 (c) `"infra"` + `.delete(` → 🔴 (d) 마이그 `ALTER TABLE apartments DROP COLUMN IF EXISTS lat` → 🔴 (e) **반대 방향**: 미분양 전용 표(`consults`)에 `.delete(` → 통과해야 함(가드가 넓게 번지지 않는지).
 
 ### 2-2. 2u `backend/scripts/audit_shared_db_ownership.py`(2u 창 구현 · 2u 규칙)
@@ -150,7 +150,7 @@
 
 ## 6. 작업 나누기 · 순서
 
-1. (미분양 창 · 워크트리 · opus-coder) ① `supabase/ownership.json`(inventory → 변환 스크립트 `scripts/probes/build-ownership.mjs` 1회 + 양성 대조군 손 확인) ② `audit-shared-db-ownership.mjs` + `.test.mjs`(변이 5) ③ `ci.yml` 단계 ④ C4 수정 ⑤ `notify-sister.yml` + 라벨 생성 ⑥ SessionStart 훅 ⑦ 감시 ⑲ ⑧ 문서 9개 → 검사관(적대 Opus[가드·워크플로·감시]·맹점 Opus[계획 대비]·할루 Sonnet) → PR.
+1. (미분양 창 · 워크트리 · opus-coder) ① `supabase/ownership.json`(inventory → 변환 스크립트 `scripts/build-ownership.mjs` 1회 + 양성 대조군 손 확인) ② `audit-shared-db-ownership.mjs` + `.test.mjs`(변이 5) ③ `ci.yml` 단계 ④ C4 수정 ⑤ `notify-sister.yml` + 라벨 생성 ⑥ SessionStart 훅 ⑦ 감시 ⑲ ⑧ 문서 9개 → 검사관(적대 Opus[가드·워크플로·감시]·맹점 Opus[계획 대비]·할루 Sonnet) → PR.
 2. (2u 창 · 쪽지) §2-2 가드 + 별도 job + 통보 워크플로(미분양 것을 그대로 옮김) + SessionStart + 문서 4개.
 3. 둘 다 합친 뒤 통보 1건을 **일부러** 만들어(정본 `updated` 날짜 PR) 양쪽 세션 시작 표시까지 실증(`workflow-name-hallucination`: success ≠ 동작) · raw 5분 캐시 때문에 2u CI 재실행 1회 예상.
 

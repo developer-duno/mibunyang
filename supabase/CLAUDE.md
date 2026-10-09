@@ -2,7 +2,7 @@
 
 > 스키마/마이그레이션 수정 시 반드시 이 규칙을 따를 것.
 
-## 테이블 (표 55 + 없는 표 2 + VIEW 2 — 목록·소유 정본 = `supabase/ownership.json`, 세션617)
+## 테이블 (목록·소유 정본 = `supabase/ownership.json` — 표 수는 그 `tables`(`absent:true` = DB 에 없는 표)를 센다 · `node scripts/audit-shared-db-ownership.mjs --print <표>`, 세션617)
 
 > ⚠️ 개수를 단정하지 말 것 — 마이그레이션 grep 으로는 못 센다(CREATE/DROP·rename 혼재). 존재 확인은
 > `sb.from('<이름>').select('*').limit(1)` 의 에러 코드로(`PGRST205` = 없음). `{count:'exact', head:true}` 는

@@ -32,13 +32,14 @@
 
 > 세션 399: `collect-childcare-detail.yml` 삭제 → 집서버 로컬 러너 이전 (아래 KOSIS 절 옆 childcare 절 참조).
 
-### CI/CD (3개)
+### CI/CD (4개)
 
 | 워크플로우 | 설명 |
 |-----------|------|
-| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×10**(세션 548 실측 — 개수는 늘어난다, 세는 명령은 루트 `CLAUDE.md` "명령" 절) → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
+| `ci.yml` | CI 파이프라인 (lint → format:check → typecheck×3 → **audit×13**(세션617 실측 — 개수는 늘어난다, 세는 명령은 루트 `CLAUDE.md` "명령" 절 · 세션617 에 공유 DB 소유권 감사 추가 · checkout `fetch-depth: 2` 는 그 감사 ④ 가 HEAD~1 과 비교하려고) → test → build, push[main]/PR 트리거). **세션 491**: `concurrency` 로 PR 연속 푸시 시 낡은 실행 자동 취소. ⚠️ `pull_request` 에 `paths-ignore` 를 넣지 않은 것은 **의도** — 경로 필터로 건너뛴 체크를 브랜치 보호의 required status check 로 걸면 PR 이 "Waiting for status" 로 영구히 막힌다 |
 | `e2e.yml` | Playwright E2E 테스트 (PR 트리거). **세션 491**: `paths-ignore`(docs·md·.claude·scripts·supabase) + `concurrency` + 브라우저 캐시. ⚠️ `paths-ignore` 에 `.github/workflows/**` 를 넣으면 이 파일 자신을 고칠 때 검증이 사라진다 — 절대 금지 |
 | `warm-playwright-cache.yml` | **세션 491 신설** — 매주 화 KST 02:00, `main` 에서 브라우저 캐시를 미리 채운다. Actions 캐시는 "만든 브랜치 + 기본 브랜치"에서만 읽히는데 `e2e.yml` 은 PR 전용이라 이 예열이 없으면 캐시가 매번 미스된다. **캐시 키를 `e2e.yml` 과 동일하게 유지할 것** — 어긋나면 `scripts/audit-playwright-cache.mjs` 가 CI 에서 차단 |
+| `notify-sister.yml` | **세션617 신설** — main push 마다 공유 DB(2u 와 같이 쓰는 표·2u 가 읽는 표)를 건드렸으면 이 레포에 `cross-repo-notice` 라벨 이슈를 연다(2u 세션 시작 훅이 읽음 · 닫음 = 읽음 · 14일 지나면 `stale-unread` 로 자동 닫힘). 판정 = `scripts/notify-sister.mjs`(정본 `supabase/ownership.json`) · `permissions: issues: write` · `github.event.before` 와 비교. ⚠️ `concurrency` 를 넣지 말 것 — 같은 그룹 대기 실행은 최대 1개라 연달아 합치면 통보가 빠진다 |
 
 ### 매주 (4개) + 격주 (2개)
 

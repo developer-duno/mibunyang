@@ -41,7 +41,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | **상태/훅** | useMemo 체인 + useDeferredValue | useDataPipeline, useAppNavigation, useFilterSort |
 | **컴포넌트** | React.memo 다수 + icons.tsx (SVG) | 소비자/홈/섹션/상세/필터/관리자 그룹 — 섹션 KakaoMapView 점 보기 지도 + MapView 패스스루(네이버 세션 449 전면 제거[카카오 단일화]·GPS 내 동네), 상세 ProfileWeightBar, 홈 RecentlyViewedWidget, 전문가 그룹 세션 405 폐지. 정확한 개수·구성은 `src/components/CLAUDE.md` 참조 |
 | **API** | Vercel Serverless (25개 함수) | withHandler HOF (CORS/Method/RateLimit/Admin 통합). Redis 순단 fail-open 차등(login·subscribers만 fail-close, 세션 427) |
-| **DB** | Supabase PostgreSQL | **표 55 + VIEW 2**(2u 와 공유 — 표·칸 소유 정본 = `supabase/ownership.json`, 세션617) + presale 19컬럼 |
+| **DB** | Supabase PostgreSQL | 표·VIEW 수는 정본 `supabase/ownership.json` 의 `tables`·`views` 를 센다(`node scripts/audit-shared-db-ownership.mjs --print <표>` · 2u 와 공유, 세션617) + presale 19컬럼 |
 | **인증** | SHA-256+salt, HMAC-SHA256 JWT | 카카오 OAuth(손님) + 관리자(ADMIN_EMAIL) — 전문가 role 세션 405 폐지. 손님 마케팅 수신 동의·전화번호(선택, VITE_KAKAO_PHONE_SCOPE 토글) 수집 세션 427 |
 | **캐싱** | Upstash Redis (서버리스) | 세션, 토큰 블랙리스트, Rate Limit |
 | **수집** | GitHub Actions (KOSIS·childcare 로컬 이전) + Windows 스케줄러 | 네이버(로컬 한국IP) + 공공API(Actions) |
@@ -76,7 +76,7 @@ constants → scoring → theme → components → hooks → App    (단방향, 
 | `api/` | JS null 함정, 한글 인코딩, withHandler, **인증/세션 KV**, **비로그인 블라인드 정책** |
 | `scripts/` | units 보정, 네이버 로컬 6단계, 후처리, API 쿼터 |
 | `.github/workflows/` | 워크플로우 목록, GitHub Secrets, 스케줄 |
-| `supabase/` | 표 55 + VIEW 2(소유 정본 `ownership.json`) + presale 19컬럼, RLS 정책 |
+| `supabase/` | 표·VIEW 목록·소유 = 정본 `ownership.json`(수는 그 `tables` 를 센다) + presale 19컬럼, RLS 정책 |
 
 ## `.claude/rules/` — 상시 14개 + on-demand 18개 색인 (세션551·568·571)
 

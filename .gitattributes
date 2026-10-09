@@ -4,3 +4,6 @@
 # Write 직생성 파일이 LF 로 남아 재발 → 명시 eol=crlf 로 영구 보장.
 *.bat text eol=crlf
 *.cmd text eol=crlf
+# bash 스크립트(훅 포함)는 항상 LF — CRLF 면 `$'\r': command not found` 오류가 난다. 이 PC 는 core.autocrlf=true 라
+# 새 체크아웃에서 CRLF 로 바뀌는 것을 막는다(세션617 · 저장소 blob 은 이미 전부 LF 실측).
+*.sh text eol=lf

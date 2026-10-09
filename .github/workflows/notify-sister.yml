@@ -15,10 +15,8 @@ permissions:
   issues: write
   contents: read
 
-# 연달아 합쳐도 커밋마다 한 번씩 판정해야 하므로 취소하지 않는다.
-concurrency:
-  group: notify-sister
-  cancel-in-progress: false
+# concurrency 는 두지 않는다(fix1 🟠F) — 같은 그룹에서는 대기 중인 실행이 최대 1개라 연달아 합치면
+# 앞서 대기하던 실행이 취소돼 통보가 빠진다(docs.github.com "using concurrency"). 이슈 생성은 겹쳐 돌아도 안전하다.
 
 jobs:
   notify:
@@ -27,8 +25,18 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          # HEAD~1 과 비교한다(squash 합침 = PR 전체가 한 커밋)
+          # 기본 비교 = HEAD~1(squash 합침 = PR 전체가 한 커밋)
           fetch-depth: 2
+
+      # 한 번에 여러 커밋을 밀었으면 push 직전 커밋(github.event.before)과 비교한다 — 그 커밋만 얕게 받는다.
+      # 새 가지 첫 push(0 만 40자)거나 받기 실패면 scripts/notify-sister.mjs 가 HEAD~1 로 돌아간다.
+      - name: Fetch push base
+        env:
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            git fetch --no-tags --depth=1 origin "$BEFORE" || echo "before 커밋 받기 실패 — HEAD~1 로 비교"
+          fi
 
       - uses: actions/setup-node@v7
         with:
@@ -39,5 +47,6 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
+          NOTIFY_BEFORE: ${{ github.event.before }}
           COMMIT_URL: ${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}
         run: node scripts/notify-sister.mjs

@@ -26,8 +26,10 @@
  *
  * ## 끄는 법 (오탐일 때)
  *
- * 그 파일 머리(앞 40줄)에 `// ownership-guard: allow <표> <사유>`(py 는 `#`) 한 줄 — 그 표의 ①②③ 판정이
- * 🟡 로 내려가고 출력에 남는다. 전체 끄기는 없다(CI 단계를 지우는 PR 이 곧 끄기 — 리뷰에서 보인다).
+ * 그 파일 머리(앞 40줄)에 `// ownership-guard: allow <표> <사유>`(py 는 `#`) 한 줄 — 그 표의 **① 판정만**
+ * 🟡 로 내려가고 출력에 남는다(읽기만 하는 파일용). 그 표에 쓰기 사슬(`from("표")….update|upsert|insert|delete(`·
+ * `ub("표"`·`upsertBatch("표"`·`SB.update|upsert("표"`)이 있으면 ① 도 🔴 그대로 · ②③ 은 allow 와 무관하게 🔴(fix2).
+ * 전체 끄기는 없다(CI 단계를 지우는 PR 이 곧 끄기 — 리뷰에서 보인다).
  *
  * 실행: node scripts/audit-shared-db-ownership.mjs            (전체 판정)
  *       node scripts/audit-shared-db-ownership.mjs --schema   (⑤ 정본 검증만)
@@ -47,12 +49,14 @@ export const OWNERS = ["mibunyang", "2u", "shared", "orphan"];
 export const COLUMN_BUCKETS = ["key", "mibunyang", "2u", "contested", "orphan", "clock"];
 
 /** 쓰기 흔적 — 표 이름이 같은 파일에 글자로 있을 때만 의미가 있다(①). */
-const WRITE_TRACE_RE = /\.(?:upsert|insert|update|delete|rpc)\(|\bupsertBatch\(|\bub\(/;
+// `\s*\(` — 이름과 괄호 사이 공백·줄바꿈도 본다(`.delete (x)`·`.upsert\n(x)` — prettier 는 src/ 만 돈다 · fix1 🟠D)
+const WRITE_TRACE_RE = /\.(?:upsert|insert|update|delete|rpc)\s*\(|\bupsertBatch\s*\(|\bub\s*\(/;
 const ALLOW_RE = /^\s*(?:\/\/|#)\s*ownership-guard:\s*allow\s+([A-Za-z_][\w]*)\s+(\S.*)$/;
 const ALLOW_HEAD_LINES = 40;
 
 /**
  * 주석 줄을 벗긴다(줄 머리가 `//`·`/*`·`*`·`#` 인 줄). 문자열 안 `//`(URL)을 건드리지 않으려고 줄 단위로만.
+ * 단 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면(`/* c *\/ sb.from("infra").delete()`) 뒤 코드는 남긴다(fix1 🟡).
  * @param {string} text
  * @param {boolean} isPy
  */
@@ -62,7 +66,12 @@ export function stripCommentLines(text, isPy) {
     .map((line) => {
       const t = line.trimStart();
       if (isPy) return t.startsWith("#") ? "" : line;
-      return t.startsWith("//") || t.startsWith("/*") || t.startsWith("*") ? "" : line;
+      if (t.startsWith("//")) return "";
+      if (t.startsWith("/*") || t.startsWith("*")) {
+        const close = t.indexOf("*/", t.startsWith("/*") ? 2 : 0);
+        return close >= 0 ? t.slice(close + 2) : "";
+      }
+      return line;
     })
     .join("\n");
 }
@@ -89,6 +98,20 @@ export function findTableLiterals(text, tables) {
 /** @param {string} text */
 export function hasWriteTrace(text) {
   return WRITE_TRACE_RE.test(text);
+}
+
+/**
+ * 그 표에 직접 닿는 쓰기 사슬이 있나 — `from("t")…​.update|upsert|insert|delete(` 같은 문장 ·
+ * 헬퍼 `ub("t"`·`upsertBatch("t"`·`SB.update|upsert("t"`(fix2 — allow 파일의 ① 강등을 막는다).
+ * @param {string} text 주석 벗긴 본문
+ * @param {string} t
+ */
+export function hasWriteChain(text, t) {
+  const q = `["'\`]${escapeRe(t)}["'\`]`;
+  return (
+    new RegExp(`\\bfrom\\s*\\(\\s*${q}\\s*\\)[^;]*?\\.(?:update|upsert|insert|delete)\\s*\\(`).test(text) ||
+    new RegExp(`(?:\\bub|\\bupsertBatch|\\bSB\\.(?:update|upsert))\\s*\\(\\s*${q}`).test(text)
+  );
 }
 
 /**
@@ -120,13 +143,14 @@ export function findDeleteTargets(text, candidates, isPy) {
   const targets = new Set();
   const cand = new Set(candidates);
   if (isPy) {
-    for (const m of text.matchAll(/\.delete\(\s*["'](\w+)["']/g)) if (cand.has(m[1])) targets.add(m[1]);
+    for (const m of text.matchAll(/\.delete\s*\(\s*["'](\w+)["']/g)) if (cand.has(m[1])) targets.add(m[1]);
     return targets;
   }
-  for (const m of text.matchAll(/\bfrom\(\s*(["'`])(\w+)\1\s*\)[^;]*?\.delete\(/g)) {
+  // `\s*\(` — 이름과 괄호 사이 공백·줄바꿈도(WRITE_TRACE_RE 와 같은 꼴 · fix1 🟠D)
+  for (const m of text.matchAll(/\bfrom\s*\(\s*(["'`])(\w+)\1\s*\)[^;]*?\.delete\s*\(/g)) {
     if (cand.has(m[2])) targets.add(m[2]);
   }
-  if (/\bfrom\(\s*[A-Za-z_$][\w$.]*\s*\)[^;]*?\.delete\(/.test(text)) {
+  if (/\bfrom\s*\(\s*[A-Za-z_$][\w$.]*\s*\)[^;]*?\.delete\s*\(/.test(text)) {
     for (const t of cand) {
       const q = `["'\`]${escapeRe(t)}["'\`]`;
       const inArray = new RegExp(`\\[[^\\]]*${q}[^\\]]*\\]`).test(text);
@@ -172,8 +196,12 @@ export function checkMigrationSql(sql, registry) {
   const yellow = [];
   const tables = registry.tables ?? {};
   const views = registry.views ?? {};
+  // 읽는 쪽 = readers + 2u 소유 표면 주인 2u(정본은 주인을 readers 에 안 적는다 — 2u 표 DROP 이 🔴0 이던 구멍 · fix1 🟠B)
   /** @param {string} t */
-  const readersOf = (t) => /** @type {string[]} */ (tables[t]?.readers ?? views[t]?.readers ?? []);
+  const readersOf = (t) => {
+    const r = /** @type {string[]} */ (tables[t]?.readers ?? views[t]?.readers ?? []);
+    return tables[t]?.owner === "2u" && !r.includes("2u") ? [...r, "2u"] : r;
+  };
   const body = sql.replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
   for (const raw of body.split(";")) {
     const stmt = raw.replace(/\s+/g, " ").trim();
@@ -328,9 +356,11 @@ export function auditOwnership({ root, registry, changedMigrations = [], files }
     const isPy = file.endsWith(".py");
     const text = stripCommentLines(raw, isPy);
     const allow = parseAllowMarkers(raw);
-    /** @param {string} t @param {string} msg */
-    const report = (t, msg) => {
-      if (allow.has(t)) {
+    // allow 는 ① 등록제만 🟡 로 내린다 — 그것도 그 표에 쓰기 사슬이 없을 때만. ②③ 은 allow 와 무관하게 🔴
+    // (allow 가 ①②③ 을 다 덮어 "읽기만" 파일에 update·delete 를 넣어도 통과하던 구멍 · fix2 🟠)
+    /** @param {string} t @param {string} msg @param {"①"|"②"|"③"} rule */
+    const report = (t, msg, rule) => {
+      if (rule === "①" && allow.has(t) && !hasWriteChain(text, t)) {
         yellow.push(`${msg} → 머리 주석 allow(${allow.get(t)})로 🟡`);
         bump(t, "yellow");
       } else {
@@ -341,9 +371,12 @@ export function auditOwnership({ root, registry, changedMigrations = [], files }
     const isHelper = helpers.has(file);
     const literals = findTableLiterals(text, watched);
 
-    // ① 등록제
-    if (!isHelper && literals.size && hasWriteTrace(text) && !mine[file]) {
-      for (const t of literals) report(t, `🔴 ① 미등록 쓰기 후보 ${file} — 표 "${t}"(${tables[t].owner}) 글자 + 쓰기 흔적 · writers.mibunyang 에 등록하거나 머리 주석 allow`);
+    // ① 등록제 — (파일, 표) 단위: 파일이 등록돼 있어도 그 표가 writers.mibunyang[파일] 에 없으면 빨강
+    //    (파일 단위면 미분양 전용 표만 등록한 파일이 공유·2u 표에 새로 써도 통과했다 · fix1 🟠A)
+    if (!isHelper && literals.size && hasWriteTrace(text)) {
+      for (const t of literals) {
+        if (!mine[file]?.[t]) report(t, `🔴 ① 미등록 쓰기 후보 ${file} — 표 "${t}"(${tables[t].owner}) 글자 + 쓰기 흔적 · writers.mibunyang["${file}"]["${t}"] 에 등록하거나(칸까지) 읽기만이면 머리 주석 allow`, "①");
+      }
     }
 
     // ② 칸 기준선
@@ -360,7 +393,7 @@ export function auditOwnership({ root, registry, changedMigrations = [], files }
           for (const k of keys) {
             if (theirs.has(k) && !baseline.has(k) && !flagged.has(`${t}.${k}`)) {
               flagged.add(`${t}.${k}`);
-              report(t, `🔴 ② 기준선 밖 칸 ${file} — ${t}.${k}(${(tables[t].columns?.["2u"] ?? []).includes(k) ? "2u 칸" : "다툼 칸"}) · 정말 써야 하면 정본 PR 로 기준선에 더하고 2u 와 합의`);
+              report(t, `🔴 ② 기준선 밖 칸 ${file} — ${t}.${k}(${(tables[t].columns?.["2u"] ?? []).includes(k) ? "2u 칸" : "다툼 칸"}) · 정말 써야 하면 정본 PR 로 기준선에 더하고 2u 와 합의`, "②");
             }
           }
         }
@@ -370,7 +403,7 @@ export function auditOwnership({ root, registry, changedMigrations = [], files }
     // ③ 행 삭제
     if (!isHelper) {
       for (const t of findDeleteTargets(text, sharedTables, isPy)) {
-        if (!(deleteAllowed[file] ?? []).includes(t)) report(t, `🔴 ③ 공유 표 행 삭제 ${file} — ${t} 는 상대 칸도 함께 지워진다 · 내 칸만 null UPDATE 로(설계서 C4)`);
+        if (!(deleteAllowed[file] ?? []).includes(t)) report(t, `🔴 ③ 공유 표 행 삭제 ${file} — ${t} 는 상대 칸도 함께 지워진다 · 내 칸만 null UPDATE 로(설계서 C4)`, "③");
       }
     }
   }

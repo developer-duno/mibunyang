@@ -18,7 +18,7 @@
  *
  * - `supabase/ownership.json` 변경 — 항상(2u 가드가 읽는 정본)
  * - `supabase/migrations/` 새 파일(`_rollbacks/` 제외) 중 2u 가 읽거나 공유하는 표·VIEW 이름이 든 것
- * - 정본 `writers.mibunyang` 에 등록된 파일 중 2u 가 읽거나 공유하는 표를 쓰는 파일의 변경 —
+ * - 정본 `writers.mibunyang` 에 등록된 파일 중 공유(shared)·2u 소유 표를 쓰는 파일의 변경(14파일 · 2u 가 읽기만 하는 표는 마이그 통보 몫) —
  *   단 바뀐 줄이 전부 주석(`//`·`#`·`/*`·`*`·`--`)·빈 줄이면 제외(`git diff -w` 는 주석을 못 거른다)
  * - 제외: 굽기 커밋(제목 `data: daily refresh`) · Dependabot
  *
@@ -56,6 +56,22 @@ export function tablesTheyCareAbout(registry) {
 }
 
 /**
+ * 등록 파일 변경 통보용 — 2u 와 같이 쓰거나(shared) 2u 가 주인인 표만. 2u 가 **읽기만** 하는 미분양 표
+ * (apartments 등)를 쓰는 파일까지 넣으면 등록 파일 83개·지난 2개월 116커밋이 통보돼 노이즈다(fix1 🟠E ·
+ * 설계서 §3-2 — 그런 표의 칸 삭제·이름 변경은 마이그 통보가 잡는다).
+ * @param {any} registry
+ * @returns {Set<string>}
+ */
+export function tablesWrittenTogether(registry) {
+  /** @type {Set<string>} */
+  const out = new Set();
+  for (const [name, t] of Object.entries(registry?.tables ?? {})) {
+    if (t?.owner === "shared" || t?.owner === "2u") out.add(name);
+  }
+  return out;
+}
+
+/**
  * diff 에서 바뀐 줄(+/-) 중 주석·빈 줄이 아닌 것.
  * @param {string} diffText `git diff` 한 파일분
  */
@@ -64,7 +80,14 @@ export function substantiveLines(diffText) {
     .split(/\r?\n/)
     .filter((l) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---"))
     .map((l) => l.slice(1).trim())
-    .filter((l) => l !== "" && !/^(\/\/|#|\/\*|\*|--)/.test(l));
+    // 줄 머리 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면(`/* a */ const x = 1;`) 뒤 코드는 실질 줄
+    // (audit-shared-db-ownership.mjs stripCommentLines 와 같은 판정 · fix2 🟡)
+    .map((l) => {
+      if (!l.startsWith("/*") && !l.startsWith("*")) return l;
+      const close = l.indexOf("*/", l.startsWith("/*") ? 2 : 0);
+      return close >= 0 ? l.slice(close + 2).trim() : "";
+    })
+    .filter((l) => l !== "" && !/^(\/\/|#|--)/.test(l));
 }
 
 /**
@@ -82,6 +105,7 @@ export function decideNotice({ registry, changed, diffOf, readFile, commitTitle,
   if (/dependabot/i.test(author)) return { notify: false, skipped: "Dependabot", reasons: [] };
 
   const care = tablesTheyCareAbout(registry);
+  const together = tablesWrittenTogether(registry);
   const mine = registry?.writers?.mibunyang ?? {};
   /** @type {string[]} */
   const reasons = [];
@@ -99,7 +123,7 @@ export function decideNotice({ registry, changed, diffOf, readFile, commitTitle,
     }
     const byTable = mine[f.path];
     if (byTable) {
-      const hit = Object.keys(byTable).filter((t) => care.has(t)).sort();
+      const hit = Object.keys(byTable).filter((t) => together.has(t)).sort();
       if (!hit.length) continue;
       const lines = substantiveLines(diffOf(f.path));
       if (!lines.length) continue;
@@ -144,11 +168,23 @@ export function pickStale(issues, now) {
 }
 
 /**
- * 본체 — git·gh 를 주입받는다(시험은 가짜를 넣는다).
- * @param {{ git: (args: string[]) => string, gh: (args: string[]) => string, registry: any, readFile: (p: string) => string, commitUrl: string, now: Date, dryRun?: boolean, log?: (s: string) => void }} deps
+ * 비교 기준 고르기 — push 의 before 가 있고(새 가지 첫 push 는 0 만 40자) 그 커밋을 가지고 있으면 그것, 아니면 HEAD~1.
+ * @param {string | undefined} before
+ * @param {(sha: string) => boolean} hasCommit
  */
-export function runNotify({ git, gh, registry, readFile, commitUrl, now, dryRun = false, log = console.log }) {
-  const changed = git(["diff", "--name-status", "HEAD~1", "HEAD"])
+export function pickBase(before, hasCommit) {
+  if (before && /^[0-9a-f]{40}$/.test(before) && !/^0+$/.test(before) && hasCommit(before)) return before;
+  return "HEAD~1";
+}
+
+/**
+ * 본체 — git·gh 를 주입받는다(시험은 가짜를 넣는다).
+ * `base` = 비교 기준 — push 이벤트의 `github.event.before`(한 번에 여러 커밋을 밀어도 전부 본다 · fix1 🟡),
+ * 없으면 HEAD~1(squash 합침 = PR 전체가 한 커밋).
+ * @param {{ git: (args: string[]) => string, gh: (args: string[]) => string, registry: any, readFile: (p: string) => string, commitUrl: string, now: Date, base?: string, dryRun?: boolean, log?: (s: string) => void }} deps
+ */
+export function runNotify({ git, gh, registry, readFile, commitUrl, now, base = "HEAD~1", dryRun = false, log = console.log }) {
+  const changed = git(["diff", "--name-status", base, "HEAD"])
     .split("\n")
     .filter(Boolean)
     .map((line) => {
@@ -161,7 +197,7 @@ export function runNotify({ git, gh, registry, readFile, commitUrl, now, dryRun 
   const decision = decideNotice({
     registry,
     changed,
-    diffOf: (p) => git(["diff", "HEAD~1", "HEAD", "--", p]),
+    diffOf: (p) => git(["diff", base, "HEAD", "--", p]),
     readFile,
     commitTitle,
     author,
@@ -202,8 +238,17 @@ function main() {
   /** @param {string} cmd */
   const runner = (cmd) => (/** @type {string[]} */ args) => execFileSync(cmd, args, { cwd: REPO_ROOT, encoding: "utf8", stdio: ["ignore", "pipe", "inherit"] });
   const registry = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, REGISTRY_PATH), "utf8"));
+  const git = runner("git");
   runNotify({
-    git: runner("git"),
+    git,
+    base: pickBase(process.env.NOTIFY_BEFORE, (sha) => {
+      try {
+        git(["cat-file", "-e", `${sha}^{commit}`]);
+        return true;
+      } catch {
+        return false;
+      }
+    }),
     gh: runner("gh"),
     registry,
     readFile: (p) => fs.readFileSync(path.join(REPO_ROOT, p), "utf8"),

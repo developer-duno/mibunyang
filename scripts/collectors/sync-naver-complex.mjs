@@ -1,4 +1,7 @@
 // @ts-check
+// ownership-guard: allow complexes 읽기만(단지 매칭 재료 공유 표는 select 만 — 세션617 fix1 grep 확인 · 쓰기는 apartments)
+// ownership-guard: allow articles 읽기만(공유 표는 select 만 — 세션617 fix1 grep 확인)
+// ownership-guard: allow complex_price_history 읽기만(공유 표는 select 만 — 세션617 fix1 grep 확인)
 /**
  * 네이버 단지 데이터 → apartments 동기화
  *

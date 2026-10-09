@@ -41,6 +41,7 @@ function makeRegistry() {
       consults: { owner: "mibunyang" },
       applyhome_cancel_respl: { owner: "mibunyang" },
       payments: { owner: "2u" },
+      sgis_area_stats: { owner: "2u" },
       complexes: {
         owner: "shared",
         readers: ["2u", "mibunyang"],
@@ -225,6 +226,35 @@ describe("변이 5", () => {
   });
 });
 
+describe("보완 fix1 — 검사관 🟠 재발 가드", () => {
+  it("[1 🟠A] 등록된 파일이라도 그 표가 기준선에 없으면 🔴 ① — (파일, 표) 단위", () => {
+    put("api/consults.ts", CONSULTS_TS + 'export async function g(sb, rows) {\n  await sb.from("complexes").upsert(rows);\n}\n');
+    const r = auditOwnership({ root, registry: makeRegistry() });
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("api/consults.ts") && m.includes('"complexes"'))).toBe(true);
+  });
+
+  it("[2 🟠B] 2u 소유 표(readers 없음) DROP COLUMN·DROP TABLE → 🔴 ④ — 주인 2u 가 읽는 쪽", () => {
+    const reg = makeRegistry();
+    expect(checkMigrationSql("ALTER TABLE sgis_area_stats DROP COLUMN value_text;", reg).red.length).toBe(1);
+    expect(checkMigrationSql("DROP TABLE IF EXISTS sgis_area_stats;", reg).red.length).toBe(1);
+  });
+
+  it("[3 🟠D] 이름과 괄호 사이 공백·줄바꿈 꼴(`.delete (x)`·`.upsert\\n(x)`)도 쓰기 흔적·삭제로 본다", () => {
+    put("scripts/collectors/spaced1.mjs", 'await sb.from("infra").delete ().in("apartment_id", ids);\n');
+    put("scripts/collectors/spaced2.mjs", 'await sb.from("complexes").upsert\n(rows);\n');
+    const r = auditOwnership({ root, registry: makeRegistry() });
+    expect(r.red.some((m) => m.includes("③") && m.includes("spaced1.mjs"))).toBe(true);
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("spaced2.mjs"))).toBe(true);
+  });
+
+  it("[9 🟡] 같은 줄 `/* c */ 코드` 의 뒤 코드는 주석이 아니다", () => {
+    put("scripts/collectors/inline-comment.mjs", '/* 정리 */ await sb.from("infra").delete().in("apartment_id", ids);\n');
+    const r = auditOwnership({ root, registry: makeRegistry() });
+    expect(r.red.some((m) => m.includes("③") && m.includes("inline-comment.mjs"))).toBe(true);
+    expect(stripCommentLines("/**\n * 설명 */\n/* 끝 */", false).trim()).toBe("");
+  });
+});
+
 describe("④ 마이그 세부", () => {
   const reg = makeRegistry();
   it("RENAME COLUMN · RENAME TO · DROP TABLE(읽는 쪽 있음) → 🔴", () => {
@@ -245,11 +275,31 @@ describe("④ 마이그 세부", () => {
 });
 
 describe("끄는 법 · 정본 검증", () => {
-  it("머리 주석 allow 는 그 표의 🔴 를 🟡 로 내린다(다른 표는 그대로)", () => {
-    put("scripts/collectors/wipe.mjs", '// ownership-guard: allow infra 일회성 복구 도구 — 사람 확인\nawait sb.from("infra").delete().in("apartment_id", ids);\n');
+  // 읽기만 하는 파일 꼴 — 공유 표는 select, 쓰기는 미분양 표(trade-stats·calc-layout 등 allow 5파일과 같은 모양)
+  const READ_ONLY = 'const { data } = await sb.from("complexes").select("complex_no");\nawait sb.from("apartments").update({ x: 1 }).eq("id", 1);\n';
+
+  it("머리 주석 allow 는 그 표의 ① 을 🟡 로 내린다(읽기만 파일) — 다른 표는 그대로", () => {
+    put("scripts/collectors/reader.mjs", `// ownership-guard: allow complexes 읽기만(select)\n${READ_ONLY}await sb.from("articles").select("*");\n`);
     const r = auditOwnership({ root, registry: makeRegistry() });
-    expect(r.red.filter((m) => m.includes("wipe.mjs"))).toEqual([]);
-    expect(r.yellow.some((m) => m.includes("wipe.mjs") && m.includes("allow"))).toBe(true);
+    expect(r.yellow.some((m) => m.includes("reader.mjs") && m.includes('"complexes"') && m.includes("allow"))).toBe(true);
+    expect(r.red.filter((m) => m.includes("reader.mjs"))).toHaveLength(1);
+    expect(r.red.some((m) => m.includes("reader.mjs") && m.includes('"articles"'))).toBe(true);
+  });
+
+  it("[fix2] allow 파일 + 그 표 from(…).delete() → 🔴 ③(①도 🔴) — allow 는 ③ 을 못 덮는다", () => {
+    put("scripts/collectors/reader.mjs", `// ownership-guard: allow complexes 읽기만(select)\n${READ_ONLY}await sb.from("complexes").delete().eq("complex_no", "1");\n`);
+    const r = auditOwnership({ root, registry: makeRegistry() });
+    expect(r.red.some((m) => m.includes("③") && m.includes("reader.mjs") && m.includes("complexes"))).toBe(true);
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("reader.mjs"))).toBe(true);
+  });
+
+  it("[fix2] allow 파일 + 그 표 from(…).update({…}) 쓰기 사슬 → 🔴 ① · 헬퍼 꼴 ub(\"표\" 도", () => {
+    put("scripts/collectors/reader.mjs", `// ownership-guard: allow complexes 읽기만(select)\n${READ_ONLY}await sb.from("complexes").update({ cortar_no: "1" }).eq("complex_no", "1");\n`);
+    put("scripts/collectors/reader.py", `# ownership-guard: allow complexes 읽기만\nrows = SB.select("complexes")\nub("complexes", rows, "complex_no")\n`);
+    const r = auditOwnership({ root, registry: makeRegistry() });
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("reader.mjs") && m.includes('"complexes"'))).toBe(true);
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("reader.py") && m.includes('"complexes"'))).toBe(true);
+    expect(r.yellow.filter((m) => m.includes("reader."))).toEqual([]);
   });
 
   it("⑤ version·owner·파일 실재·칸 겹침", () => {

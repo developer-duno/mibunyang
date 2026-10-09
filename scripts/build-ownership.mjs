@@ -139,7 +139,12 @@ for (const t of inv) {
 
 // 설계서 §1-2 의 표별 추가 필드
 Object.assign(tables.infra, { row_create: ["mibunyang", "2u"], fk_cascade_from: "apartments" });
-tables.infra.note = `${tables.infra.note} — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3).`;
+// inventory 의 ③ 은 이번 PR 이 고친 옛 사실 — 고친 문장으로 바꾼다(fix1 🟡). 원문이 없으면 시끄럽게 실패.
+const OLD_C4 = "③ 미분양 fix-sosa-coordinates.mjs:73 은 infra 행을 통째 삭제(2u 칸 포함)";
+if (!String(tables.infra.note).includes(OLD_C4)) problems.push("infra note 에 옛 C4 문장이 없음 — inventory 가 바뀌었나");
+tables.infra.note = `${String(tables.infra.note).replace(OLD_C4, "③ fix-sosa-coordinates.mjs 의 infra 행 통째 삭제(C4)는 세션617 에 고침(미분양 카카오 칸만 null)")} — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3). fix-sosa·fix-placeholder 의 infra 비우기 = 카카오 17칸만(INFRA_KAKAO_COLUMNS) — 좌표 파생 미분양 칸 10개(air_station_*·childcare*·emergency*·police*)는 그대로 남음(후속 BACKLOG · purge-to-recollect-timing 본 뒤 결정).`;
+// 옛 supabase/CLAUDE.md 손 표에만 있던 지식(세션617 에 표를 지우며 여기로 옮김 · fix1 🟡)
+tables.air_station_annual.note = "측정소별 3년 평균(연 1회 air-annual-load.mjs). 2u 백엔드가 단지 상세마다 station_name 으로 조회(2u backend/routers/mb.py → mb_air_annual.py, 예외 격리 없음) — 표 이름·칸(station_name·pm25·pm10·o3·years·updated_at)을 바꾸거나 지우면 2u 모든 단지 상세가 500. 등급 경계(PM2.5 15/19 등)는 2u 에 복제돼 있다(src/constants/scoringTiers.ts 주석).";
 Object.assign(tables.articles, { row_lifecycle: { mibunyang: "is_active=false", "2u": "delete" } });
 Object.assign(tables.complex_price_history, { sources: { "2u-public": "base_month 6자리 · area_no=''", naver: "base_month 8자리" } });
 tables.complexes.note = `${tables.complexes.note} — contested = C1(등재만, 해소는 별도 트랙). complex_no(열쇠)는 2u 칸으로 분류.`;
@@ -199,7 +204,7 @@ const finalize = (w) =>
 const registry = {
   version: 1,
   updated: "2026-10-09",
-  note: "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/probes/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
+  note: "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
   repos: { mibunyang: "developer-duno/mibunyang", "2u": "developer-duno/naver-estate-web" },
   tables: Object.fromEntries(Object.keys(tables).sort().map((k) => [k, tables[k]])),
   views: VIEWS,

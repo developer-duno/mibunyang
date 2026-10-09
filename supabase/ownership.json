@@ -1,7 +1,7 @@
 {
   "version": 1,
   "updated": "2026-10-09",
-  "note": "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/probes/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
+  "note": "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
   "repos": {
     "mibunyang": "developer-duno/mibunyang",
     "2u": "developer-duno/naver-estate-web"
@@ -22,7 +22,8 @@
       "owner": "mibunyang",
       "readers": [
         "2u"
-      ]
+      ],
+      "note": "측정소별 3년 평균(연 1회 air-annual-load.mjs). 2u 백엔드가 단지 상세마다 station_name 으로 조회(2u backend/routers/mb.py → mb_air_annual.py, 예외 격리 없음) — 표 이름·칸(station_name·pm25·pm10·o3·years·updated_at)을 바꾸거나 지우면 2u 모든 단지 상세가 500. 등급 경계(PM2.5 15/19 등)는 2u 에 복제돼 있다(src/constants/scoringTiers.ts 주석)."
     },
     "apartment_trade_links": {
       "owner": "mibunyang",
@@ -350,7 +351,7 @@
           "updated_at"
         ]
       },
-      "note": "칸은 대체로 나뉘었지만 ① updated_at 공유 시계(트리거가 모든 UPDATE 에 now) ② 행 생성은 양쪽(미분양 upsert · 2u Infra(apartment_id) db.add) ③ 미분양 fix-sosa-coordinates.mjs:73 은 infra 행을 통째 삭제(2u 칸 포함) ④ apartments 삭제 시 ON DELETE CASCADE. air_pm10/pm25/o3/grade/air_updated_at/air_attempted_at·nearby_facilities 는 쓰는 곳 0. — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3).",
+      "note": "칸은 대체로 나뉘었지만 ① updated_at 공유 시계(트리거가 모든 UPDATE 에 now) ② 행 생성은 양쪽(미분양 upsert · 2u Infra(apartment_id) db.add) ③ fix-sosa-coordinates.mjs 의 infra 행 통째 삭제(C4)는 세션617 에 고침(미분양 카카오 칸만 null) ④ apartments 삭제 시 ON DELETE CASCADE. air_pm10/pm25/o3/grade/air_updated_at/air_attempted_at·nearby_facilities 는 쓰는 곳 0. — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3). fix-sosa·fix-placeholder 의 infra 비우기 = 카카오 17칸만(INFRA_KAKAO_COLUMNS) — 좌표 파생 미분양 칸 10개(air_station_*·childcare*·emergency*·police*)는 그대로 남음(후속 BACKLOG · purge-to-recollect-timing 본 뒤 결정).",
       "row_create": [
         "mibunyang",
         "2u"

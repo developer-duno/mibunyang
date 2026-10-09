@@ -1,4 +1,5 @@
 // @ts-check
+// ownership-guard: allow complexes 읽기만(출처 3 단지명 매칭 공유 표는 select 만 — 세션617 fix1 grep 확인 · infra 쓰기는 정본에 등록됨)
 /**
  * 자리표시용(placeholder) 주소로 좌표가 어긋난 단지 — **3출처 교차 검증** 정정 도구 v2 (세션540)
  *

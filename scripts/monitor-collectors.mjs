@@ -1,4 +1,9 @@
 // @ts-check
+// ownership-guard: allow infra 읽기만(권한 기준선 표 이름 명단 PUBLIC_READ_TABLES_BASELINE · ⑲ select · 공유 표는 select 만 — 세션617 fix1 grep 확인)
+// ownership-guard: allow officetel_presale_schedule 읽기만(권한 기준선 표 이름 명단 PUBLIC_READ_TABLES_BASELINE — 쓰기 없음)
+// ownership-guard: allow officetel_unit_supply 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
+// ownership-guard: allow rental_schedule_official 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
+// ownership-guard: allow rental_unit_supply 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
 /**
  * 수집기 감시 스크립트 (수집기 실패 텔레그램 알림 시스템).
  *

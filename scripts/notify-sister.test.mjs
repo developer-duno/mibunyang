@@ -3,7 +3,7 @@
  * notify-sister.mjs 시험 — 통보 대상 4 · 제외 3 + 본체(가짜 git·gh) (세션617 · 설계서 §3-2)
  */
 import { describe, it, expect } from "vitest";
-import { buildIssue, decideNotice, substantiveLines, pickStale, runNotify, tablesTheyCareAbout } from "./notify-sister.mjs";
+import { buildIssue, decideNotice, substantiveLines, pickBase, pickStale, runNotify, tablesTheyCareAbout, tablesWrittenTogether } from "./notify-sister.mjs";
 
 const registry = {
   version: 1,
@@ -18,6 +18,7 @@ const registry = {
     mibunyang: {
       "scripts/collectors/naver-collect.py": { complexes: ["complex_no", "complex_name"] },
       "api/consults.ts": { consults: ["*"] },
+      "scripts/compute-scores.mjs": { apartments: ["*"] },
     },
   },
 };
@@ -104,6 +105,12 @@ describe("제외 3", () => {
     expect(d.notify).toBe(false);
     expect(substantiveLines(COMMENT_DIFF)).toEqual([]);
   });
+
+  it("[fix2] 줄 머리 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면 실질 줄 · 안 닫히면 주석", () => {
+    expect(substantiveLines("+/* a */ const x = 1;")).toEqual(["const x = 1;"]);
+    expect(substantiveLines("+/* a")).toEqual([]);
+    expect(substantiveLines("+ * 설명 */")).toEqual([]);
+  });
 });
 
 describe("좁힘 — 2u 와 무관한 변경은 통보하지 않는다", () => {
@@ -120,8 +127,16 @@ describe("좁힘 — 2u 와 무관한 변경은 통보하지 않는다", () => {
     expect(d.notify).toBe(false);
   });
 
-  it("tablesTheyCareAbout = 공유·2u 소유·2u 가 읽는 표", () => {
+  it("tablesTheyCareAbout(마이그 판정) = 공유·2u 소유·2u 가 읽는 표", () => {
     expect([...tablesTheyCareAbout(registry)].sort()).toEqual(["apartments", "complexes", "payments"]);
+  });
+
+  it("[fix1 🟠E] 등록 파일 판정은 공유·2u 소유 표만 — 2u 가 읽기만 하는 apartments 만 쓰는 파일은 통보 안 함", () => {
+    expect([...tablesWrittenTogether(registry)].sort()).toEqual(["complexes", "payments"]);
+    const d = decide({ changed: [{ path: "scripts/compute-scores.mjs", status: "M" }], diffOf: () => CODE_DIFF });
+    expect(d.notify).toBe(false);
+    const d2 = decide({ changed: [{ path: "scripts/collectors/naver-collect.py", status: "M" }], diffOf: () => CODE_DIFF });
+    expect(d2.notify).toBe(true);
   });
 });
 
@@ -139,15 +154,16 @@ describe("buildIssue — 마이그 통보엔 DB 반영 시각 칸(설계서 §3-
 describe("본체 runNotify(가짜 git·gh)", () => {
   const now = new Date("2026-10-30T00:00:00Z");
 
-  /** @param {Record<string,string>} answers */
-  function fakeGit(answers) {
+  /** @param {Record<string,string>} answers @param {string[][]} [gitCalls] */
+  function fakeGit(answers, gitCalls = []) {
     return (/** @type {string[]} */ args) => {
+      gitCalls.push(args);
       const k = args.join(" ");
       if (k.startsWith("diff --name-status")) return answers.nameStatus;
       if (k === "log -1 --format=%s") return answers.title;
       if (k === "log -1 --format=%an <%ae>") return answers.author ?? "developer-duno <x@example.com>";
       if (k === "rev-parse HEAD") return "abcdef1234567890";
-      if (k.startsWith("diff HEAD~1 HEAD --")) return answers.diff ?? "";
+      if (/^diff \S+ HEAD --/.test(k)) return answers.diff ?? "";
       throw new Error(`예상 못 한 git ${k}`);
     };
   }
@@ -175,15 +191,44 @@ describe("본체 runNotify(가짜 git·gh)", () => {
       log: () => {},
     });
     expect(r.created).toBe(true);
-    const create = calls.find((c) => c[0] === "issue" && c[1] === "create");
-    expect(create).toBeDefined();
-    expect(create?.[create.indexOf("--title") + 1]).toBe("[→2u] feat(db): 정본 고침");
-    expect(create?.[create.indexOf("--label") + 1]).toBe("cross-repo-notice");
-    expect(calls.some((c) => c[0] === "label" && c[2] === "cross-repo-notice")).toBe(true);
     expect(r.closed).toEqual([3]);
-    expect(calls.some((c) => c[0] === "issue" && c[1] === "edit" && c[2] === "3" && c.includes("stale-unread"))).toBe(true);
-    expect(calls.some((c) => c[0] === "issue" && c[1] === "close" && c[2] === "3" && c.join(" ").includes("읽지 않은 채 닫힘"))).toBe(true);
-    expect(calls.some((c) => c[1] === "close" && c[2] === "9")).toBe(false);
+    // 인자 배열을 통째로 단언한다(fix1 🟠C — 가짜 gh 가 인자를 안 보면 created_at·not_planned·--body·--state 삭제 변이가 초록이었다)
+    expect(calls.find((c) => c[0] === "issue" && c[1] === "create")).toEqual([
+      "issue", "create", "--label", "cross-repo-notice", "--title", "[→2u] feat(db): 정본 고침", "--body-file", expect.stringMatching(/body\.md$/),
+    ]);
+    expect(calls.find((c) => c[0] === "issue" && c[1] === "list")).toEqual([
+      "issue", "list", "--label", "cross-repo-notice", "--state", "open", "--json", "number,createdAt", "--limit", "100",
+    ]);
+    expect(calls.filter((c) => c[0] === "issue" && c[1] === "edit")).toEqual([["issue", "edit", "3", "--add-label", "stale-unread"]]);
+    expect(calls.filter((c) => c[0] === "issue" && c[1] === "close")).toEqual([
+      ["issue", "close", "3", "--reason", "not planned", "--comment", "읽지 않은 채 닫힘 — 열린 지 14일이 지나 자동으로 닫았습니다(notify-sister)."],
+    ]);
+    expect(calls.filter((c) => c[0] === "label").map((c) => c[2])).toEqual(["cross-repo-notice", "stale-unread"]);
+  });
+
+  it("push 의 before 가 오면 그것과 비교한다(여러 커밋 push) · pickBase 는 0 만 40자·없는 커밋이면 HEAD~1", () => {
+    /** @type {string[][]} */
+    const gitCalls = [];
+    const before = "a".repeat(40);
+    runNotify({
+      git: fakeGit({ nameStatus: "M\tscripts/collectors/naver-collect.py\n", title: "feat: x", diff: CODE_DIFF }, gitCalls),
+      gh: (/** @type {string[]} */ args) => (args[1] === "list" ? "[]" : ""),
+      registry,
+      readFile: () => "",
+      commitUrl: "x",
+      now,
+      base: before,
+      dryRun: true,
+      log: () => {},
+    });
+    expect(gitCalls.filter((c) => c[0] === "diff")).toEqual([
+      ["diff", "--name-status", before, "HEAD"],
+      ["diff", before, "HEAD", "--", "scripts/collectors/naver-collect.py"],
+    ]);
+    expect(pickBase(before, () => true)).toBe(before);
+    expect(pickBase("0".repeat(40), () => true)).toBe("HEAD~1");
+    expect(pickBase(before, () => false)).toBe("HEAD~1");
+    expect(pickBase(undefined, () => true)).toBe("HEAD~1");
   });
 
   it("굽기 커밋이면 이슈를 만들지 않는다(14일 정리는 그대로 돈다)", () => {
