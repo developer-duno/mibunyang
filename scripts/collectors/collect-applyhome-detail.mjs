@@ -9,18 +9,25 @@
  * 기존 collect-applyhome.mjs(경쟁률, getRemndrLttotPblancCmpet)와 별개 서비스 — 에러 격리.
  * apartments base 컬럼은 안 건드림 → 미분양 stage·기존 날짜 보존.
  * 매칭된 단지만 presale_schedule_official(일정 + 규제 7종) + applyhome_unit_supply(평형) 적재.
+ * prices 는 빈칸만 채운다(세션622): 가격 행이 하나도 없는 비임대 단지에 84㎡ 에 가장 가까운 평형의
+ *   최고가를 house_type "applyhome_rep" 로 1행(평당가 = 전용면적 기준). 평형 재료 = DB applyhome_unit_supply
+ *   누적 행 + 이번 회차 행. 이미 가격 행이 있는 단지는 건드리지 않는다.
  *
  * 사용법:
  *   node scripts/collectors/collect-applyhome-detail.mjs              (적재)
  *   node scripts/collectors/collect-applyhome-detail.mjs --dry-run    (매칭 미리보기만)
+ *   node scripts/collectors/collect-applyhome-detail.mjs --dry-run --impact-out=<절대경로>
+ *     (prices 빈칸 채움 계획을 JSON 으로 저장 — dry-run 에서만 허용)
  *
  * 필요 환경변수: MOLIT_KEY, SUPABASE_URL, SUPABASE_SERVICE_KEY
  */
 import {
   loadEnv, getSupabase, log, logError, createReporter,
   selectAll, upsertBatch, stringSimilarity,
-  recordApiQuota, recordCollectorRun, REGION_MAP, resolveRegionName,
+  recordApiQuota, recordCollectorRun, REGION_MAP, resolveRegionName, today,
 } from "./_shared.mjs";
+import { writeFileSync } from "node:fs";
+import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 
 loadEnv();
 
@@ -49,7 +56,9 @@ const MATCH_SIM_MIN = 0.85;
  *   OLD_PARNTS_SUPORT_HSHLDCO?: string | number; YGMN_HSHLDCO?: string | number; NWWDS_HSHLDCO?: string | number;
  *   INSTT_RECOMEND_HSHLDCO?: string | number; ETC_HSHLDCO?: string | number;
  *   LTTOT_TOP_AMOUNT?: string | number; [k: string]: unknown }} MdlRow
- * @typedef {{ id: string; name: string; region: string | null }} AptRow
+ * @typedef {{ id: string; name: string; region: string | null; presale_type?: string | null }} AptRow
+ * @typedef {ReturnType<typeof buildUnitRow> & { source?: string | null }} UnitRow
+ *   source = DB 칸(기본 'apt' 원 공고 · 'remndr' 잔여세대, collect-applyhome-remndr.mjs). 이번 회차 행엔 없다.
  */
 
 // ── odcloud 페이지네이션 (collect-applyhome.mjs:33-61 패턴) ──
@@ -229,6 +238,208 @@ export function buildUnitRow(row, aptId) {
   };
 }
 
+// ── prices 빈칸 채움 (세션622) ─────────────────────────────────
+// house_type 은 `presale_` 로 시작하면 안 된다 — VIEW latest_prices·trade-stats buildLatestPriceMap 이
+// `presale_%` 를 뒤로 미루므로, 공식가(이 행)가 네이버 presale_min 보다 앞서려면 rank 0 이어야 한다.
+const PRICE_HOUSE_TYPE = "applyhome_rep";
+const REP_AREA_TARGET = 84; // 대표 평형 = 전용면적이 84㎡ 에 가장 가까운 평형
+const PYEONG_M2 = 3.3058;
+const PRICE_LOOKUP_CHUNK = 200;
+// applyhome_unit_supply.source 실측 철자(세션622, 16,278행): "apt" 11,864 · "remndr" 4,414. 칸 기본값 'apt'
+// (마이그 20260807000000) — buildUnitRow 는 source 를 안 넣으므로 이 수집기가 새로 넣는 행은 apt 가 된다.
+const UNIT_SOURCE_ORIGINAL = "apt";
+
+/**
+ * house_ty("084.8443 ", "059.9649B", "101.2A") 앞 숫자 = 전용면적(㎡). 못 읽으면 null.
+ * @param {unknown} houseTy
+ * @returns {number | null}
+ */
+export function parseHouseTyArea(houseTy) {
+  if (typeof houseTy !== "string") return null;
+  const m = houseTy.match(/^\s*(\d{2,3}\.\d+)/);
+  if (!m) return null;
+  const n = parseFloat(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/**
+ * 대표 평형 — top_amount>0 이고 전용면적을 읽을 수 있는 행 중 84㎡ 에 가장 가까운 것.
+ * 거리가 같으면 top_amount 가 낮은 쪽. 중위값·평균은 쓰지 않는다. 고를 행이 없으면 null.
+ * 원 공고(source 'apt', 없으면 apt 로 간주) 후보가 하나라도 있으면 그것만 본다 — 잔여세대(remndr)
+ * 공고가는 할인·재공급 값이라 원 분양가와 다르다(세션622 실측: 레이카운티 66200 vs 원 71100). 없을 때만 remndr.
+ * @param {readonly UnitRow[] | null | undefined} units
+ * @returns {{ unit: UnitRow; area: number } | null}
+ */
+export function pickRepresentativeUnit(units) {
+  /** @type {{ unit: UnitRow; area: number }[]} */
+  const candidates = [];
+  for (const u of units ?? []) {
+    if (!u || u.top_amount == null || !(u.top_amount > 0)) continue;
+    const area = parseHouseTyArea(u.house_ty);
+    if (area == null) continue;
+    candidates.push({ unit: u, area });
+  }
+  const original = candidates.filter((c) => (c.unit.source ?? UNIT_SOURCE_ORIGINAL) === UNIT_SOURCE_ORIGINAL);
+  /** @type {{ unit: UnitRow; area: number } | null} */
+  let best = null;
+  let bestDist = Infinity;
+  for (const { unit: u, area } of original.length ? original : candidates) {
+    const top = /** @type {number} */ (u.top_amount);
+    const dist = Math.abs(area - REP_AREA_TARGET);
+    if (!best || dist < bestDist || (dist === bestDist && top < (best.unit.top_amount ?? Infinity))) {
+      best = { unit: u, area };
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+/**
+ * 대표 평형 → prices 행(price·top_amount 단위 = 만원). 고를 평형이 없으면 null.
+ * @param {string} aptId
+ * @param {readonly UnitRow[] | null | undefined} units
+ * @param {string} today KST YYYY-MM-DD
+ */
+export function buildApplyhomePriceRow(aptId, units, today) {
+  const rep = pickRepresentativeUnit(units);
+  if (!rep) return null;
+  const { unit, area } = rep;
+  const price = /** @type {number} */ (unit.top_amount);
+  const supplyCount = unit.general_supply == null && unit.special_supply == null
+    ? null
+    : (unit.general_supply ?? 0) + (unit.special_supply ?? 0);
+  return {
+    apartment_id: aptId,
+    area,
+    supply_area: unit.supply_area,
+    price,
+    // 평당가는 **전용면적** 기준 — 같은 rank 0 인 seed 행(운영 DB 1,000표본 100% 전용 기준)과 맞춰야
+    // 평당가 편차 막대(src/constants/deviationFields.ts field "pp")가 공정하다. presale_min 은 공급 기준이라 다르다.
+    pp: Math.round(price / (area / PYEONG_M2)),
+    house_type: PRICE_HOUSE_TYPE,
+    supply_count: supplyCount,
+    recorded_at: today,
+  };
+}
+
+/**
+ * 빈칸 채움 계획 — 순수 함수(네트워크·DB 0). 단지마다 임대 → 이미 가격 있음 → 평형 없음 순으로 건너뛴다.
+ * @param {Map<string, UnitRow[]>} unitsByApt
+ * @param {Map<string, AptRow>} aptById
+ * @param {Set<string>} hasPriceIds prices 에 price>0 행이 하나라도 있는 단지(house_type 무관)
+ * @param {string} today
+ */
+export function planApplyhomePrices(unitsByApt, aptById, hasPriceIds, today) {
+  /** @type {NonNullable<ReturnType<typeof buildApplyhomePriceRow>>[]} */
+  const rows = [];
+  const counts = { planned: 0, skippedLease: 0, skippedHasPrice: 0, skippedNoUnit: 0, skippedNoApt: 0 };
+  /** @type {Record<string, number>} */
+  const byPresaleType = {};
+  for (const [aptId, units] of unitsByApt) {
+    const apt = aptById.get(aptId);
+    if (!apt) { counts.skippedNoApt++; continue; } // apartments 에 없는 id — 쓰면 FK 오류
+    if (isLeaseUnit(apt)) { counts.skippedLease++; continue; }
+    if (hasPriceIds.has(aptId)) { counts.skippedHasPrice++; continue; }
+    const row = buildApplyhomePriceRow(aptId, units, today);
+    if (!row) { counts.skippedNoUnit++; continue; }
+    rows.push(row);
+    counts.planned++;
+    const k = apt?.presale_type ?? "(null)";
+    byPresaleType[k] = (byPresaleType[k] ?? 0) + 1;
+  }
+  return { rows, counts, byPresaleType };
+}
+
+/**
+ * `--impact-out=<경로>` 읽기. dry-run 이 아니면 던진다(미리보기 전용).
+ * @param {readonly string[]} argv
+ * @returns {string | null}
+ */
+export function parseImpactOutArg(argv) {
+  // `--impact-out <경로>`(= 없이 띄어 씀)·값 없는 `--impact-out` 을 조용히 무시하면 미리보기 파일이 안 생긴다
+  if (argv.includes("--impact-out")) throw new Error("--impact-out=<경로> 꼴로 써야 한다(= 필수)");
+  const arg = argv.find((a) => a.startsWith("--impact-out="));
+  if (!arg) return null;
+  if (!argv.includes("--dry-run")) throw new Error("--impact-out 은 --dry-run 에서만 쓸 수 있다");
+  const p = arg.slice("--impact-out=".length);
+  if (!p) throw new Error("--impact-out 경로가 비었다");
+  return p;
+}
+
+/**
+ * prices 에 price>0 행이 있는 단지 id — 매칭된 단지만 200개씩 `.in()` 으로(전체 표 훑기 금지).
+ * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다.
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {string[]} aptIds
+ * @returns {Promise<Set<string>>}
+ */
+async function loadAptIdsWithPrice(sb, aptIds) {
+  /** @type {Set<string>} */
+  const has = new Set();
+  for (let i = 0; i < aptIds.length; i += PRICE_LOOKUP_CHUNK) {
+    const chunk = aptIds.slice(i, i + PRICE_LOOKUP_CHUNK);
+    const rows = /** @type {{ apartment_id: string }[]} */ (await selectAll(
+      (s) => s.from("prices").select("id, apartment_id").in("apartment_id", chunk).gt("price", 0),
+      sb,
+      "id",
+    ));
+    for (const r of rows) has.add(r.apartment_id);
+  }
+  return has;
+}
+
+/**
+ * 평형 재료 합치기 — DB 누적 행 + 이번 회차 행을 (apartment_id, house_manage_no, model_no) 로 합치고
+ * 같은 키면 이번 회차가 이긴다. 결과는 단지별 묶음. 순수 함수.
+ * (지금 API 에 더는 안 나오는 옛 공고의 평형도 DB 에 남아 있어 대상이 된다 — 세션622 미리보기 66 vs 246)
+ * @param {readonly UnitRow[]} dbRows
+ * @param {readonly UnitRow[]} roundRows
+ * @returns {Map<string, UnitRow[]>}
+ */
+export function mergeUnitRows(dbRows, roundRows) {
+  /** @type {Map<string, UnitRow>} */
+  const byKey = new Map();
+  for (const u of [...dbRows, ...roundRows]) {
+    const key = `${u.apartment_id}|${u.house_manage_no}|${u.model_no}`;
+    const prev = byKey.get(key);
+    // 이번 회차 행엔 source 가 없다 — upsert 가 source 를 안 건드려 DB 값이 남으므로 그 값을 물려받는다.
+    byKey.set(key, u.source == null && prev?.source != null ? { ...u, source: prev.source } : u);
+  }
+  /** @type {Map<string, UnitRow[]>} */
+  const byApt = new Map();
+  for (const u of byKey.values()) {
+    const list = byApt.get(u.apartment_id);
+    if (list) list.push(u);
+    else byApt.set(u.apartment_id, [u]);
+  }
+  return byApt;
+}
+
+/**
+ * prices 빈칸 채움 계획 — 평형 재료는 DB applyhome_unit_supply 전체(top_amount>0) + 이번 회차 행.
+ * 실제 실행에서는 평형 upsert **뒤**에 부른다(그때 DB 가 이번 회차를 이미 담고 있다).
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {AptRow[]} apts
+ * @param {UnitRow[]} roundRows
+ */
+async function buildPricePlan(sb, apts, roundRows) {
+  const dbRows = /** @type {UnitRow[]} */ (await selectAll(
+    (s) => s.from("applyhome_unit_supply")
+      .select("id, apartment_id, house_manage_no, model_no, house_ty, supply_area, general_supply, special_supply, top_amount, source")
+      .gt("top_amount", 0),
+    sb,
+    "id",
+  ));
+  const unitsByApt = mergeUnitRows(dbRows, roundRows);
+  const aptById = new Map(apts.map((a) => [a.id, a]));
+  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()]);
+  const plan = planApplyhomePrices(unitsByApt, aptById, hasPriceIds, today());
+  const c = plan.counts;
+  log(PHASE, `[prices] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
+  log(PHASE, `[prices] 빈칸 채움 ${c.planned}건(임대 제외 ${c.skippedLease} · 이미 값 있음 ${c.skippedHasPrice} · 평형 없음 ${c.skippedNoUnit}${c.skippedNoApt ? ` · 단지 없음 ${c.skippedNoApt}` : ""})`);
+  return plan;
+}
+
 // ── 메인 ──────────────────────────────────────────────────────
 async function main() {
   if (!API_KEY) {
@@ -236,6 +447,7 @@ async function main() {
     process.exit(1);
   }
   const dryRun = process.argv.includes("--dry-run");
+  const impactOutPath = parseImpactOutArg(process.argv); // dry-run 없이 오면 throw — API 호출 전
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
@@ -268,7 +480,7 @@ async function main() {
     //    단지가 후보에서 빠지던 진앙 정정 (세션 360, +466 단지 회수). 적재는 별도
     //    테이블(presale_schedule_official/applyhome_unit_supply)에만 = apartments base 불변.
     const apts = /** @type {AptRow[]} */ (await selectAll(
-      (s) => s.from("apartments").select("id, name, region"),
+      (s) => s.from("apartments").select("id, name, region, presale_type"),
       sb,
       "id", // 무정렬 OFFSET 이면 상세 매칭 후보가 조용히 빠진다 (세션543 W2)
     ));
@@ -296,7 +508,7 @@ async function main() {
     log(PHASE, `매칭(일정): ${matched}/${details.length}건`);
 
     // 4. Mdl 평형 — 매칭된 단지(hmn)만 적재
-    /** @type {Record<string, unknown>[]} */
+    /** @type {UnitRow[]} */
     const unitRows = [];
     for (const u of mdls) {
       if (rpt.interrupted()) break;
@@ -306,7 +518,34 @@ async function main() {
     }
     log(PHASE, `평형 행(매칭 단지): ${unitRows.length}건`);
 
+    // 4.5. prices 빈칸 채움 계획 — 중단(SIGTERM)으로 평형이 덜 모였으면 대표 평형이 틀릴 수 있어 건너뜀.
+    //      조회 실패도 건너뜀(모르는 채로 쓰면 이미 값 있는 단지에 끼어든다) — 비치명.
+    //      실제 실행은 평형 upsert 뒤에 부른다(아래 5).
+    /** @returns {Promise<ReturnType<typeof planApplyhomePrices> | null>} */
+    const planPrices = async () => {
+      if (rpt.interrupted()) return null;
+      try {
+        return await buildPricePlan(sb, apts, unitRows);
+      } catch (e) {
+        logError(PHASE, `prices 빈칸 채움 계획 실패 (비치명적, 이번 회차 건너뜀): ${e instanceof Error ? e.message : String(e)}`);
+        return null;
+      }
+    };
+
     if (dryRun) {
+      const pricePlan = await planPrices();
+      if (impactOutPath && pricePlan) {
+        const plan = pricePlan;
+        const aptById = new Map(apts.map((a) => [a.id, a]));
+        const rows = plan.rows.map((r) => {
+          const a = aptById.get(r.apartment_id);
+          return { ...r, name: a?.name ?? null, presale_type: a?.presale_type ?? null };
+        });
+        writeFileSync(impactOutPath, JSON.stringify({ takenAt: new Date().toISOString(), counts: plan.counts, byPresaleType: plan.byPresaleType, rows }, null, 2), "utf8");
+        log(PHASE, `[IMPACT] prices 빈칸 채움 계획 저장: ${impactOutPath}`);
+      } else if (impactOutPath) {
+        logError(PHASE, "prices 계획이 없어 --impact-out 저장 안 함");
+      }
       log(PHASE, `\n=== DRY-RUN 요약: 일정 ${scheduleRows.length}건 / 평형 ${unitRows.length}건 (DB 쓰기 0) ===`);
       rpt.success(matched);
       const result = rpt.summary();
@@ -322,6 +561,15 @@ async function main() {
     }
     if (unitRows.length) {
       await upsertBatch("applyhome_unit_supply", unitRows, "apartment_id,house_manage_no,model_no", 500, sb);
+    }
+    // prices 는 평형 적재 뒤 · 실패는 비치명(naver-presale 과 같은 꼴) — rpt 수치(일정 행 수)의 뜻은 그대로
+    const pricePlan = await planPrices();
+    if (pricePlan?.rows.length) {
+      try {
+        await upsertBatch("prices", pricePlan.rows, "apartment_id,house_type,recorded_at", 500, sb);
+      } catch (e) {
+        logError(PHASE, `prices upsert 실패 (비치명적): ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
 
     const result = rpt.summary();
