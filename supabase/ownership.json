@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-09",
+  "updated": "2026-10-10",
   "note": "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
   "repos": {
     "mibunyang": "developer-duno/mibunyang",
@@ -1461,9 +1461,6 @@
         "agent_verifications": [
           "*"
         ]
-      },
-      "backend/scripts/cleanup_b1_price_contamination.py": {
-        "complex_price_history": []
       },
       "backend/scripts/import_subway_stations.py": {
         "subway_stations": [
