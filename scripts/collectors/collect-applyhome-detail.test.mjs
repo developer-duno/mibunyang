@@ -23,11 +23,11 @@ describe("apartments 명단 페이징 — 고유키 커서 (세션543 W2)", () =
     // `selectAll(fn, sb)` 는 ORDER BY 없는 `.range()` 경로다(`_shared.mjs`).
     // apartments 는 2,600행+ 이라 페이지마다 다른 표본이 와서 **에러 없이** 행을 잃는다
     // (`unordered-pagination-loses-rows.md`).
-    expect(PAGING_SRC).toMatch(/select\("id, name, region"\),\s*sb,\s*"id",/);
+    expect(PAGING_SRC).toMatch(/select\("id, name, region, presale_type"\),\s*sb,\s*"id",/);
   });
 
   it("★ select 에 그 키가 실제로 들어 있다 — 없으면 selectAll 이 커서를 못 만들어 throw 한다", () => {
-    expect(PAGING_SRC).toContain('select("id, name, region")');
+    expect(PAGING_SRC).toContain('select("id, name, region, presale_type")');
   });
 });
 
@@ -51,6 +51,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 const {
   normName, addrToRegion, matchDetailToApt, buildScheduleRow, buildUnitRow,
+  parseHouseTyArea, pickRepresentativeUnit, buildApplyhomePriceRow, planApplyhomePrices, parseImpactOutArg, mergeUnitRows,
 } = await import("./collect-applyhome-detail.mjs");
 // 통합 시도 분할 헬퍼 — "헬퍼가 판정을 포기했다" 를 테스트가 직접 증명하는 데 쓴다.
 const { resolveRegionName } = await import("./_shared.mjs");
@@ -297,6 +298,162 @@ describe("buildUnitRow — Mdl → 평형 행", () => {
   it("복합키 3컬럼 채움", () => {
     expect(out.model_no).toBe("01");
     expect(out.house_manage_no).toBe("2026820004");
+  });
+});
+
+// ── prices 빈칸 채움 (세션622) ──
+// 기대값 출처 = 지시서 승인 항목 표 예시(사장님 결정 2026-10-10) · house_ty 형식은 운영 DB 실측("084.8443 " 뒤 공백, "076.5143").
+/** @param {string | null} houseTy @param {number | null} top @param {Record<string, unknown>} [extra] */
+const unit = (houseTy, top, extra = {}) => /** @type {any} */ ({
+  apartment_id: "ap-1", house_manage_no: "h1", model_no: String(houseTy), house_ty: houseTy,
+  supply_area: 110.214, general_supply: 100, special_supply: 134, special_by_type: null, top_amount: top, ...extra,
+});
+
+describe("parseHouseTyArea — house_ty 앞 숫자 = 전용면적", () => {
+  it("뒤 공백·접미 글자를 떼고 읽는다", () => {
+    expect(parseHouseTyArea("084.8443 ")).toBeCloseTo(84.8443, 4);
+    expect(parseHouseTyArea("059.9649B")).toBeCloseTo(59.9649, 4);
+    expect(parseHouseTyArea("101.2A")).toBeCloseTo(101.2, 4);
+    expect(parseHouseTyArea("076.5143")).toBeCloseTo(76.5143, 4);
+  });
+  it("못 읽는 값은 null", () => {
+    expect(parseHouseTyArea(null)).toBeNull();
+    expect(parseHouseTyArea("")).toBeNull();
+    expect(parseHouseTyArea("A타입")).toBeNull();
+  });
+});
+
+describe("pickRepresentativeUnit — 84㎡ 에 가장 가까운 평형", () => {
+  it("① 84형이 있으면 84형", () => {
+    const r = pickRepresentativeUnit([unit("059.9649B", 41700), unit("084.8443 ", 43300), unit("101.2A", 57600)]);
+    expect(r?.unit.top_amount).toBe(43300);
+    expect(r?.area).toBeCloseTo(84.8443, 4);
+  });
+  it("② 84 없이 59·101 만 있으면 거리 작은 101(17.2) — 59(24.0) 아님", () => {
+    const r = pickRepresentativeUnit([unit("059.9649B", 41700), unit("101.2A", 57600)]);
+    expect(r?.unit.top_amount).toBe(57600);
+  });
+  it("③ 거리가 같으면 top_amount 낮은 쪽 — 입력 순서와 무관", () => {
+    const a = unit("080.0000", 50000), b = unit("088.0000", 45000);
+    expect(pickRepresentativeUnit([a, b])?.unit.top_amount).toBe(45000);
+    expect(pickRepresentativeUnit([b, a])?.unit.top_amount).toBe(45000);
+  });
+  it("⑤ top_amount null/0 행은 제외 — 84형이어도", () => {
+    const r = pickRepresentativeUnit([unit("084.9000", 0), unit("084.8443 ", null), unit("059.9649B", 41700)]);
+    expect(r?.unit.top_amount).toBe(41700);
+  });
+  it("원 공고(apt) 행이 있으면 잔여세대(remndr) 행은 84㎡ 에 더 가까워도 무시 — source 없으면 apt", () => {
+    // 세션622 실측 꼴: 레이카운티 잔여세대 66200 vs 원 공고 71100
+    const r = pickRepresentativeUnit([
+      unit("084.0000", 66200, { source: "remndr" }),
+      unit("084.9000", 71100, { source: "apt" }),
+    ]);
+    expect(r?.unit.top_amount).toBe(71100);
+    const r2 = pickRepresentativeUnit([unit("084.9000", 66200, { source: "remndr" }), unit("101.2A", 90000)]);
+    expect(r2?.unit.top_amount).toBe(90000); // source 없는 행(이번 회차) = apt
+  });
+  it("원 공고 행이 없으면 잔여세대 행으로", () => {
+    const r = pickRepresentativeUnit([unit("059.9649B", 41700, { source: "remndr" }), unit("084.9000", 66200, { source: "remndr" })]);
+    expect(r?.unit.top_amount).toBe(66200);
+  });
+  it("⑤ 전부 제외면 null", () => {
+    expect(pickRepresentativeUnit([unit("084.9000", 0), unit("059.9649B", null)])).toBeNull();
+    expect(pickRepresentativeUnit([])).toBeNull();
+  });
+});
+
+describe("buildApplyhomePriceRow — prices 행 값", () => {
+  it("price·area·supply_area·supply_count·house_type·recorded_at·pp", () => {
+    const row = buildApplyhomePriceRow("ap-9", [unit("084.6120", 59410)], "2026-10-10");
+    expect(row).toEqual({
+      apartment_id: "ap-9", area: 84.612, supply_area: 110.214, price: 59410,
+      // pp = 전용면적 기준(메인 정정 — 운영 DB seed 행 1,000표본 100% 전용 기준) = 2321, 공급 기준(1782)이 아니다
+      pp: 2321, house_type: "applyhome_rep", supply_count: 234, recorded_at: "2026-10-10",
+    });
+    expect(row?.house_type.startsWith("presale_")).toBe(false); // VIEW 가 presale_% 를 뒤로 미룬다
+  });
+  it("공급세대 둘 다 null 이면 supply_count null · 공급면적 없어도 pp 는 전용면적으로 계산", () => {
+    const row = buildApplyhomePriceRow("ap-9", [unit("084.6120", 59410, { general_supply: null, special_supply: null, supply_area: null })], "2026-10-10");
+    expect(row?.supply_count).toBeNull();
+    expect(row?.supply_area).toBeNull();
+    expect(row?.pp).toBe(2321);
+  });
+  it("고를 평형이 없으면 null", () => {
+    expect(buildApplyhomePriceRow("ap-9", [unit("084.6120", 0)], "2026-10-10")).toBeNull();
+  });
+});
+
+describe("planApplyhomePrices — 빈칸만 채움", () => {
+  const units = [unit("084.6120", 59410)];
+  it("⑥ 임대 단지(유형·이름) 건너뜀", () => {
+    const unitsByApt = new Map([["a1", units], ["a2", units], ["a3", units]]);
+    const aptById = new Map([
+      ["a1", { id: "a1", name: "어느 단지", region: "경기", presale_type: "국민임대" }],
+      ["a2", { id: "a2", name: "○○ 행복주택", region: "경기", presale_type: "민간분양" }],
+      ["a3", { id: "a3", name: "분양 단지", region: "경기", presale_type: "민간분양" }],
+    ]);
+    const p = planApplyhomePrices(unitsByApt, aptById, new Set(), "2026-10-10");
+    expect(p.counts).toEqual({ planned: 1, skippedLease: 2, skippedHasPrice: 0, skippedNoUnit: 0, skippedNoApt: 0 });
+    expect(p.rows.map((r) => r.apartment_id)).toEqual(["a3"]);
+    expect(p.byPresaleType).toEqual({ 민간분양: 1 });
+  });
+  it("⑦ 이미 가격 있는 단지 건너뜀 · 평형 없음은 따로 셈", () => {
+    const unitsByApt = new Map([["a1", units], ["a2", units], ["a3", [unit("084.6120", null)]]]);
+    const aptById = new Map([
+      ["a1", { id: "a1", name: "가", region: "경기", presale_type: null }],
+      ["a2", { id: "a2", name: "나", region: "경기", presale_type: "민간분양" }],
+      ["a3", { id: "a3", name: "다", region: "경기", presale_type: "민간분양" }],
+    ]);
+    const p = planApplyhomePrices(unitsByApt, aptById, new Set(["a2"]), "2026-10-10");
+    expect(p.counts).toEqual({ planned: 1, skippedLease: 0, skippedHasPrice: 1, skippedNoUnit: 1, skippedNoApt: 0 });
+    expect(p.rows.map((r) => r.apartment_id)).toEqual(["a1"]);
+    expect(p.byPresaleType).toEqual({ "(null)": 1 });
+  });
+});
+
+describe("planApplyhomePrices — apartments 에 없는 단지", () => {
+  it("단지 행이 없으면 쓰지 않고 따로 센다(FK 오류 방지)", () => {
+    const p = planApplyhomePrices(new Map([["gone", [unit("084.6120", 59410)]]]), new Map(), new Set(), "2026-10-10");
+    expect(p.counts).toEqual({ planned: 0, skippedLease: 0, skippedHasPrice: 0, skippedNoUnit: 0, skippedNoApt: 1 });
+    expect(p.rows).toEqual([]);
+  });
+});
+
+describe("mergeUnitRows — DB 누적 행 + 이번 회차 행", () => {
+  it("같은 키(apartment_id·house_manage_no·model_no)면 이번 회차가 이기고, 다른 키·옛 공고 단지는 남는다", () => {
+    const db = [
+      unit("084.6120", 50000, { apartment_id: "a1", house_manage_no: "h1", model_no: "01" }),
+      unit("059.9000", 40000, { apartment_id: "a1", house_manage_no: "h1", model_no: "02" }),
+      unit("084.0000", 70000, { apartment_id: "old", house_manage_no: "h0", model_no: "01" }), // 지금 API 에 없는 옛 공고
+    ];
+    const round = [unit("084.6120", 61000, { apartment_id: "a1", house_manage_no: "h1", model_no: "01" })];
+    const m = mergeUnitRows(db, round);
+    expect([...m.keys()].sort()).toEqual(["a1", "old"]);
+    expect((m.get("a1") ?? []).map((u) => u.top_amount).sort()).toEqual([40000, 61000]);
+    expect(buildApplyhomePriceRow("a1", m.get("a1"), "2026-10-10")?.price).toBe(61000);
+    expect(m.get("old")?.length).toBe(1);
+  });
+  it("이번 회차 행(source 없음)은 같은 키 DB 행의 source 를 물려받는다 — upsert 가 source 를 안 바꾸므로", () => {
+    const db = [unit("084.0000", 66200, { apartment_id: "a1", house_manage_no: "h9", model_no: "01", source: "remndr" })];
+    const round = [unit("084.0000", 66300, { apartment_id: "a1", house_manage_no: "h9", model_no: "01" })];
+    const u = (mergeUnitRows(db, round).get("a1") ?? [])[0];
+    expect(u.top_amount).toBe(66300);
+    expect(u.source).toBe("remndr");
+  });
+});
+
+describe("parseImpactOutArg — 미리보기 전용", () => {
+  it("⑧ --impact-out 이 dry-run 없이 오면 throw", () => {
+    expect(() => parseImpactOutArg(["node", "x.mjs", "--impact-out=C:/t.json"])).toThrow(/dry-run/);
+  });
+  it("= 없이 띄어 쓴 꼴·값 없는 --impact-out 은 조용히 무시하지 않고 throw", () => {
+    expect(() => parseImpactOutArg(["node", "x.mjs", "--dry-run", "--impact-out", "C:/t.json"])).toThrow(/=/);
+    expect(() => parseImpactOutArg(["node", "x.mjs", "--dry-run", "--impact-out"])).toThrow(/=/);
+    expect(() => parseImpactOutArg(["node", "x.mjs", "--dry-run", "--impact-out="])).toThrow(/비었/);
+  });
+  it("dry-run 과 같이 오면 경로 · 없으면 null", () => {
+    expect(parseImpactOutArg(["node", "x.mjs", "--dry-run", "--impact-out=C:/t.json"])).toBe("C:/t.json");
+    expect(parseImpactOutArg(["node", "x.mjs", "--dry-run"])).toBeNull();
   });
 });
 
