@@ -42,6 +42,8 @@
 3. **방향** = 후보가 지금 `completion`(YYYYMM 꼴일 때만)보다 **이르고 1개월+**. 아니면 `not_earlier`.
 4. **다른 건물 보호**(ⓑ 묶음 후보일 때만): 묶음 안 active apt_seq 열쇠(method ≠ `bundle`)가 **2개 이상 서로 다르면** `mixed_buildings` · 묶음의 `lot_main` 이 **2종 이상**이면 `mixed_lots`(🟠1 — 열쇠 1개여도 다른 건물일 수 있다) → 둘 다 건너뜀. 단 건축년도가 후보 연도와 **같으면** 통과(`mixed_but_year_ok`).
 5. **미래 행 보호**(🔴1): 지금 값이 `nowYm` 이상(아직 안 지음)이면 **건축년도가 있고 후보 연도와 같을 때만** 바꾼다. 없으면 `future_unverified`.
+   - **시효(구현 보완, 적대 검사관 🟠1)**: 그 달이 지나면 위 보호가 풀려 "과거 행·연도 없음"으로 반영되므로, 건축년도 근거가 없는 행은 지금 값이 `nowYm` 기준 최근 `RECENT_UNVERIFIED_MONTHS`(24)개월 안이면 건너뛴다(`recent_unverified`) — 연도 없이 바꾸는 것은 25개월+ 전 행만.
+   - **다중 공고(구현 보완, 맹점 검사관)**: 자기 공고 후보인데 그 행에 붙은 공고의 유효 예정월이 서로 다른 값 2개 이상이면(상세 수집기가 남의 단지 공고를 붙이는 결함 — 시티오씨엘 8단지 행에 6건) 건축년도가 같을 때만 바꾼다(`multi_notice_unverified` / 통과 flag `multi_notice_year_ok`).
 6. **건축년도 대조**: 그 행(없으면 묶음)의 apt_seq 로 모은 `build_year` 가 있으면 후보 연도와 같을 때만(`year_mismatch` 건너뜀 · 여럿이면 최빈값, 동률 `year_ambiguous`). 없으면 과거 행에 한해 반영(`no_year` 표시 — 전이표에 따로 셈, 약 79행).
 7. 결과 줄 = `{ id, prev, next, source: "own_notice"|"bundle_notice", houseManageNo, buildYear|null, gapMonths, flags: [...] }` · 건너뛴 이유별 개수를 요약에.
 

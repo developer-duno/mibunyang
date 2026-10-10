@@ -53,6 +53,13 @@ export const DECISIONS_PATH = join(resolve(__dirname, "..", ".."), "docs", "audi
  * 2차를 승인하는 날 1 로 내리는 PR 을 따로 낸다(BACKLOG A-19).
  */
 export const MIN_GAP_MONTHS = 12;
+/**
+ * 건축년도 근거가 없는 행은 지금 값이 이번 달 기준 최근 이 개월 수 안이면 바꾸지 않는다(`recent_unverified`).
+ * 미래 행 보호(`future_unverified`)는 그 달이 지나면 풀려 "과거 행·연도 없음"으로 조용히 반영됐다 — 아직 안 지은 새 단지가
+ * 같은 묶음의 1차 공고를 받는 꼴(초월역 2BL·검단Ⅳ·송도마리나베이 3회차·시티오씨엘 8단지 …)이 1~3행씩 차단기 아래로
+ * 들어온다(세션624 적대 검사관 🟠1). 연도 없이 바꾸는 것은 지금 값이 25개월+ 전인 행만.
+ */
+export const RECENT_UNVERIFIED_MONTHS = 24;
 /** 후보가 있는 ah-* 행 중 이 비율 넘게 바뀌면 쓰지 않는다(표가 작을 때의 한도). */
 export const CHANGE_BREAKER_RATIO = 0.1;
 /**
@@ -194,8 +201,14 @@ export function planCompletionUpdates(rows, schedules, links, yearsByAptSeq, dec
   // 행마다 가장 이른 유효 공고(같은 달이면 공고 번호가 작은 쪽 — 결과를 한 가지로 고정)
   /** @type {Map<string, { ym: string, hmn: string | null }>} */
   const ownNotice = new Map();
+  /** 행마다 붙은 공고의 서로 다른 유효 예정월 — 2개 이상이면 남의 단지 공고가 섞였을 수 있다(세션624 맹점 검사관) */
+  /** @type {Map<string, Set<string>>} */
+  const ownYms = new Map();
   for (const s of schedules) {
     if (!isYm(s.move_in_ym)) continue;
+    const yms = ownYms.get(s.apartment_id) ?? new Set();
+    yms.add(s.move_in_ym);
+    ownYms.set(s.apartment_id, yms);
     const hmn = s.house_manage_no ?? null;
     const cur = ownNotice.get(s.apartment_id);
     if (!cur || s.move_in_ym < cur.ym || (s.move_in_ym === cur.ym && String(hmn ?? "") < String(cur.hmn ?? ""))) {
@@ -266,6 +279,12 @@ export function planCompletionUpdates(rows, schedules, links, yearsByAptSeq, dec
 
     /** @type {string[]} */
     const flags = [];
+    // 한 행에 예정월이 다른 공고가 여럿 붙었으면(상세 수집기가 남의 단지 공고를 붙이는 결함 — 시티오씨엘 8단지 행에 6건)
+    // 자기 공고 최솟값도 남의 것일 수 있다 → 건축년도가 같을 때만(세션624 맹점 검사관)
+    if (source === "own_notice" && (ownYms.get(r.id)?.size ?? 0) >= 2) {
+      if (!yearOk) { skip("multi_notice_unverified"); continue; }
+      flags.push("multi_notice_year_ok");
+    }
     // 다른 건물 보호(묶음 후보일 때만) — 열쇠가 1개여도 지번이 2종이면 다른 건물일 수 있다(검사관 🟠1)
     if (source === "bundle_notice") {
       const bundleKeys = new Set(members.flatMap((m) => (linksByApt.get(m.id) ?? []).filter((l) => l.method !== "bundle").map((l) => l.link_key)));
@@ -279,6 +298,8 @@ export function planCompletionUpdates(rows, schedules, links, yearsByAptSeq, dec
     }
     // 미래 행 보호 — 아직 안 지은 새 단지는 건축년도가 같을 때만(검사관 🔴1)
     if (prevIdx >= nowIdx && !yearOk) { skip("future_unverified"); continue; }
+    // 미래 보호의 시효 — 연도 근거 없이는 지금 값이 최근 RECENT_UNVERIFIED_MONTHS 개월 안이면 바꾸지 않는다(세션624 🟠1)
+    if (buildYear == null && nowIdx - prevIdx <= RECENT_UNVERIFIED_MONTHS) { skip("recent_unverified"); continue; }
     if (buildYear == null) flags.push("no_year");
 
     updates.push({ id: r.id, prev, next: cand.ym, source, houseManageNo: cand.hmn, buildYear, gapMonths: gap, flags });

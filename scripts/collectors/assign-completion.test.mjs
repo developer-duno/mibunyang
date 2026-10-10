@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 import {
   MIN_GAP_MONTHS,
+  RECENT_UNVERIFIED_MONTHS,
   CHANGE_BREAKER_MAX_ROWS,
   CHANGE_BREAKER_RATIO,
   UPDATE_CONCURRENCY,
@@ -26,6 +27,8 @@ import {
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const NOW_YM = "202610";
+/** 지금 값이 25개월+ 전이 되는 "나중의 이번 달" — 연도 없이 바꾸는 경로를 보는 시험용(RECENT_UNVERIFIED_MONTHS 밖) */
+const LATER_YM = "202901";
 
 // 입력은 운영 형식 그대로(세션624 실측): completion·move_in_ym = "YYYYMM" 문자열 · build_year = 정수 ·
 // link_key = apt_seq "41463-123" · method = "jibun+name" | "name" | "manual" | "bundle" · id 접두 ah-/ap-
@@ -52,13 +55,16 @@ describe("planCompletionUpdates — 설계서 §2-1 예시", () => {
     expect(plan.skipped).toEqual({ future_unverified: 1 });
   });
 
-  it("같은 입력에 지금 202605(과거) · minGap 1 → 남의 202310 이 아니라 자기 공고 202507(own_notice)", () => {
+  it("같은 입력에 지금 202605(과거) · 건축 2025 · minGap 1 → 남의 202310 이 아니라 자기 공고 202507(own_notice)", () => {
     const rows = [row("ah-2025910300", "202605", { key: "송도4" }), row("ap-1", "202310", { key: "송도4" })];
     const sch = [notice("ah-2025910300", "202507", "2025000123"), notice("ap-1", "202310")];
-    const plan = planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM, { minGap: 1 });
+    const links = [link("ah-2025910300", "28185-77")];
+    const plan = planCompletionUpdates(rows, sch, links, new Map([["28185-77", 2025]]), [], NOW_YM, { minGap: 1 });
     expect(plan.updates).toEqual([
-      { id: "ah-2025910300", prev: "202605", next: "202507", source: "own_notice", houseManageNo: "2025000123", buildYear: null, gapMonths: 10, flags: ["no_year"] },
+      { id: "ah-2025910300", prev: "202605", next: "202507", source: "own_notice", houseManageNo: "2025000123", buildYear: 2025, gapMonths: 10, flags: [] },
     ]);
+    // 연도 근거가 없으면 지금 값이 최근 24개월 안이라 건너뛴다(세션624 🟠1)
+    expect(planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM, { minGap: 1 }).skipped).toEqual({ recent_unverified: 1 });
   });
 
   it("금빛 꼴: 묶음 지번 1003/1008 · 3차 자기 공고 없음 · 묶음 최솟값 202305 · 지금 202408 · 건축 2024 → year_mismatch(안 바뀜)", () => {
@@ -84,10 +90,11 @@ describe("planCompletionUpdates — 설계서 §2-1 예시", () => {
     expect(upd(plan, "ah-2024910002")).toMatchObject({ next: "202305", source: "bundle_notice", buildYear: 2023, flags: ["mixed_but_year_ok"] });
   });
 
-  it("디센트 0027: 묶음 공고 202412 · 지금 202508 · 연도 없음 → minGap 1 이면 202412 no_year gap 8 / 12 면 not_earlier / 기본값도 not_earlier", () => {
+  it("디센트 0027: 묶음 공고 202412 · 지금 202508 · 연도 없음 → minGap 1 이면 지금은 recent_unverified, 25개월+ 지난 뒤엔 202412 no_year gap 8 / 12 면 not_earlier / 기본값도 not_earlier", () => {
     const rows = [row("ah-2026910027", "202508", { key: "디센트2" }), row("ap-9", "202412", { key: "디센트2" })];
     const sch = [notice("ap-9", "202412")];
-    const one = planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM, { minGap: 1 });
+    expect(planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM, { minGap: 1 }).skipped).toEqual({ recent_unverified: 1 });
+    const one = planCompletionUpdates(rows, sch, [], NO_YEARS, [], LATER_YM, { minGap: 1 });
     expect(upd(one, "ah-2026910027")).toMatchObject({ next: "202412", source: "bundle_notice", gapMonths: 8, flags: ["no_year"] });
     expect(planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM, { minGap: 12 }).skipped).toEqual({ not_earlier: 1 });
     // 기본값(인자 없음) = 12 — 매일 --apply 가 1~11개월 행으로 차단기에 걸리지 않게(설계서 §8 결정 2)
@@ -106,13 +113,13 @@ describe("planCompletionUpdates — 경계와 보호", () => {
   it("묶음 전파(method bundle) 줄은 다른 건물로 세지 않는다 — 열쇠 1종이면 반영", () => {
     const rows = [row("ah-1", "202501", { key: "K" }), row("ap-2", "202201", { key: "K" })];
     const links = [link("ap-2", "11111-1", "name"), link("ah-1", "11111-9", "bundle")];
-    const plan = planCompletionUpdates(rows, [notice("ap-2", "202201")], links, NO_YEARS, [], NOW_YM);
+    const plan = planCompletionUpdates(rows, [notice("ap-2", "202201")], links, NO_YEARS, [], LATER_YM);
     expect(upd(plan, "ah-1")).toMatchObject({ next: "202201", flags: ["no_year"] });
   });
 
   it("자기 공고 후보에는 다른 건물 보호를 걸지 않는다(그 행 자신의 공고)", () => {
     const rows = [row("ah-1", "202501", { key: "K", lot: 1 }), row("ap-2", "202201", { key: "K", lot: 2 })];
-    const plan = planCompletionUpdates(rows, [notice("ah-1", "202301")], [], NO_YEARS, [], NOW_YM);
+    const plan = planCompletionUpdates(rows, [notice("ah-1", "202301")], [], NO_YEARS, [], LATER_YM);
     expect(upd(plan, "ah-1")).toMatchObject({ next: "202301", source: "own_notice" });
   });
 
@@ -158,7 +165,7 @@ describe("planCompletionUpdates — 경계와 보호", () => {
   it("사람 판정 keep 이면 제안하지 않는다(human_keep)", () => {
     const rows = [row("ah-1", "202501"), row("ah-2", "202501")];
     const sch = [notice("ah-1", "202301"), notice("ah-2", "202301")];
-    const plan = planCompletionUpdates(rows, sch, [], NO_YEARS, [{ id: "ah-1", action: "keep" }], NOW_YM);
+    const plan = planCompletionUpdates(rows, sch, [], NO_YEARS, [{ id: "ah-1", action: "keep" }], LATER_YM);
     expect(plan.updates.map((u) => u.id)).toEqual(["ah-2"]);
     expect(plan.skipped).toEqual({ human_keep: 1 });
     expect(plan.candidates).toBe(1);
@@ -182,17 +189,50 @@ describe("planCompletionUpdates — 경계와 보호", () => {
 
   it("YYYYMM 이 아닌 공고 예정월은 후보에서 뺀다", () => {
     const rows = [row("ah-1", "202501")];
-    const plan = planCompletionUpdates(rows, [notice("ah-1", "2023"), notice("ah-1", "202399"), notice("ah-1", "202302")], [], NO_YEARS, [], NOW_YM);
+    const plan = planCompletionUpdates(rows, [notice("ah-1", "2023"), notice("ah-1", "202399"), notice("ah-1", "202302")], [], NO_YEARS, [], LATER_YM);
     expect(upd(plan, "ah-1")?.next).toBe("202302");
   });
 
   it("자기 출력 위에서 다시 돌리면 고칠 것이 없다(2회차 0건)", () => {
     const rows = [row("ah-1", "202501", { key: "K" }), row("ap-2", "202301", { key: "K" }), row("ah-3", "202601")];
     const sch = [notice("ap-2", "202301"), notice("ah-3", "202401")];
-    const first = planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM);
+    const first = planCompletionUpdates(rows, sch, [], NO_YEARS, [], LATER_YM);
     expect(first.changed).toBe(2);
     for (const u of first.updates) /** @type {any} */ (rows.find((r) => r.id === u.id)).completion = u.next;
-    expect(planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM).changed).toBe(0);
+    expect(planCompletionUpdates(rows, sch, [], NO_YEARS, [], LATER_YM).changed).toBe(0);
+  });
+
+  it("한 행에 예정월이 다른 공고가 둘 이상 붙었고 연도 근거가 없으면 multi_notice_unverified(세션624 맹점 — 시티오씨엘 8단지 꼴)", () => {
+    const rows = [row("ah-1", "202501")];
+    const sch = [notice("ah-1", "202305", "h-a"), notice("ah-1", "202403", "h-b"), notice("ah-1", "202305", "h-c")];
+    const plan = planCompletionUpdates(rows, sch, [], NO_YEARS, [], LATER_YM);
+    expect(plan.updates).toEqual([]);
+    expect(plan.skipped).toEqual({ multi_notice_unverified: 1 });
+    // 같은 예정월 공고만 여럿이면(서로 다른 값 1개) 다중 공고가 아니다
+    const same = planCompletionUpdates(rows, [notice("ah-1", "202305", "h-a"), notice("ah-1", "202305", "h-c")], [], NO_YEARS, [], LATER_YM);
+    expect(upd(same, "ah-1")).toMatchObject({ next: "202305", flags: ["no_year"] });
+  });
+
+  it("다중 공고여도 건축년도가 후보 연도와 같으면 반영(multi_notice_year_ok)", () => {
+    const rows = [row("ah-1", "202501")];
+    const sch = [notice("ah-1", "202305", "h-a"), notice("ah-1", "202403", "h-b")];
+    const links = [link("ah-1", "11500-1")];
+    const plan = planCompletionUpdates(rows, sch, links, new Map([["11500-1", 2023]]), [], NOW_YM);
+    expect(upd(plan, "ah-1")).toMatchObject({ next: "202305", source: "own_notice", buildYear: 2023, flags: ["multi_notice_year_ok"] });
+  });
+
+  it("미래 보호의 시효(세션624 🟠1): 연도 근거가 없으면 지금 값이 최근 24개월 안이면 recent_unverified — 23·24개월은 건너뜀, 25개월은 반영", () => {
+    // 이번 달 202610 기준: 202411 = 23개월 전 · 202410 = 24개월 전 · 202409 = 25개월 전. 후보는 모두 그보다 24개월 이른 공고.
+    const rows = [row("ah-23", "202411"), row("ah-24", "202410"), row("ah-25", "202409")];
+    const sch = [notice("ah-23", "202211"), notice("ah-24", "202210"), notice("ah-25", "202209")];
+    const plan = planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM);
+    expect(plan.updates.map((u) => u.id)).toEqual(["ah-25"]);
+    expect(upd(plan, "ah-25")).toMatchObject({ next: "202209", flags: ["no_year"] });
+    expect(plan.skipped).toEqual({ recent_unverified: 2 });
+    // 같은 행이라도 건축년도가 후보 연도와 같으면 최근이어도 바꾼다
+    const links = [link("ah-23", "y23")];
+    expect(upd(planCompletionUpdates(rows, sch, links, new Map([["y23", 2022]]), [], NOW_YM), "ah-23")).toMatchObject({ next: "202211", buildYear: 2022 });
+    expect(RECENT_UNVERIFIED_MONTHS).toBe(24);
   });
 
   it("minGap 이 1 이상 정수가 아니면 던진다", () => {
