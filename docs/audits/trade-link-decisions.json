@@ -1,6 +1,6 @@
 {
   "note": "우리 단지 ↔ 실거래 열쇠 연결의 사람 판정 — scripts/collectors/assign-trade-links.mjs 가 계산보다 먼저 따른다(설계서 docs/superpowers/specs/2026-10-03-trade-scope-narrowing.md §5-1 · 계획서 B4). 줄 = { apartment_id, link_kind: apt_seq|presale, link_key, status: active|rejected, verified_by, verified_at, names(눈 검수용) }. active = method manual 로 붙인다 · rejected = 표에 rejected 로 남겨 다시 제안하지 않는다. 같은 줄을 두 번 적으면 거부된다. 고치려면 PR 로(사장님 승인) — hold 명단 미리보기(--out)를 보고 적는다.",
-  "updatedAt": "2026-10-06",
+  "updatedAt": "2026-10-10",
   "decisions": [
     {"apartment_id": "ah-2021910014", "link_kind": "apt_seq", "link_key": "44200-542", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "아산 탕정 삼성트라팰리스 ↔ 탕정삼성트라팰리스(1단지~3단지) · 2021 잔여세대 재공급(1~5단지 중 미상) — 사장님 결정: 셋 다 붙임"},
     {"apartment_id": "ah-2021910014", "link_kind": "apt_seq", "link_key": "44200-587", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "아산 탕정 삼성트라팰리스 ↔ 탕정삼성트라팰리스(4단지) · 2021 잔여세대 재공급(1~5단지 중 미상) — 사장님 결정: 셋 다 붙임"},
@@ -78,6 +78,11 @@
     {"apartment_id": "ap-6028604", "link_kind": "apt_seq", "link_key": "11305-5707", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "북서울자이폴라리스 재개발임대 ↔ 북서울자이폴라리스(1단지) · 한 공고가 단지 전체(블록·단지번호)를 덮음 — 웹 출처 2개+"},
     {"apartment_id": "ap-6028604", "link_kind": "apt_seq", "link_key": "11305-5708", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "북서울자이폴라리스 재개발임대 ↔ 북서울자이폴라리스(2단지) · 한 공고가 단지 전체(블록·단지번호)를 덮음 — 웹 출처 2개+"},
     {"apartment_id": "ap-6028613", "link_kind": "apt_seq", "link_key": "11290-5983", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "장위자이레디언트 재개발임대 ↔ 장위자이레디언트(4단지) · 한 공고가 단지 전체(블록·단지번호)를 덮음 — 웹 출처 2개+"},
-    {"apartment_id": "ap-6028613", "link_kind": "apt_seq", "link_key": "11290-5988", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "장위자이레디언트 재개발임대 ↔ 장위자이레디언트(2단지) · 한 공고가 단지 전체(블록·단지번호)를 덮음 — 웹 출처 2개+"}
+    {"apartment_id": "ap-6028613", "link_kind": "apt_seq", "link_key": "11290-5988", "status": "active", "verified_by": "사장님(세션600 웹 대조)", "verified_at": "2026-10-06", "names": "장위자이레디언트 재개발임대 ↔ 장위자이레디언트(2단지) · 한 공고가 단지 전체(블록·단지번호)를 덮음 — 웹 출처 2개+"},
+    {"apartment_id": "ah-2026930017", "link_kind": "apt_seq", "link_key": "26470-3047", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-10", "names": "레이카운티 ↔ 레이카운티(1단지) · 2026 공고 = 이미 입주한 단지(부산 연제구 거제동 1536 · 1~4단지 2023·5단지 2024 건축 · 거래 936건)의 세대 — 산성역자이푸르지오 선례, 사장님 결정: 1~5단지 전부 붙임"},
+    {"apartment_id": "ah-2026930017", "link_kind": "apt_seq", "link_key": "26470-3048", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-10", "names": "레이카운티 ↔ 레이카운티(2단지) · 2026 공고 = 이미 입주한 단지(부산 연제구 거제동 1536 · 1~4단지 2023·5단지 2024 건축 · 거래 936건)의 세대 — 산성역자이푸르지오 선례, 사장님 결정: 1~5단지 전부 붙임"},
+    {"apartment_id": "ah-2026930017", "link_kind": "apt_seq", "link_key": "26470-3049", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-10", "names": "레이카운티 ↔ 레이카운티(3단지) · 2026 공고 = 이미 입주한 단지(부산 연제구 거제동 1536 · 1~4단지 2023·5단지 2024 건축 · 거래 936건)의 세대 — 산성역자이푸르지오 선례, 사장님 결정: 1~5단지 전부 붙임"},
+    {"apartment_id": "ah-2026930017", "link_kind": "apt_seq", "link_key": "26470-3050", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-10", "names": "레이카운티 ↔ 레이카운티(4단지) · 2026 공고 = 이미 입주한 단지(부산 연제구 거제동 1536 · 1~4단지 2023·5단지 2024 건축 · 거래 936건)의 세대 — 산성역자이푸르지오 선례, 사장님 결정: 1~5단지 전부 붙임"},
+    {"apartment_id": "ah-2026930017", "link_kind": "apt_seq", "link_key": "26470-3051", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-10", "names": "레이카운티 ↔ 레이카운티(5단지) · 2026 공고 = 이미 입주한 단지(부산 연제구 거제동 1536 · 1~4단지 2023·5단지 2024 건축 · 거래 936건)의 세대 — 산성역자이푸르지오 선례, 사장님 결정: 1~5단지 전부 붙임"}
   ]
 }
