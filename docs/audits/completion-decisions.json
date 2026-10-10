@@ -1,0 +1,5 @@
+{
+  "note": "준공월 되돌리기(scripts/collectors/assign-completion.mjs)의 사람 판정 명단 — 자동 규칙이 제안해도 바꾸지 않을 행을 사람이 승인해 적는다. action 은 keep 하나만(그 id 는 제안하지 않음 → 매일 --apply 가 다시 쓰거나 차단기에 걸리지 않는다). 한 줄 꼴 = {\"id\": \"ah-…\", \"action\": \"keep\", \"names\": \"단지 이름(사람이 읽을 것)\", \"why\": \"왜 지금 값을 두나\", \"approved\": \"YYYY-MM-DD 사장님 승인(세션N)\"}. id 가 두 번 나오거나 action 이 keep 이 아니면 수집기가 던진다(parseCompletionDecisions). 고치려면 PR 로(사장님 승인) — 순서 = 명단 수정 → 미리보기(--out) → 바뀜 명단 승인 → --apply-from. 설계서 docs/superpowers/plans/2026-10-11-a19-completion-and-bjd.md §2-2.",
+  "updatedAt": "2026-10-11",
+  "decisions": []
+}
