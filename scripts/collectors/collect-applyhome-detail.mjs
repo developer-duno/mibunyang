@@ -371,14 +371,15 @@ export function parseImpactOutArg(argv) {
  * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다.
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string[]} aptIds
+ * @param {typeof selectAll} sel main 이 넘긴 selectAll(시험에선 가짜)
  * @returns {Promise<Set<string>>}
  */
-async function loadAptIdsWithPrice(sb, aptIds) {
+async function loadAptIdsWithPrice(sb, aptIds, sel) {
   /** @type {Set<string>} */
   const has = new Set();
   for (let i = 0; i < aptIds.length; i += PRICE_LOOKUP_CHUNK) {
     const chunk = aptIds.slice(i, i + PRICE_LOOKUP_CHUNK);
-    const rows = /** @type {{ apartment_id: string }[]} */ (await selectAll(
+    const rows = /** @type {{ apartment_id: string }[]} */ (await sel(
       (s) => s.from("prices").select("id, apartment_id").in("apartment_id", chunk).gt("price", 0),
       sb,
       "id",
@@ -421,9 +422,11 @@ export function mergeUnitRows(dbRows, roundRows) {
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {AptRow[]} apts
  * @param {UnitRow[]} roundRows
+ * @param {typeof selectAll} sel main 이 넘긴 selectAll
+ * @param {typeof today} todayFn main 이 넘긴 KST 날짜 함수(recorded_at)
  */
-async function buildPricePlan(sb, apts, roundRows) {
-  const dbRows = /** @type {UnitRow[]} */ (await selectAll(
+async function buildPricePlan(sb, apts, roundRows, sel, todayFn) {
+  const dbRows = /** @type {UnitRow[]} */ (await sel(
     (s) => s.from("applyhome_unit_supply")
       .select("id, apartment_id, house_manage_no, model_no, house_ty, supply_area, general_supply, special_supply, top_amount, source")
       .gt("top_amount", 0),
@@ -432,8 +435,8 @@ async function buildPricePlan(sb, apts, roundRows) {
   ));
   const unitsByApt = mergeUnitRows(dbRows, roundRows);
   const aptById = new Map(apts.map((a) => [a.id, a]));
-  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()]);
-  const plan = planApplyhomePrices(unitsByApt, aptById, hasPriceIds, today());
+  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()], sel);
+  const plan = planApplyhomePrices(unitsByApt, aptById, hasPriceIds, todayFn());
   const c = plan.counts;
   log(PHASE, `[prices] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
   log(PHASE, `[prices] 빈칸 채움 ${c.planned}건(임대 제외 ${c.skippedLease} · 이미 값 있음 ${c.skippedHasPrice} · 평형 없음 ${c.skippedNoUnit}${c.skippedNoApt ? ` · 단지 없음 ${c.skippedNoApt}` : ""})`);
@@ -441,17 +444,32 @@ async function buildPricePlan(sb, apts, roundRows) {
 }
 
 // ── 메인 ──────────────────────────────────────────────────────
-async function main() {
-  if (!API_KEY) {
+/**
+ * @typedef {{ apiKey: string | undefined; argv: readonly string[]; getSupabase: typeof getSupabase;
+ *   createReporter: typeof createReporter; fetchAllPages: typeof fetchAllPages; selectAll: typeof selectAll;
+ *   upsertBatch: typeof upsertBatch; recordCollectorRun: typeof recordCollectorRun;
+ *   recordApiQuota: typeof recordApiQuota; today: typeof today }} MainDeps
+ */
+/**
+ * CLI 는 인자 없이 불러 진짜 함수로 돈다. 시험은 가짜 deps 로 main 흐름(순서·중단·날짜)을 본다(세션623).
+ * @param {Partial<MainDeps>} [overrides]
+ */
+export async function main(overrides = {}) {
+  /** @type {MainDeps} */
+  const deps = {
+    apiKey: API_KEY, argv: process.argv, getSupabase, createReporter, fetchAllPages,
+    selectAll, upsertBatch, recordCollectorRun, recordApiQuota, today, ...overrides,
+  };
+  if (!deps.apiKey) {
     logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
     process.exit(1);
   }
-  const dryRun = process.argv.includes("--dry-run");
-  const impactOutPath = parseImpactOutArg(process.argv); // dry-run 없이 오면 throw — API 호출 전
+  const dryRun = deps.argv.includes("--dry-run");
+  const impactOutPath = parseImpactOutArg(deps.argv); // dry-run 없이 오면 throw — API 호출 전
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
-  const sb = getSupabase();
-  const rpt = createReporter(PHASE);
+  const sb = deps.getSupabase();
+  const rpt = deps.createReporter(PHASE);
   // process.exit() 를 try 안에서 부르면 대기 중인 finally(recordApiQuota)를 건너뛴다
   // (Node 실측, 세션 395 정정 패턴 — collect-market-stats.mjs 답습).
   // 그래서 exit 여부는 플래그로만 들고, 실제 exit 는 finally 안 recordApiQuota 직후에 한다.
@@ -460,9 +478,9 @@ async function main() {
   try {
     // 1. 청약홈 Detail(일정) + Mdl(평형) 전수 수집
     log(PHASE, "청약홈 분양정보 상세 조회 시작...");
-    const details = /** @type {DetailRow[]} */ (await fetchAllPages("getAPTLttotPblancDetail"));
+    const details = /** @type {DetailRow[]} */ (await deps.fetchAllPages("getAPTLttotPblancDetail"));
     log(PHASE, `Detail 총 ${details.length}건`);
-    const mdls = /** @type {MdlRow[]} */ (await fetchAllPages("getAPTLttotPblancMdl"));
+    const mdls = /** @type {MdlRow[]} */ (await deps.fetchAllPages("getAPTLttotPblancMdl"));
     log(PHASE, `Mdl(평형) 총 ${mdls.length}건`);
 
     // 1.5. API 형식 변경 조기 감지 (collect-applyhome.mjs 패턴) — DB 쓰기 전
@@ -479,7 +497,7 @@ async function main() {
     //    presale_stage NOT NULL 제약 제거 — 청약홈 공고가 있는데 분양 단계 미태깅된
     //    단지가 후보에서 빠지던 진앙 정정 (세션 360, +466 단지 회수). 적재는 별도
     //    테이블(presale_schedule_official/applyhome_unit_supply)에만 = apartments base 불변.
-    const apts = /** @type {AptRow[]} */ (await selectAll(
+    const apts = /** @type {AptRow[]} */ (await deps.selectAll(
       (s) => s.from("apartments").select("id, name, region, presale_type"),
       sb,
       "id", // 무정렬 OFFSET 이면 상세 매칭 후보가 조용히 빠진다 (세션543 W2)
@@ -525,7 +543,7 @@ async function main() {
     const planPrices = async () => {
       if (rpt.interrupted()) return null;
       try {
-        return await buildPricePlan(sb, apts, unitRows);
+        return await buildPricePlan(sb, apts, unitRows, deps.selectAll, deps.today);
       } catch (e) {
         logError(PHASE, `prices 빈칸 채움 계획 실패 (비치명적, 이번 회차 건너뜀): ${e instanceof Error ? e.message : String(e)}`);
         return null;
@@ -549,24 +567,32 @@ async function main() {
       log(PHASE, `\n=== DRY-RUN 요약: 일정 ${scheduleRows.length}건 / 평형 ${unitRows.length}건 (DB 쓰기 0) ===`);
       rpt.success(matched);
       const result = rpt.summary();
-      await recordCollectorRun(PHASE, result);
+      await deps.recordCollectorRun(PHASE, result);
       return;
     }
 
     // 5. 적재 (apartments base 컬럼은 안 건드림)
     if (scheduleRows.length) {
-      const ins = await upsertBatch("presale_schedule_official", scheduleRows, "apartment_id,house_manage_no", 500, sb);
+      const ins = await deps.upsertBatch("presale_schedule_official", scheduleRows, "apartment_id,house_manage_no", 500, sb);
       rpt.success(ins);
       if (scheduleRows.length - ins > 0) rpt.fail(scheduleRows.length - ins);
     }
+    // 평형 저장이 일부라도 실패하면 이번 회차 prices 를 쓰지 않는다 — 계획 재료는 메모리 행이라 값이
+    // 틀리지는 않지만 '부분 반영 금지'(세션622 결정) 때문. upsertBatch 는 429 아닌 오류에도 던지지 않고
+    // 성공 행 수만 돌려주므로 그 수로 판정한다(비치명 · rpt 수치·exit 코드는 그대로, 세션623).
+    let unitsComplete = true;
     if (unitRows.length) {
-      await upsertBatch("applyhome_unit_supply", unitRows, "apartment_id,house_manage_no,model_no", 500, sb);
+      const unitIns = await deps.upsertBatch("applyhome_unit_supply", unitRows, "apartment_id,house_manage_no,model_no", 500, sb);
+      if (unitIns < unitRows.length) {
+        unitsComplete = false;
+        logError(PHASE, `평형 upsert 일부 실패 ${unitIns}/${unitRows.length} — prices 빈칸 채움 이번 회차 건너뜀 (비치명적)`);
+      }
     }
     // prices 는 평형 적재 뒤 · 실패는 비치명(naver-presale 과 같은 꼴) — rpt 수치(일정 행 수)의 뜻은 그대로
-    const pricePlan = await planPrices();
+    const pricePlan = unitsComplete ? await planPrices() : null;
     if (pricePlan?.rows.length) {
       try {
-        await upsertBatch("prices", pricePlan.rows, "apartment_id,house_type,recorded_at", 500, sb);
+        await deps.upsertBatch("prices", pricePlan.rows, "apartment_id,house_type,recorded_at", 500, sb);
       } catch (e) {
         logError(PHASE, `prices upsert 실패 (비치명적): ${e instanceof Error ? e.message : String(e)}`);
       }
@@ -574,11 +600,11 @@ async function main() {
 
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
-    await recordCollectorRun(PHASE, result);
+    await deps.recordCollectorRun(PHASE, result);
     if (result.fail > 0) shouldExit1 = true;
   } finally {
     if (!dryRun && apiCalls > 0) {
-      await recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
+      await deps.recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);
     }
     // exit 은 recordApiQuota 를 await 한 바로 뒤 = 쿼터 기록 보장(scripts/CLAUDE.md Exit Code 정책).
     // ⚠️ try/finally *뒤* 로 빼면 안 된다 — 조기 중단 경로가 try 안에서 return 하므로 그 줄에는

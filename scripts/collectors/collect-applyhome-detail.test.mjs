@@ -1,5 +1,5 @@
 // @ts-check
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
@@ -52,6 +52,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const {
   normName, addrToRegion, matchDetailToApt, buildScheduleRow, buildUnitRow,
   parseHouseTyArea, pickRepresentativeUnit, buildApplyhomePriceRow, planApplyhomePrices, parseImpactOutArg, mergeUnitRows,
+  main,
 } = await import("./collect-applyhome-detail.mjs");
 // 통합 시도 분할 헬퍼 — "헬퍼가 판정을 포기했다" 를 테스트가 직접 증명하는 데 쓴다.
 const { resolveRegionName } = await import("./_shared.mjs");
@@ -463,5 +464,150 @@ describe("graceful shutdown — SIGTERM", () => {
     const isInterrupted = setupGracefulShutdown("test-applyhome-detail");
     process.emit("SIGTERM");
     expect(isInterrupted()).toBe(true);
+  });
+});
+
+// ── main 흐름 (세션623) — 가짜 deps 로 main 을 돌린다. 순수 함수 시험이 못 보는 것:
+//    중단(SIGTERM) 건너뜀 · recorded_at 이 KST 날짜인가 · prices 가 평형 적재 뒤인가 · 평형 부분 실패면 prices 를 안 쓰는가.
+//    (세션622 적대 검사관: 변이 M7·M8·M10 을 넣어도 시험이 전부 초록이었다)
+describe("main 흐름 — 가짜 의존성 (세션623)", () => {
+  const DETAILS = [{ HOUSE_MANAGE_NO: "h1", PBLANC_NO: "p1", HOUSE_NM: "흐름시험단지", HSSPLY_ADRES: "경기도 화성시 어딘가", RCRIT_PBLANC_DE: "2026-10-01" }];
+  const MDLS = [
+    { HOUSE_MANAGE_NO: "h1", MODEL_NO: "01", HOUSE_TY: "084.6120", SUPLY_AR: "112.3", SUPLY_HSHLDCO: "100", SPSPLY_HSHLDCO: "50", LTTOT_TOP_AMOUNT: "59410" },
+    { HOUSE_MANAGE_NO: "h1", MODEL_NO: "02", HOUSE_TY: "059.9000", SUPLY_AR: "80.1", SUPLY_HSHLDCO: "40", SPSPLY_HSHLDCO: "10", LTTOT_TOP_AMOUNT: "41000" },
+  ];
+  const APT_ROWS = [{ id: "a1", name: "흐름시험단지", region: "경기", presale_type: "민간분양" }];
+
+  /**
+   * 쿼리 빌더 흉내 — from(표 이름)만 기억하고 나머지 체인은 자기 자신을 돌려준다.
+   * @param {(s: any) => unknown} queryFn
+   */
+  function tableOf(queryFn) {
+    let table = "";
+    /** @type {any} */
+    const chain = new Proxy({}, {
+      get: (_t, k) => (/** @type {unknown[]} */ ...args) => {
+        if (k === "from") table = String(args[0]);
+        return chain;
+      },
+    });
+    queryFn(chain);
+    return table;
+  }
+
+  /**
+   * @param {{ unitsShort?: boolean; interruptOnUnitWrite?: boolean }} [opt]
+   *   unitsShort = 평형 upsert 가 한 행 덜 성공 · interruptOnUnitWrite = 평형 쓰는 도중 SIGTERM
+   */
+  function makeDeps({ unitsShort = false, interruptOnUnitWrite = false } = {}) {
+    /** @type {{ table: string; rows: any[] }[]} */
+    const writes = [];
+    let interrupted = false;
+    const rpt = {
+      success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
+      interrupted: () => interrupted,
+      summary: () => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0, status: interrupted ? "partial" : "success" }),
+    };
+    /** @type {Record<string, unknown>} */
+    const deps = {
+      apiKey: "test-key",
+      argv: ["node", "collect-applyhome-detail.mjs"],
+      getSupabase: () => ({ fake: true }),
+      createReporter: () => rpt,
+      fetchAllPages: async (/** @type {string} */ op) => (op === "getAPTLttotPblancDetail" ? DETAILS : MDLS),
+      // apartments 만 돌려준다 — DB 평형 누적 0행 · prices 0행(= 빈칸이라 채울 대상)
+      selectAll: async (/** @type {(s: any) => unknown} */ fn) => (tableOf(fn) === "apartments" ? APT_ROWS : []),
+      upsertBatch: async (/** @type {string} */ table, /** @type {any[]} */ rows) => {
+        writes.push({ table, rows });
+        if (table === "applyhome_unit_supply") {
+          if (interruptOnUnitWrite) interrupted = true;
+          if (unitsShort) return rows.length - 1;
+        }
+        return rows.length;
+      },
+      recordCollectorRun: vi.fn(async () => {}),
+      recordApiQuota: vi.fn(async () => {}),
+      today: () => "2026-10-10",
+    };
+    return { deps, writes, rpt };
+  }
+
+  /** @param {{ table: string }[]} writes */
+  const tables = (writes) => writes.map((w) => w.table);
+
+  /** @type {any} */
+  let shared;
+  beforeEach(async () => {
+    // 가짜가 빠지면 진짜 DB·API 쪽으로 새지 않게 — 모듈 쪽 함수와 fetch 는 불리면 던진다.
+    shared = await import("./_shared.mjs");
+    for (const name of ["getSupabase", "selectAll", "upsertBatch", "recordCollectorRun", "recordApiQuota"]) {
+      vi.mocked(shared[name]).mockReset();
+      vi.mocked(shared[name]).mockImplementation(() => { throw new Error(`진짜 ${name} 호출 — 가짜가 빠졌다`); });
+    }
+    vi.mocked(shared.logError).mockClear();
+    vi.stubGlobal("fetch", () => { throw new Error("진짜 fetch 호출 — 외부 API 금지"); });
+  });
+  afterEach(() => {
+    for (const name of ["getSupabase", "selectAll", "upsertBatch", "recordCollectorRun", "recordApiQuota"]) {
+      expect(vi.mocked(shared[name])).not.toHaveBeenCalled();
+    }
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("기준선 — 일정·평형·prices 를 이 순서로 쓰고, prices 행은 주입한 날짜", async () => {
+    const { deps, writes } = makeDeps();
+    await main(/** @type {any} */ (deps));
+    expect(tables(writes)).toEqual(["presale_schedule_official", "applyhome_unit_supply", "prices"]);
+    const prices = writes[2].rows;
+    expect(prices).toHaveLength(1);
+    expect(prices[0]).toMatchObject({ apartment_id: "a1", house_type: "applyhome_rep", price: 59410, recorded_at: "2026-10-10" });
+    expect(deps.recordCollectorRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("(1) 평형 쓰는 도중 SIGTERM(interrupted=true) → prices upsert 0회", async () => {
+    const { deps, writes } = makeDeps({ interruptOnUnitWrite: true });
+    await main(/** @type {any} */ (deps));
+    expect(tables(writes)).toContain("applyhome_unit_supply"); // 그 지점까지는 갔다
+    expect(tables(writes)).not.toContain("prices");
+  });
+
+  it("(2) recorded_at 은 KST 날짜 — UTC 로는 전날인 시각(2026-03-01T15:30Z = KST 03-02 00:30)을 고정", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-03-01T15:30:00Z"));
+    const { deps, writes } = makeDeps();
+    delete deps.today; // 기본값(_shared today = KST)을 그대로 지나게
+    await main(/** @type {any} */ (deps));
+    const prices = writes.find((w) => w.table === "prices")?.rows ?? [];
+    expect(prices).toHaveLength(1);
+    expect(prices[0].recorded_at).toBe("2026-03-02"); // UTC 날짜(03-01)면 하루 밀린 것
+  });
+
+  it("(3) prices upsert 는 평형 upsert 뒤에 불린다", async () => {
+    const { deps, writes } = makeDeps();
+    await main(/** @type {any} */ (deps));
+    const t = tables(writes);
+    expect(t.indexOf("applyhome_unit_supply")).toBeGreaterThanOrEqual(0);
+    expect(t.indexOf("prices")).toBeGreaterThan(t.indexOf("applyhome_unit_supply"));
+  });
+
+  it("(4) 평형 upsert 일부 실패(반환 < 행 수) → prices upsert 0회 + 오류 로그 한 줄 · 회차는 끝까지", async () => {
+    const { deps, writes, rpt } = makeDeps({ unitsShort: true });
+    await main(/** @type {any} */ (deps));
+    expect(tables(writes)).toEqual(["presale_schedule_official", "applyhome_unit_supply"]);
+    /** @type {string[]} */
+    const msgs = vi.mocked(shared.logError).mock.calls.map((/** @type {unknown[]} */ c) => String(c[1]));
+    expect(msgs.filter((m) => /평형 upsert 일부 실패 1\/2/.test(m))).toHaveLength(1);
+    expect(rpt.fail).not.toHaveBeenCalled(); // rpt 수치(일정 행 수)는 그대로
+    expect(deps.recordCollectorRun).toHaveBeenCalledTimes(1);
+  });
+
+  it("(5) --dry-run 이면 DB 쓰기(일정·평형·prices) 0회 · 실행 기록 1회 · 쿼터 기록 0회", async () => {
+    const { deps, writes } = makeDeps();
+    deps.argv = ["node", "collect-applyhome-detail.mjs", "--dry-run"];
+    await main(/** @type {any} */ (deps));
+    expect(writes).toEqual([]);
+    expect(deps.recordCollectorRun).toHaveBeenCalledTimes(1);
+    expect(deps.recordApiQuota).not.toHaveBeenCalled();
   });
 });
