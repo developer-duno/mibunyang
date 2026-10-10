@@ -14,7 +14,7 @@
 3. **폴백 `catch(() => [])` 는 반드시 로그를 남긴다**(왜 비었는지) — 0건은 정상값처럼 보인다.
 4. **총량을 대조한다** — 같은 필터의 `count: "exact"` 와 `rows.length` 가 다르면 페이징이 새고 있다.
 5. **이 결함 위에서 경계를 재도출하지 않는다** — 분포로 임계를 정하기 전에 데이터가 참인지 먼저.
-6. 정적 가드 = `_selectall-keycol-coverage.test.mjs` · `_unbounded-query-coverage.test.mjs`(예외는 파일 안 ALLOWLIST). 통과해도 남는 사각(필터 걸린 1,000행+ 쿼리·`.in(col, 수천 개)`·함수 밖 `.range`·여러 문장 커서·변수 표 이름)은 §4 `count` 대조로만 잡힌다.
+6. 정적 가드 = `_selectall-keycol-coverage.test.mjs` · `_unbounded-query-coverage.test.mjs`(예외는 파일 안 ALLOWLIST). 통과해도 남는 사각(필터 걸린 1,000행+ 쿼리·`.in(col, 수천 개)`·함수 밖 `.range`·여러 문장 커서·변수 표 이름)은 §4 `count` 대조로만 잡힌다. **`.in(부모 id 200개)` 로 자식 표를 읽는 묶음 조회도 같은 상한** — 응답이 딱 1,000행이면 잘린 것(세션622: "빈칸 250" 이 실제 74, 묶음을 자식 행 평균 × id 수 < 1,000 으로 줄이거나 id 커서로).
 
 ## 안티 패턴
 
