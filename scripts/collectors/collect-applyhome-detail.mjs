@@ -371,15 +371,15 @@ export function parseImpactOutArg(argv) {
  * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다.
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string[]} aptIds
- * @param {typeof selectAll} sel main 이 넘긴 selectAll(시험에선 가짜)
+ * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(시험에선 가짜) — 이름을 selectAll 로 둬야 정적 가드(_selectall-keycol-coverage)가 keyCol 을 본다
  * @returns {Promise<Set<string>>}
  */
-async function loadAptIdsWithPrice(sb, aptIds, sel) {
+async function loadAptIdsWithPrice(sb, aptIds, selectAll) {
   /** @type {Set<string>} */
   const has = new Set();
   for (let i = 0; i < aptIds.length; i += PRICE_LOOKUP_CHUNK) {
     const chunk = aptIds.slice(i, i + PRICE_LOOKUP_CHUNK);
-    const rows = /** @type {{ apartment_id: string }[]} */ (await sel(
+    const rows = /** @type {{ apartment_id: string }[]} */ (await selectAll(
       (s) => s.from("prices").select("id, apartment_id").in("apartment_id", chunk).gt("price", 0),
       sb,
       "id",
@@ -422,11 +422,11 @@ export function mergeUnitRows(dbRows, roundRows) {
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {AptRow[]} apts
  * @param {UnitRow[]} roundRows
- * @param {typeof selectAll} sel main 이 넘긴 selectAll
+ * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(이름 유지 이유 = 위 loadAptIdsWithPrice)
  * @param {typeof today} todayFn main 이 넘긴 KST 날짜 함수(recorded_at)
  */
-async function buildPricePlan(sb, apts, roundRows, sel, todayFn) {
-  const dbRows = /** @type {UnitRow[]} */ (await sel(
+async function buildPricePlan(sb, apts, roundRows, selectAll, todayFn) {
+  const dbRows = /** @type {UnitRow[]} */ (await selectAll(
     (s) => s.from("applyhome_unit_supply")
       .select("id, apartment_id, house_manage_no, model_no, house_ty, supply_area, general_supply, special_supply, top_amount, source")
       .gt("top_amount", 0),
@@ -435,7 +435,7 @@ async function buildPricePlan(sb, apts, roundRows, sel, todayFn) {
   ));
   const unitsByApt = mergeUnitRows(dbRows, roundRows);
   const aptById = new Map(apts.map((a) => [a.id, a]));
-  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()], sel);
+  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()], selectAll);
   const plan = planApplyhomePrices(unitsByApt, aptById, hasPriceIds, todayFn());
   const c = plan.counts;
   log(PHASE, `[prices] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
@@ -450,6 +450,21 @@ async function buildPricePlan(sb, apts, roundRows, sel, todayFn) {
  *   upsertBatch: typeof upsertBatch; recordCollectorRun: typeof recordCollectorRun;
  *   recordApiQuota: typeof recordApiQuota; today: typeof today }} MainDeps
  */
+/**
+ * 매칭 후보 = apartments 전체(id 커서). main 이 넘긴 selectAll 을 받는다 — 인자 이름을 selectAll 로 둬야
+ * 정적 가드(_selectall-keycol-coverage)가 이 호출의 keyCol 을 본다(점 붙은 호출은 가드가 다른 심볼로 건너뛴다, 세션623 CI).
+ * @param {any} sb
+ * @param {typeof selectAll} selectAll
+ * @returns {Promise<AptRow[]>}
+ */
+async function loadMatchCandidates(sb, selectAll) {
+  return /** @type {AptRow[]} */ (await selectAll(
+    (s) => s.from("apartments").select("id, name, region, presale_type"),
+    sb,
+    "id", // 무정렬 OFFSET 이면 상세 매칭 후보가 조용히 빠진다 (세션543 W2)
+  ));
+}
+
 /**
  * CLI 는 인자 없이 불러 진짜 함수로 돈다. 시험은 가짜 deps 로 main 흐름(순서·중단·날짜)을 본다(세션623).
  * @param {Partial<MainDeps>} [overrides]
@@ -497,11 +512,7 @@ export async function main(overrides = {}) {
     //    presale_stage NOT NULL 제약 제거 — 청약홈 공고가 있는데 분양 단계 미태깅된
     //    단지가 후보에서 빠지던 진앙 정정 (세션 360, +466 단지 회수). 적재는 별도
     //    테이블(presale_schedule_official/applyhome_unit_supply)에만 = apartments base 불변.
-    const apts = /** @type {AptRow[]} */ (await deps.selectAll(
-      (s) => s.from("apartments").select("id, name, region, presale_type"),
-      sb,
-      "id", // 무정렬 OFFSET 이면 상세 매칭 후보가 조용히 빠진다 (세션543 W2)
-    ));
+    const apts = await loadMatchCandidates(sb, deps.selectAll);
     log(PHASE, `매칭 후보 단지: ${apts.length}건`);
 
     // 3. Detail 매칭 (sim>=0.85 AND region 일치) → house_manage_no별 apartment_id 맵
