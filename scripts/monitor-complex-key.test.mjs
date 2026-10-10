@@ -78,6 +78,23 @@ describe("checkComplexKeyRunStale — ⑭ (b) 채우기 배치의 마지막 성�
   });
 });
 
+describe("checkComplexKeyRunStale — ⑭ (c) 준공월 되돌리기(assign-completion, 세션624)", () => {
+  it("collector 를 주면 그 배치 이름·문구로 알린다 — 기준 시간은 같다(36시간)", () => {
+    expect(checkComplexKeyRunStale({ finished_at: at(COMPLEX_KEY_GAP_HOURS) }, { now: NOW, collector: "assign-completion" })).toEqual([]);
+    const issues = checkComplexKeyRunStale({ finished_at: at(50) }, { now: NOW, collector: "assign-completion" });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toBe("assign-completion");
+    expect(issues[0].detail).toBe(`준공월 되돌리기의 마지막 성공이 50시간 전(기준 ${COMPLEX_KEY_GAP_HOURS}시간)`);
+    expect(issues[0].lines?.[1]).toBe("daily-deploy 실행 로그의 'Assign completion' 단계를 확인하고, 필요하면 손으로 1회 돌리세요(미리보기 먼저).");
+    expect(checkComplexKeyRunStale(null, { now: NOW, collector: "assign-completion" })[0].detail).toBe("준공월 되돌리기의 성공 기록이 없음");
+  });
+
+  it("collector 를 안 주면 옛 동작(assign-complex-keys) 그대로 · 모르는 이름이면 던진다", () => {
+    expect(checkComplexKeyRunStale({ finished_at: at(50) }, { now: NOW })[0].lines?.[1]).toBe("daily-deploy 실행 로그의 'Assign complex keys' 단계를 확인하고, 필요하면 손으로 1회 돌리세요(미리보기 먼저).");
+    expect(() => checkComplexKeyRunStale(null, { now: NOW, collector: "assign-x" })).toThrow(/모르는 배치/);
+  });
+});
+
 describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 있다", () => {
   const fresh = () => ({ finished_at: new Date().toISOString() });
   const quiet = {
@@ -113,6 +130,29 @@ describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 �
     const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => ({ gapRows: [], latestSuccess: { finished_at: old } }) }));
     expect(mine(issues)).toHaveLength(1);
     expect(mine(issues)[0].detail).toContain("마지막 성공이");
+  });
+
+  it("준공월 되돌리기(세션624): 마지막 성공이 오래됐거나 없으면 assign-completion 이슈 1건, 방금 성공이면 0건", async () => {
+    const old = new Date(Date.now() - (COMPLEX_KEY_GAP_HOURS + 12) * 3600000).toISOString();
+    /** @param {any} completionSuccess */
+    const run = (completionSuccess) =>
+      runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => ({ gapRows: [], latestSuccess: fresh(), completionSuccess }) }));
+    /** @param {any[]} issues */
+    const cmp = (issues) => issues.filter((i) => i.collector === "assign-completion");
+    expect(cmp(await run({ finished_at: old }))).toHaveLength(1);
+    expect(cmp(await run(null))[0].detail).toBe("준공월 되돌리기의 성공 기록이 없음");
+    expect(cmp(await run(fresh()))).toEqual([]);
+  });
+
+  it("운영 기본 조회는 묶음 열쇠 재료(지문 함수 그대로) + assign-completion 의 최신 success 1건을 함께 준다", () => {
+    const raw = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8").replace(/\r\n/g, "\n");
+    expect(raw).toContain("  const fetchKeyHealth = deps.fetchKeyHealth ?? fetchKeyAndCompletionHealth;\n");
+    const start = raw.indexOf("async function fetchKeyAndCompletionHealth() {\n");
+    expect(start).toBeGreaterThan(0);
+    const body = raw.slice(start, raw.indexOf("\n}\n", start) + 2);
+    expect(body).toContain("  const base = await fetchComplexKeyHealth();\n");
+    expect(body).toContain(['    .eq("collector", "assign-completion")', '    .eq("status", "success")', '    .order("finished_at", { ascending: false })', "    .limit(1);"].join("\n"));
+    expect(body).toContain("  return { ...base, completionSuccess: runs?.[0] ?? null };\n");
   });
 
   it("조회가 던지면 '⑭ 묶음 열쇠 칸 점검 실행 실패' 1건(다른 점검은 계속)", async () => {
