@@ -424,18 +424,30 @@ describe("parseCompletionDecisions — 사람 판정 파일", () => {
     expect(r.decisions).toEqual([{ id: "ah-1", action: "keep" }]);
   });
 
+  const OK = { why: "왜", approved: "2026-10-11" };
+
   it("id 가 두 번 나오면 던진다", () => {
-    expect(() => parseCompletionDecisions({ decisions: [{ id: "ah-1", action: "keep" }, { id: "ah-1", action: "keep" }] })).toThrow(/두 번/);
+    expect(() => parseCompletionDecisions({ decisions: [{ id: "ah-1", action: "keep", ...OK }, { id: "ah-1", action: "keep", ...OK }] })).toThrow(/두 번/);
   });
 
   it.each(["drop", "KEEP", null])("action 은 keep 만 — %s 이면 던진다", (action) => {
-    expect(() => parseCompletionDecisions({ decisions: [{ id: "ah-1", action }] })).toThrow(/keep/);
+    expect(() => parseCompletionDecisions({ decisions: [{ id: "ah-1", action, ...OK }] })).toThrow(/keep/);
   });
 
   it("decisions 배열이 없거나 id 가 비면 던진다", () => {
     expect(() => parseCompletionDecisions({})).toThrow();
     expect(() => parseCompletionDecisions([])).toThrow();
-    expect(() => parseCompletionDecisions({ decisions: [{ action: "keep" }] })).toThrow(/id/);
+    expect(() => parseCompletionDecisions({ decisions: [{ action: "keep", ...OK }] })).toThrow(/id/);
+  });
+
+  it.each([
+    ["why 없음", { approved: "2026-10-11" }, /why/],
+    ["why 공백", { why: "  ", approved: "2026-10-11" }, /why/],
+    ["approved 없음", { why: "왜" }, /approved/],
+    ["approved 빈 글자", { why: "왜", approved: "" }, /approved/],
+    ["approved 가 글자가 아님", { why: "왜", approved: true }, /approved/],
+  ])("근거·승인 칸이 비면 던진다 — %s", (_label, extra, re) => {
+    expect(() => parseCompletionDecisions({ decisions: [{ id: "ah-1", action: "keep", ...extra }] })).toThrow(re);
   });
 
   it("운영 파일(docs/audits/completion-decisions.json)이 이 검사를 통과한다", () => {
@@ -822,7 +834,7 @@ describe("main 흐름 — 가짜 DB", () => {
   });
 
   it("사람 판정 파일의 keep 행은 쓰지 않는다", async () => {
-    const env = makeEnv({ ...scenario(2, 30), decisions: [{ id: "ah-c0", action: "keep" }] });
+    const env = makeEnv({ ...scenario(2, 30), decisions: [{ id: "ah-c0", action: "keep", why: "왜", approved: "2026-10-11" }] });
     await main(env.deps, ["n", "s", "--apply"]);
     expect(env.writes.map((w) => w.id)).toEqual(["ah-c1"]);
   });
