@@ -94,6 +94,7 @@
     {"apartment_id": "ah-2026910004", "link_kind": "apt_seq", "link_key": "41461-3614", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-11", "names": "용인 경남아너스빌 디센트 H3BL(2단지) ↔ 디센트2단지(지번 902) · 공고 블록명 H3BL=2단지(분양 공고 기사) — 미리보기 후보 3단지(3616)는 블록 글자만 본 오답"},
     {"apartment_id": "ah-2026910004", "link_kind": "presale", "link_key": "41461|양지읍 남곡리|902|용인경남아너스빌디센트2단지", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-11", "names": "용인 경남아너스빌 디센트 H3BL(2단지) ↔ 디센트2단지(분양권) · 위와 같은 근거"},
     {"apartment_id": "ah-2025930027", "link_kind": "apt_seq", "link_key": "41461-3614", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-11", "names": "용인 경남아너스빌 디센트 H2BL(2단지) ↔ 디센트2단지(지번 902) · 이름 괄호 2단지 + 우리 lot_main 902 · 공고 블록명은 어긋남(H2BL 은 1단지) — 괄호 단지 번호 기준(사장님 결정)"},
-    {"apartment_id": "ah-2025930027", "link_kind": "presale", "link_key": "41461|양지읍 남곡리|902|용인경남아너스빌디센트2단지", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-11", "names": "용인 경남아너스빌 디센트 H2BL(2단지) ↔ 디센트2단지(분양권) · 위와 같은 근거"}
+    {"apartment_id": "ah-2025930027", "link_kind": "presale", "link_key": "41461|양지읍 남곡리|902|용인경남아너스빌디센트2단지", "status": "active", "verified_by": "사장님(세션623)", "verified_at": "2026-10-11", "names": "용인 경남아너스빌 디센트 H2BL(2단지) ↔ 디센트2단지(분양권) · 위와 같은 근거"},
+    {"apartment_id": "ah-2026930016", "link_kind": "apt_seq", "link_key": "11170-4178", "status": "active", "verified_by": "사장님(세션629)", "verified_at": "2026-10-11", "names": "용산 호반써밋 에이디션 ↔ 호반써밋A.DITION(한강로2가 429) · 우리 주소 한강로2가 429 와 지번 같음 · 거래 건축 2025 = 우리 준공 202503(세션626 대체 조회) · 이 열쇠의 다른 연결 0 · 같은 이름 우리 행 1(세션625 조사·세션629 재확인)"}
   ]
 }
