@@ -25,6 +25,7 @@
 - ❌ 좌표만 고치고 부속 필드 방치
 - ❌ `naver_presale_no` 로 좌표 되찾기 — 링크가 오염돼 있다
 - ❌ "dry-run 을 봤으니 `--apply` 가 그걸 적용한다" — `--apply` 는 전체 재분석. 로스터 0건이면 중단, 반영은 `--apply-from=<dry-run json>`, `--apply` 로 했으면 직후 dry-run 목록과 `id` 집합 대조. `--apply-from` 도 덤프 판정이 틀리면 그대로 반영되고 되돌리지 못한다.
+- ❌ 이름 유사도 동점을 "먼저 나온 행"으로 정하고 upsert 만 하기 — 쌍둥이 단지(1BL/2BL·1단지/2단지)에 남의 공고가 쌓이고 손 정정은 다음 회차에 되돌아간다(세션630: 판정 파일 docs/audits/applyhome-notice-decisions.json + 정리 단계 + 감시 ⑳)
 
 ## 관련
 

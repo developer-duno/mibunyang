@@ -59,6 +59,7 @@ const {
   main,
   gateRegionOf, parseNoticeDecisions, indexNoticeDecisions, matchDetailToAptDetailed, NOTICE_DECISIONS_PATH,
   planNoticeReconcile, evaluateNoticeBreaker, compareNoticePlan, parseNoticeArgs, NOTICE_BREAKER_MAX_ROWS, NOTICE_BREAKER_RATIO,
+  deleteNoticeRows,
 } = await import("./collect-applyhome-detail.mjs");
 // 통합 시도 분할 헬퍼 — "헬퍼가 판정을 포기했다" 를 테스트가 직접 증명하는 데 쓴다.
 const { resolveRegionName } = await import("./_shared.mjs");
@@ -245,12 +246,17 @@ describe("parseNoticeDecisions — 사람 판정 파일(거부 7종)", () => {
     expect(() => parseNoticeDecisions([])).toThrow(/객체/);
     expect(() => parseNoticeDecisions(null)).toThrow(/객체/);
   });
-  it("운영 파일 = 11줄(active 4 · skip 7) · 승인 칸이 다 차 있다", () => {
+  it("⑧ 같은 공고에 skip 과 다른 status 가 섞이면 던진다(짝짓기 manual 과 정리 decision 지움이 엇갈림)", () => {
+    expect(() => parseNoticeDecisions({ decisions: [decLine(), decLine({ apartment_id: null, status: "skip" })] })).toThrow(/skip 과 다른 status/);
+    expect(() => parseNoticeDecisions({ decisions: [decLine({ apartment_id: null, status: "skip" }), decLine({ status: "rejected" })] })).toThrow(/skip 과 다른 status/);
+    expect(parseNoticeDecisions({ decisions: [decLine(), decLine({ apartment_id: "ah-2", status: "rejected" })] }).decisions).toHaveLength(2); // active·rejected 섞임은 받는다
+  });
+  it("운영 파일 = 16줄(active 4 · skip 12) · 승인 칸이 다 차 있다", () => {
     const p = parseNoticeDecisions(JSON.parse(readFileSync(NOTICE_DECISIONS_PATH, "utf8")));
     expect(p.decisions.filter((d) => d.status === "active").map((d) => `${d.house_manage_no}>${d.apartment_id}`).sort())
       .toEqual(["2021000727>ah-2026910003", "2021000772>ap-6025315", "2023000532>ap-6027298", "2025820017>ap-6025730"]);
     expect(p.decisions.filter((d) => d.status === "skip").map((d) => d.house_manage_no).sort())
-      .toEqual(["2020001404", "2021000106", "2021000349", "2021000368", "2021000617", "2023000359", "2024000594"]);
+      .toEqual(["2020001404", "2021000106", "2021000349", "2021000368", "2021000617", "2023000129", "2023000359", "2023000406", "2023000407", "2024000187", "2024000188", "2024000594"]);
   });
 });
 
@@ -712,13 +718,14 @@ describe("main 흐름 — 가짜 의존성 (세션623)", () => {
   /**
    * @param {{ unitsShort?: boolean; interruptOnUnitWrite?: boolean; details?: any[]; mdls?: any[]; apts?: any[];
    *   schedRows?: any[]; schedCount?: number | null; aptCount?: number | null; interruptAt?: number;
-   *   files?: Record<string, string> }} [opt]
+   *   files?: Record<string, string>; otherTables?: Record<string, any[]> }} [opt]
    *   unitsShort = 평형 upsert 가 한 행 덜 성공 · interruptOnUnitWrite = 평형 쓰는 도중 SIGTERM ·
-   *   schedRows = 지금 일정 표(정리 대상) · interruptAt = interrupted() 를 N 번째로 물을 때부터 SIGTERM · files = 가짜 파일(경로 → 내용)
+   *   schedRows = 지금 일정 표(정리 대상) · interruptAt = interrupted() 를 N 번째로 물을 때부터 SIGTERM · files = 가짜 파일(경로 → 내용) ·
+   *   otherTables = 그 밖 표의 가짜 행(평형·분양가 — 거르기는 흉내 내지 않음)
    */
   function makeDeps({
     unitsShort = false, interruptOnUnitWrite = false, details = DETAILS, mdls = MDLS, apts = APT_ROWS,
-    schedRows = [], schedCount, aptCount, interruptAt = 0, files = {},
+    schedRows = [], schedCount, aptCount, interruptAt = 0, files = {}, otherTables = /** @type {Record<string, any[]>} */ ({}),
   } = {}) {
     /** @type {{ table: string; rows: any[] }[]} */
     const writes = [];
@@ -742,7 +749,7 @@ describe("main 흐름 — 가짜 의존성 (세션623)", () => {
       // apartments·일정 표만 돌려준다 — DB 평형 누적 0행 · prices 0행(= 빈칸이라 채울 대상)
       selectAll: async (/** @type {(s: any) => unknown} */ fn) => {
         const t = tableOf(fn);
-        return t === "apartments" ? apts : t === "presale_schedule_official" ? schedRows : [];
+        return t === "apartments" ? apts : t === "presale_schedule_official" ? schedRows : (otherTables[t] ?? []);
       },
       countRows: async (/** @type {unknown} */ _sb, /** @type {string} */ t) =>
         (t === "apartments" ? (aptCount === undefined ? apts.length : aptCount) : (schedCount === undefined ? schedRows.length : schedCount)),
@@ -987,6 +994,128 @@ describe("main 흐름 — 가짜 의존성 (세션623)", () => {
     await main(/** @type {any} */ (deps));
     expect(tables(writes)).not.toContain("delete"); // 채우지 않으면 자기 id 묶음 → 다른 묶음 동점 → 못 가름 → 지움
     expect(pairsOf(writes, "presale_schedule_official")).toEqual(["a1|h1"]);
+  });
+
+  // ── 세션630 검사관 보완(F2·F3·F4·F8) ──
+  it("★ 지우기 도중 실패(분양가 단계) → failure NTC_WRITE prices 기록 후 던짐 · upsert 0", async () => {
+    const { deps, writes } = makeDeps({ schedRows: ONE_DELETE });
+    deps.deleteNoticeRows = vi.fn(async () => { throw Object.assign(new Error("prices 지우기 실패: boom"), { stage: "prices" }); });
+    await expect(main(/** @type {any} */ (deps))).rejects.toThrow(/boom/);
+    expect(writes).toEqual([]);
+    expect(deps.recordCollectorRun).toHaveBeenCalledWith("applyhome-detail", expect.objectContaining({ status: "failure", errorMessage: expect.stringMatching(/^NTC_WRITE prices /) }));
+  });
+
+  it("★ 정리 건너뜀은 실행 기록 표식 NTC_SKIP 로 남는다(status 는 그대로)", async () => {
+    const { deps } = makeDeps({ schedRows: ONE_DELETE, aptCount: 999 });
+    await main(/** @type {any} */ (deps));
+    const rec = /** @type {any} */ (deps.recordCollectorRun).mock.calls[0][1];
+    expect(rec.status).not.toBe("failure");
+    expect(rec.errorMessage).toMatch(/^NTC_SKIP 후보 1행 ≠ apartments count 999/);
+  });
+
+  it("★ 판정 파일 행이 apartments 에 없으면 표식 NTC_MANUAL_MISSING <공고>행>", async () => {
+    const details = [{ ...DETAILS[0], HOUSE_MANAGE_NO: "2026000001" }];
+    const decisions = { decisions: [decLine({ house_manage_no: "2026000001", apartment_id: "ah-999" })] };
+    const { deps } = makeDeps({ details, mdls: [], files: { [NOTICE_DECISIONS_PATH]: JSON.stringify(decisions) } });
+    await main(/** @type {any} */ (deps));
+    const rec = /** @type {any} */ (deps.recordCollectorRun).mock.calls[0][1];
+    expect(rec.status).not.toBe("failure");
+    expect(rec.errorMessage).toContain("NTC_MANUAL_MISSING 2026000001>ah-999");
+  });
+
+  /** --dry-run --out 을 임시 파일로 돌리고 계획을 돌려준다 @param {any} deps */
+  async function dryRunOut(deps) {
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { rmSync } = await import("node:fs");
+    const out = join(tmpdir(), `ntc-plan-test-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}.json`);
+    try {
+      deps.argv = ["node", "collect-applyhome-detail.mjs", "--dry-run", `--out=${out}`];
+      await main(deps);
+      return JSON.parse(readFileSync(out, "utf8"));
+    } finally {
+      rmSync(out, { force: true });
+    }
+  }
+
+  it("★ --out 에 지운다고 가정한 분양가 계획 — 지울 평형이 빠지고, 다시 못 채우는 단지는 '비는 곳'", async () => {
+    const apts = [...APT_ROWS, { id: "x-other", name: "다른단지", region: "경기", presale_type: "민간분양" }];
+    const { deps, writes } = makeDeps({
+      apts, schedRows: ONE_DELETE,
+      otherTables: {
+        applyhome_unit_supply: [{ id: 1, apartment_id: "x-other", house_manage_no: "h1", model_no: "01", house_ty: "084.0000", supply_area: 110, general_supply: 1, special_supply: 1, top_amount: 70000, source: "apt" }],
+        prices: [{ id: 1, apartment_id: "x-other", house_type: "applyhome_rep" }],
+      },
+    });
+    const plan = await dryRunOut(deps);
+    expect(writes).toEqual([]);
+    expect(plan.priceDeleteAptIds).toEqual(["x-other"]);
+    expect(plan.pricePlanAfterDelete.rows.map((/** @type {any} */ r) => r.apartment_id)).toEqual(["a1"]); // x-other 평형은 지운 셈이라 재료 없음
+    expect(plan.pricePlanAfterDelete).toMatchObject({ refill: 0, fresh: 1, lost: [{ apartment_id: "x-other", name: "다른단지" }] });
+  });
+
+  it("★ --out 에 게이트 탈락·동점 전부 제외 공고의 이름·후보 명단이 실린다", async () => {
+    const details = [
+      ...DETAILS,
+      { HOUSE_MANAGE_NO: "h7", HOUSE_NM: "게이트단지", HSSPLY_ADRES: "서울특별시 강남구", RCRIT_PBLANC_DE: "2026-10-01" },
+      { HOUSE_MANAGE_NO: "h8", HOUSE_NM: "충돌단지(1BL)", HSSPLY_ADRES: "경기도 화성시", RCRIT_PBLANC_DE: "2026-10-01" },
+    ];
+    const apts = [...APT_ROWS, { id: "g1", name: "게이트단지", region: "부산", presale_type: "민간분양" }, { id: "c1", name: "충돌단지(2BL)", region: "경기", presale_type: "민간분양" }];
+    const { deps } = makeDeps({ details, apts });
+    const plan = await dryRunOut(deps);
+    expect(plan.gate).toEqual([{ hmn: "h7", name: "게이트단지", addr: "서울특별시 강남구", candidates: [expect.objectContaining({ id: "g1", name: "게이트단지" })] }]);
+    expect(plan.conflict_all).toEqual([{ hmn: "h8", name: "충돌단지(1BL)", how: "conflict_all", excluded: [{ id: "c1", why: "conflict", apt_name: "충돌단지(2BL)" }] }]);
+  });
+});
+
+// ── 세션630 검사관 보완(F1·F2): 실제 지우기 함수의 거르기 조건·순서 — 기록용 가짜 sb ──
+describe("deleteNoticeRows — 거르기 조건과 순서(평형 → 분양가 → 일정)", () => {
+  /** @param {string | null} [failOn] 그 표에서 오류를 돌려준다 */
+  function recordingSb(failOn = null) {
+    /** @type {{ table: string; ops: [string, unknown[]][] }[]} */
+    const calls = [];
+    const sb = {
+      from(/** @type {string} */ table) {
+        const call = { table, ops: /** @type {[string, unknown[]][]} */ ([]) };
+        calls.push(call);
+        /** @type {any} */
+        const b = {};
+        for (const op of ["delete", "eq", "in", "select"]) b[op] = (/** @type {unknown[]} */ ...args) => { call.ops.push([op, args]); return b; };
+        b.then = (/** @type {any} */ res, /** @type {any} */ rej) =>
+          Promise.resolve(failOn === table ? { data: null, error: { message: "boom" } } : { data: [{ id: 1 }], error: null }).then(res, rej);
+        return b;
+      },
+    };
+    return { sb, calls };
+  }
+  const plan = {
+    deletes: [{ id: 5 }, { id: 6 }],
+    unitDeletePairs: [{ apartment_id: "a1", house_manage_no: "H1" }, { apartment_id: "a2", house_manage_no: "H1" }, { apartment_id: "a3", house_manage_no: "H2" }],
+    priceDeleteAptIds: ["a1", "a2", "a3"],
+  };
+
+  it("★ 평형은 source='apt' · 지운 쌍만(공고번호별 단지) / 분양가는 applyhome_rep · 영향 단지만 / 일정은 id 로", async () => {
+    const { sb, calls } = recordingSb();
+    await deleteNoticeRows(sb, plan);
+    expect(calls.map((c) => c.table)).toEqual(["applyhome_unit_supply", "applyhome_unit_supply", "prices", "presale_schedule_official"]);
+    const [u1, u2, p, s] = calls;
+    for (const c of [u1, u2, p, s]) expect(c.ops.some(([op]) => op === "delete")).toBe(true);
+    expect(u1.ops).toEqual(expect.arrayContaining([["eq", ["source", "apt"]], ["eq", ["house_manage_no", "H1"]], ["in", ["apartment_id", ["a1", "a2"]]]]));
+    expect(u2.ops).toEqual(expect.arrayContaining([["eq", ["source", "apt"]], ["eq", ["house_manage_no", "H2"]], ["in", ["apartment_id", ["a3"]]]]));
+    expect(p.ops).toEqual(expect.arrayContaining([["eq", ["house_type", "applyhome_rep"]], ["in", ["apartment_id", ["a1", "a2", "a3"]]]]));
+    expect(s.ops).toEqual(expect.arrayContaining([["in", ["id", [5, 6]]]]));
+  });
+
+  it("★ 분양가 단계에서 실패하면 stage=prices 로 던지고 일정은 지우지 않는다(일정이 마지막)", async () => {
+    const { sb, calls } = recordingSb("prices");
+    await expect(deleteNoticeRows(sb, plan)).rejects.toMatchObject({ stage: "prices" });
+    expect(calls.map((c) => c.table)).not.toContain("presale_schedule_official");
+  });
+
+  it("평형 단계에서 실패하면 stage=units · 분양가·일정 손 안 댐", async () => {
+    const { sb, calls } = recordingSb("applyhome_unit_supply");
+    await expect(deleteNoticeRows(sb, plan)).rejects.toMatchObject({ stage: "units" });
+    expect(calls.map((c) => c.table)).toEqual(["applyhome_unit_supply"]);
   });
 });
 

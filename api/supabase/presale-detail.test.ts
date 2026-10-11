@@ -89,6 +89,30 @@ describe('supabase/presale-detail — 묶음 단위 읽기 (세션630)', () => {
     expect(sched?.ops.find(([op]) => op === 'in')?.[1]).toEqual(['apartment_id', ['ah-1']]);
   });
 
+  it('오피스텔 (오) 카드는 묶음이 있어도 자기 id 만 · 아파트 카드는 묶음에서 (오) 행을 뺀다', async () => {
+    db = {
+      apartments: [
+        { id: 'ah-1', complex_key: 'K', name: '동탄역 디에트르 퍼스티지' },
+        { id: 'ah-2', complex_key: 'K', name: '동탄역디에트르퍼스티지(오)' },
+      ],
+      presale_schedule_official: [
+        { apartment_id: 'ah-1', house_manage_no: '2026000001', recruit_date: '2026-01-01' },
+        { apartment_id: 'ah-2', house_manage_no: '2026950001', recruit_date: '2026-09-01' }, // 오피스텔 공고 — 더 최신
+      ],
+      applyhome_unit_supply: [],
+    };
+    expect((await get('ah-1')).schedule?.house_manage_no).toBe('2026000001');
+    expect((await get('ah-2')).schedule?.house_manage_no).toBe('2026950001');
+    expect(calls.filter((c) => c.table === 'apartments')).toHaveLength(3); // ah-1: 열쇠+묶음 2회 · ah-2: 열쇠 1회(묶음 조회 안 함)
+  });
+
+  it('일정 정렬은 빈 날짜를 뒤로(nullsFirst false)', async () => {
+    db = { apartments: [{ id: 'ah-1', complex_key: null }], presale_schedule_official: [], applyhome_unit_supply: [] };
+    await get('ah-1');
+    const sched = calls.find((c) => c.table === 'presale_schedule_official');
+    expect(sched?.ops.find(([op]) => op === 'order')?.[1]).toEqual(['recruit_date', { ascending: false, nullsFirst: false }]);
+  });
+
   it('같은 공고가 묶음 두 행에 붙어 있어도 평형은 (공고번호, 모델번호) 한 벌 · 면적 오름차순', async () => {
     db = {
       apartments: [{ id: 'ah-1', complex_key: 'K' }, { id: 'ah-2', complex_key: 'K' }],

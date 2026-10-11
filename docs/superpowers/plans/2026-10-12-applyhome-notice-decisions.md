@@ -44,7 +44,7 @@
 2. 후보 = `normName` 유사도 ≥0.85(지금과 같음) → 동점(최대 유사도) 집합 = `tops` 를 **먼저** 정한다 → **그 뒤** `tops` 에서 뺀다(먼저 빼면 유사도 낮은 엉뚱한 후보가 이긴다 — 검사관 🟡·재검토 ①): **ⓐ `(오)` 행**(APT 공고는 오피스텔 행에 안 붙인다 — 가야역 꼴 · VIEW 와 같은 판정 `name LIKE '%(오)%'`) **ⓑ 블록·차수가 어긋나는 행**(`phaseConsistent === "conflict" || blockConflict` — 후보가 1곳뿐이어도 적용 · 검사관 🟠 "1BL 행만 있을 때 3BL 공고가 붙는 결함") — 단 **양쪽 이름을 `stripRoundWords`(`naver-presale.mjs:747,765` 꼴)로 회차 낱말("임의공급3차"·"무순위 2차")을 떼고 비교**한다(재검토 ①: 송도 하늘채 아이비원 `2022000488` 의 `(임의공급3차)`·`(4차)` 행이 거짓 어긋남) **ⓒ `rejected` 쌍**. 다 빠져 비면 `null`(`how="conflict_all"|"rejected_all"`) · ⓑ 로 빠진 행은 **지우기의 양성 증거**(§4-1 `delete:conflict`)로 넘긴다 · 미리보기에 "ⓑ 로 빠진 행 수"를 따로 센다.
 3. `tops` 의 묶음(`complex_key`)이 **1개** → **지금처럼 첫 행(id 작은 행)** · `how="single"|"same_bundle"`. 같은 묶음 안 다른 행에 이미 붙은 옛 행은 **지우지 않는다**(준공월 되돌리기가 행마다 읽는 전제 유지). 카드가 보여 주는 행에 일정이 없을 수 있는 문제(검사관 🟠)는 **행을 옮기지 않고 상세 API 가 묶음 단위로 읽게**(§2-3) 푼다 — v2 의 "id 큰 행" 안은 같은 묶음 동점 387건 중 **360건의 승자가 바뀌어** 넣기·평형이 수백 행 늘고, 계획된 "한 단지 = 한 장" 대표 행(`_same-complex.mjs:263-270 pickRepresentativeId` — 청약홈 행 먼저·id 작은 순)과 순서가 반대라 그 단계에서 다시 어긋난다(재검토 ②).
 4. 묶음이 **2개+** = 다른 단지끼리 동점:
-   - `B` = `tops` 중 블록·차수 "ok"(2ⓑ 를 거쳤으니 `one-sided` 만 남음 — 즉 블록 토큰이 있는 쪽이 맞는 행)
+   - `B` = `tops` 중 `phaseConsistent === "ok"` 이고 `blockConflict` 가 아닌 행(회차 낱말 뗀 이름 기준 — 2ⓑ 에서 "conflict" 는 이미 빠졌으므로 `one-sided` 행은 B 에 안 든다 · 구현 `matchDetailToAptDetailed`)
    - `F` = `tops` 중 **ap 번호 주인 행**(`id === ap-${naver_presale_no}`)이고 네이버 지문 일치(`presale_recruit_date`(전체 날짜 꼴만) `=== RCRIT_PBLANC_DE` ∧ `presale_general_supply === TOT_SUPLY_HSHLDCO`) — **양성 증거로만**(불일치로 후보를 버리지 않는다 — 네이버 날짜가 다른 회차일 수 있다: e편한세상 대장 2021 vs 2025)
    - `F` 의 묶음이 1개이고 (`B` 가 비었거나 그 묶음이 `B` 안에 있으면) → 그 묶음의 카드 행 · `how="tie_fingerprint"|"tie_both"`
    - `F` 가 비고 `B` 의 묶음이 1개 → `how="tie_block"`
@@ -91,7 +91,7 @@
 | 2025000290 가야역 롯데캐슬 스카이엘 | (자동 기대) → `ah-2025910162` | `(오)` 제외(2ⓐ) 뒤 1곳 · 공고 725 = units 725 |
 | 2026000243 호반써밋 첨단3지구(A8BL) | (자동 기대) → `ah-2026910190` | 첫 낱말 "광주연구개발특구" → 게이트 null(⑤) · 글자 A8 ↔ A7 로 가름 |
 | 2022000772 광주 탄벌 서희스타힐스 2단지 | (자동 기대) → `ap-6025775` | "광주시" → 게이트 null(⑤) · 2단지 ↔ 1단지 차수로 가름 |
-| 2021000728 디센트 H3BL(2단지) | (자동 기대) → `ah-2026910004` | 같은 묶음 동점 → 카드 행(id 큰 0004) |
+| 2021000728 디센트 H3BL(2단지) | (자동 기대) → `ah-2026910004` | 1곳 매칭(0004) — 0027 은 블록 H2↔H3 로 2ⓑ 에서 빠짐(구현 미리보기 `single` 확인) |
 
 ## 4. 설계 ③ — 쌓인 틀린 행 정리(같은 수집기 안, 매 회차)
 
@@ -107,15 +107,17 @@
   - 동점을 못 가름(`tie_unresolved`) → `delete:unresolved`(어느 행도 근거 없음 — 래미안 3BL 꼴. 판정 파일에 `skip` 을 적으면 `decision` 으로 옮겨 감)
   - **게이트 탈락·짝 없음(`gate`·`noMatch`·`rejected_all`) → 유지 + 미리보기 `kept_no_evidence` 명단**(지울 근거가 없다 — 이름이 바뀐 단지·주소 오판이 여기 섞인다)
 - 지우기 따라감: `applyhome_unit_supply` 중 `source='apt'` 이고 (행, 공고) 가 지워지는 쌍 · `prices` 중 `house_type='applyhome_rep'` 이고 영향 단지 — 같은 회차 뒤 단계가 바른 평형으로 다시 채운다(순서 §4-3). `remndr` 평형·`applyhome_events` 는 건드리지 않는다.
+- **지우는 순서 = 평형 → 분양가 → 일정**(PR-A 검사관 보완 F2 — 일정을 먼저 지우고 평형에서 실패하면 다음 회차 계획에 그 쌍이 안 잡혀 `source=apt` 평형 고아가 영구히 남는다). 단계 실패는 `collector_runs` failure `NTC_WRITE <units|prices|schedule>` 를 남기고 끝낸다(upsert 로 안 넘어감 · `deleteNoticeRows` 시험은 기록용 가짜 sb 로 거르기 조건까지 단언).
+- **조용히 넘기던 것은 실행 기록 표식**(F4 · status 그대로 · `REGION_UNRESOLVED` 꼴): `error_message` 에 `NTC_SKIP <이유>` · `NTC_UNRESOLVED n` · `NTC_NO_EVIDENCE n` · `NTC_MANUAL_MISSING <공고>행>`(판정 파일 행이 apartments 에 없음 — 그 행은 넣지 않음)를 ` · ` 로 잇는다.
 - **정리를 건너뛰는 조건**(검사관 🟠 "일부만 반영"): 매칭 반복이 중단 신호(`rpt.interrupted()`)로 끊김 · 후보 행 수 ≠ `apartments` `count` · 표 행 수 ≠ `count` → 정리 없이 upsert 만(로그 `[정리] 건너뜀: <이유>`).
 - 출력: `{ deletes: [{id, apartment_id, house_manage_no, why, names}], unitDeletes, priceDeletes(apt ids), adds: [{apartment_id, house_manage_no, how}], keep: {same_bundle_extra, not_in_api, kept_no_evidence:[…]}, unresolved: [{hmn, name, candidates}] }`.
 
 ### 4-2. 차단기·인자·기록(기존 패턴 — `assign-completion` · `_trade-links evaluateLinkBreaker`)
 
 - `NOTICE_BREAKER_MAX_ROWS = 30` · `NOTICE_BREAKER_RATIO = 0.1`(분모 = 표 행 수) — **지우기만** 센다. 매주 정기 실행에서 넘으면(또는 `--apply-from` 불일치면) **"기존 쌍만" 모드**(§10 결정 ⑤ · 재검토 ④): 지금 DB 에 이미 있는 (행, 공고) 쌍만 다시 upsert 해 날짜·칸을 새로 받고(알림 소스 유지), **새 넣기·지우기·분양가 채움은 전부 보류** + `collector_runs` `status=failure`·`error_message` 머리말 `NTC_BREAKER`/`NTC_PLAN_MISMATCH`(감시 ⑬·워크플로 빨강 — 사람이 `--apply-from` 으로 푼다). v2 의 "upsert 는 하고 분양가만 건너뜀"은 새 규칙의 넣기가 승인 없이 들어가 옛 틀린 행과 함께 남아 감시 ⑳ 수가 오히려 늘고, `data-changing-run-approval` §2("차단기가 걸리면 아무것도 쓰지 않음")와도 어긋나 버렸다. 첫 정리는 80행 안팎 > 30 이라 **반드시 `--apply-from`**.
-- `--dry-run --out=<새 파일>`(wx) = 계획 저장(`deletes` 이름·`why` 포함 · `adds` · `priceDeletes` · `kept_no_evidence` · `gate_unknown` · `block_rejected` 수 · `unresolved` 후보 명단 · 통계) · `--apply-from=<계획>` = **지우는 (행, 공고) 집합과 넣는 (행, 공고) 집합이 둘 다 계획과 같을 때만** 지우고 넣는다(검사관 🟡) · 다르면 위 "기존 쌍만" 모드 · `--dry-run` 은 지금처럼 DB 쓰기 0.
+- `--dry-run --out=<새 파일>`(wx) = 계획 저장(`deletes` 이름·`why` 포함 · `adds` · `priceDeletes` · `kept_no_evidence` · `gate_unknown` · `block_rejected` 수 · `unresolved` 후보 명단 · 통계 · **F8 `gate`(공고·주소·걸린 행)·`conflict_all`(공고·빠진 행 이름·이유) 명단 · `manual_missing`** · **F3 `pricePlanAfterDelete`** = 지운다고 가정한 분양가 계획(DB 평형 − 지울 `source=apt` 쌍, 영향 단지의 `applyhome_rep` 는 없는 셈 → `counts`·`refill`(다시 채움)·`fresh`(새로 채움)·`lost`(지워지는데 다시 못 채우고 다른 가격도 없는 단지)·`rows`) + 로그 `[정리 미리보기] 분양가 다시 채움 N · 새로 채움 M · 비는 곳 K`) · `--apply-from=<계획>` = **지우는 (행, 공고) 집합과 넣는 (행, 공고) 집합이 둘 다 계획과 같을 때만** 지우고 넣는다(검사관 🟡) · 다르면 위 "기존 쌍만" 모드 · `--dry-run` 은 지금처럼 DB 쓰기 0.
 - 지우기는 `id` 로 `.in(ids)` 500개씩 · 돌아온 행 수로 셈 · 로그 `[정리] 지움 N(평형 M·분양가 K) · 넣기 A · 근거 없어 유지 U · 사람 판정 필요 R`.
-- 머리말: `NTC_ERROR`(판정 파일 깨짐) · `NTC_BREAKER` · `NTC_PLAN_MISMATCH` · `NTC_SKIP`(정리 건너뜀 — failure 아님, 로그만 · 이때도 넣기는 **기존 쌍만**).
+- 머리말: `NTC_ERROR`(판정 파일 깨짐) · `NTC_BREAKER` · `NTC_PLAN_MISMATCH` · `NTC_WRITE`(지우기 단계 실패) · `NTC_SKIP`(정리 건너뜀 — failure 아님, 실행 기록 표식(F4) · 이때도 넣기는 **기존 쌍만**).
 
 ### 4-3. `main` 순서(바뀌는 곳만)
 
@@ -143,22 +145,22 @@
 |---|---|---|
 | ① 설계 v1 맹점 검사 ✅ → v2 | `blind-ntc-design`(Opus) | `review-blind-design.md`(🔴1·🟠8·🟡8·🟢4 전부 반영 — 🟠 알림 중복·🟡 지문 전용 구조는 범위 밖 §9) · v2 차등 재검토(같은 검사관) |
 | ② 사장님 승인 | 사장님 | §10 |
-| ③ PR-A 구현(워크트리 `s630/notice-decisions`) — 매칭 v3 · `gateRegionOf` · 판정 파일 + 파서 · 정리 + 차단기 + `--out/--apply-from` + 기존 쌍만 모드 · `presale-detail` 묶음 읽기(§2-3) · 감시 ⑳ · 시험·변이 · 문서(`scripts/CLAUDE.md` 색인 · `.github/workflows/CLAUDE.md`(주간 회차 실패 동작) · `supabase/CLAUDE.md` 표 설명 · `api/CLAUDE.md`(묶음 읽기) · BACKLOG A-19 · `docs/audits` note · `.claude/rules/collectors/` 안티 패턴 1줄) | `opus-coder`(지시서 = worker-brief 5절 · 전제 실측: 표 칸 `select("*").limit(2)` · 외부 호출 = 청약홈 dry-run 1회 ≈ 6콜) | CI 초록 |
+| ③ PR-A 구현(워크트리 `s630/notice-decisions`) — 매칭 v3 · `gateRegionOf` · 판정 파일 + 파서 · 정리 + 차단기 + `--out/--apply-from` + 기존 쌍만 모드 · `presale-detail` 묶음 읽기(§2-3) · 감시 ⑳ · 시험·변이 · 문서(`scripts/CLAUDE.md` 색인 · `.github/workflows/CLAUDE.md`(주간 회차 실패 동작) · `supabase/CLAUDE.md` 표 설명 · `api/CLAUDE.md`(묶음 읽기) · BACKLOG A-19 · `docs/audits` note · `.claude/rules/collectors/` 안티 패턴 1줄) | `opus-coder`(지시서 = worker-brief 5절 · 전제 실측: 표 칸 `select("*").limit(2)` · 외부 호출 = 청약홈 dry-run 1회 18콜(Detail 3쪽 + Mdl 15쪽 — 구현 미리보기 실측)) | CI 초록 |
 | ④ 판정 파일 확정 | 메인(결정 3) | 초안 10줄(active 3 · skip 7)을 PR 에 · 미리보기에서 "자동 기대" 4건이 정말 풀렸는지 확인, 안 풀리면 줄 추가 |
 | ⑤ PR-A 검사관 2인 | 적대 Opus(수집기·DB 삭제·변이 재현) + 맹점 Opus(계획 대비 · 명단) | `review-adv-ntc.md` · `review-blind-ntc.md` · 🔴🟠 0 → 합침(**월요일 오전엔 합치지 않는다** — 12:30 회차가 차단기에 걸린다) |
-| ⑥ 운영 미리보기 → 전이표 → 반영 | 메인 · 사장님 | 합친 코드로 본 폴더 `--env-file .env.local --dry-run --out=.omc/artifacts/session630/ntc-plan-1.json` → 전이표 = 지우기(묶음별 접기 · 이유별 `other_bundle`/`conflict`/`decision`/`unresolved` · **결정 2 의 50건 밖 행은 따로 표시** — 새 단지 행으로 옮겨 가는 꼴·판정 파일 꼴·어긋남 꼴) · 넣기(이유별) · 분양가 다시 채움 단지 · 근거 없어 유지 명단 · 게이트 모름 명단 · 2ⓑ 로 빠진 행 수 · 사람 판정 필요 명단 · **정리 뒤 상태의 `assign-completion` 미리보기**(그 회차 차단기 10행 — 넘으면 그쪽도 `--apply-from` 또는 `keep` 줄) → 검사관 2인이 명단도 봄 → 승인 → 사본(`ntc-before.json` = 지워질 일정·평형·분양가 행 전체) → **`--apply-from`**(시각 = **합친 주 화~일 낮, 03:00~03:10 굽기·월 12:30 회차 피함**, 다음 월요일 12:30 전) → 재조회 "지우기 0" · 감시 ⑳ 0 |
+| ⑥ 운영 미리보기 → 전이표 → 반영 | 메인 · 사장님 | 합친 코드로 본 폴더 `--env-file .env.local --dry-run --out=.omc/artifacts/session630/ntc-plan-1.json` → 전이표 = 지우기(묶음별 접기 · 이유별 `other_bundle`/`conflict`/`decision`/`unresolved` · **결정 2 의 50건 밖 행은 따로 표시** — 새 단지 행으로 옮겨 가는 꼴·판정 파일 꼴·어긋남 꼴) · 넣기(이유별) · 분양가 다시 채움 단지 · 근거 없어 유지 명단 · 게이트 모름 명단 · 2ⓑ 로 빠진 행 수 · 사람 판정 필요 명단 · **정리 뒤 상태의 `assign-completion` 미리보기**(그 회차 차단기 10행 — 넘으면 그쪽도 `--apply-from` 또는 `keep` 줄) → 검사관 2인이 명단도 봄 → 승인 → 사본(`ntc-before.json` = 지워질 일정·평형·분양가 행 전체) → **`--apply-from`**(시각 = **합친 주 화~일 낮, 03:00~03:10 굽기·월 12:30 회차 피함**, 다음 월요일 12:30 전) → 재조회 "지우기 0" · 감시 ⑳ 0 · **미리보기와 `--apply-from` 반영은 같은 날 낮 1~2시간 안**(새 공고·새 행(03:00 열쇠·네이버 러너)이 끼면 넣기 명단이 바뀌어 `NTC_PLAN_MISMATCH`) · **반영 직후·03:00 전 `assign-completion` 미리보기 → `assign-trade-links` 미리보기 재측정**(10/22 기대값 여유 2줄 — 넘치면 completion-decisions `keep` 줄) · 전이표엔 `--out` 의 `pricePlanAfterDelete`(다시 채움·비는 곳)·`gate`·`conflict_all` 명단을 같이 싣는다 |
 | ⑦ PR-B1 디센트 세대수 → PR-B2 이름(10/22 뒤) | 메인 | §5 |
 | ⑧ 확인 3시점 | 메인 | 반영 직후(`presale-detail` 래미안 2BL 카드 = 730 · 시흥 1블럭 = 288 · 디센트 0003 = 727 · 성동자이리버뷰 = 532) · 다음 03:00 굽기(VIEW `lastUnsoldEventAt` · `assign-completion` 바뀜 수 = 전이표 값) · 다음 월요일 12:30 정기 회차(지우기 0·`NTC_*` 0·사람 판정 필요 0) |
 
 ## 9. 되돌리기 · 범위 밖
 
 - 되돌리기: `ntc-before.json` 의 행을 그대로 insert(일정·평형 `id` 포함 · 분양가는 **같은 날 다시 채운 행을 먼저 지우고**(열쇠 `단지·종류·기록일` 충돌 — 검사관 🟡) 옛 행 insert) · **판정 파일 줄이 없으면 다음 월요일 회차가 다시 지운다** → 되돌릴 땐 판정 파일에 `active` 를 같이 넣거나 PR 되돌리기 · 디센트는 `--undo`.
-- 범위 밖(BACKLOG 로): 알림 발송기 중복 열쇠(`notification_logs UNIQUE` 에 단지 id — 같은 묶음 N행이면 N통, 지금도 그 구조 · 지금은 `SMS_ADAPTER_READY=false` 라 실제 발송 0) · VIEW 묶기(id 큰 행)와 계획된 대표 행 D11(`pickRepresentativeId`, 청약홈 먼저·id 작은 순)의 순서가 반대인 것 · 공고 0건인 ah 행 478 · 목록에 행이 없는 단지(래미안 3BL·시티오씨엘 1·3·4단지)를 씨앗이 넣을지 · **지문 전용 짝짓기**(이름 못 찾음 1,456 중 지문이 딱 한 묶음 46 — 오탐 섞임(힐스테이트 신용 더리버→리슈빌 강일 등 5건은 게이트가 잡음) → 지번까지 셋 일치로 좁혀 다음 PR 후보) · `PHASE_RE` 가 `H2BL` 의 2 를 차수로 읽는 것 · VIEW 묶기(끝 괄호 뗀 이름)와 `complex_key` 묶기가 다른 것(래미안 1BL/2BL 이 한 카드) · `ah-2025910275` 시티오씨엘 "8단지" units 428(molit 이 4단지 값) · 네이버 `detail_addr` 저장 · `fetched_at` 갱신.
+- 범위 밖(BACKLOG 로): 알림 발송기 중복 열쇠(`notification_logs UNIQUE` 에 단지 id — 같은 묶음 N행이면 N통, 지금도 그 구조 · 지금은 `SMS_ADAPTER_READY=false` 라 실제 발송 0) · VIEW 묶기(id 큰 행)와 계획된 대표 행 D11(`pickRepresentativeId`, 청약홈 먼저·id 작은 순)의 순서가 반대인 것 · 공고 0건인 ah 행 478 · 목록에 행이 없는 단지(래미안 3BL·시티오씨엘 1·3·4단지)를 씨앗이 넣을지 · **지문 전용 짝짓기**(이름 못 찾음 1,456 중 지문이 딱 한 묶음 46 — 오탐 섞임(힐스테이트 신용 더리버→리슈빌 강일 등 5건은 게이트가 잡음) → 지번까지 셋 일치로 좁혀 다음 PR 후보) · `PHASE_RE` 가 `H2BL` 의 2 를 차수로 읽는 것 · VIEW 묶기(끝 괄호 뗀 이름)와 `complex_key` 묶기가 다른 것(래미안 1BL/2BL 이 한 카드) · `ah-2025910275` 시티오씨엘 "8단지" units 428(molit 이 4단지 값) · 네이버 `detail_addr` 저장 · `fetched_at` 갱신 · 곧분양 판정 `api/upcoming.ts:171` 은 카드 id 로만 읽음(원래 구멍 — 공고가 묶음 다른 행에 붙어 있으면 지난 공고 제외가 안 됨 · 이 PR 로 나빠지지 않음) · `ah-2026910093` 파크릭스 A51-2BL 세대수 310 = A51-1BL 공고 값(실제 414 · 별도 데이터 문제).
 
 ## 10. 사장님 승인 칸 — ✅ 2026-10-12 03:0x 전부 승인(AskUserQuestion 2건: "승인 — 구현 시작" · "기존 짝만 다시 받고 나머지 멈춤")
 
 - [x] ① §2 규칙 순서(판정 파일 → 동점 집합 뒤 `(오)`·블록 어긋남(회차 낱말 뗀 뒤)·rejected 제외 → 같은 묶음은 지금처럼 첫 행 + 상세 API 가 묶음 단위로 읽음 → 글자+지문(주인 행) → 못 가르면 비움 → 게이트는 시도 첫 낱말일 때만, 모르면 유사도 0.95·gu 보호)
-- [ ] ② §4 정리(양성 증거 — 다른 묶음·어긋남·판정·못 가름 — 있을 때만 지움 · 게이트·짝 없음은 유지+명단 · 매주 자동 · 차단기 30/10% · 첫 정리는 승인 명단으로 · 결정 2 밖 행 따로 표시)
-- [ ] ③ §3 판정 파일 10줄(active 3 · skip 7) + "자동 기대" 4건은 미리보기로 확인
-- [ ] ④ §5 디센트 — 세대수는 바로, 이름은 10/22 거래 연결 회차 뒤
-- [ ] ⑤ **차단기·승인 명단 불일치 때 수집기 동작** = "기존 쌍만 다시 받고 새 넣기·지우기·분양가는 멈춤"(추천 — 재검토 ④: 규칙 `data-changing-run-approval` §2 의 "아무것도 쓰지 않음"에 가장 가깝고, 알림 소스(접수일)는 계속 새로 받는다) / 대안 = 완전히 아무것도 안 씀(그 주 새 공고 일정·접수 알림도 못 받음)
+- [x] ② §4 정리(양성 증거 — 다른 묶음·어긋남·판정·못 가름 — 있을 때만 지움 · 게이트·짝 없음은 유지+명단 · 매주 자동 · 차단기 30/10% · 첫 정리는 승인 명단으로 · 결정 2 밖 행 따로 표시)
+- [x] ③ §3 판정 파일 10줄(active 3 · skip 7) + "자동 기대" 4건은 미리보기로 확인 — 구현 미리보기에서 4건 전부 기대대로 · PR-A 보완으로 16줄(+ 남양주왕숙 A-24 active · `(오)` 행만 후보인 skip 5)
+- [x] ④ §5 디센트 — 세대수는 바로, 이름은 10/22 거래 연결 회차 뒤
+- [x] ⑤ **차단기·승인 명단 불일치 때 수집기 동작** = "기존 쌍만 다시 받고 새 넣기·지우기·분양가는 멈춤"(추천 — 재검토 ④: 규칙 `data-changing-run-approval` §2 의 "아무것도 쓰지 않음"에 가장 가깝고, 알림 소스(접수일)는 계속 새로 받는다) / 대안 = 완전히 아무것도 안 씀(그 주 새 공고 일정·접수 알림도 못 받음)

@@ -28,10 +28,16 @@ describe("checkNoticeCrossBundle", () => {
     expect(issues[0].lines).toEqual(["H1 → ah-1 / ah-2", "H2 → ah-1 / ah-3"]);
   });
 
-  it("★ 판정 파일 active 쌍은 뺀다 — 사람이 일부러 두 묶음에 붙인 공고는 경보 아님", () => {
+  it("★ 모든 묶음에 active 쌍이 있으면 건너뜀 — 사람이 일부러 두 묶음에 붙인 공고는 경보 아님", () => {
     const rows = [{ apartment_id: "ah-1", house_manage_no: "H1" }, { apartment_id: "ah-2", house_manage_no: "H1" }];
     expect(checkNoticeCrossBundle(rows, KEYS, new Set(["H1|ah-1", "H1|ah-2"]))).toEqual([]);
-    expect(checkNoticeCrossBundle(rows, KEYS, new Set(["H1|ah-1"]))).toEqual([]); // 남은 행이 한 묶음뿐
+  });
+
+  it("★ active 행 옆에 다른 묶음의 틀린 행이 남아 있으면 경보(디센트 727: 0003 active · 0027 다른 묶음)", () => {
+    const rows = [{ apartment_id: "ah-1", house_manage_no: "H1" }, { apartment_id: "ah-2", house_manage_no: "H1" }];
+    const issues = checkNoticeCrossBundle(rows, KEYS, new Set(["H1|ah-1"]));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].lines).toEqual(["H1 → ah-1 / ah-2"]);
   });
 
   it("명단은 앞 5건 + 외 N건", () => {

@@ -197,6 +197,8 @@ export function parseNoticeDecisions(raw) {
   if (!Array.isArray(obj.decisions)) throw new Error("공고 판정 파일에 decisions 배열이 없습니다");
   /** @type {Set<string>} */
   const seen = new Set();
+  /** @type {Map<string, Set<string>>} */
+  const statusesByHmn = new Map();
   /** @type {Array<{ house_manage_no: string; apartment_id: string | null; status: "active" | "rejected" | "skip" }>} */
   const decisions = [];
   for (const d of obj.decisions) {
@@ -218,6 +220,11 @@ export function parseNoticeDecisions(raw) {
     const pair = `${hmn}|${aptId ?? ""}`;
     if (seen.has(pair)) throw new Error(`공고 판정 파일: 같은 (공고번호, 행)이 두 번 나왔습니다 — ${pair}`);
     seen.add(pair);
+    // skip 은 "그 공고는 우리 목록에 없다" — 같은 공고에 다른 status 가 섞이면 짝짓기(manual)와 정리(decision 지움)가 엇갈린다(세션630 검사관)
+    const prevStatuses = statusesByHmn.get(hmn) ?? new Set();
+    prevStatuses.add(status);
+    statusesByHmn.set(hmn, prevStatuses);
+    if (prevStatuses.has("skip") && prevStatuses.size > 1) throw new Error(`공고 판정 파일: 같은 공고에 skip 과 다른 status 가 섞였습니다 — ${hmn}`);
     decisions.push({ house_manage_no: hmn, apartment_id: /** @type {string | null} */ (aptId ?? null), status: /** @type {"active" | "rejected" | "skip"} */ (status) });
   }
   return { note: obj.note, updatedAt: obj.updatedAt, decisions };
@@ -369,7 +376,8 @@ export function matchDetailToAptDetailed(row, apts, ctx = {}) {
   }
 
   const gate = regionGate(row, chosen, bestSim);
-  if (gate !== "ok") return { aptIds: [], how: gate, sim: bestSim, ...extra };
+  // 게이트에 걸린 행을 후보로 남긴다 — 미리보기 명단(사람이 볼 재료, 세션630 검사관 🟡6)
+  if (gate !== "ok") return { aptIds: [], how: gate, sim: bestSim, ...extra, candidates: [{ id: chosen.id, name: chosen.name, key: bundleKeyOf(chosen) }] };
   return { aptIds: [chosen.id], how, sim: bestSim, ...extra };
 }
 
@@ -601,26 +609,27 @@ export function parseImpactOutArg(argv) {
 }
 
 /**
- * prices 에 price>0 행이 있는 단지 id — 매칭된 단지만 200개씩 `.in()` 으로(전체 표 훑기 금지).
- * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다.
+ * prices 의 price>0 행(단지·종류) — 매칭된 단지만 200개씩 `.in()` 으로(전체 표 훑기 금지).
+ * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다. 종류(house_type)는 "지운다고 가정한" 미리보기가
+ * `applyhome_rep` 행만 빼고 셀 때 쓴다(세션630).
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string[]} aptIds
  * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(시험에선 가짜) — 이름을 selectAll 로 둬야 정적 가드(_selectall-keycol-coverage)가 keyCol 을 본다
- * @returns {Promise<Set<string>>}
+ * @returns {Promise<Array<{ apartment_id: string; house_type: string | null }>>}
  */
-async function loadAptIdsWithPrice(sb, aptIds, selectAll) {
-  /** @type {Set<string>} */
-  const has = new Set();
+async function loadPriceRows(sb, aptIds, selectAll) {
+  /** @type {Array<{ apartment_id: string; house_type: string | null }>} */
+  const out = [];
   for (let i = 0; i < aptIds.length; i += PRICE_LOOKUP_CHUNK) {
     const chunk = aptIds.slice(i, i + PRICE_LOOKUP_CHUNK);
-    const rows = /** @type {{ apartment_id: string }[]} */ (await selectAll(
-      (s) => s.from("prices").select("id, apartment_id").in("apartment_id", chunk).gt("price", 0),
+    const rows = /** @type {Array<{ apartment_id: string; house_type: string | null }>} */ (await selectAll(
+      (s) => s.from("prices").select("id, apartment_id, house_type").in("apartment_id", chunk).gt("price", 0),
       sb,
       "id",
     ));
-    for (const r of rows) has.add(r.apartment_id);
+    out.push(...rows);
   }
-  return has;
+  return out;
 }
 
 /**
@@ -656,25 +665,47 @@ export function mergeUnitRows(dbRows, roundRows) {
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {AptRow[]} apts
  * @param {UnitRow[]} roundRows
- * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(이름 유지 이유 = 위 loadAptIdsWithPrice)
+ * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(이름 유지 이유 = 위 loadPriceRows)
  * @param {typeof today} todayFn main 이 넘긴 KST 날짜 함수(recorded_at)
+ * @param {{ unitDeletePairs: ReadonlyArray<{ apartment_id: string; house_manage_no: string }>; priceDeleteAptIds: readonly string[] }} [assumeDeleted]
+ *   세션630 미리보기 전용 — 정리 지우기를 했다고 가정한다(DB 평형에서 지울 `source=apt` 쌍을 빼고, 영향 단지의 `applyhome_rep`
+ *   가격 행은 없는 셈). 그때만 `assumed`(다시 채움·새로 채움·비는 곳)를 함께 돌려준다.
  */
-async function buildPricePlan(sb, apts, roundRows, selectAll, todayFn) {
-  const dbRows = /** @type {UnitRow[]} */ (await selectAll(
+async function buildPricePlan(sb, apts, roundRows, selectAll, todayFn, assumeDeleted) {
+  let dbRows = /** @type {UnitRow[]} */ (await selectAll(
     (s) => s.from("applyhome_unit_supply")
       .select("id, apartment_id, house_manage_no, model_no, house_ty, supply_area, general_supply, special_supply, top_amount, source")
       .gt("top_amount", 0),
     sb,
     "id",
   ));
+  /** @type {Set<string>} */
+  const priceDel = new Set(assumeDeleted?.priceDeleteAptIds ?? []);
+  if (assumeDeleted) {
+    const del = new Set(assumeDeleted.unitDeletePairs.map((p) => `${p.apartment_id}|${p.house_manage_no}`));
+    dbRows = dbRows.filter((u) => !((u.source ?? UNIT_SOURCE_ORIGINAL) === UNIT_SOURCE_ORIGINAL && del.has(`${u.apartment_id}|${u.house_manage_no}`)));
+  }
   const unitsByApt = mergeUnitRows(dbRows, roundRows);
   const aptById = new Map(apts.map((a) => [a.id, a]));
-  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()], selectAll);
+  const priceRows = await loadPriceRows(sb, [...new Set([...unitsByApt.keys(), ...priceDel])], selectAll);
+  // 가정 모드: 지울 단지의 applyhome_rep 행은 없는 셈(그 단지의 다른 종류 가격 행은 그대로 센다)
+  const hasPriceIds = new Set(priceRows.filter((r) => !(priceDel.has(r.apartment_id) && r.house_type === PRICE_HOUSE_TYPE)).map((r) => r.apartment_id));
   const plan = planApplyhomePrices(unitsByApt, aptById, hasPriceIds, todayFn());
   const c = plan.counts;
-  log(PHASE, `[prices] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
-  log(PHASE, `[prices] 빈칸 채움 ${c.planned}건(임대 제외 ${c.skippedLease} · 이미 값 있음 ${c.skippedHasPrice} · 평형 없음 ${c.skippedNoUnit}${c.skippedNoApt ? ` · 단지 없음 ${c.skippedNoApt}` : ""})`);
-  return plan;
+  log(PHASE, `[prices${assumeDeleted ? " · 지운다고 가정" : ""}] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
+  log(PHASE, `[prices${assumeDeleted ? " · 지운다고 가정" : ""}] 빈칸 채움 ${c.planned}건(임대 제외 ${c.skippedLease} · 이미 값 있음 ${c.skippedHasPrice} · 평형 없음 ${c.skippedNoUnit}${c.skippedNoApt ? ` · 단지 없음 ${c.skippedNoApt}` : ""})`);
+  if (!assumeDeleted) return plan;
+  const planned = new Set(plan.rows.map((r) => r.apartment_id));
+  const hadRep = new Set(priceRows.filter((r) => priceDel.has(r.apartment_id) && r.house_type === PRICE_HOUSE_TYPE).map((r) => r.apartment_id));
+  return {
+    ...plan,
+    assumed: {
+      refill: plan.rows.filter((r) => priceDel.has(r.apartment_id)).length,
+      fresh: plan.rows.filter((r) => !priceDel.has(r.apartment_id)).length,
+      // 지금 applyhome_rep 가 있는데 지우고 나면 다시 못 채우고 다른 가격 행도 없는 단지
+      lost: [...hadRep].filter((id) => !planned.has(id) && !hasPriceIds.has(id)).sort(),
+    },
+  };
 }
 
 // ── 쌓인 틀린 행 정리 (세션630) ─────────────────────────────────
@@ -808,20 +839,17 @@ export function parseNoticeArgs(argv) {
 }
 
 /**
- * 정리 지우기 — 일정 행(id 500개씩) → 평형(source 'apt', 지운 (단지, 공고) 쌍 — 공고번호별 `.in(단지)`) →
- * 분양가(`applyhome_rep`, 영향 단지 200개씩). 돌아온 행 수로 센다. 조회 오류는 던진다(모르는 채로 upsert 하지 않는다).
+ * 정리 지우기 — **평형 → 분양가 → 일정** 순서(세션630 검사관: 일정을 먼저 지우고 평형에서 실패하면 다음 회차 계획에 그 쌍이
+ * 안 잡혀 `source=apt` 평형 고아가 영구히 남고 분양가 재료로 계속 쓰인다 → 일정을 마지막에). 평형 = source 'apt' 이고
+ * 지운 (단지, 공고) 쌍(공고번호별 `.in(단지)`) · 분양가 = `applyhome_rep` 이고 영향 단지(200개씩) · 일정 = id 500개씩.
+ * 돌아온 행 수로 센다. 오류는 단계 이름(`stage`)을 달아 던진다 — main 이 `NTC_WRITE <단계>` 로 기록한 뒤 끝낸다.
  * @param {any} sb
  * @param {{ deletes: ReadonlyArray<{ id: number | string }>; unitDeletePairs: ReadonlyArray<{ apartment_id: string; house_manage_no: string }>; priceDeleteAptIds: readonly string[] }} plan
  * @returns {Promise<{ schedule: number; units: number; prices: number }>}
  */
-async function deleteNoticeRows(sb, plan) {
-  let schedule = 0;
-  const ids = plan.deletes.map((d) => d.id);
-  for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
-    const { data, error } = await sb.from("presale_schedule_official").delete().in("id", ids.slice(i, i + DELETE_CHUNK)).select("id");
-    if (error) throw new Error(`일정 행 지우기 실패: ${error.message}`);
-    schedule += data?.length ?? 0;
-  }
+export async function deleteNoticeRows(sb, plan) {
+  /** @param {"units" | "prices" | "schedule"} stage @param {string} msg */
+  const fail = (stage, msg) => Object.assign(new Error(`${stage} 지우기 실패: ${msg}`), { stage });
   /** @type {Map<string, string[]>} */
   const aptsByHmn = new Map();
   for (const p of plan.unitDeletePairs) {
@@ -833,15 +861,22 @@ async function deleteNoticeRows(sb, plan) {
   for (const [hmn, aptIds] of aptsByHmn) {
     const { data, error } = await sb.from("applyhome_unit_supply").delete()
       .eq("house_manage_no", hmn).eq("source", UNIT_SOURCE_ORIGINAL).in("apartment_id", aptIds).select("id");
-    if (error) throw new Error(`평형 행 지우기 실패(${hmn}): ${error.message}`);
+    if (error) throw fail("units", `${hmn} ${error.message}`);
     units += data?.length ?? 0;
   }
   let prices = 0;
   for (let i = 0; i < plan.priceDeleteAptIds.length; i += PRICE_LOOKUP_CHUNK) {
     const { data, error } = await sb.from("prices").delete()
       .eq("house_type", PRICE_HOUSE_TYPE).in("apartment_id", plan.priceDeleteAptIds.slice(i, i + PRICE_LOOKUP_CHUNK)).select("id");
-    if (error) throw new Error(`분양가 행 지우기 실패: ${error.message}`);
+    if (error) throw fail("prices", error.message);
     prices += data?.length ?? 0;
+  }
+  let schedule = 0;
+  const ids = plan.deletes.map((d) => d.id);
+  for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
+    const { data, error } = await sb.from("presale_schedule_official").delete().in("id", ids.slice(i, i + DELETE_CHUNK)).select("id");
+    if (error) throw fail("schedule", error.message);
+    schedule += data?.length ?? 0;
   }
   return { schedule, units, prices };
 }
@@ -990,6 +1025,12 @@ export async function main(overrides = {}) {
     const howCounts = {};
     /** @type {Array<{ hmn: string; name: string; addr: string | null }>} */
     const gateUnknown = [];
+    /** @type {Array<{ hmn: string; name: string; addr: string | null; candidates: TieCandidate[] }>} 시도 게이트 탈락 — 미리보기 명단 */
+    const gateBlocked = [];
+    /** @type {Array<{ hmn: string; name: string; how: string; excluded: Excluded[] }>} 동점이 전부 빠진 공고 — 미리보기 명단 */
+    const allExcluded = [];
+    /** @type {string[]} 판정 파일 행이 apartments 에 없는 공고("공고>행+행") — 표식 NTC_MANUAL_MISSING */
+    const manualMissing = [];
     let blockRejected = 0;
     /** @type {Record<string, unknown>[]} */
     const scheduleRows = [];
@@ -1004,6 +1045,9 @@ export async function main(overrides = {}) {
       howCounts[m.how] = (howCounts[m.how] ?? 0) + 1;
       blockRejected += (m.excluded ?? []).filter((x) => x.why === "conflict").length;
       if (m.how === "gate_unknown") gateUnknown.push({ hmn, name: String(d.HOUSE_NM ?? ""), addr: d.HSSPLY_ADRES ?? null });
+      if (m.how === "gate") gateBlocked.push({ hmn, name: String(d.HOUSE_NM ?? ""), addr: d.HSSPLY_ADRES ?? null, candidates: m.candidates ?? [] });
+      if (m.how === "conflict_all" || m.how === "rejected_all") allExcluded.push({ hmn, name: String(d.HOUSE_NM ?? ""), how: m.how, excluded: m.excluded ?? [] });
+      if (m.how === "manual_missing") manualMissing.push(`${hmn}>${(decisionIdx.active.get(hmn) ?? []).join("+")}`);
       desired.set(hmn, {
         aptIds: m.aptIds, bundles: new Set(m.aptIds.map(keyOf)), how: m.how, excluded: m.excluded,
         name: String(d.HOUSE_NM ?? ""), candidates: m.candidates,
@@ -1052,6 +1096,13 @@ export async function main(overrides = {}) {
     for (const u of plan.unresolved.slice(0, 20)) {
       log(PHASE, `  사람 판정 필요 ${u.hmn} ${u.name} ↔ ${u.candidates.map((c) => `${c.id}(${c.name})`).join(" / ")}`);
     }
+    // 조용히 넘기던 것을 실행 기록 표식으로 — status 는 그대로(REGION_UNRESOLVED 꼴 · data-changing-run-approval §4, 세션630 검사관)
+    const noticeMarkers = () => [
+      ...(skipReason ? [`NTC_SKIP ${skipReason}`] : []),
+      ...(plan.unresolved.length ? [`NTC_UNRESOLVED ${plan.unresolved.length}`] : []),
+      ...(plan.keep.no_evidence.length ? [`NTC_NO_EVIDENCE ${plan.keep.no_evidence.length}`] : []),
+      ...(manualMissing.length ? [`NTC_MANUAL_MISSING ${manualMissing.join(",")}`] : []),
+    ];
 
     if (dryRun) {
       if (planOutPath) {
@@ -1060,6 +1111,16 @@ export async function main(overrides = {}) {
         } else {
           /** @param {string} id */
           const nameOf = (id) => aptById.get(id)?.name ?? null;
+          // 지운다고 가정한 분양가 계획 — 지금 DB 로 계산하면 지워질 applyhome_rep 가 "이미 값 있음"으로 잡혀
+          // 다시 채움·사라짐이 안 보인다(세션630 검사관 🟠2). 실패해도 미리보기는 계속(비치명).
+          /** @type {any} */
+          let after = null;
+          try {
+            after = await buildPricePlan(sb, apts, unitRows, deps.selectAll, deps.today, plan);
+          } catch (e) {
+            logError(PHASE, `지운다고 가정한 분양가 계획 실패 (비치명적): ${e instanceof Error ? e.message : String(e)}`);
+          }
+          if (after?.assumed) log(PHASE, `[정리 미리보기] 분양가 다시 채움 ${after.assumed.refill} · 새로 채움 ${after.assumed.fresh} · 비는 곳 ${after.assumed.lost.length}`);
           const file = {
             takenAt: new Date().toISOString(),
             stats: { details: details.length, matched, how: howCounts, tableRows: dbRows.length, apartments: apts.length, byWhy: plan.counts.byWhy, kept: plan.counts.kept },
@@ -1071,8 +1132,16 @@ export async function main(overrides = {}) {
               no_evidence: plan.keep.no_evidence.map((x) => ({ ...x, apt_name: nameOf(x.apartment_id), notice_name: noticeName.get(x.house_manage_no) ?? null })),
             },
             gate_unknown: gateUnknown,
+            gate: gateBlocked,
+            conflict_all: allExcluded.map((x) => ({ ...x, excluded: x.excluded.map((e) => ({ ...e, apt_name: nameOf(e.id) })) })),
             block_rejected: blockRejected,
             unresolved: plan.unresolved,
+            manual_missing: manualMissing,
+            pricePlanAfterDelete: after?.assumed ? {
+              counts: after.counts, refill: after.assumed.refill, fresh: after.assumed.fresh,
+              lost: after.assumed.lost.map((/** @type {string} */ id) => ({ apartment_id: id, name: nameOf(id) })),
+              rows: after.rows.map((/** @type {any} */ r) => ({ apartment_id: r.apartment_id, name: nameOf(r.apartment_id), price: r.price, pp: r.pp, area: r.area, house_type: r.house_type, recorded_at: r.recorded_at })),
+            } : null,
           };
           writeFileSync(planOutPath, JSON.stringify(file, null, 1) + "\n", { encoding: "utf8", flag: "wx" });
           log(PHASE, `[정리] 계획 파일 저장: ${planOutPath}`);
@@ -1125,7 +1194,16 @@ export async function main(overrides = {}) {
 
     let deleted = { schedule: 0, units: 0, prices: 0 };
     if (!existingOnly && (plan.deletes.length || plan.priceDeleteAptIds.length)) {
-      deleted = await deps.deleteNoticeRows(sb, plan);
+      try {
+        deleted = await deps.deleteNoticeRows(sb, plan);
+      } catch (e) {
+        // 지우기 도중 실패 — 그 단계를 실행 기록에 남기고 끝낸다(upsert 로 넘어가지 않는다 · assign-completion CMP_WRITE 꼴)
+        const stage = /** @type {{ stage?: string }} */ (e ?? {}).stage ?? "unknown";
+        const note = `NTC_WRITE ${stage} ${e instanceof Error ? e.message : String(e)} — 지우기 도중 멈춤(일정·평형·분양가 upsert 안 함)`;
+        logError(PHASE, note);
+        await deps.recordCollectorRun(PHASE, { ...rpt.summary(), status: "failure", errorMessage: [note, ...noticeMarkers()].join(" · ") });
+        throw e;
+      }
       if (deleted.schedule !== plan.deletes.length) logError(PHASE, `[정리] 지운 일정 행 ${deleted.schedule} ≠ 계획 ${plan.deletes.length} (그 사이 바뀐 행)`);
     }
     log(PHASE, `[정리] 지움 ${deleted.schedule}(평형 ${deleted.units}·분양가 ${deleted.prices}) · 넣기 ${existingOnly ? 0 : plan.adds.length} · ${summaryTail}`);
@@ -1167,11 +1245,12 @@ export async function main(overrides = {}) {
 
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
+    const marks = noticeMarkers();
     if (failNote) {
-      await deps.recordCollectorRun(PHASE, { ...result, status: "failure", errorMessage: failNote });
+      await deps.recordCollectorRun(PHASE, { ...result, status: "failure", errorMessage: [failNote, ...marks].join(" · ") });
       shouldExit1 = true;
     } else {
-      await deps.recordCollectorRun(PHASE, result);
+      await deps.recordCollectorRun(PHASE, { ...result, errorMessage: marks.length ? marks.join(" · ") : null });
       if (result.fail > 0) shouldExit1 = true;
     }
   } finally {

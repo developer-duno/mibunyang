@@ -41,20 +41,24 @@ export default withHandler({
       const aptId = "id" in parsed ? parsed.id : parsed.ids[0];
 
       // 같은 단지 묶음의 행 id 들(세션630) — 열쇠 1회 조회 → 같은 열쇠 행 전부. 열쇠가 없으면 자기 id 만.
-      const keyRes = await supabase.from("apartments").select("complex_key").eq("id", aptId).limit(1);
+      // 오피스텔 `(오)` 행은 묶음에 섞여 있어도(DB 실측 45묶음) 서로 읽지 않는다 — 아파트 카드에 오피스텔 공고·오피스텔 카드에 아파트 공고가 안 섞이게.
+      const isOfficetel = (name: unknown) => String(name ?? "").includes("(오)");
+      const keyRes = await supabase.from("apartments").select("complex_key, name").eq("id", aptId).limit(1);
       if (keyRes.error) {
         console.error("presale-detail key query error:", keyRes.error);
         return res.status(500).json({ ok: false, error: "분양 상세 데이터 조회 중 오류가 발생했습니다" });
       }
-      const key = (keyRes.data?.[0] as { complex_key?: string | null } | undefined)?.complex_key ?? null;
+      const self = keyRes.data?.[0] as { complex_key?: string | null; name?: string | null } | undefined;
+      const key = self?.complex_key ?? null;
       let ids = [aptId];
-      if (key) {
-        const bundleRes = await supabase.from("apartments").select("id").eq("complex_key", key);
+      if (key && !isOfficetel(self?.name)) {
+        const bundleRes = await supabase.from("apartments").select("id, name").eq("complex_key", key);
         if (bundleRes.error) {
           console.error("presale-detail bundle query error:", bundleRes.error);
           return res.status(500).json({ ok: false, error: "분양 상세 데이터 조회 중 오류가 발생했습니다" });
         }
-        ids = [...new Set([aptId, ...((bundleRes.data ?? []) as { id: string }[]).map((r) => r.id)])];
+        const members = ((bundleRes.data ?? []) as { id: string; name?: string | null }[]).filter((r) => !isOfficetel(r.name));
+        ids = [...new Set([aptId, ...members.map((r) => r.id)])];
       }
 
       // 두 테이블 병렬 조회 후 JS merge (VIEW JOIN 회피)
@@ -63,7 +67,7 @@ export default withHandler({
           .from("presale_schedule_official")
           .select(SCHEDULE_SELECT)
           .in("apartment_id", ids)
-          .order("recruit_date", { ascending: false })
+          .order("recruit_date", { ascending: false, nullsFirst: false }) // 내림차순 기본은 빈 날짜가 맨 앞
           .limit(1),
         supabase
           .from("applyhome_unit_supply")

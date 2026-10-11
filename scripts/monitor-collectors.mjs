@@ -16,7 +16,7 @@
  *   ⑥ VIEW 회귀   — regions 원본은 채워졌는데 apartments_flat VIEW 노출 컬럼만 NULL
  *   ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 컬럼이 빈칸
  *   (⑧~⑲ 는 각 점검 머리 주석)
- *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(판정 파일 active 제외 · KST 월요일 · 세션630)
+ *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(모든 묶음이 판정 파일 active 일 때만 제외 · KST 월요일 · 세션630)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -2043,7 +2043,7 @@ export function loadNoticeActivePairs() {
 }
 
 /**
- * ⑳ 판정 — 한 공고(house_manage_no)가 묶음 열쇠(`complex_key ?? id`)가 다른 행 2개+ 에 붙은 수. 판정 파일 active 쌍은 뺀다.
+ * ⑳ 판정 — 한 공고(house_manage_no)가 묶음 열쇠(`complex_key ?? id`)가 다른 행 2개+ 에 붙은 수. 그 공고의 모든 묶음에 판정 파일 active 쌍이 있을 때만(사람이 일부러 여러 단지에 붙인 공고) 건너뛴다.
  * 수집기 정리(planNoticeReconcile)가 매주 지우므로 반영 뒤 기준선은 0 — 0 이 아니면 정리가 막혔거나(차단기) 새 꼴이 생긴 것.
  * @param {ReadonlyArray<{ apartment_id: string, house_manage_no: string }>} schedRows presale_schedule_official 전체
  * @param {Map<string, string | null>} keyById apartments id → complex_key
@@ -2053,15 +2053,20 @@ export function loadNoticeActivePairs() {
 export function checkNoticeCrossBundle(schedRows, keyById, activePairs) {
   /** @type {Map<string, Map<string, string[]>>} */
   const byHmn = new Map();
+  /** @type {Map<string, Set<string>>} 공고 → active 쌍이 있는 묶음 */
+  const activeBundles = new Map();
   for (const r of schedRows) {
     const hmn = String(r.house_manage_no);
-    if (activePairs.has(`${hmn}|${r.apartment_id}`)) continue;
     const bundle = keyById.get(r.apartment_id) || r.apartment_id;
     const bundles = byHmn.get(hmn) ?? new Map();
     bundles.set(bundle, [...(bundles.get(bundle) ?? []), r.apartment_id]);
     byHmn.set(hmn, bundles);
+    if (activePairs.has(`${hmn}|${r.apartment_id}`)) activeBundles.set(hmn, (activeBundles.get(hmn) ?? new Set()).add(bundle));
   }
-  const cross = [...byHmn].filter(([, bundles]) => bundles.size >= 2).sort(([a], [b]) => a.localeCompare(b));
+  // active 행도 묶음 집계에 넣는다 — 건너뛰는 건 그 공고의 **모든** 묶음에 active 쌍이 있을 때뿐(active 행 옆에 남은 틀린 행을 놓치지 않게, 세션630 검사관)
+  const cross = [...byHmn]
+    .filter(([hmn, bundles]) => bundles.size >= 2 && ![...bundles.keys()].every((b) => activeBundles.get(hmn)?.has(b)))
+    .sort(([a], [b]) => a.localeCompare(b));
   if (cross.length === 0) return [];
   const shown = cross.slice(0, 5).map(([hmn, bundles]) => `${hmn} → ${[...bundles.values()].map((ids) => ids.join("+")).join(" / ")}`);
   return [{
