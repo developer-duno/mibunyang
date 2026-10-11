@@ -245,10 +245,10 @@ describe("parseNoticeDecisions — 사람 판정 파일(거부 7종)", () => {
     expect(() => parseNoticeDecisions([])).toThrow(/객체/);
     expect(() => parseNoticeDecisions(null)).toThrow(/객체/);
   });
-  it("운영 파일 = 10줄(active 3 · skip 7) · 승인 칸이 다 차 있다", () => {
+  it("운영 파일 = 11줄(active 4 · skip 7) · 승인 칸이 다 차 있다", () => {
     const p = parseNoticeDecisions(JSON.parse(readFileSync(NOTICE_DECISIONS_PATH, "utf8")));
     expect(p.decisions.filter((d) => d.status === "active").map((d) => `${d.house_manage_no}>${d.apartment_id}`).sort())
-      .toEqual(["2021000727>ah-2026910003", "2021000772>ap-6025315", "2023000532>ap-6027298"]);
+      .toEqual(["2021000727>ah-2026910003", "2021000772>ap-6025315", "2023000532>ap-6027298", "2025820017>ap-6025730"]);
     expect(p.decisions.filter((d) => d.status === "skip").map((d) => d.house_manage_no).sort())
       .toEqual(["2020001404", "2021000106", "2021000349", "2021000368", "2021000617", "2023000359", "2024000594"]);
   });
