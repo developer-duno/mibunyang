@@ -120,7 +120,7 @@ export function modeOf(values) {
 
 /**
  * 사람 판정 파일을 검사해 돌려준다. 꼴 `{ note, updatedAt, decisions: [{ id, action: "keep", names, why, approved }] }`.
- * action 은 `keep` 하나만 · id 중복은 던진다(같은 행을 두 번 적으면 어느 판정인지 모른다).
+ * action 은 `keep` 하나만 · id 중복은 던진다(같은 행을 두 번 적으면 어느 판정인지 모른다) · why·approved 가 빈 줄도 던진다(근거·승인 없는 예외 금지).
  * @param {unknown} raw JSON.parse 결과
  * @returns {{ note: unknown, updatedAt: unknown, decisions: Array<{ id: string, action: "keep" }> }}
  */
@@ -133,9 +133,14 @@ export function parseCompletionDecisions(raw) {
   /** @type {Array<{ id: string, action: "keep" }>} */
   const decisions = [];
   for (const d of obj.decisions) {
-    const e = /** @type {{ id?: unknown, action?: unknown }} */ (d ?? {});
+    const e = /** @type {{ id?: unknown, action?: unknown, why?: unknown, approved?: unknown }} */ (d ?? {});
     if (typeof e.id !== "string" || e.id === "") throw new Error(`준공월 판정 파일: id 가 빈 줄이 있습니다 ${JSON.stringify(d)}`);
     if (e.action !== "keep") throw new Error(`준공월 판정 파일: action 은 "keep" 만 받습니다 — ${e.id}: ${JSON.stringify(e.action)}`);
+    // 사람 판정의 근거·승인 없는 줄은 받지 않는다(세션624 재검사 🟡3)
+    for (const f of /** @type {const} */ (["why", "approved"])) {
+      const v = e[f];
+      if (typeof v !== "string" || v.trim() === "") throw new Error(`준공월 판정 파일: ${f} 가 비어 있습니다 — ${e.id}`);
+    }
     if (seen.has(e.id)) throw new Error(`준공월 판정 파일: id 가 두 번 나왔습니다 — ${e.id}`);
     seen.add(e.id);
     decisions.push({ id: e.id, action: "keep" });
