@@ -12,8 +12,12 @@ import {
   UPDATE_CONCURRENCY,
   UPDATE_BATCH_DELAY_MS,
   BUILD_YEAR_SAMPLE,
+  ALT_YEAR_SAMPLE,
   DECISIONS_PATH,
   planCompletionUpdates,
+  rowsNeedingAltYear,
+  altYearOf,
+  fetchAltYears,
   parseCompletionDecisions,
   evaluateChangeBreaker,
   parseArgs,
@@ -261,6 +265,159 @@ describe("작은 도구", () => {
   });
 });
 
+// ── 대체 조회(세션626 · 설계서 2026-10-11-a19-alt-year-lookup.md §2) ─────────────────────
+// 운영 형식(세션626 실측): bjd_code = 10자리 문자열 · lot_main·lot_sub = 정수(부번 없으면 0) ·
+// trade_deals.jibun_sub = 문자열(부번 없으면 '0') · build_year = 정수 · apt_seq = "41463-123" 꼴(없으면 null)
+/**
+ * @param {string} id
+ * @param {{ bjd?: string | null, lot?: number | null, sub?: number | string | null, key?: string | null }} [o]
+ */
+const arow = (id, o = {}) => ({ ...row(id, "202501", { key: o.key }), bjd_code: o.bjd === undefined ? "4146310100" : o.bjd, lot_main: o.lot === undefined ? 123 : o.lot, lot_sub: o.sub === undefined ? 0 : o.sub });
+/** @param {string | null} apt_seq @param {number | null} build_year @param {string} [jibun_sub] @param {string} [apt_name] */
+const deal = (apt_seq, build_year, jibun_sub = "0", apt_name = `단지-${apt_seq}`) => ({ apt_seq, apt_name, build_year, jibun_sub });
+/** @param {number} n @param {string | null} seq @param {number} y @param {string} [sub] */
+const deals = (n, seq, y, sub = "0") => Array.from({ length: n }, () => deal(seq, y, sub));
+
+describe("altYearOf — 같은 땅 매매 거래로 건축년도(사장님 결정 1)", () => {
+  it("우리 부번이 0·빈칸·\"0\" 이면 부번을 보지 않는다(대표 지번 \"외 N필지\")", () => {
+    const ds = [deal("41463-1", 2020, "5"), deal("41463-1", 2020, "0")];
+    for (const sub of [0, null, "0", ""]) expect(altYearOf(arow("ah-1", { sub }), ds)).toBe(2020);
+  });
+
+  it("우리 부번이 7 이면 부번 7 인 거래만 — 부번 14 거래만 있으면 자료 없음(undefined)", () => {
+    const ds = [deal("41463-1", 2019, "7"), ...deals(5, "41463-2", 2023, "14")];
+    expect(altYearOf(arow("ah-1", { sub: 7 }), ds)).toBe(2019);
+    expect(altYearOf(arow("ah-1", { sub: 7 }), deals(5, "41463-2", 2023, "14"))).toBeUndefined();
+  });
+
+  it("건물마다 1표 — 거래 20:3:1 이어도 건물 A 2020 · B 2023 · C 2023 → 2023(행 수로 세면 2020)", () => {
+    const ds = [...deals(20, "A", 2020), ...deals(3, "B", 2023), ...deals(1, "C", 2023)];
+    expect(altYearOf(arow("ah-1"), ds)).toBe(2023);
+  });
+
+  it("건물 안 동률이면 그 건물은 표가 없다 — 남은 건물로 정한다 · 전부 동률이면 자료 없음", () => {
+    expect(altYearOf(arow("ah-1"), [deal("A", 2020), deal("A", 2021), deal("B", 2023)])).toBe(2023);
+    expect(altYearOf(arow("ah-1"), [deal("A", 2020), deal("A", 2021)])).toBeUndefined();
+  });
+
+  it("건물 사이 동률 → null(판정 못 함 — 광주 화정 꼴, 옛 건물 2종)", () => {
+    expect(altYearOf(arow("ah-1"), [...deals(5, "A", 2020), deal("B", 2023)])).toBeNull();
+  });
+
+  it("거래가 없거나 연도가 비면 자료 없음(undefined)", () => {
+    expect(altYearOf(arow("ah-1"), [])).toBeUndefined();
+    expect(altYearOf(arow("ah-1"), [deal("A", null), deal("A", 0)])).toBeUndefined();
+  });
+
+  it("apt_seq 가 없으면 이름으로 건물을 가른다(n:이름)", () => {
+    const ds = [...Array.from({ length: 3 }, () => deal(null, 2020, "0", "가")), deal(null, 2023, "0", "나"), deal(null, 2023, "0", "다")];
+    expect(altYearOf(arow("ah-1"), ds)).toBe(2023);
+  });
+
+  it("apt_seq 가 있으면 이름이 같아도 다른 건물이다 — A·B(이름 가) 2020 · C(이름 나) 2023 → 2020(이름만으로 가르면 1:1 동률)", () => {
+    const ds = [deal("A", 2020, "0", "가"), deal("B", 2020, "0", "가"), deal("C", 2023, "0", "나")];
+    expect(altYearOf(arow("ah-1"), ds)).toBe(2020);
+  });
+});
+
+describe("rowsNeedingAltYear — 연결 연도가 없는 ah-* 행만", () => {
+  it("연결 열쇠에 연도가 있는 행은 뺀다 · 열쇠가 있어도 자료가 없으면 넣는다 · ap-* 는 안 본다", () => {
+    const rows = [arow("ah-2"), arow("ah-1"), arow("ap-3"), arow("ah-0")];
+    const links = [link("ah-1", "k1"), link("ah-2", "k2")];
+    expect(rowsNeedingAltYear(rows, links, new Map([["k1", 2020]])).map((r) => r.id)).toEqual(["ah-0", "ah-2"]);
+  });
+
+  it("동률(null) 열쇠도 \"있음\"으로 보고 뺀다", () => {
+    expect(rowsNeedingAltYear([arow("ah-1")], [link("ah-1", "t")], new Map([["t", null]]))).toEqual([]);
+  });
+
+  it("법정동코드가 10자리가 아니거나 지번 본번이 1 미만·빈칸이면 뺀다", () => {
+    const rows = [arow("ah-a", { bjd: "414631010" }), arow("ah-b", { lot: 0 }), arow("ah-c", { lot: null }), arow("ah-d", { bjd: null }), arow("ah-e", { bjd: "41463101001" }), arow("ah-f")];
+    expect(rowsNeedingAltYear(rows, [], NO_YEARS).map((r) => r.id)).toEqual(["ah-f"]);
+  });
+
+  it("자기 연결이 없으면 묶음 열쇠로 본다 — 묶음에 연도가 있으면 뺀다 · 자기 연결이 있으면 그것만 본다", () => {
+    const rows = [arow("ah-1", { key: "K" }), arow("ap-2", { key: "K" }), arow("ah-3", { key: "K" })];
+    const links = [link("ap-2", "z"), link("ah-3", "own")];
+    expect(rowsNeedingAltYear(rows, links, new Map([["z", 2021]])).map((r) => r.id)).toEqual(["ah-3"]);
+  });
+});
+
+describe("planCompletionUpdates — 대체 조회 연도(opts.altYears)", () => {
+  it("자기 행 값이 먼저다 — 묶음의 다른 값보다 앞선다 · 결과 줄 flags 에 alt_year", () => {
+    const rows = [row("ah-1", "202501", { key: "K" }), row("ap-2", "202401", { key: "K" }), row("ap-3", "202401", { key: "K" })];
+    const altYears = new Map([["ah-1", 2023], ["ap-2", 2019], ["ap-3", 2019]]);
+    const plan = planCompletionUpdates(rows, [notice("ah-1", "202301")], [], NO_YEARS, [], NOW_YM, { altYears });
+    expect(upd(plan, "ah-1")).toMatchObject({ next: "202301", source: "own_notice", buildYear: 2023, flags: ["alt_year"] });
+  });
+
+  it("자기 행 값이 없으면 묶음 행들 값의 최빈값", () => {
+    const rows = [row("ah-1", "202501", { key: "K" }), row("ap-2", "202301", { key: "K" }), row("ap-3", "202301", { key: "K" }), row("ap-4", "202301", { key: "K" })];
+    const altYears = new Map([["ap-2", 2023], ["ap-3", 2023], ["ap-4", 2020]]);
+    const plan = planCompletionUpdates(rows, [notice("ap-2", "202301")], [], NO_YEARS, [], NOW_YM, { altYears });
+    expect(upd(plan, "ah-1")).toMatchObject({ next: "202301", source: "bundle_notice", buildYear: 2023, flags: ["alt_year"] });
+  });
+
+  it("동률 → year_ambiguous(자기 값 null · 묶음 값 2:2)", () => {
+    const own = planCompletionUpdates([row("ah-1", "202501")], [notice("ah-1", "202301")], [], NO_YEARS, [], NOW_YM, { altYears: new Map([["ah-1", null]]) });
+    expect(own.skipped).toEqual({ year_ambiguous: 1 });
+    const rows = [row("ah-1", "202501", { key: "K" }), row("ap-2", "202301", { key: "K" }), row("ap-3", "202301", { key: "K" })];
+    const bundle = planCompletionUpdates(rows, [notice("ap-2", "202301")], [], NO_YEARS, [], NOW_YM, { altYears: new Map([["ap-2", 2020], ["ap-3", 2023]]) });
+    expect(bundle.skipped).toEqual({ year_ambiguous: 1 });
+  });
+
+  it("자기 값이 동률(null)이면 묶음 행에 연도가 있어도 묶음으로 넘어가지 않는다 — year_ambiguous", () => {
+    const rows = [row("ah-1", "202501", { key: "K" }), row("ah-2", "202301", { key: "K" })];
+    const plan = planCompletionUpdates(rows, [notice("ah-1", "202301")], [], NO_YEARS, [], NOW_YM, { altYears: new Map([["ah-1", null], ["ah-2", 2023]]) });
+    expect(upd(plan, "ah-1")).toBeUndefined();
+    expect(plan.skipped).toEqual({ year_ambiguous: 1, not_earlier: 1 });
+  });
+
+  it("묶음 후보에 지번 2종(mixed_lots)·열쇠 2종(mixed_buildings)이어도 대체 조회 연도가 같으면 mixed_but_year_ok 로 통과", () => {
+    const lotsRows = [row("ah-1", "202501", { key: "K", lot: 1003 }), row("ap-2", "202301", { key: "K", lot: 1008 })];
+    const lotsSch = [notice("ap-2", "202301")];
+    const ok = planCompletionUpdates(lotsRows, lotsSch, [], NO_YEARS, [], NOW_YM, { altYears: new Map([["ah-1", 2023]]) });
+    expect(upd(ok, "ah-1")).toMatchObject({ next: "202301", source: "bundle_notice", buildYear: 2023, flags: ["alt_year", "mixed_but_year_ok"] });
+    expect(planCompletionUpdates(lotsRows, lotsSch, [], NO_YEARS, [], NOW_YM).skipped).toEqual({ mixed_lots: 1 });
+    expect(planCompletionUpdates(lotsRows, lotsSch, [], NO_YEARS, [], NOW_YM, { altYears: new Map([["ah-1", 2020]]) }).skipped).toEqual({ year_mismatch: 1 });
+
+    const bRows = [row("ah-1", "202501", { key: "K" }), row("ap-2", "202301", { key: "K" }), row("ap-3", "202301", { key: "K" })];
+    const bLinks = [link("ap-2", "11111-1", "name"), link("ap-3", "11111-2", "jibun+name")];
+    const bSch = [notice("ap-2", "202301")];
+    const bOk = planCompletionUpdates(bRows, bSch, bLinks, NO_YEARS, [], NOW_YM, { altYears: new Map([["ah-1", 2023]]) });
+    expect(upd(bOk, "ah-1")).toMatchObject({ next: "202301", buildYear: 2023, flags: ["alt_year", "mixed_but_year_ok"] });
+    expect(planCompletionUpdates(bRows, bSch, bLinks, NO_YEARS, [], NOW_YM).skipped).toEqual({ mixed_buildings: 1 });
+  });
+
+  it("대체 조회 연도가 공고 연도와 다르면 연결 연도와 똑같이 year_mismatch(사장님 결정 2 — 옛 건물 거래)", () => {
+    const plan = planCompletionUpdates([row("ah-1", "202301")], [notice("ah-1", "202109")], [], NO_YEARS, [], NOW_YM, { altYears: new Map([["ah-1", 2009]]) });
+    expect(plan.updates).toEqual([]);
+    expect(plan.skipped).toEqual({ year_mismatch: 1 });
+  });
+
+  it("대체 조회 연도가 같으면 최근·미래·다중 공고 보호를 통과한다(없으면 셋 다 막힘)", () => {
+    const rows = [row("ah-r", "202501"), row("ah-f", "202712"), row("ah-m", "202501")];
+    const sch = [notice("ah-r", "202301"), notice("ah-f", "202403"), notice("ah-m", "202305", "h-a"), notice("ah-m", "202403", "h-b")];
+    const altYears = new Map([["ah-r", 2023], ["ah-f", 2024], ["ah-m", 2023]]);
+    const plan = planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM, { altYears });
+    expect(plan.skipped).toEqual({});
+    expect(upd(plan, "ah-r")).toMatchObject({ next: "202301", buildYear: 2023, flags: ["alt_year"] });
+    expect(upd(plan, "ah-f")).toMatchObject({ next: "202403", buildYear: 2024, flags: ["alt_year"] });
+    expect(upd(plan, "ah-m")).toMatchObject({ next: "202305", buildYear: 2023, flags: ["alt_year", "multi_notice_year_ok"] });
+    expect(planCompletionUpdates(rows, sch, [], NO_YEARS, [], NOW_YM).skipped).toEqual({ recent_unverified: 1, future_unverified: 1, multi_notice_unverified: 1 });
+  });
+
+  it("연결 연도가 있으면(동률 null 포함) 대체 조회 값을 보지 않는다", () => {
+    const rows = [row("ah-1", "202501"), row("ah-2", "202501")];
+    const sch = [notice("ah-1", "202301"), notice("ah-2", "202301")];
+    const links = [link("ah-1", "k"), link("ah-2", "t")];
+    const altYears = new Map([["ah-1", 2020], ["ah-2", 2023]]);
+    const plan = planCompletionUpdates(rows, sch, links, new Map([["k", 2023], ["t", null]]), [], NOW_YM, { altYears });
+    expect(upd(plan, "ah-1")).toMatchObject({ buildYear: 2023, flags: [] });
+    expect(plan.skipped).toEqual({ year_ambiguous: 1 });
+  });
+});
+
 describe("parseCompletionDecisions — 사람 판정 파일", () => {
   it("꼴이 맞으면 keep 줄을 돌려준다", () => {
     const r = parseCompletionDecisions({ note: "n", updatedAt: "2026-10-11", decisions: [{ id: "ah-1", action: "keep", names: "가", why: "왜", approved: "2026-10-11" }] });
@@ -344,8 +501,9 @@ describe("parseArgs — 실행 인자", () => {
 
 /**
  * trade_deals 쿼리 흉내 — 열쇠별로 돌려줄 줄을 정하고, 호출을 센다.
- * @param {Record<string, Array<{ build_year: number }>>} byKey
- * @param {{ errorKey?: string }} [o]
+ * 열쇠 = 첫 eq 값(apt_seq) · `allEqs` 면 eq 값을 전부 "|" 로 이은 것(대체 조회 sgg|umd|본번).
+ * @param {Record<string, any[]>} byKey
+ * @param {{ errorKey?: string, allEqs?: boolean }} [o]
  */
 function fakeDealsSb(byKey, o = {}) {
   /** @type {Array<{ table: string, ops: Array<[string, unknown[]]> }>} */
@@ -362,11 +520,14 @@ function fakeDealsSb(byKey, o = {}) {
         select: (/** @type {unknown[]} */ ...a) => (ops.push(["select", a]), b),
         eq: (/** @type {unknown[]} */ ...a) => (ops.push(["eq", a]), b),
         not: (/** @type {unknown[]} */ ...a) => (ops.push(["not", a]), b),
+        order: (/** @type {unknown[]} */ ...a) => (ops.push(["order", a]), b),
         limit: (/** @type {unknown[]} */ ...a) => (ops.push(["limit", a]), b),
         then: (/** @type {(v: any) => void} */ res) => {
           inFlight++;
           maxInFlight = Math.max(maxInFlight, inFlight);
-          const key = String(ops.find((x) => x[0] === "eq")?.[1][1]);
+          const key = o.allEqs
+            ? ops.filter((x) => x[0] === "eq").map((x) => String(x[1][1])).join("|")
+            : String(ops.find((x) => x[0] === "eq")?.[1][1]);
           setTimeout(() => {
             inFlight--;
             res(key === o.errorKey ? { data: null, error: { message: "boom" } } : { data: byKey[key] ?? [], error: null });
@@ -406,6 +567,68 @@ describe("fetchBuildYears — 열쇠마다 한 번씩", () => {
   });
 });
 
+describe("fetchAltYears — 행마다 같은 땅 매매 거래 한 번씩", () => {
+  it("부번 0 행 → 조건 = 칸 4개 select + sgg_cd + umd_cd + jibun_main(문자열) + build_year 있음 + id 순 + limit 60(부번 조건 없음)", async () => {
+    const { sb, calls } = fakeDealsSb({ "41463|10100|123": deals(2, "41463-1", 2020) }, { allEqs: true });
+    const m = await fetchAltYears(sb, [arow("ah-1"), arow("ah-2", { bjd: "1117013100", lot: 45, sub: null }), arow("ah-3", { sub: "0" })]);
+    expect(ALT_YEAR_SAMPLE).toBe(60);
+    expect(calls.map((c) => c.table)).toEqual(["trade_deals", "trade_deals", "trade_deals"]);
+    expect(calls[0].ops).toEqual([
+      ["select", ["apt_seq,apt_name,build_year,jibun_sub"]],
+      ["eq", ["sgg_cd", "41463"]],
+      ["eq", ["umd_cd", "10100"]],
+      ["eq", ["jibun_main", "123"]],
+      ["not", ["build_year", "is", null]],
+      ["order", ["id", { ascending: true }]],
+      ["limit", [60]],
+    ]);
+    expect(calls[1].ops.filter((x) => x[0] === "eq")).toEqual([["eq", ["sgg_cd", "11170"]], ["eq", ["umd_cd", "13100"]], ["eq", ["jibun_main", "45"]]]);
+    expect(calls[2].ops.filter((x) => x[0] === "eq")).toHaveLength(3);
+    expect([...m]).toEqual([["ah-1", 2020], ["ah-3", 2020]]); // ah-2 = 자료 없음 → 빠짐
+  });
+
+  it("부번이 있는 행은 서버에서 부번을 건다(표본 60줄 밖 자기 부번 거래를 놓치지 않게 — 세션626 🟠1) · 앞 0 없는 글자", async () => {
+    const { sb, calls } = fakeDealsSb({}, { allEqs: true });
+    await fetchAltYears(sb, [arow("ah-1", { sub: 7 }), arow("ah-2", { sub: "07" })]);
+    const tail = [
+      ["not", ["build_year", "is", null]],
+      ["order", ["id", { ascending: true }]],
+      ["limit", [60]],
+    ];
+    expect(calls[0].ops).toEqual([
+      ["select", ["apt_seq,apt_name,build_year,jibun_sub"]],
+      ["eq", ["sgg_cd", "41463"]],
+      ["eq", ["umd_cd", "10100"]],
+      ["eq", ["jibun_main", "123"]],
+      ["eq", ["jibun_sub", "7"]],
+      ...tail,
+    ]);
+    expect(calls[1].ops.find((x) => x[0] === "eq" && x[1][0] === "jibun_sub")).toEqual(["eq", ["jibun_sub", "7"]]);
+  });
+
+  it("동시 호출은 5개까지", async () => {
+    const rows = Array.from({ length: 7 }, (_, i) => arow(`ah-${i}`, { lot: i + 1 }));
+    const { sb, calls, maxInFlight } = fakeDealsSb({}, { allEqs: true });
+    await fetchAltYears(sb, rows);
+    expect(calls).toHaveLength(7);
+    expect(maxInFlight()).toBe(5);
+  });
+
+  it("조회 오류는 던진다(행 id 와 함께) · 중단 신호도 던진다", async () => {
+    await expect(fetchAltYears(fakeDealsSb({}, { allEqs: true, errorKey: "41463|10100|7" }).sb, [arow("ah-1"), arow("ah-2", { lot: 7 })])).rejects.toThrow(/대체 조회 실패\(ah-2\)/);
+    await expect(fetchAltYears(fakeDealsSb({}, { allEqs: true }).sb, [arow("ah-1")], { interrupted: () => true })).rejects.toThrow(/중단/);
+  });
+
+  it("altYearOf 로 접는다 — 부번이 안 맞아 자료 없음이면 Map 에 없음 · 건물 사이 동률은 null 로 넣는다", async () => {
+    const byKey = {
+      "41463|10100|1|7": deals(3, "A", 2020, "14"), // 서버 조건이 새도 altYearOf 부번 필터가 막는다(이중 안전)
+      "41463|10100|2": [...deals(2, "A", 2020), deal("B", 2023)],
+    };
+    const m = await fetchAltYears(fakeDealsSb(byKey, { allEqs: true }).sb, [arow("ah-1", { lot: 1, sub: 7 }), arow("ah-2", { lot: 2 })]);
+    expect([...m]).toEqual([["ah-2", null]]);
+  });
+});
+
 // ── main 흐름 — 가짜 DB 로 돌린다(쓰기·기록·순서) ─────────────────────────────
 /**
  * @param {{ apartments: any[], schedules?: any[], links?: any[], countDelta?: number, zeroIds?: string[], onUpdate?: (n: number) => void, decisions?: any[] }} o
@@ -415,6 +638,8 @@ function makeEnv(o) {
   /** @type {Array<{ id: unknown, completion: unknown, eqs: unknown[] }>} */
   const writes = [];
   let updateCount = 0;
+  /** @type {string[]} */
+  const selects = [];
   /** @param {string} table */
   const builder = (table) => {
     /** @type {{ table: string, head: boolean, update: any, eqs: Array<[string, unknown]> }} */
@@ -422,7 +647,7 @@ function makeEnv(o) {
     /** @type {any} */
     const b = {
       _st: st,
-      select: (/** @type {string} */ _c, /** @type {any} */ opt) => { st.head = !!opt?.head; return b; },
+      select: (/** @type {string} */ c, /** @type {any} */ opt) => { st.head = !!opt?.head; if (!st.head) selects.push(`${table}:${c}`); return b; },
       update: (/** @type {any} */ v) => { st.update = v; return b; },
       eq: (/** @type {string} */ c, /** @type {unknown} */ v) => { st.eqs.push([c, v]); return b; },
       then: (/** @type {(v: any) => void} */ res) => {
@@ -456,13 +681,14 @@ function makeEnv(o) {
     },
     recordCollectorRun: vi.fn(async () => {}),
     fetchBuildYears: vi.fn(async () => new Map()),
+    fetchAltYears: vi.fn(async () => new Map()),
     now: () => new Date("2026-10-10T00:00:00Z"),
     readFileSync: (/** @type {string} */ p) => {
       if (!(p in files)) throw new Error(`없는 파일 ${p}`);
       return files[p];
     },
   };
-  return { deps: /** @type {any} */ (deps), db, writes, files, selectAllKeyCols };
+  return { deps: /** @type {any} */ (deps), db, writes, files, selectAllKeyCols, selects };
 }
 
 /**
@@ -591,6 +817,7 @@ describe("main 흐름 — 가짜 DB", () => {
     await main(env.deps, ["n", "s", "--apply"]);
     expect(env.writes).toEqual([]);
     expect(env.deps.fetchBuildYears).not.toHaveBeenCalled();
+    expect(env.deps.fetchAltYears).not.toHaveBeenCalled();
     expect(recorded(env.deps)[0].errorMessage).toMatch(/^CMP_COUNT_MISMATCH apartments 받은 행 2 ≠ 표의 행 수 3/);
   });
 
@@ -612,6 +839,45 @@ describe("main 흐름 — 가짜 DB", () => {
     await main(env.deps, ["n", "s", "--apply"]);
     expect(env.deps.fetchBuildYears.mock.calls[0][1]).toEqual(["41111-1"]);
     expect(env.writes.map((w) => w.id)).toEqual(["ah-c1"]); // ah-c0 은 2019 ≠ 2020 → year_mismatch
+  });
+
+  /** 대체 조회 재료(법정동코드·지번)가 있는 과거 행 3개 — 각자 묶음, 자기 공고 202001 · 지금 202201 */
+  const altScenario = () => {
+    const s = scenario(3);
+    s.apartments = s.apartments.map((r, i) => ({ ...r, bjd_code: "4159110100", lot_main: 10 + i, lot_sub: 0 }));
+    return s;
+  };
+
+  it("대체 조회 — apartments 를 lot_sub·bjd_code 와 함께 읽고, 연결 연도 없는 행만 넘기고, 로그 두 줄에 수를 남긴다", async () => {
+    const env = makeEnv(altScenario());
+    env.deps.fetchAltYears = vi.fn(async () => new Map([["ah-c0", 2020], ["ah-c1", null]]));
+    const lines = /** @type {string[]} */ ([]);
+    const spy = vi.spyOn(console, "log").mockImplementation((/** @type {unknown} */ m) => { lines.push(String(m)); });
+    try {
+      await main(env.deps, ["n", "s"]);
+    } finally {
+      spy.mockRestore();
+    }
+    expect(env.selects).toContain("apartments:id,name,region,gu,units,completion,complex_key,lot_main,lot_sub,bjd_code,presale_type");
+    expect(env.deps.fetchAltYears.mock.calls[0][1].map((/** @type {any} */ r) => r.id)).toEqual(["ah-c0", "ah-c1", "ah-c2"]);
+    expect(lines).toContain("[assign-completion] 대체 조회 3행 → 연도 1 · 동률 1 · 자료 없음 1");
+    expect(lines.find((l) => l.includes("ah-* 3행"))).toMatch(/\| minGap 12 · 대체 조회 연도 1$/);
+    expect(lines).toContain('[assign-completion] 건너뜀 {"year_ambiguous":1}');
+  });
+
+  it("대체 조회 — 계획 파일 줄 flags 에 alt_year 가 그대로 실린다", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "cmp-alt-"));
+    try {
+      const out = join(dir, "plan.json");
+      const env = makeEnv(altScenario());
+      env.deps.fetchAltYears = vi.fn(async () => new Map([["ah-c0", 2020], ["ah-c1", 2015]]));
+      await main(env.deps, ["n", "s", `--out=${out}`]);
+      const plan = JSON.parse(readFileSync(out, "utf8"));
+      expect(plan.skipped).toEqual({ year_mismatch: 1 });
+      expect(plan.updates.map((/** @type {any} */ u) => [u.id, u.buildYear, u.flags])).toEqual([["ah-c0", 2020, ["alt_year"]], ["ah-c2", null, ["no_year"]]]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });
 

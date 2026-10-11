@@ -23,6 +23,7 @@
 - ❌ "에러가 없으니 성공" — 이 결함은 에러를 안 낸다. `count` 대조만이 잡는다
 - ❌ `.order("deal_month")` 같은 **비고유** 정렬로 안심 — 동점 구간이 흔들린다(실측 64/91)
 - ❌ `catch(() => [])` 로 조용히 넘기기 — 0건이 정상처럼 보인다
+- ❌ 정렬 없는 `.limit(N)` **표본**도 같은 결함 — N 에 닿는 열쇠가 있으면 회차마다 다른 표본을 본다(세션626: 60줄 상한에 닿은 땅 11곳 → 서버 조건 + `.order("id")`)
 - ❌ "`collector_runs` 가 매주 success 니 전량 읽었다" — `calc-school-walk` 는 몇 달간 "성공 938" 이면서 3,068행 중 1,000행만 읽었다(세션566)
 
 > 상세(표·예시 코드·실측 기록·답습 자산) → [.claude/rules-detail/collectors/unordered-pagination-loses-rows.md](../../rules-detail/collectors/unordered-pagination-loses-rows.md)
