@@ -8,6 +8,8 @@
  * 예정월을 받아 이미 지어진 단지가 1~3년 새것처럼 보인다. 정답은 같은 묶음(`complex_key ?? id`)에 붙은 공고 중
  * **가장 이른 입주예정월**(`presale_schedule_official.move_in_ym`)이고, 실거래 **건축년도**(`trade_deals.build_year`)로 대조한다.
  * 규칙은 순수 함수 `planCompletionUpdates` 한 곳에만 있다(설계서 §2-1 1~7번).
+ * 연결 열쇠로 연도를 못 얻은 ah-* 행은 **대체 조회** — 우리 법정동코드(sgg+umd)·지번 본번·부번으로 매매 거래를 찾아
+ * 건물마다 1표 최빈 연도(`altYearOf`)를 연결 연도와 똑같이 쓴다(설계서 docs/superpowers/plans/2026-10-11-a19-alt-year-lookup.md §2).
  *
  * ## 왜 매일 도나
  * seed·naver 수집기는 YYYYMM 값을 다시 덮지 않으므로 한 번 고친 값은 되돌아오지 않는다. 그러나 새 재공고가 들어올
@@ -72,6 +74,11 @@ export const UPDATE_CONCURRENCY = 5;
 export const UPDATE_BATCH_DELAY_MS = 100;
 /** 건축년도 조회 — 열쇠마다 몇 줄을 보나(연 단위라 몇 줄이면 충분, 최빈값). */
 export const BUILD_YEAR_SAMPLE = 5;
+/**
+ * 대체 조회 — 지번마다 몇 줄을 보나(id 순 고정). 한 지번에 건물 여럿이 섞여도 건물마다 몇 줄씩 들어오게(건물 1표).
+ * 탐침 433행 중 60에 닿은 행 11(부번≠0 인 6행 포함 — 세션626 맹점 검사관 🟠1) → 부번은 서버 조건으로 건다(`fetchAltYears`).
+ */
+export const ALT_YEAR_SAMPLE = 60;
 
 /**
  * YYYYMM 규약이고 달이 1~12 인가(naver-presale.mjs `isCompletionYm` 과 같은 꼴 + 달 범위 — 무거운 모듈이라 import 하지 않는다).
@@ -137,7 +144,9 @@ export function parseCompletionDecisions(raw) {
 }
 
 /**
- * @typedef {{ id: string, name?: string | null, completion?: string | null, complex_key?: string | null, lot_main?: number | null }} CmpRow
+ * @typedef {{ id: string, name?: string | null, completion?: string | null, complex_key?: string | null, lot_main?: number | null,
+ *   lot_sub?: number | string | null, bjd_code?: string | null }} CmpRow
+ * @typedef {{ apt_seq?: string | null, apt_name?: string | null, build_year?: unknown, jibun_sub?: string | null }} CmpAltDeal
  * @typedef {{ apartment_id: string, house_manage_no?: string | null, move_in_ym?: string | null }} CmpSchedule
  * @typedef {{ apartment_id: string, link_key: string, method?: string | null }} CmpLink
  * @typedef {{ id: string, prev: string, next: string, source: "own_notice" | "bundle_notice", houseManageNo: string | null,
@@ -179,6 +188,66 @@ export function neededAptSeqs(rows, links) {
 }
 
 /**
+ * 대체 조회가 필요한 ah-* 행 — 자기 연결 열쇠(없으면 묶음 열쇠, `planCompletionUpdates` 와 같은 규칙) 어느 것도
+ * `yearsByAptSeq` 에 없고(동률 null 은 "있음" — 연결 증거가 있는데 애매한 행은 덮지 않는다), 법정동코드 10자리 ·
+ * 지번 본번 1 이상인 행(정렬 id). DB 접근 없는 순수 함수(설계서 alt-year-lookup §2-1 1번).
+ * @param {ReadonlyArray<CmpRow>} rows
+ * @param {ReadonlyArray<CmpLink>} links
+ * @param {ReadonlyMap<string, number | null>} yearsByAptSeq
+ * @returns {CmpRow[]}
+ */
+export function rowsNeedingAltYear(rows, links, yearsByAptSeq) {
+  /** @type {Map<string, string[]>} */
+  const keysByApt = new Map();
+  for (const l of links) keysByApt.set(l.apartment_id, [...(keysByApt.get(l.apartment_id) ?? []), l.link_key]);
+  const byBundle = groupBundles(rows);
+  /** @type {CmpRow[]} */
+  const out = [];
+  for (const r of rows) {
+    if (!r.id.startsWith("ah-")) continue;
+    const members = byBundle.get(bundleOf(r)) ?? [r];
+    const ownKeys = keysByApt.get(r.id) ?? [];
+    const keys = ownKeys.length > 0 ? ownKeys : members.flatMap((m) => keysByApt.get(m.id) ?? []);
+    if (keys.some((k) => yearsByAptSeq.has(k))) continue;
+    if (typeof r.bjd_code !== "string" || !/^\d{10}$/.test(r.bjd_code)) continue;
+    const lot = Number(r.lot_main);
+    if (r.lot_main == null || !Number.isInteger(lot) || lot < 1) continue;
+    out.push(r);
+  }
+  return out.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/**
+ * 같은 땅(법정동코드·본번)의 매매 거래로 건축년도를 정한다(사장님 결정 2026-10-11 1번). DB 접근 없는 순수 함수.
+ * 우리 부번이 0·빈칸이면 부번은 보지 않고(대표 지번 "외 N필지"), 아니면 부번이 같은 거래만 · 건물(`apt_seq ?? "n:"+apt_name`)
+ * 마다 자기 거래의 최빈 연도로 1표(건물 안 동률이면 그 건물은 표 없음) → 건물들의 최빈값. 행 수로 세면 거래 많은 건물이 이긴다.
+ * @param {CmpRow} row
+ * @param {ReadonlyArray<CmpAltDeal>} deals 그 행의 (sgg_cd, umd_cd, jibun_main) 매매 행
+ * @returns {number | null | undefined} 연도 · null = 건물 사이 동률(판정 못 함) · undefined = 자료 없음
+ */
+export function altYearOf(row, deals) {
+  const sub = row.lot_sub == null || row.lot_sub === "" ? 0 : Number(row.lot_sub);
+  const same = sub === 0 ? deals : deals.filter((d) => Number(d.jibun_sub ?? 0) === sub);
+  /** @type {Map<string, number[]>} */
+  const byBuilding = new Map();
+  for (const d of same) {
+    const y = Number(d.build_year);
+    if (!Number.isInteger(y) || y <= 0) continue;
+    const b = d.apt_seq ?? `n:${d.apt_name}`;
+    byBuilding.set(b, [...(byBuilding.get(b) ?? []), y]);
+  }
+  /** @type {number[]} */
+  const votes = [];
+  for (const ys of byBuilding.values()) {
+    const m = modeOf(ys);
+    if (m.value != null) votes.push(m.value);
+  }
+  if (votes.length === 0) return undefined;
+  const m = modeOf(votes);
+  return m.tie ? null : m.value;
+}
+
+/**
  * 고칠 행을 뽑는다. DB 접근 없는 순수 함수(설계서 §2-1).
  * @param {ReadonlyArray<CmpRow>} rows apartments 전체
  * @param {ReadonlyArray<CmpSchedule>} schedules 공고 일정 전체
@@ -186,12 +255,13 @@ export function neededAptSeqs(rows, links) {
  * @param {ReadonlyMap<string, number | null>} yearsByAptSeq apt_seq → 건축년도(동률이면 null) · 자료 없는 열쇠는 빠짐
  * @param {ReadonlyArray<{ id: string, action: string }>} decisions 사람 판정(`keep`)
  * @param {string} nowYm 이번 달 YYYYMM
- * @param {{ minGap?: number }} [opts]
+ * @param {{ minGap?: number, altYears?: ReadonlyMap<string, number | null> }} [opts] altYears = 대체 조회 결과 id → 연도(동률 null)
  * @returns {{ updates: CmpUpdate[], rows: number, candidates: number, changed: number, skipped: Record<string, number> }}
  *   rows = ah-* 행 수 · candidates = 후보가 있는 ah-* 행 수(차단기 분모)
  */
 export function planCompletionUpdates(rows, schedules, links, yearsByAptSeq, decisions, nowYm, opts = {}) {
   const minGap = opts.minGap ?? MIN_GAP_MONTHS;
+  const altYears = opts.altYears ?? new Map();
   if (!Number.isInteger(minGap) || minGap < 1) throw new Error(`minGap 은 1 이상 정수여야 합니다: ${minGap}`);
   if (!isYm(nowYm)) throw new Error(`nowYm 이 YYYYMM 이 아닙니다: ${nowYm}`);
   const nowIdx = /** @type {number} */ (completionMonthIndex(nowYm));
@@ -270,6 +340,17 @@ export function planCompletionUpdates(rows, schedules, links, yearsByAptSeq, dec
       if (y == null) tieKey = true;
       else years.push(y);
     }
+    // 연결 열쇠로 연도를 못 얻었으면(동률도 아님) 대체 조회 — 자기 행 값, 없으면 묶음 행들 값(열쇠와 같은 규칙)
+    let fromAlt = false;
+    if (years.length === 0 && !tieKey) {
+      const altIds = altYears.has(r.id) ? [r.id] : members.map((m) => m.id).filter((id) => altYears.has(id));
+      for (const id of altIds) {
+        const y = altYears.get(id);
+        if (y == null) tieKey = true;
+        else years.push(y);
+      }
+      fromAlt = years.length > 0;
+    }
     const ym = modeOf(years);
     if (ym.tie || (years.length === 0 && tieKey)) { skip("year_ambiguous"); continue; }
     const buildYear = ym.value;
@@ -279,6 +360,7 @@ export function planCompletionUpdates(rows, schedules, links, yearsByAptSeq, dec
 
     /** @type {string[]} */
     const flags = [];
+    if (fromAlt) flags.push("alt_year");
     // 한 행에 예정월이 다른 공고가 여럿 붙었으면(상세 수집기가 남의 단지 공고를 붙이는 결함 — 시티오씨엘 8단지 행에 6건)
     // 자기 공고 최솟값도 남의 것일 수 있다 → 건축년도가 같을 때만(세션624 맹점 검사관)
     if (source === "own_notice" && (ownYms.get(r.id)?.size ?? 0) >= 2) {
@@ -403,8 +485,50 @@ export async function fetchBuildYears(sb, aptSeqs, opts = {}) {
 }
 
 /**
+ * 대체 조회 — 행마다 같은 땅(sgg_cd·umd_cd·jibun_main)의 매매 거래를 읽어 `altYearOf` 로 접는다(`fetchBuildYears` 와 같은 꼴 —
+ * `.in`·창 조회 금지). `umd_cd` 는 매매 행에만 있어 저절로 매매만 본다. 자료 없음은 Map 에 넣지 않는다 · 조회 오류·중단 신호는 던진다.
+ * @param {any} sb
+ * @param {ReadonlyArray<CmpRow>} rows `rowsNeedingAltYear` 결과(bjd_code 10자리 · lot_main ≥1)
+ * @param {{ interrupted?: () => boolean }} [opts]
+ * @returns {Promise<Map<string, number | null>>}
+ */
+export async function fetchAltYears(sb, rows, opts = {}) {
+  /** @type {Map<string, number | null>} */
+  const out = new Map();
+  for (let i = 0; i < rows.length; i += UPDATE_CONCURRENCY) {
+    if (opts.interrupted?.()) throw new Error("중단 신호 — 대체 조회를 끝내지 못했습니다");
+    const batch = rows.slice(i, i + UPDATE_CONCURRENCY);
+    const results = await Promise.all(
+      batch.map((r) => {
+        const bjd = String(r.bjd_code);
+        let q = sb
+          .from("trade_deals")
+          .select("apt_seq,apt_name,build_year,jibun_sub")
+          .eq("sgg_cd", bjd.slice(0, 5))
+          .eq("umd_cd", bjd.slice(5, 10))
+          .eq("jibun_main", String(r.lot_main));
+        // 우리 부번이 있으면 서버에서 거른다 — 표본 60줄 밖의 자기 부번 거래를 놓치지 않게(DB 값은 앞 0 없는 정수 글자,
+        // "0" = 부번 없음 — _trade-deals.mjs `jibunParts`). altYearOf 의 부번 필터도 그대로 둔다(이중 안전).
+        const sub = r.lot_sub == null || r.lot_sub === "" ? 0 : Number(r.lot_sub);
+        if (sub !== 0) q = q.eq("jibun_sub", String(sub));
+        // 순서를 고정해 날마다 같은 표본을 본다(순서 없는 limit 은 회차마다 다른 줄이 온다)
+        return q.not("build_year", "is", null).order("id", { ascending: true }).limit(ALT_YEAR_SAMPLE);
+      }),
+    );
+    results.forEach((res0, j) => {
+      const res = /** @type {{ data?: CmpAltDeal[] | null, error?: { message?: string } | null }} */ (res0);
+      if (res.error) throw new Error(`trade_deals 대체 조회 실패(${batch[j].id}): ${res.error.message}`);
+      const y = altYearOf(batch[j], res.data ?? []);
+      if (y !== undefined) out.set(batch[j].id, y);
+    });
+  }
+  return out;
+}
+
+/**
  * @typedef {{ getSupabase: typeof getSupabase, selectAll: typeof selectAll, recordCollectorRun: typeof recordCollectorRun,
- *   fetchBuildYears: typeof fetchBuildYears, now: () => Date, readFileSync: (p: string, enc: "utf8") => string }} CmpDeps
+ *   fetchBuildYears: typeof fetchBuildYears, fetchAltYears: typeof fetchAltYears, now: () => Date,
+ *   readFileSync: (p: string, enc: "utf8") => string }} CmpDeps
  */
 /** @type {CmpDeps} */
 export const defaultDeps = {
@@ -412,6 +536,7 @@ export const defaultDeps = {
   selectAll,
   recordCollectorRun,
   fetchBuildYears,
+  fetchAltYears,
   now: () => new Date(),
   readFileSync: (p, enc) => readFileSync(p, enc),
 };
@@ -425,7 +550,7 @@ export const defaultDeps = {
  */
 async function readInputs(sb, selectAll) {
   const rows = await selectAll(
-    (s) => s.from("apartments").select("id,name,region,gu,units,completion,complex_key,lot_main,presale_type"),
+    (s) => s.from("apartments").select("id,name,region,gu,units,completion,complex_key,lot_main,lot_sub,bjd_code,presale_type"),
     sb,
     "id",
   );
@@ -503,12 +628,17 @@ export async function main(deps = defaultDeps, argv = process.argv) {
   const years = await deps.fetchBuildYears(sb, keys, { interrupted: rpt.interrupted });
   const tieKeys = [...years.values()].filter((v) => v == null).length;
   log(PHASE, `건축년도 조회 열쇠 ${keys.length}개 → 값 ${years.size - tieKeys}개 · 동률 ${tieKeys}개 · 자료 없음 ${keys.length - years.size}개`);
+  const altRows = rowsNeedingAltYear(rows, links, years);
+  const altYears = await deps.fetchAltYears(sb, altRows, { interrupted: rpt.interrupted });
+  const altTies = [...altYears.values()].filter((v) => v == null).length;
+  log(PHASE, `대체 조회 ${altRows.length}행 → 연도 ${altYears.size - altTies} · 동률 ${altTies} · 자료 없음 ${altRows.length - altYears.size}`);
 
-  const plan = planCompletionUpdates(rows, schedules, links, years, decisions.decisions, kstYm(deps.now()), { minGap });
+  const plan = planCompletionUpdates(rows, schedules, links, years, decisions.decisions, kstYm(deps.now()), { minGap, altYears });
   const big = plan.updates.filter((u) => u.gapMonths >= 12).length;
   const bySource = plan.updates.reduce((/** @type {Record<string, number>} */ m, u) => ({ ...m, [u.source]: (m[u.source] ?? 0) + 1 }), {});
   const noYear = plan.updates.filter((u) => u.flags.includes("no_year")).length;
-  log(PHASE, `ah-* ${plan.rows}행 · 후보 ${plan.candidates} · 바뀜 ${plan.changed}(12개월+ ${big} · 1~11개월 ${plan.changed - big}) · 출처 ${JSON.stringify(bySource)} · 건축년도 없음 ${noYear} | minGap ${minGap}`);
+  const altUsed = plan.updates.filter((u) => u.flags.includes("alt_year")).length;
+  log(PHASE, `ah-* ${plan.rows}행 · 후보 ${plan.candidates} · 바뀜 ${plan.changed}(12개월+ ${big} · 1~11개월 ${plan.changed - big}) · 출처 ${JSON.stringify(bySource)} · 건축년도 없음 ${noYear} | minGap ${minGap} · 대체 조회 연도 ${altUsed}`);
   log(PHASE, `건너뜀 ${JSON.stringify(plan.skipped)}`);
 
   /** @type {Map<string, any>} */
