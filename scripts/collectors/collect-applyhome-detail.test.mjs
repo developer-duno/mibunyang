@@ -23,11 +23,15 @@ describe("apartments 명단 페이징 — 고유키 커서 (세션543 W2)", () =
     // `selectAll(fn, sb)` 는 ORDER BY 없는 `.range()` 경로다(`_shared.mjs`).
     // apartments 는 2,600행+ 이라 페이지마다 다른 표본이 와서 **에러 없이** 행을 잃는다
     // (`unordered-pagination-loses-rows.md`).
-    expect(PAGING_SRC).toMatch(/select\("id, name, region, presale_type"\),\s*sb,\s*"id",/);
+    expect(PAGING_SRC).toMatch(/select\("id, name, region, gu, lat, lng, presale_type, complex_key, naver_presale_no, presale_recruit_date, presale_general_supply, units, unit_source"\),\s*sb,\s*"id",/);
   });
 
   it("★ select 에 그 키가 실제로 들어 있다 — 없으면 selectAll 이 커서를 못 만들어 throw 한다", () => {
-    expect(PAGING_SRC).toContain('select("id, name, region, presale_type")');
+    expect(PAGING_SRC).toContain('select("id, name, region, gu, lat, lng, presale_type, complex_key, naver_presale_no, presale_recruit_date, presale_general_supply, units, unit_source")');
+  });
+
+  it("★ 일정 표 정리 읽기도 keyCol \"id\" 를 넘긴다(세션630)", () => {
+    expect(PAGING_SRC).toMatch(/select\("id, apartment_id, house_manage_no"\),\s*sb,\s*"id",/);
   });
 });
 
@@ -53,6 +57,8 @@ const {
   normName, addrToRegion, matchDetailToApt, buildScheduleRow, buildUnitRow,
   parseHouseTyArea, pickRepresentativeUnit, buildApplyhomePriceRow, planApplyhomePrices, parseImpactOutArg, mergeUnitRows,
   main,
+  gateRegionOf, parseNoticeDecisions, indexNoticeDecisions, matchDetailToAptDetailed, NOTICE_DECISIONS_PATH,
+  planNoticeReconcile, evaluateNoticeBreaker, compareNoticePlan, parseNoticeArgs, NOTICE_BREAKER_MAX_ROWS, NOTICE_BREAKER_RATIO,
 } = await import("./collect-applyhome-detail.mjs");
 // 통합 시도 분할 헬퍼 — "헬퍼가 판정을 포기했다" 를 테스트가 직접 증명하는 데 쓴다.
 const { resolveRegionName } = await import("./_shared.mjs");
@@ -140,7 +146,7 @@ describe("addrToRegion — 주소 → region 약칭", () => {
 describe("matchDetailToApt — 안전 게이트 매칭", () => {
   it("동일 이름 + region 일치 → 매칭 (sim=1.0)", () => {
     const m = matchDetailToApt({ HOUSE_NM: "검암역자이르네", HSSPLY_ADRES: "인천광역시 서구 검암동" }, APTS);
-    expect(m?.apt.id).toBe("ap-1");
+    expect(m?.aptIds).toEqual(["ap-1"]);
     expect(m?.sim).toBeCloseTo(1.0, 2);
   });
   it("이름 같아도 region 불일치 → null (동명이지역 오매칭 차단)", () => {
@@ -155,9 +161,217 @@ describe("matchDetailToApt — 안전 게이트 매칭", () => {
   it("HOUSE_NM 없으면 → null", () => {
     expect(matchDetailToApt({ HSSPLY_ADRES: "인천" }, APTS)).toBeNull();
   });
-  it("주소 없으면 region 게이트 건너뜀 (이름만으로 매칭)", () => {
+  it("주소 없으면 시도 게이트 대신 '게이트 모름' 보호 — 이름이 같으면(≥0.95) 매칭", () => {
     const m = matchDetailToApt({ HOUSE_NM: "써밋 더힐" }, APTS);
-    expect(m?.apt.id).toBe("ap-2");
+    expect(m?.aptIds).toEqual(["ap-2"]);
+  });
+});
+
+// ── 세션630: 공고 → 단지 사람 판정 장치 (설계서 docs/superpowers/plans/2026-10-12-applyhome-notice-decisions.md §7) ──
+describe("gateRegionOf — 게이트용 시도(첫 낱말이 시도일 때만)", () => {
+  it("정식명·약칭 → 약칭", () => {
+    expect(gateRegionOf("경기도 수원시 영통구")).toBe("경기");
+    expect(gateRegionOf("경기 수원시")).toBe("경기");
+    expect(gateRegionOf("인천광역시 서구")).toBe("인천");
+  });
+  it("통합 시도는 시군구로 가른다 · 못 가르면 null", () => {
+    expect(gateRegionOf("전남광주통합특별시 북구 월출동")).toBe("광주");
+    expect(gateRegionOf("전남광주통합특별시 순천시 조례동")).toBe("전남");
+    expect(gateRegionOf("전남광주통합특별시 첨단3지구")).toBeNull();
+  });
+  it("★ 첫 낱말이 시도가 아니면 null — addrToRegion 은 글자를 돌려준다(광역시 오판)", () => {
+    expect(gateRegionOf("광주시 탄벌동 123")).toBeNull();
+    expect(addrToRegion("광주시 탄벌동 123")).toBe("광주"); // 고치지 않은 옛 함수(backfill 이 기대) — 이 차이가 게이트를 바꾼 이유
+    expect(gateRegionOf("김포 풍무지구")).toBeNull();
+    expect(gateRegionOf("서울시 성동구")).toBeNull();
+    expect(gateRegionOf("경산북도 어딘가")).toBeNull();
+    expect(gateRegionOf("광주연구개발특구 첨단3지구 A7블록(전남광주통합특별시 북구 월출동)")).toBeNull();
+  });
+  it("빈 값 → null · prototype 이름에 속지 않는다", () => {
+    expect(gateRegionOf(null)).toBeNull();
+    expect(gateRegionOf("")).toBeNull();
+    expect(gateRegionOf("constructor 어딘가")).toBeNull();
+  });
+});
+
+/** 판정 줄 하나(정상) — 시험마다 칸 하나씩 망가뜨린다. @param {Record<string, unknown>} [o] */
+const decLine = (o = {}) => ({
+  house_manage_no: "2021000727", apartment_id: "ah-1", status: "active",
+  names: "공고 ↔ 행", why: "근거", verified_by: "청약홈 원문", approved: "2026-10-12 승인", ...o,
+});
+
+describe("parseNoticeDecisions — 사람 판정 파일(거부 7종)", () => {
+  it("정상 줄은 받는다 · skip 은 apartment_id null", () => {
+    const p = parseNoticeDecisions({ note: "n", updatedAt: "2026-10-12", decisions: [decLine(), decLine({ house_manage_no: "2024000594", apartment_id: null, status: "skip" })] });
+    expect(p.decisions).toEqual([
+      { house_manage_no: "2021000727", apartment_id: "ah-1", status: "active" },
+      { house_manage_no: "2024000594", apartment_id: null, status: "skip" },
+    ]);
+  });
+  it("① 공고번호가 10자리 숫자 글자가 아니면 던진다", () => {
+    for (const bad of ["202100072", "20210007270", "2021OOO727", 2021000727, null]) {
+      expect(() => parseNoticeDecisions({ decisions: [decLine({ house_manage_no: bad })] })).toThrow(/10자리/);
+    }
+  });
+  it("② status 허용 목록 밖이면 던진다", () => {
+    for (const bad of ["keep", "Active", "", null]) {
+      expect(() => parseNoticeDecisions({ decisions: [decLine({ status: bad })] })).toThrow(/status/);
+    }
+  });
+  it("③ skip 아닌데 apartment_id 빈칸이면 던진다", () => {
+    for (const st of ["active", "rejected"]) {
+      for (const bad of [null, "", "  "]) {
+        expect(() => parseNoticeDecisions({ decisions: [decLine({ status: st, apartment_id: bad })] })).toThrow(/apartment_id 가 있어야/);
+      }
+    }
+  });
+  it("④ skip 인데 apartment_id 가 있으면 던진다", () => {
+    expect(() => parseNoticeDecisions({ decisions: [decLine({ status: "skip", apartment_id: "ah-1" })] })).toThrow(/null 이어야/);
+  });
+  it("⑤ 같은 (공고번호, 행)이 두 번이면 던진다 — 다른 행이면 받는다(active 여러 줄)", () => {
+    expect(() => parseNoticeDecisions({ decisions: [decLine(), decLine({ status: "rejected" })] })).toThrow(/두 번/);
+    expect(parseNoticeDecisions({ decisions: [decLine(), decLine({ apartment_id: "ah-2" })] }).decisions).toHaveLength(2);
+  });
+  it("⑥ names·why·verified_by·approved 가 빈칸·공백·글자 아님이면 던진다", () => {
+    for (const f of ["names", "why", "verified_by", "approved"]) {
+      for (const bad of ["", "   ", null, 3]) {
+        expect(() => parseNoticeDecisions({ decisions: [decLine({ [f]: bad })] })).toThrow(new RegExp(f));
+      }
+    }
+  });
+  it("⑦ decisions 가 배열이 아니면·파일이 객체가 아니면 던진다", () => {
+    expect(() => parseNoticeDecisions({ decisions: {} })).toThrow(/배열/);
+    expect(() => parseNoticeDecisions({})).toThrow(/배열/);
+    expect(() => parseNoticeDecisions([])).toThrow(/객체/);
+    expect(() => parseNoticeDecisions(null)).toThrow(/객체/);
+  });
+  it("운영 파일 = 10줄(active 3 · skip 7) · 승인 칸이 다 차 있다", () => {
+    const p = parseNoticeDecisions(JSON.parse(readFileSync(NOTICE_DECISIONS_PATH, "utf8")));
+    expect(p.decisions.filter((d) => d.status === "active").map((d) => `${d.house_manage_no}>${d.apartment_id}`).sort())
+      .toEqual(["2021000727>ah-2026910003", "2021000772>ap-6025315", "2023000532>ap-6027298"]);
+    expect(p.decisions.filter((d) => d.status === "skip").map((d) => d.house_manage_no).sort())
+      .toEqual(["2020001404", "2021000106", "2021000349", "2021000368", "2021000617", "2023000359", "2024000594"]);
+  });
+});
+
+/** 후보 행 — 기본은 경기 화성시. @param {string} id @param {string} name @param {Record<string, unknown>} [o] */
+const apt = (id, name, o = {}) => /** @type {any} */ ({ id, name, region: "경기", gu: "화성시", complex_key: `k:${id}`, ...o });
+const NO_DEC = indexNoticeDecisions([]);
+/** @param {string} name @param {Record<string, unknown>} [o] */
+const notice = (name, o = {}) => /** @type {any} */ ({ HOUSE_MANAGE_NO: "2026000001", HOUSE_NM: name, HSSPLY_ADRES: "경기도 화성시 어딘가", RCRIT_PBLANC_DE: "2026-05-01", TOT_SUPLY_HSHLDCO: "500", ...o });
+
+describe("matchDetailToAptDetailed v3 — 판정 파일 · 제외 · 동점 가르기 · 게이트", () => {
+  it("① 판정 파일 active 가 이긴다 · 시도 게이트 면제 · 여러 행", () => {
+    const apts = [apt("ah-1", "판정단지"), apt("ah-2", "엉뚱한 단지", { region: "부산" }), apt("ah-3", "또다른", { region: "부산" })];
+    const dec = indexNoticeDecisions([
+      { house_manage_no: "2026000001", apartment_id: "ah-2", status: "active" },
+      { house_manage_no: "2026000001", apartment_id: "ah-3", status: "active" },
+    ]);
+    const m = matchDetailToAptDetailed(notice("판정단지"), apts, { decisions: dec });
+    expect(m.how).toBe("manual");
+    expect(m.aptIds).toEqual(["ah-2", "ah-3"]); // 이름이 같은 ah-1 이 아니라 판정 행 · 주소(경기) ↔ 부산이어도 붙는다
+  });
+  it("판정 행이 apartments 에 없으면 넣지 않는다(manual_missing)", () => {
+    const dec = indexNoticeDecisions([{ house_manage_no: "2026000001", apartment_id: "ah-9", status: "active" }]);
+    const m = matchDetailToAptDetailed(notice("판정단지"), [apt("ah-1", "판정단지")], { decisions: dec });
+    expect(m).toMatchObject({ aptIds: [], how: "manual_missing" });
+    expect(matchDetailToApt(notice("판정단지"), [apt("ah-1", "판정단지")], { decisions: dec })).toBeNull();
+  });
+  it("skip 이면 비운다", () => {
+    const dec = indexNoticeDecisions([{ house_manage_no: "2026000001", apartment_id: null, status: "skip" }]);
+    expect(matchDetailToAptDetailed(notice("판정단지"), [apt("ah-1", "판정단지")], { decisions: dec })).toMatchObject({ aptIds: [], how: "skip" });
+  });
+  it("ⓐ (오) 행은 동점에서 빠진다 → 남은 1곳(single)", () => {
+    const apts = [apt("ah-1", "가야역 롯데캐슬 스카이엘(오)"), apt("ah-2", "가야역 롯데캐슬 스카이엘")];
+    const m = matchDetailToAptDetailed(notice("가야역 롯데캐슬 스카이엘"), apts, { decisions: NO_DEC });
+    expect(m).toMatchObject({ aptIds: ["ah-2"], how: "single", excluded: [{ id: "ah-1", why: "officetel" }] });
+  });
+  it("ⓑ 블록·차수 어긋남은 후보가 1곳뿐이어도 뺀다 → conflict_all", () => {
+    const m = matchDetailToAptDetailed(notice("힐스테이트 초월역(1BL)"), [apt("ah-1", "힐스테이트 초월역(2BL)")], { decisions: NO_DEC });
+    expect(m).toMatchObject({ aptIds: [], how: "conflict_all", excluded: [{ id: "ah-1", why: "conflict" }] });
+  });
+  it("ⓑ 글자 블록 어긋남(A8 ↔ A7)도 뺀다", () => {
+    const m = matchDetailToAptDetailed(notice("호반써밋 첨단3지구(A8BL)"), [apt("ah-1", "호반써밋 첨단3지구(A7BL)")], { decisions: NO_DEC });
+    expect(m.how).toBe("conflict_all");
+  });
+  it("★ 회차 낱말 (임의공급3차) ↔ (임의공급4차) 는 어긋남이 아니다 — 양쪽 다 떼고 본다", () => {
+    const m = matchDetailToAptDetailed(notice("송도 하늘채 아이비원(임의공급3차)"), [apt("ah-1", "송도 하늘채 아이비원(임의공급4차)")], { decisions: NO_DEC });
+    expect(m).toMatchObject({ aptIds: ["ah-1"], how: "single" });
+  });
+  it("★ 제외는 동점 집합을 정한 **뒤** — 최고 유사도 행이 빠지면 낮은 유사도 행으로 넘어가지 않는다", () => {
+    // ah-1 = 이름 같음(1.0)·블록 어긋남 / ah-2 = 0.85 이상이지만 더 낮음·어긋남 없음
+    const apts = [apt("ah-1", "래미안 센트리폴(2BL)"), apt("ah-2", "래미안 센트리폴스")];
+    const m = matchDetailToAptDetailed(notice("래미안 센트리폴(3BL)"), apts, { decisions: NO_DEC });
+    expect(m.how).toBe("conflict_all");
+    expect(m.aptIds).toEqual([]);
+  });
+  it("ⓒ rejected 쌍은 뺀다 → 전부 빠지면 rejected_all", () => {
+    const dec = indexNoticeDecisions([{ house_manage_no: "2026000001", apartment_id: "ah-1", status: "rejected" }]);
+    expect(matchDetailToAptDetailed(notice("거절단지"), [apt("ah-1", "거절단지")], { decisions: dec })).toMatchObject({ aptIds: [], how: "rejected_all" });
+    const apts = [apt("ah-1", "거절단지", { complex_key: "K" }), apt("ah-2", "거절단지", { complex_key: "K" })];
+    expect(matchDetailToAptDetailed(notice("거절단지"), apts, { decisions: dec })).toMatchObject({ aptIds: ["ah-2"], how: "single" });
+  });
+  it("같은 묶음 동점 → 첫 행(id 오름차순 — 지금과 같음) · same_bundle", () => {
+    const apts = [apt("ah-9", "같은묶음단지", { complex_key: "K" }), apt("ah-3", "같은묶음단지", { complex_key: "K" })];
+    expect(matchDetailToAptDetailed(notice("같은묶음단지"), apts, { decisions: NO_DEC })).toMatchObject({ aptIds: ["ah-3"], how: "same_bundle" });
+  });
+  it("다른 묶음 동점 · 블록 글자로 가름 → tie_block", () => {
+    const apts = [apt("ah-1", "호반써밋 첨단3지구"), apt("ah-2", "호반써밋 첨단3지구(A8BL)")];
+    expect(matchDetailToAptDetailed(notice("호반써밋 첨단3지구(A8BL)"), apts, { decisions: NO_DEC })).toMatchObject({ aptIds: ["ah-2"], how: "tie_block" });
+  });
+  it("다른 묶음 동점 · B 가 2묶음이면 못 가름(tie_unresolved) + 후보 명단", () => {
+    const apts = [apt("ah-1", "지문없는단지"), apt("ah-2", "지문없는단지")];
+    const m = matchDetailToAptDetailed(notice("지문없는단지"), apts, { decisions: NO_DEC });
+    expect(m.how).toBe("tie_unresolved");
+    expect(m.candidates).toEqual([{ id: "ah-1", name: "지문없는단지", key: "k:ah-1" }, { id: "ah-2", name: "지문없는단지", key: "k:ah-2" }]);
+  });
+  /** ap 번호 주인 행 + 지문(공고일·일반공급)이 공고 원문과 같다 @param {string} id @param {Record<string, unknown>} [o] */
+  const fp = (id, o = {}) => ({ naver_presale_no: id.slice(3), presale_recruit_date: "2026-05-01", presale_general_supply: 500, ...o });
+  it("다른 묶음 동점 · 네이버 지문으로 가름(B 없음) → tie_fingerprint", () => {
+    // 공고 (1단지) ↔ 우리 두 행 다 차수 없음 = one-sided → B 비어 있음
+    const apts = [apt("ap-111", "지문단지", fp("ap-111")), apt("ah-2", "지문단지")];
+    expect(matchDetailToAptDetailed(notice("지문단지(1단지)"), apts, { decisions: NO_DEC })).toMatchObject({ aptIds: ["ap-111"], how: "tie_fingerprint" });
+  });
+  it("글자+지문이 같은 묶음을 가리킴 → tie_both", () => {
+    const apts = [apt("ah-2", "지문단지"), apt("ap-111", "지문단지", fp("ap-111"))];
+    expect(matchDetailToAptDetailed(notice("지문단지"), apts, { decisions: NO_DEC })).toMatchObject({ aptIds: ["ap-111"], how: "tie_both" });
+  });
+  it("★ 지문은 ap 번호 주인 행만 — ah 행에 네이버 번호가 달려 있어도 지문 자격 없음 → 못 가름", () => {
+    const apts = [apt("ah-111", "지문단지", fp("ah-111", { naver_presale_no: "111" })), apt("ah-2", "지문단지")];
+    expect(matchDetailToAptDetailed(notice("지문단지(1단지)"), apts, { decisions: NO_DEC }).how).toBe("tie_unresolved");
+  });
+  it("★ YYYY-MM 날짜는 지문 불일치 · 일반공급이 다르면 불일치 · 둘 다 null 이면 불일치(Number(null)=0 함정)", () => {
+    for (const o of [{ presale_recruit_date: "2026-05" }, { presale_general_supply: 499 }]) {
+      const apts = [apt("ap-111", "지문단지", fp("ap-111", o)), apt("ah-2", "지문단지")];
+      expect(matchDetailToAptDetailed(notice("지문단지(1단지)"), apts, { decisions: NO_DEC }).how).toBe("tie_unresolved");
+    }
+    const apts = [apt("ap-111", "지문단지", fp("ap-111", { presale_general_supply: null })), apt("ah-2", "지문단지")];
+    expect(matchDetailToAptDetailed(notice("지문단지(1단지)", { TOT_SUPLY_HSHLDCO: null }), apts, { decisions: NO_DEC }).how).toBe("tie_unresolved");
+  });
+  it("지문이 2묶음이면 못 가름", () => {
+    const apts = [apt("ap-111", "지문단지", fp("ap-111")), apt("ap-222", "지문단지", fp("ap-222"))];
+    expect(matchDetailToAptDetailed(notice("지문단지(1단지)"), apts, { decisions: NO_DEC }).how).toBe("tie_unresolved");
+  });
+  it("글자(B)와 지문(F)이 다른 묶음을 가리키면 못 가름", () => {
+    const apts = [apt("ah-1", "지문단지(1단지)"), apt("ap-111", "지문단지", fp("ap-111"))];
+    expect(matchDetailToAptDetailed(notice("지문단지(1단지)"), apts, { decisions: NO_DEC }).how).toBe("tie_unresolved");
+  });
+  it("자동 결과 · 주소 시도 ↔ 행 시도가 다르면 게이트 탈락(gate)", () => {
+    const m = matchDetailToAptDetailed(notice("써밋 더힐", { HSSPLY_ADRES: "서울특별시 강남구" }), [apt("ap-2", "써밋 더힐", { region: "부산" })], { decisions: NO_DEC });
+    expect(m).toMatchObject({ aptIds: [], how: "gate" });
+  });
+  it("★ 게이트 모름(첫 낱말이 시도 아님) — 유사도 <0.95 · 시군구 불일치면 gate_unknown, 시군구가 주소 앞 두 낱말에 있으면 통과", async () => {
+    const { stringSimilarity } = await import("./_shared.mjs");
+    const s = stringSimilarity(normName("부산모라 행복주택"), normName("모라 행복주택"));
+    expect(s).toBeGreaterThanOrEqual(0.85);
+    expect(s).toBeLessThan(0.95);
+    const n = notice("부산모라 행복주택", { HSSPLY_ADRES: "김포 풍무지구 어딘가" });
+    expect(matchDetailToAptDetailed(n, [apt("ah-1", "모라 행복주택", { region: "부산", gu: "사상구" })], { decisions: NO_DEC }).how).toBe("gate_unknown");
+    expect(matchDetailToAptDetailed(n, [apt("ah-1", "모라 행복주택", { region: "경기", gu: "김포시" })], { decisions: NO_DEC })).toMatchObject({ aptIds: ["ah-1"], how: "single" });
+    // 유사도 ≥0.95 면 시군구가 달라도 통과("광주시 탄벌동" 꼴 — 이름이 같은 단지)
+    const n2 = notice("모라 행복주택", { HSSPLY_ADRES: "광주시 탄벌동" });
+    expect(matchDetailToAptDetailed(n2, [apt("ah-1", "모라 행복주택", { region: "경기", gu: "광주시" })], { decisions: NO_DEC }).how).toBe("single");
+    expect(matchDetailToAptDetailed(n2, [apt("ah-1", "모라 행복주택", { region: "부산", gu: "사상구" })], { decisions: NO_DEC }).how).toBe("single");
   });
 });
 
@@ -496,16 +710,26 @@ describe("main 흐름 — 가짜 의존성 (세션623)", () => {
   }
 
   /**
-   * @param {{ unitsShort?: boolean; interruptOnUnitWrite?: boolean }} [opt]
-   *   unitsShort = 평형 upsert 가 한 행 덜 성공 · interruptOnUnitWrite = 평형 쓰는 도중 SIGTERM
+   * @param {{ unitsShort?: boolean; interruptOnUnitWrite?: boolean; details?: any[]; mdls?: any[]; apts?: any[];
+   *   schedRows?: any[]; schedCount?: number | null; aptCount?: number | null; interruptAt?: number;
+   *   files?: Record<string, string> }} [opt]
+   *   unitsShort = 평형 upsert 가 한 행 덜 성공 · interruptOnUnitWrite = 평형 쓰는 도중 SIGTERM ·
+   *   schedRows = 지금 일정 표(정리 대상) · interruptAt = interrupted() 를 N 번째로 물을 때부터 SIGTERM · files = 가짜 파일(경로 → 내용)
    */
-  function makeDeps({ unitsShort = false, interruptOnUnitWrite = false } = {}) {
+  function makeDeps({
+    unitsShort = false, interruptOnUnitWrite = false, details = DETAILS, mdls = MDLS, apts = APT_ROWS,
+    schedRows = [], schedCount, aptCount, interruptAt = 0, files = {},
+  } = {}) {
     /** @type {{ table: string; rows: any[] }[]} */
     const writes = [];
     let interrupted = false;
+    let checks = 0;
     const rpt = {
       success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
-      interrupted: () => interrupted,
+      interrupted: () => {
+        if (interruptAt && ++checks === interruptAt) interrupted = true;
+        return interrupted;
+      },
       summary: () => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0, status: interrupted ? "partial" : "success" }),
     };
     /** @type {Record<string, unknown>} */
@@ -514,9 +738,19 @@ describe("main 흐름 — 가짜 의존성 (세션623)", () => {
       argv: ["node", "collect-applyhome-detail.mjs"],
       getSupabase: () => ({ fake: true }),
       createReporter: () => rpt,
-      fetchAllPages: async (/** @type {string} */ op) => (op === "getAPTLttotPblancDetail" ? DETAILS : MDLS),
-      // apartments 만 돌려준다 — DB 평형 누적 0행 · prices 0행(= 빈칸이라 채울 대상)
-      selectAll: async (/** @type {(s: any) => unknown} */ fn) => (tableOf(fn) === "apartments" ? APT_ROWS : []),
+      fetchAllPages: vi.fn(async (/** @type {string} */ op) => (op === "getAPTLttotPblancDetail" ? details : mdls)),
+      // apartments·일정 표만 돌려준다 — DB 평형 누적 0행 · prices 0행(= 빈칸이라 채울 대상)
+      selectAll: async (/** @type {(s: any) => unknown} */ fn) => {
+        const t = tableOf(fn);
+        return t === "apartments" ? apts : t === "presale_schedule_official" ? schedRows : [];
+      },
+      countRows: async (/** @type {unknown} */ _sb, /** @type {string} */ t) =>
+        (t === "apartments" ? (aptCount === undefined ? apts.length : aptCount) : (schedCount === undefined ? schedRows.length : schedCount)),
+      deleteNoticeRows: vi.fn(async (/** @type {unknown} */ _sb, /** @type {any} */ plan) => {
+        writes.push({ table: "delete", rows: plan.deletes });
+        return { schedule: plan.deletes.length, units: plan.unitDeletePairs.length, prices: plan.priceDeleteAptIds.length };
+      }),
+      readFileSync: (/** @type {string} */ p, /** @type {"utf8"} */ enc) => (p in files ? files[p] : readFileSync(p, enc)),
       upsertBatch: async (/** @type {string} */ table, /** @type {any[]} */ rows) => {
         writes.push({ table, rows });
         if (table === "applyhome_unit_supply") {
@@ -609,5 +843,256 @@ describe("main 흐름 — 가짜 의존성 (세션623)", () => {
     expect(writes).toEqual([]);
     expect(deps.recordCollectorRun).toHaveBeenCalledTimes(1);
     expect(deps.recordApiQuota).not.toHaveBeenCalled();
+  });
+
+  // ── 세션630: 정리 · 차단기 · 기존 쌍만 모드 ──
+  // 일정 표 10행 = 지울 행 1(다른 묶음 x-other 에 붙은 h1) + 이번 API 밖 공고 9행 → 지움 1/10 = 10%(한도 안)
+  const ONE_DELETE = [
+    { id: 1, apartment_id: "x-other", house_manage_no: "h1" },
+    ...Array.from({ length: 9 }, (_, i) => ({ id: i + 2, apartment_id: "a1", house_manage_no: `old${i}` })),
+  ];
+  // 두 공고: h1 → a1(이미 DB 에 있는 쌍) · h2 → a3(새 쌍) / 일정 표 = (a1,h1) + 다른 묶음 31행(지움 31 > 30)
+  const DETAILS2 = [...DETAILS, { HOUSE_MANAGE_NO: "h2", PBLANC_NO: "p2", HOUSE_NM: "새공고단지", HSSPLY_ADRES: "경기도 화성시 저기", RCRIT_PBLANC_DE: "2026-10-02" }];
+  const MDLS2 = [...MDLS, { HOUSE_MANAGE_NO: "h2", MODEL_NO: "01", HOUSE_TY: "084.0000", SUPLY_AR: "110", SUPLY_HSHLDCO: "10", SPSPLY_HSHLDCO: "5", LTTOT_TOP_AMOUNT: "50000" }];
+  const APT_ROWS2 = [...APT_ROWS, { id: "a3", name: "새공고단지", region: "경기", presale_type: "민간분양" }];
+  const BIG_DELETE = [
+    { id: 100, apartment_id: "a1", house_manage_no: "h1" },
+    ...Array.from({ length: 31 }, (_, i) => ({ id: i + 1, apartment_id: `x-${i}`, house_manage_no: "h1" })),
+  ];
+  /** @param {{ table: string; rows: any[] }[]} writes @param {string} t */
+  const pairsOf = (writes, t) => writes.filter((w) => w.table === t).flatMap((w) => w.rows.map((r) => `${r.apartment_id}|${r.house_manage_no}`));
+
+  it("★ 정리 순서 = 지우기 → 일정 upsert → 평형 upsert → 분양가 (분양가 계획은 지운 뒤 DB 를 읽는다)", async () => {
+    const { deps, writes } = makeDeps({ schedRows: ONE_DELETE });
+    await main(/** @type {any} */ (deps));
+    expect(tables(writes)).toEqual(["delete", "presale_schedule_official", "applyhome_unit_supply", "prices"]);
+    expect(writes[0].rows).toEqual([{ id: 1, apartment_id: "x-other", house_manage_no: "h1", why: "other_bundle" }]);
+    expect(deps.recordCollectorRun).toHaveBeenCalledWith("applyhome-detail", expect.not.objectContaining({ status: "failure" }));
+  });
+
+  it("★ 차단기(지움 31 > 30) → 기존 쌍만: 지우기 0 · 새 쌍 0 · 분양가 0 · failure NTC_BREAKER · exit 1", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+    try {
+      const { deps, writes } = makeDeps({ details: DETAILS2, mdls: MDLS2, apts: APT_ROWS2, schedRows: BIG_DELETE });
+      await main(/** @type {any} */ (deps));
+      expect(tables(writes)).toEqual(["presale_schedule_official", "applyhome_unit_supply"]);
+      expect(pairsOf(writes, "presale_schedule_official")).toEqual(["a1|h1"]); // 새 쌍 a3|h2 는 승인 전엔 안 넣는다
+      expect(new Set(pairsOf(writes, "applyhome_unit_supply"))).toEqual(new Set(["a1|h1"]));
+      expect(deps.deleteNoticeRows).not.toHaveBeenCalled();
+      expect(deps.recordCollectorRun).toHaveBeenCalledWith("applyhome-detail", expect.objectContaining({ status: "failure", errorMessage: expect.stringMatching(/^NTC_BREAKER /) }));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("--apply-from 이 지금 계획과 같으면 차단기를 넘어도 지우고 넣는다", async () => {
+    const plan = { deletes: BIG_DELETE.slice(1).map((r) => ({ id: r.id })), adds: [{ apartment_id: "a3", house_manage_no: "h2" }] };
+    const { deps, writes } = makeDeps({ details: DETAILS2, mdls: MDLS2, apts: APT_ROWS2, schedRows: BIG_DELETE, files: { "PLAN.json": JSON.stringify(plan) } });
+    deps.argv = ["node", "collect-applyhome-detail.mjs", "--apply-from=PLAN.json"];
+    await main(/** @type {any} */ (deps));
+    expect(tables(writes)[0]).toBe("delete");
+    expect(writes[0].rows).toHaveLength(31);
+    expect(pairsOf(writes, "presale_schedule_official").sort()).toEqual(["a1|h1", "a3|h2"]);
+    expect(tables(writes)).toContain("prices");
+    expect(deps.recordCollectorRun).toHaveBeenCalledWith("applyhome-detail", expect.not.objectContaining({ status: "failure" }));
+  });
+
+  it("★ --apply-from 이 지금 계획과 다르면 기존 쌍만 + failure NTC_PLAN_MISMATCH · exit 1", async () => {
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+    try {
+      const plan = { deletes: BIG_DELETE.slice(2).map((r) => ({ id: r.id })), adds: [{ apartment_id: "a3", house_manage_no: "h2" }] }; // 한 행 모자람
+      const { deps, writes } = makeDeps({ details: DETAILS2, mdls: MDLS2, apts: APT_ROWS2, schedRows: BIG_DELETE, files: { "PLAN.json": JSON.stringify(plan) } });
+      deps.argv = ["node", "collect-applyhome-detail.mjs", "--apply-from=PLAN.json"];
+      await main(/** @type {any} */ (deps));
+      expect(tables(writes)).toEqual(["presale_schedule_official", "applyhome_unit_supply"]);
+      expect(pairsOf(writes, "presale_schedule_official")).toEqual(["a1|h1"]);
+      expect(deps.recordCollectorRun).toHaveBeenCalledWith("applyhome-detail", expect.objectContaining({ status: "failure", errorMessage: expect.stringMatching(/^NTC_PLAN_MISMATCH /) }));
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    } finally {
+      exitSpy.mockRestore();
+    }
+  });
+
+  it("★ 매칭 뒤 중단 신호(평형 반복 도중) → 정리 건너뜀(NTC_SKIP): 지우기 0 · failure 아님", async () => {
+    // interrupted() 물음 순서 = 매칭 반복 1(공고 1) → 평형 반복 첫 바퀴(2번째)에서 SIGTERM
+    const { deps, writes } = makeDeps({ schedRows: ONE_DELETE, interruptAt: 2 });
+    await main(/** @type {any} */ (deps));
+    expect(deps.deleteNoticeRows).not.toHaveBeenCalled();
+    expect(tables(writes)).not.toContain("delete");
+    expect(tables(writes)).not.toContain("prices");
+    expect(deps.recordCollectorRun).toHaveBeenCalledWith("applyhome-detail", expect.not.objectContaining({ status: "failure" }));
+  });
+
+  it("후보 행 수 ≠ apartments count → 정리 건너뜀(NTC_SKIP) · 기존 쌍만", async () => {
+    const { deps, writes } = makeDeps({ schedRows: ONE_DELETE, aptCount: 999 });
+    await main(/** @type {any} */ (deps));
+    expect(deps.deleteNoticeRows).not.toHaveBeenCalled();
+    expect(pairsOf(writes, "presale_schedule_official")).toEqual([]); // a1|h1 은 DB 에 없던 새 쌍
+    expect(tables(writes)).not.toContain("prices");
+  });
+
+  it("일정 표 행 수 ≠ count → 정리 건너뜀", async () => {
+    const { deps } = makeDeps({ schedRows: ONE_DELETE, schedCount: 11 });
+    await main(/** @type {any} */ (deps));
+    expect(deps.deleteNoticeRows).not.toHaveBeenCalled();
+  });
+
+  it("★ --dry-run --out 은 계획 파일만 쓰고 DB 쓰기·지우기 0", async () => {
+    const { tmpdir } = await import("node:os");
+    const { join } = await import("node:path");
+    const { rmSync } = await import("node:fs");
+    const out = join(tmpdir(), `ntc-plan-test-${process.pid}-${Date.now()}.json`);
+    try {
+      const { deps, writes } = makeDeps({ schedRows: ONE_DELETE });
+      deps.argv = ["node", "collect-applyhome-detail.mjs", "--dry-run", `--out=${out}`];
+      await main(/** @type {any} */ (deps));
+      expect(writes).toEqual([]);
+      expect(deps.deleteNoticeRows).not.toHaveBeenCalled();
+      const plan = JSON.parse(readFileSync(out, "utf8"));
+      expect(plan.deletes.map((/** @type {any} */ d) => [d.id, d.why])).toEqual([[1, "other_bundle"]]);
+      expect(plan.adds.map((/** @type {any} */ a) => `${a.apartment_id}|${a.house_manage_no}`)).toEqual(["a1|h1"]);
+      expect(plan.keep.not_in_api).toBe(9);
+      // 같은 경로로 다시 → API 호출 전에 던진다(승인했을 수 있는 계획 파일을 덮어쓰지 않는다)
+      const again = makeDeps({ schedRows: ONE_DELETE });
+      again.deps.argv = ["node", "collect-applyhome-detail.mjs", "--dry-run", `--out=${out}`];
+      await expect(main(/** @type {any} */ (again.deps))).rejects.toThrow(/이미 있다/);
+      expect(again.deps.fetchAllPages).not.toHaveBeenCalled();
+    } finally {
+      rmSync(out, { force: true });
+    }
+  });
+
+  it("★ 판정 파일이 깨졌으면 API 호출 전에 NTC_ERROR 로 멈춘다(실행 기록 없음)", async () => {
+    const { deps, writes } = makeDeps({ files: { [NOTICE_DECISIONS_PATH]: JSON.stringify({ decisions: [decLine({ why: "" })] }) } });
+    await expect(main(/** @type {any} */ (deps))).rejects.toThrow(/^NTC_ERROR /);
+    expect(deps.fetchAllPages).not.toHaveBeenCalled();
+    expect(deps.recordCollectorRun).not.toHaveBeenCalled();
+    expect(writes).toEqual([]);
+  });
+
+  it("빈 묶음 열쇠는 열쇠 규칙으로 채워 넘긴다 — 같은 단지 두 행이면 같은 묶음(동점이어도 지우지 않음)", async () => {
+    const { withComputedComplexKeys } = await import("./_trade-links.mjs");
+    const { parseComplexExceptions } = await import("./_same-complex.mjs");
+    const twins = [
+      { id: "a1", name: "흐름시험단지", region: "경기", gu: "화성시", lat: 37.2, lng: 127.0, presale_type: "민간분양" },
+      { id: "a2", name: "흐름시험단지", region: "경기", gu: "화성시", lat: 37.2001, lng: 127.0001, presale_type: "민간분양" },
+    ];
+    const ex = parseComplexExceptions({ always: [], isolate: [] });
+    const keyed = withComputedComplexKeys(/** @type {any} */ (twins), ex);
+    expect(keyed[0].complex_key).toBeTruthy();
+    expect(keyed[0].complex_key).toBe(keyed[1].complex_key); // 전제: 규칙이 둘을 한 묶음으로 본다
+    const sched = [{ id: 1, apartment_id: "a2", house_manage_no: "h1" }, ...ONE_DELETE.slice(1)];
+    const { deps, writes } = makeDeps({ apts: twins, schedRows: sched });
+    await main(/** @type {any} */ (deps));
+    expect(tables(writes)).not.toContain("delete"); // 채우지 않으면 자기 id 묶음 → 다른 묶음 동점 → 못 가름 → 지움
+    expect(pairsOf(writes, "presale_schedule_official")).toEqual(["a1|h1"]);
+  });
+});
+
+// ── 세션630: 정리 계획(순수 함수) ──
+describe("planNoticeReconcile — 양성 증거가 있을 때만 지운다", () => {
+  /** @type {Record<string, string>} */
+  const KEYS = { "ah-1": "K1", "ah-1b": "K1", "ah-2": "K2", "ah-3": "K3" };
+  /** @param {string} id */
+  const keyOf = (id) => KEYS[id] ?? id;
+  /** @param {string[]} aptIds @param {string} how @param {Record<string, unknown>} [o] */
+  const des = (aptIds, how, o = {}) => /** @type {any} */ ({ aptIds, bundles: new Set(aptIds.map(keyOf)), how, ...o });
+  const desired = new Map([
+    ["H1", des(["ah-1"], "single")],
+    ["H2", des([], "skip")],
+    ["H3", des(["ah-1"], "single")],
+    ["H4", des([], "conflict_all", { excluded: [{ id: "ah-3", why: "conflict" }] })],
+    ["H5", des([], "tie_unresolved", { name: "못가름", candidates: [{ id: "ah-2", name: "x", key: "K2" }, { id: "ah-3", name: "x", key: "K3" }] })],
+    ["H6", des([], "gate")],
+    ["H7", des([], "gate_unknown")],
+    ["H8", des([], "noMatch")],
+    ["H10", des([], "conflict_all", { excluded: [{ id: "ah-3", why: "officetel" }] })],
+    ["H11", des(["ah-1"], "manual")],
+    ["H12", des(["ah-1"], "tie_block")],
+  ]);
+  const dec = indexNoticeDecisions([
+    { house_manage_no: "H2", apartment_id: null, status: "skip" },
+    { house_manage_no: "H3", apartment_id: "ah-1b", status: "rejected" },
+  ]);
+  const db = [
+    { id: 1, apartment_id: "ah-1b", house_manage_no: "H1" }, // 같은 묶음 추가 행 → 유지
+    { id: 2, apartment_id: "ah-2", house_manage_no: "H1" }, // 다른 묶음 → 지움
+    { id: 3, apartment_id: "ah-1", house_manage_no: "H1" }, // 이긴 행 → 유지
+    { id: 4, apartment_id: "ah-2", house_manage_no: "H2" }, // skip → 지움
+    { id: 5, apartment_id: "ah-1b", house_manage_no: "H3" }, // rejected — 같은 묶음이어도 지움
+    { id: 6, apartment_id: "ah-3", house_manage_no: "H4" }, // 블록·차수 어긋남 → 지움
+    { id: 7, apartment_id: "ah-2", house_manage_no: "H5" }, // 못 가름 → 지움
+    { id: 8, apartment_id: "ah-2", house_manage_no: "H6" }, // 게이트 탈락 → 유지 + 명단
+    { id: 9, apartment_id: "ah-2", house_manage_no: "H7" }, // 게이트 모름 → 유지 + 명단
+    { id: 10, apartment_id: "ah-2", house_manage_no: "H8" }, // 짝 없음 → 유지 + 명단
+    { id: 11, apartment_id: "ah-2", house_manage_no: "H9" }, // 이번 API 에 없음 → 손 안 댐
+    { id: 12, apartment_id: "ah-3", house_manage_no: "H10" }, // (오) 로 빠진 행은 어긋남이 아님 → 유지 + 명단
+    { id: 13, apartment_id: "ah-2", house_manage_no: "H11" }, // 사람 판정 active 가 다른 묶음 → 지움
+    { id: 14, apartment_id: "ah-3", house_manage_no: "H12" }, // 글자로 가름 → 다른 묶음 지움
+  ];
+  const api = new Set(["H1", "H2", "H3", "H4", "H5", "H6", "H7", "H8", "H10", "H11", "H12"]);
+  const p = planNoticeReconcile(db, desired, keyOf, api, dec);
+
+  it("지우기 = 다른 묶음·판정·어긋남·못 가름 (id·이유)", () => {
+    expect(p.deletes.map((d) => [d.id, d.why])).toEqual([
+      [2, "other_bundle"], [4, "decision"], [5, "decision"], [6, "conflict"], [7, "unresolved"], [13, "other_bundle"], [14, "other_bundle"],
+    ]);
+    expect(p.counts.byWhy).toEqual({ other_bundle: 3, decision: 2, conflict: 1, unresolved: 1 });
+  });
+  it("★ 같은 묶음 추가 행·게이트 탈락·짝 없음은 유지(명단) · API 밖은 손 안 댐", () => {
+    expect(p.keep.same_bundle_extra).toBe(1);
+    expect(p.keep.not_in_api).toBe(1);
+    expect(p.keep.no_evidence.map((x) => [x.id, x.how])).toEqual([[8, "gate"], [9, "gate_unknown"], [10, "noMatch"], [12, "conflict_all"]]);
+    expect(p.counts.kept).toBe(1);
+  });
+  it("넣기 = DB 에 없는 desired 쌍만 · 평형은 지운 쌍 · 분양가는 영향 단지", () => {
+    expect(p.adds.map((a) => `${a.apartment_id}|${a.house_manage_no}|${a.how}`).sort()).toEqual(["ah-1|H11|manual", "ah-1|H12|tie_block", "ah-1|H3|single"]);
+    expect(p.unitDeletePairs).toEqual(p.deletes.map((d) => ({ apartment_id: d.apartment_id, house_manage_no: d.house_manage_no })));
+    expect(p.priceDeleteAptIds).toEqual(["ah-1b", "ah-2", "ah-3"]);
+  });
+  it("못 가름 명단에 후보가 실린다", () => {
+    expect(p.unresolved).toEqual([{ hmn: "H5", name: "못가름", candidates: [{ id: "ah-2", name: "x", key: "K2" }, { id: "ah-3", name: "x", key: "K3" }] }]);
+  });
+});
+
+describe("evaluateNoticeBreaker — 지우기만 센다(30행 · 10%)", () => {
+  it("상수", () => {
+    expect(NOTICE_BREAKER_MAX_ROWS).toBe(30);
+    expect(NOTICE_BREAKER_RATIO).toBe(0.1);
+  });
+  it("★ 30행은 통과 · 31행은 걸림(분모 큼)", () => {
+    expect(evaluateNoticeBreaker({ remove: 30, existing: 2000 }).tripped).toBe(false);
+    expect(evaluateNoticeBreaker({ remove: 31, existing: 2000 }).tripped).toBe(true);
+  });
+  it("★ 10% 는 통과 · 넘으면 걸림(행 수는 한도 안)", () => {
+    expect(evaluateNoticeBreaker({ remove: 10, existing: 100 }).tripped).toBe(false);
+    expect(evaluateNoticeBreaker({ remove: 11, existing: 100 }).tripped).toBe(true);
+    expect(evaluateNoticeBreaker({ remove: 0, existing: 0 }).tripped).toBe(false);
+  });
+});
+
+describe("compareNoticePlan · parseNoticeArgs", () => {
+  const cur = { deletes: [{ id: 1 }, { id: 2 }], adds: [{ apartment_id: "a", house_manage_no: "h" }] };
+  it("같은 집합이면 같음(순서·숫자/글자 id 무관)", () => {
+    expect(compareNoticePlan(cur, { deletes: [{ id: "2" }, { id: 1 }], adds: [{ apartment_id: "a", house_manage_no: "h" }] }).same).toBe(true);
+  });
+  it("지우기·넣기 중 하나라도 다르면 다름", () => {
+    expect(compareNoticePlan(cur, { deletes: [{ id: 1 }], adds: cur.adds }).same).toBe(false);
+    expect(compareNoticePlan(cur, { deletes: cur.deletes, adds: [] }).same).toBe(false);
+    expect(compareNoticePlan(cur, { deletes: cur.deletes, adds: [{ apartment_id: "a", house_manage_no: "h2" }] }).onlyApproved).toHaveLength(1);
+  });
+  it("계획 파일 꼴이 틀리면 던진다", () => {
+    expect(() => compareNoticePlan(cur, { deletes: [] })).toThrow(/deletes·adds/);
+    expect(() => compareNoticePlan(cur, null)).toThrow(/deletes·adds/);
+  });
+  it("인자 — --out 은 dry-run 전용 · --apply-from 은 dry-run 과 같이 못 씀 · = 필수", () => {
+    expect(parseNoticeArgs(["node", "x", "--dry-run", "--out=a.json"])).toEqual({ out: "a.json", applyFrom: null });
+    expect(parseNoticeArgs(["node", "x", "--apply-from=p.json"])).toEqual({ out: null, applyFrom: "p.json" });
+    expect(() => parseNoticeArgs(["node", "x", "--out=a.json"])).toThrow(/dry-run/);
+    expect(() => parseNoticeArgs(["node", "x", "--dry-run", "--apply-from=p.json"])).toThrow(/dry-run/);
+    expect(() => parseNoticeArgs(["node", "x", "--dry-run", "--out", "a.json"])).toThrow(/=/);
+    expect(() => parseNoticeArgs(["node", "x", "--dry-run", "--out="])).toThrow(/비었/);
+    expect(() => parseNoticeArgs(["node", "x", "--apply-from=a", "--apply-from=b"])).toThrow(/두 번/);
   });
 });
