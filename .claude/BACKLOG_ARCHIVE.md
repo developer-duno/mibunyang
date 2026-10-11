@@ -14,6 +14,10 @@
 | [part06.md](backlog-archive/part06.md) | 3.8KB | 세션478~479 완료 |
 | [part07.md](backlog-archive/part07.md) | 47.9KB | 세션524 이관 — 완료 색인(세션465 미만 완료분) |
 | [part08.md](backlog-archive/part08.md) | 1.7KB | 세션566 이관 · 네이버지도 전면제거(카카오 단일화) |
+| [part09.md](backlog-archive/part09.md) | 41.0KB | 세션628 이관 — BACKLOG A-0~A-15 절의 끝난(✅) 최상위 항목 · 절 제목 그대로 |
+| [part10.md](backlog-archive/part10.md) | 22.8KB | 세션628 이관 — BACKLOG A(날짜 확인)·A-2·B·D·세션538 절의 끝난(✅) 최상위 항목 |
+
+> ⚠️ **세션628 복구**: 세션568 이 part01~08(과 세션 로그 조각 19개)을 만들었지만 `.claude/*` 무시 규칙 때문에 **커밋되지 않아** 9/24~10/11 동안 조각이 어디에도 없었다(색인만 있음). 세션628 이 git 원본(`a0343059^` 의 `BACKLOG_ARCHIVE.md`·`SESSION_LOG_ARCHIVE_2026H1.md`)에서 같은 자리로 다시 잘라 복구했다 — 이으면 원본과 바이트 단위로 같고 조각 크기 27개 전부 이 표와 같다. `.gitignore` 에 두 조각 폴더를 허용했다.
 
 ## 사용법
 
