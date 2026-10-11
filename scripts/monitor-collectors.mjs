@@ -15,6 +15,8 @@
  *   ⑤ 외부 API 장기 중단 — 최근 3회 success+ok=0 누적 + stale_days 초과 (silent fail)
  *   ⑥ VIEW 회귀   — regions 원본은 채워졌는데 apartments_flat VIEW 노출 컬럼만 NULL
  *   ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 컬럼이 빈칸
+ *   (⑧~⑲ 는 각 점검 머리 주석)
+ *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(판정 파일 active 제외 · KST 월요일 · 세션630)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -274,7 +276,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -2024,6 +2026,84 @@ export async function runOwnershipCheck(deps = {}) {
     console.log(`[monitor] ⑲ 소유권 정본 대조: 공유 표 ${shared.length}개(${shared.join(",")}) → 이상 ${ownIssues.length}건`);
     return ownIssues;
   });
+}
+
+// ── ⑳ 청약홈 공고가 다른 단지 묶음에 같이 붙음 (세션630) ──────────────────────
+/** ⑳ 사람 판정 파일 — active 쌍은 일부러 두 묶음에 붙인 것이라 센 데서 뺀다. */
+const NOTICE_DECISIONS_URL = new URL("../docs/audits/applyhome-notice-decisions.json", import.meta.url);
+
+/**
+ * ⑳ 판정 파일의 active 쌍("공고번호|단지 id"). 파일이 깨졌으면 던진다(fail-open 이 check-failed 로 알린다).
+ * @returns {Set<string>}
+ */
+export function loadNoticeActivePairs() {
+  const raw = JSON.parse(readFileSync(NOTICE_DECISIONS_URL, "utf8"));
+  if (!Array.isArray(raw?.decisions)) throw new Error("applyhome-notice-decisions.json 에 decisions 배열이 없습니다");
+  return new Set(raw.decisions.filter((/** @type {any} */ d) => d?.status === "active").map((/** @type {any} */ d) => `${d.house_manage_no}|${d.apartment_id}`));
+}
+
+/**
+ * ⑳ 판정 — 한 공고(house_manage_no)가 묶음 열쇠(`complex_key ?? id`)가 다른 행 2개+ 에 붙은 수. 판정 파일 active 쌍은 뺀다.
+ * 수집기 정리(planNoticeReconcile)가 매주 지우므로 반영 뒤 기준선은 0 — 0 이 아니면 정리가 막혔거나(차단기) 새 꼴이 생긴 것.
+ * @param {ReadonlyArray<{ apartment_id: string, house_manage_no: string }>} schedRows presale_schedule_official 전체
+ * @param {Map<string, string | null>} keyById apartments id → complex_key
+ * @param {Set<string>} activePairs `loadNoticeActivePairs` 결과
+ * @returns {Issue[]}
+ */
+export function checkNoticeCrossBundle(schedRows, keyById, activePairs) {
+  /** @type {Map<string, Map<string, string[]>>} */
+  const byHmn = new Map();
+  for (const r of schedRows) {
+    const hmn = String(r.house_manage_no);
+    if (activePairs.has(`${hmn}|${r.apartment_id}`)) continue;
+    const bundle = keyById.get(r.apartment_id) || r.apartment_id;
+    const bundles = byHmn.get(hmn) ?? new Map();
+    bundles.set(bundle, [...(bundles.get(bundle) ?? []), r.apartment_id]);
+    byHmn.set(hmn, bundles);
+  }
+  const cross = [...byHmn].filter(([, bundles]) => bundles.size >= 2).sort(([a], [b]) => a.localeCompare(b));
+  if (cross.length === 0) return [];
+  const shown = cross.slice(0, 5).map(([hmn, bundles]) => `${hmn} → ${[...bundles.values()].map((ids) => ids.join("+")).join(" / ")}`);
+  return [{
+    kind: "notice-cross-bundle",
+    collector: "applyhome-detail",
+    detail: `NTC_CROSS 청약홈 공고 ${cross.length}건이 다른 단지 묶음 2곳 이상에 붙어 있음`,
+    lines: [...shown, ...(cross.length > 5 ? [`외 ${cross.length - 5}건`] : [])],
+  }];
+}
+
+/**
+ * ⑳ 본체 — fail-open. main 이 KST 월요일에 ⑲ 바로 뒤에서 부른다(수집기는 월 12:30 주 1회).
+ * @param {{ fetchRows?: () => Promise<{ schedRows: Array<{ apartment_id: string, house_manage_no: string }>, keyById: Map<string, string | null> }>, loadActive?: () => Set<string> }} [deps] 시험 주입용
+ * @returns {Promise<Issue[]>}
+ */
+export async function runNoticeCrossBundleCheck(deps = {}) {
+  return runFailOpenCheck("⑳ 공고 다른 묶음 점검", async () => {
+    const { schedRows, keyById } = await (deps.fetchRows ?? fetchNoticeCrossBundleRows)();
+    const active = (deps.loadActive ?? loadNoticeActivePairs)();
+    const ntcIssues = checkNoticeCrossBundle(schedRows, keyById, active);
+    console.log(`[monitor] ⑳ 공고 다른 묶음 점검: 일정 ${schedRows.length}행 · active ${active.size}쌍 → 이상 ${ntcIssues.length}건`);
+    return ntcIssues;
+  });
+}
+
+/**
+ * ⑳ 재료 — 일정 표 전체 · apartments(id·complex_key) 전체. 둘 다 고유 키 커서.
+ * @returns {Promise<{ schedRows: Array<{ apartment_id: string, house_manage_no: string }>, keyById: Map<string, string | null> }>}
+ */
+async function fetchNoticeCrossBundleRows() {
+  const sb = getSupabase();
+  const schedRows = /** @type {Array<{ apartment_id: string, house_manage_no: string }>} */ (await selectAll(
+    (s) => s.from("presale_schedule_official").select("id, apartment_id, house_manage_no"),
+    sb,
+    "id",
+  ));
+  const apts = /** @type {Array<{ id: string, complex_key: string | null }>} */ (await selectAll(
+    (s) => s.from("apartments").select("id, complex_key"),
+    sb,
+    "id",
+  ));
+  return { schedRows, keyById: new Map(apts.map((a) => [a.id, a.complex_key])) };
 }
 
 /**
@@ -4055,7 +4135,7 @@ async function main() {
       return scopeIssues;
     }));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ⑲ 소유권 정본 대조(월요일) — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
@@ -4065,6 +4145,8 @@ async function main() {
     //    이 점검만 잡는다. 수동 강제 = ⑩ 과 같은 입력(force_db_permission_audit). fail-open.
     if (isKstMonday() || process.env.FORCE_DB_PERMISSION_AUDIT === "1") {
       issues = issues.concat(await runOwnershipCheck());
+      // ⑳ 청약홈 공고가 다른 단지 묶음에 같이 붙음(세션630) — 수집기 정리가 매주 지우므로 기준선 0. fail-open.
+      issues = issues.concat(await runNoticeCrossBundleCheck());
     }
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).

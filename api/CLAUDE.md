@@ -69,6 +69,7 @@ export default withHandler({
 - ID 검증: `api/_lib/apartmentValidation.js` — `parseApartmentIds()` + `/^ah-\d+$/` 패턴
 - 에러 응답: `{ ok: false, error: "메시지" }` (400/500)
 - RLS: "Public read" 정책 (인증 불필요)
+- `GET /api/supabase/presale-detail`(세션630): 그 단지의 `complex_key` 를 1회 읽어 **같은 묶음 행 전부**에서 일정 최신 1행·평형((공고번호, 모델번호) 한 벌)을 읽는다(열쇠 없으면 자기 id 만) — 수집기가 같은 묶음 동점 공고를 id 작은 행에 붙여도 카드(다른 행)에 일정이 뜨게. 응답 꼴 불변
 
 ## 인증 시스템 (세션 405 — 관리자+손님 2축)
 

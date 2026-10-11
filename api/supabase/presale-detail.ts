@@ -4,6 +4,9 @@
  * 청약홈 공식 분양 일정(presale_schedule_official) + 평형별 공급(applyhome_unit_supply)을
  * apartment_id 로 함께 조회. apartments_flat VIEW 에 JOIN 하지 않고 별도 쿼리 후 merge
  * (data-audit fetchAllFromView 선례 — 공용 VIEW 19초 위험 회피).
+ * 세션630: **같은 단지 묶음(`apartments.complex_key`) 단위로 읽는다** — 수집기는 같은 묶음 동점 공고를 id 작은
+ * 행에 붙이는데 카드는 묶음의 다른 행(id 큰 행)일 수 있다. 열쇠가 비면 자기 id 만. 일정은 묶음 전체에서 최신 1행,
+ * 평형은 (공고번호, 모델번호)로 한 벌만(같은 공고가 묶음 두 행에 붙어 있어도 두 벌이 안 되게).
  *
  * 응답: { ok: true, schedule: {...}|null, units: [...], fetchedAt: "..." }
  */
@@ -37,18 +40,35 @@ export default withHandler({
       }
       const aptId = "id" in parsed ? parsed.id : parsed.ids[0];
 
+      // 같은 단지 묶음의 행 id 들(세션630) — 열쇠 1회 조회 → 같은 열쇠 행 전부. 열쇠가 없으면 자기 id 만.
+      const keyRes = await supabase.from("apartments").select("complex_key").eq("id", aptId).limit(1);
+      if (keyRes.error) {
+        console.error("presale-detail key query error:", keyRes.error);
+        return res.status(500).json({ ok: false, error: "분양 상세 데이터 조회 중 오류가 발생했습니다" });
+      }
+      const key = (keyRes.data?.[0] as { complex_key?: string | null } | undefined)?.complex_key ?? null;
+      let ids = [aptId];
+      if (key) {
+        const bundleRes = await supabase.from("apartments").select("id").eq("complex_key", key);
+        if (bundleRes.error) {
+          console.error("presale-detail bundle query error:", bundleRes.error);
+          return res.status(500).json({ ok: false, error: "분양 상세 데이터 조회 중 오류가 발생했습니다" });
+        }
+        ids = [...new Set([aptId, ...((bundleRes.data ?? []) as { id: string }[]).map((r) => r.id)])];
+      }
+
       // 두 테이블 병렬 조회 후 JS merge (VIEW JOIN 회피)
       const [scheduleRes, unitsRes] = await Promise.all([
         supabase
           .from("presale_schedule_official")
           .select(SCHEDULE_SELECT)
-          .eq("apartment_id", aptId)
+          .in("apartment_id", ids)
           .order("recruit_date", { ascending: false })
           .limit(1),
         supabase
           .from("applyhome_unit_supply")
           .select(UNIT_SELECT)
-          .eq("apartment_id", aptId)
+          .in("apartment_id", ids)
           .order("supply_area", { ascending: true }),
       ]);
 
@@ -57,11 +77,20 @@ export default withHandler({
         return res.status(500).json({ ok: false, error: "분양 상세 데이터 조회 중 오류가 발생했습니다" });
       }
 
+      // 같은 공고가 묶음 두 행에 붙어 있으면 평형이 두 벌 — (공고번호, 모델번호)로 한 벌만 남긴다(순서 = 면적 오름차순 그대로).
+      const seen = new Set<string>();
+      const units = ((unitsRes.data || []) as { house_manage_no?: string; model_no?: string }[]).filter((u) => {
+        const k = `${u.house_manage_no}|${u.model_no}`;
+        if (seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+
       res.setHeader("Cache-Control", "public, s-maxage=3600, stale-while-revalidate=7200");
       return res.status(200).json({
         ok: true,
         schedule: (scheduleRes.data || [])[0] ?? null,
-        units: unitsRes.data || [],
+        units,
         fetchedAt: new Date().toISOString(),
       });
     } catch (err) {
