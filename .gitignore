@@ -4,8 +4,12 @@ dist/
 !.claude/settings.json
 !.claude/SESSION_LOG.md
 !.claude/SESSION_LOG_ARCHIVE_2026H1.md
+!.claude/session-log-archive/
+!.claude/session-log-archive/**
 !.claude/BACKLOG.md
 !.claude/BACKLOG_ARCHIVE.md
+!.claude/backlog-archive/
+!.claude/backlog-archive/**
 !.claude/SKILLS.md
 !.claude/EASY_WORDS.md
 !.claude/ENV_VARS.md

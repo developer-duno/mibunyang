@@ -48,5 +48,6 @@ wc -c .claude/BACKLOG.md   # 줄어들었는지
 - ❌ 활성(미완료) 항목 이동 — "할 일"을 숨김.
 - ❌ 최근 완료 전부 비우기 — 중복 플랜 방지 grep 용도 상실. 오래된 것만.
 - ❌ 이동 중 줄 손실 — 이동 전후 ✅ 카운트 합계 보존 검증 필수.
+- ❌ **새 조각 폴더를 만들고 커밋 확인을 안 함** — `.gitignore` 의 `.claude/*` 가 `.claude/` 아래 새 폴더를 통째로 무시한다. 세션568 이 `backlog-archive/`·`session-log-archive/` 조각 27개를 만들고 "바이트 일치 검증"까지 했지만 커밋되지 않아 원본만 지운 채 3주간 조각이 어디에도 없었다(세션628 이 git 원본에서 복구). 새 폴더면 `.gitignore` 에 `!.claude/<폴더>/` + `!.claude/<폴더>/**` 를 넣고, 커밋 전 `git status --short --untracked-files=all` 에 조각 수만큼 보이는지 센다.
 
 > 답습: 세션 439 감사 — BACKLOG 120KB 컨텍스트 부채 지적. 기존 BACKLOG_ARCHIVE.md(39KB) 패턴 답습.
