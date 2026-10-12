@@ -52,7 +52,7 @@
 | `collect-trade-stats-regions.yml` | 시군구 거래 통계 (**격주 7·21일** 16:30 UTC, trade-stats 직후) |
 | `calc-layout.yml` | 평면구조 추정 (일요일 23:00 UTC, 세션273: calc-collection 그룹 분리). **세션 491**: 세 조회가 전부 max_rows=1000 에 걸려 3주 연속 갱신 0건이던 것을 매칭 선행 + `.in()` 분할로 복구 (dry-run 실측 **갱신 490건**) |
 | `collect-nearby-childcare.yml` | 세션615: 주 1회(수 05:30 KST) 유지 — 외부 호출 0(DB 가공만), 입력 `regions.childcare.facilities` 를 화요일 로컬 어린이집 러너가 채운 다음 날. 단지 1km 내 어린이집 근접 계산 (**세션 491: 매일 → 주 1회 화** — 입력이 82일째 정지 + 재계산 결과 677건 × 8필드 전부 동일). **세션 491 문서 추가** (그동안 표에 없었다) |
-| `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) · 세션630: 쌓인 틀린 행 정리가 차단기(지움 30행/10%)를 넘거나 `--apply-from` 이 어긋나면 **기존 쌍만** 다시 받고 지우기·새 쌍·분양가는 멈춘 채 failure(`NTC_BREAKER`/`NTC_PLAN_MISMATCH`) — 빨강이면 미리보기 `--dry-run --out` 명단을 승인받아 `--apply-from` 으로 |
+| `collect-applyhome-detail.yml` | 청약홈 분양일정·평형 (월 12:30 KST — 세션 467 매월 13일→주간: 월간이면 신규 공고의 미래 접수일이 못 들어와 알림 이벤트 소스가 죽음) · 세션630: 쌓인 틀린 행 정리가 차단기(지움 30행/10%)를 넘거나 `--apply-from` 이 어긋나면 **기존 쌍만** 다시 받고 지우기·새 쌍·분양가는 멈춘 채 failure(`NTC_BREAKER`/`NTC_PLAN_MISMATCH`) — 빨강이면 미리보기 `--dry-run --out` 명단을 승인받아 `--apply-from` 으로 · 세션632: 초록 회차에도 남는 표식(`NTC_SKIP`·`NTC_UNRESOLVED`·`NTC_NO_EVIDENCE`·`NTC_MANUAL_MISSING`)은 매일 09:00 감시 ㉑ 가 최신 회차에서 읽어 알린다 |
 | `collect-applyhome-remndr.yml` | 청약홈 잔여세대 평형 + 취소후재공급 경쟁률 (월 13:30 KST, 세션 496 PR #330). **세션 548 문서 추가** (그동안 표에 없었다) |
 | `notify-subscribers.yml` | 분양 알림 발송기 (월 14:00 KST, 세션 467) — subscribers × 접수 시작 D-0~7 대조. 기본 dry-run(notification_logs 적재+텔레그램 요약), live = PR3(SMS_ADAPTER_READY=true)+SOLAPI Secrets 둘 다 필요. concurrency `notify` 독립 |
 

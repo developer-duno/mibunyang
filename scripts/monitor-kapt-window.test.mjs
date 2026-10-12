@@ -110,6 +110,7 @@ describe("runDailyGuardedChecks — ⑮ 가 매일 점검 묶음에 연결돼 �
     fetchTradeDeals: async () => ({ empty: true, rows: [], tradesCounts: {}, latest: "202609", prev: "202608" }), // ⑯(세션589) — 운영 조회로 새지 않게
     fetchTradeLinks: async () => ({ links: [], apts: [], latestSuccess: null }), // ⑰(세션590) — 같은 이유
     fetchSgisMapRun: async () => [], // ⑱(세션614) — 같은 이유: 없으면 운영 조회로 새어 check-failed 가 하나 더 생긴다
+    fetchNoticeRuns: async () => ({}), // ㉑(세션632) — 같은 이유
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
 
