@@ -12,10 +12,19 @@
  * prices 는 빈칸만 채운다(세션622): 가격 행이 하나도 없는 비임대 단지에 84㎡ 에 가장 가까운 평형의
  *   최고가를 house_type "applyhome_rep" 로 1행(평당가 = 전용면적 기준). 평형 재료 = DB applyhome_unit_supply
  *   누적 행 + 이번 회차 행. 이미 가격 행이 있는 단지는 건드리지 않는다.
+ * 공고 → 단지 짝짓기 v3(세션630, 설계서 docs/superpowers/plans/2026-10-12-applyhome-notice-decisions.md):
+ *   사람 판정 파일(docs/audits/applyhome-notice-decisions.json) → 동점 집합 뒤 `(오)`·블록·차수 어긋남·rejected 제외 →
+ *   같은 묶음이면 첫 행 → 다른 묶음 동점은 블록 글자 + 네이버 지문으로 가름(못 가르면 안 붙임) → 자동 결과만 시도 게이트.
+ *   쌓인 틀린 행은 "다른 묶음이 이겼다" 등 양성 증거가 있을 때만 지운다(`planNoticeReconcile` · 차단기 30행/10% ·
+ *   넘으면 "기존 쌍만" 다시 받고 failure `NTC_BREAKER` — 사람이 `--apply-from` 으로 푼다).
  *
  * 사용법:
- *   node scripts/collectors/collect-applyhome-detail.mjs              (적재)
+ *   node scripts/collectors/collect-applyhome-detail.mjs              (적재 · 정리는 차단기 안에서만)
  *   node scripts/collectors/collect-applyhome-detail.mjs --dry-run    (매칭 미리보기만)
+ *   node scripts/collectors/collect-applyhome-detail.mjs --dry-run --out=<새 파일>
+ *     (정리 계획 — 지우기·넣기·근거 없어 유지·사람 판정 필요 명단 — 을 JSON 으로 저장, 있는 파일이면 던짐)
+ *   node scripts/collectors/collect-applyhome-detail.mjs --apply-from=<승인한 계획 파일>
+ *     (지우는 행·넣는 쌍이 그 파일과 같을 때만 정리 · 다르면 "기존 쌍만" + failure `NTC_PLAN_MISMATCH`)
  *   node scripts/collectors/collect-applyhome-detail.mjs --dry-run --impact-out=<절대경로>
  *     (prices 빈칸 채움 계획을 JSON 으로 저장 — dry-run 에서만 허용)
  *
@@ -24,10 +33,15 @@
 import {
   loadEnv, getSupabase, log, logError, createReporter,
   selectAll, upsertBatch, stringSimilarity,
-  recordApiQuota, recordCollectorRun, REGION_MAP, resolveRegionName, today,
+  recordApiQuota, recordCollectorRun, REGION_MAP, MERGED_SIDO_RE, resolveRegionName, today,
 } from "./_shared.mjs";
-import { writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, existsSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
+import { stripRoundWords, phaseConsistent, blockConflict } from "./_kakao-poi.mjs";
+import { withComputedComplexKeys } from "./_trade-links.mjs";
+import { parseComplexExceptions } from "./_same-complex.mjs";
 
 loadEnv();
 
@@ -38,6 +52,21 @@ let apiCalls = 0;
 
 // 매칭 안전 게이트 (plan: sim>=0.85 AND region 일치 — 동명이지역 오매칭 차단)
 const MATCH_SIM_MIN = 0.85;
+// 주소 첫 낱말이 시도가 아니라 게이트를 못 쓰는 공고(세션630 실측 40건)는 이름이 거의 같거나(≥0.95)
+// 후보 행의 시군구가 주소 앞 두 낱말에 있을 때만 붙인다("부산모라 행복주택" 같은 흔한 이름이 남의 지역 행에 붙는 것을 막는다).
+const GATE_UNKNOWN_SIM_MIN = 0.95;
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, "..", "..");
+/** 공고 → 단지 사람 판정 파일(세션630). 고치는 순서 = PR(사장님 승인) → 미리보기(--out) → --apply-from. */
+export const NOTICE_DECISIONS_PATH = join(REPO_ROOT, "docs", "audits", "applyhome-notice-decisions.json");
+/** 같은 단지 예외 명단 — 빈 묶음 열쇠를 채울 때 assign-complex-keys.mjs 와 같은 명단을 쓴다. */
+const EXCEPTIONS_PATH = join(REPO_ROOT, "docs", "audits", "same-complex-exceptions.json");
+
+// 쌓인 틀린 행 정리 차단기 — 지우는 일정 행만 센다(분모 = 일정 표 행 수). 넘으면 "기존 쌍만" + failure.
+export const NOTICE_BREAKER_MAX_ROWS = 30;
+export const NOTICE_BREAKER_RATIO = 0.1;
+const DELETE_CHUNK = 500;
 
 /**
  * @typedef {{ HOUSE_MANAGE_NO?: string; PBLANC_NO?: string; HOUSE_NM?: string; HSSPLY_ADRES?: string | null;
@@ -56,7 +85,16 @@ const MATCH_SIM_MIN = 0.85;
  *   OLD_PARNTS_SUPORT_HSHLDCO?: string | number; YGMN_HSHLDCO?: string | number; NWWDS_HSHLDCO?: string | number;
  *   INSTT_RECOMEND_HSHLDCO?: string | number; ETC_HSHLDCO?: string | number;
  *   LTTOT_TOP_AMOUNT?: string | number; [k: string]: unknown }} MdlRow
- * @typedef {{ id: string; name: string; region: string | null; presale_type?: string | null }} AptRow
+ * @typedef {{ id: string; name: string; region: string | null; presale_type?: string | null; gu?: string | null;
+ *   lat?: number | null; lng?: number | null; complex_key?: string | null; naver_presale_no?: string | number | null;
+ *   presale_recruit_date?: string | null; presale_general_supply?: number | string | null;
+ *   units?: number | null; unit_source?: string | null }} AptRow
+ * @typedef {"manual" | "skip" | "noMatch" | "conflict_all" | "rejected_all" | "single" | "same_bundle"
+ *   | "tie_fingerprint" | "tie_both" | "tie_block" | "tie_unresolved" | "gate" | "gate_unknown" | "manual_missing"} MatchHow
+ * @typedef {{ id: string; why: "officetel" | "conflict" | "rejected" }} Excluded
+ * @typedef {{ id: string; name: string; key: string }} TieCandidate
+ * @typedef {{ aptIds: string[]; how: MatchHow; sim: number; excluded?: Excluded[]; candidates?: TieCandidate[] }} MatchDetail
+ * @typedef {{ active: Map<string, string[]>; skip: Set<string>; rejected: Set<string> }} NoticeDecisionIndex
  * @typedef {ReturnType<typeof buildUnitRow> & { source?: string | null }} UnitRow
  *   source = DB 칸(기본 'apt' 원 공고 · 'remndr' 잔여세대, collect-applyhome-remndr.mjs). 이번 회차 행엔 없다.
  */
@@ -124,31 +162,235 @@ export function addrToRegion(addr) {
   return stripped || null;
 }
 
-// ── 안전 게이트 매칭: sim>=0.85 AND region 일치 ──
+// ── 시도 게이트용 주소 → region (세션630) ──
 /**
- * 청약홈 Detail row → apartments 매칭. 동명이지역 오매칭 차단.
- * @param {DetailRow} row
- * @param {AptRow[]} apts
- * @returns {{ apt: AptRow; sim: number } | null}
+ * 짝짓기 게이트 전용 — 첫 낱말이 `REGION_MAP` 의 정식명·약칭일 때만 약칭, 통합 시도면 시군구로 가른 값,
+ * **그 밖은 null(모름)**. `addrToRegion` 은 첫 낱말이 시도가 아니어도 접미사만 뗀 글자를 돌려줘("광주시"→"광주"
+ * = 광역시 오판 · "김포"→"김포") 게이트가 엉뚱한 공고를 버렸다(공고 2,900건 중 40건). `addrToRegion` 은
+ * backfill-presale-area-notices.mjs 가 그 동작에 기대므로 고치지 않고 게이트만 이 함수로 바꾼다.
+ * @param {string | null | undefined} addr
+ * @returns {string | null}
  */
-export function matchDetailToApt(row, apts) {
+export function gateRegionOf(addr) {
+  if (!addr) return null;
+  const parts = addr.trim().split(/\s+/);
+  const head = parts[0] || "";
+  if (Object.prototype.hasOwnProperty.call(REGION_MAP, head)) return REGION_MAP[head];
+  if (MERGED_SIDO_RE.test(head)) return resolveRegionName(head, parts[1] ?? null);
+  return null;
+}
+
+// ── 사람 판정 파일 (세션630) ──
+const NOTICE_STATUSES = new Set(["active", "rejected", "skip"]);
+
+/**
+ * 공고 → 단지 사람 판정 파일을 검사해 돌려준다. 꼴 `{ note, updatedAt, decisions: [{ house_manage_no, apartment_id, status,
+ * names, why, verified_by, approved }] }`. status = active(그 공고를 그 행에 · 시도 게이트 면제 · 여러 줄 가능) ·
+ * rejected(그 행엔 절대 안 붙임) · skip(우리 목록에 그 단지가 없음 — apartment_id null). 틀린 줄은 전부 던진다
+ * (조용히 빼면 사람이 정한 판정이 사라진다 — completion-decisions 와 같은 엄격함).
+ * @param {unknown} raw JSON.parse 결과
+ * @returns {{ note: unknown; updatedAt: unknown; decisions: Array<{ house_manage_no: string; apartment_id: string | null; status: "active" | "rejected" | "skip" }> }}
+ */
+export function parseNoticeDecisions(raw) {
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) throw new Error("공고 판정 파일이 객체가 아닙니다");
+  const obj = /** @type {{ note?: unknown; updatedAt?: unknown; decisions?: unknown }} */ (raw);
+  if (!Array.isArray(obj.decisions)) throw new Error("공고 판정 파일에 decisions 배열이 없습니다");
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {Map<string, Set<string>>} */
+  const statusesByHmn = new Map();
+  /** @type {Array<{ house_manage_no: string; apartment_id: string | null; status: "active" | "rejected" | "skip" }>} */
+  const decisions = [];
+  for (const d of obj.decisions) {
+    const e = /** @type {Record<string, unknown>} */ (d ?? {});
+    const hmn = e.house_manage_no;
+    if (typeof hmn !== "string" || !/^\d{10}$/.test(hmn)) throw new Error(`공고 판정 파일: 공고번호는 10자리 숫자 글자여야 합니다 — ${JSON.stringify(hmn)}`);
+    const status = e.status;
+    if (typeof status !== "string" || !NOTICE_STATUSES.has(status)) throw new Error(`공고 판정 파일: status 는 active·rejected·skip 만 받습니다 — ${hmn}: ${JSON.stringify(status)}`);
+    const aptId = e.apartment_id;
+    if (status === "skip") {
+      if (aptId != null) throw new Error(`공고 판정 파일: skip 줄은 apartment_id 가 null 이어야 합니다 — ${hmn}`);
+    } else if (typeof aptId !== "string" || aptId.trim() === "") {
+      throw new Error(`공고 판정 파일: ${status} 줄은 apartment_id 가 있어야 합니다 — ${hmn}`);
+    }
+    for (const f of ["names", "why", "verified_by", "approved"]) {
+      const v = e[f];
+      if (typeof v !== "string" || v.trim() === "") throw new Error(`공고 판정 파일: ${f} 가 비어 있습니다 — ${hmn}`);
+    }
+    const pair = `${hmn}|${aptId ?? ""}`;
+    if (seen.has(pair)) throw new Error(`공고 판정 파일: 같은 (공고번호, 행)이 두 번 나왔습니다 — ${pair}`);
+    seen.add(pair);
+    // skip 은 "그 공고는 우리 목록에 없다" — 같은 공고에 다른 status 가 섞이면 짝짓기(manual)와 정리(decision 지움)가 엇갈린다(세션630 검사관)
+    const prevStatuses = statusesByHmn.get(hmn) ?? new Set();
+    prevStatuses.add(status);
+    statusesByHmn.set(hmn, prevStatuses);
+    if (prevStatuses.has("skip") && prevStatuses.size > 1) throw new Error(`공고 판정 파일: 같은 공고에 skip 과 다른 status 가 섞였습니다 — ${hmn}`);
+    decisions.push({ house_manage_no: hmn, apartment_id: /** @type {string | null} */ (aptId ?? null), status: /** @type {"active" | "rejected" | "skip"} */ (status) });
+  }
+  return { note: obj.note, updatedAt: obj.updatedAt, decisions };
+}
+
+/**
+ * 판정 줄 → 찾기 쉬운 꼴. rejected 는 "공고번호|행 id" 열쇠.
+ * @param {ReturnType<typeof parseNoticeDecisions>["decisions"]} decisions
+ * @returns {NoticeDecisionIndex}
+ */
+export function indexNoticeDecisions(decisions) {
+  /** @type {NoticeDecisionIndex} */
+  const idx = { active: new Map(), skip: new Set(), rejected: new Set() };
+  for (const d of decisions) {
+    if (d.status === "skip") idx.skip.add(d.house_manage_no);
+    else if (d.status === "rejected") idx.rejected.add(`${d.house_manage_no}|${d.apartment_id}`);
+    else {
+      const list = idx.active.get(d.house_manage_no) ?? [];
+      list.push(/** @type {string} */ (d.apartment_id));
+      idx.active.set(d.house_manage_no, list);
+    }
+  }
+  return idx;
+}
+
+// ── 짝짓기 v3 (세션630) ──
+/** @param {AptRow} a */
+const bundleKeyOf = (a) => (a.complex_key ? a.complex_key : a.id);
+/** @param {AptRow[]} rows */
+const byId = (rows) => [...rows].sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+
+/**
+ * 네이버 지문 — ap 번호 주인 행(id = ap-<naver_presale_no>)이고 네이버가 준 공고일(전체 날짜 꼴만)·일반공급 세대수가
+ * 청약홈 원문과 같다. **양성 증거로만** 쓴다(불일치로 후보를 버리지 않는다 — 네이버 날짜가 다른 회차일 수 있다).
+ * @param {DetailRow} row
+ * @param {AptRow} a
+ */
+function fingerprintMatches(row, a) {
+  if (a.naver_presale_no == null || a.id !== `ap-${a.naver_presale_no}`) return false;
+  const date = a.presale_recruit_date;
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date) || date !== row.RCRIT_PBLANC_DE) return false;
+  if (a.presale_general_supply == null || row.TOT_SUPLY_HSHLDCO == null) return false;
+  return Number(a.presale_general_supply) === Number(row.TOT_SUPLY_HSHLDCO);
+}
+
+/**
+ * 시도 게이트(자동 결과만). 주소 첫 낱말이 시도면 접두 비교, 모르면 유사도 ≥0.95 또는 후보 시군구가 주소 앞 두 낱말 안.
+ * @param {DetailRow} row
+ * @param {AptRow} chosen
+ * @param {number} sim
+ * @returns {"ok" | "gate" | "gate_unknown"}
+ */
+function regionGate(row, chosen, sim) {
+  const gr = gateRegionOf(row.HSSPLY_ADRES);
+  if (gr) {
+    if (!chosen.region) return "ok";
+    return gr.startsWith(chosen.region) || chosen.region.startsWith(gr) ? "ok" : "gate";
+  }
+  if (sim >= GATE_UNKNOWN_SIM_MIN) return "ok";
+  const gu = String(chosen.gu ?? "").trim().split(/\s+/)[0] ?? "";
+  if (!gu) return "gate_unknown";
+  const words = String(row.HSSPLY_ADRES ?? "").trim().split(/\s+/).slice(0, 2);
+  const guShort = gu.replace(/(시|군|구)$/, "");
+  return words.some((w) => w === gu || (guShort !== "" && w === guShort)) ? "ok" : "gate_unknown";
+}
+
+/**
+ * 청약홈 Detail row → apartments 짝짓기 v3(순수 함수 · DB 0). 빈 결과도 `how` 를 알려 준다(정리 계획이 쓴다).
+ * 순서 = ① 판정 파일(active 면 그 행들 · 게이트 면제 / skip 이면 비움) ② 유사도 ≥0.85 동점 집합 `tops` 를 **먼저** 정하고
+ * 그 뒤 `(오)` 행·블록·차수 어긋남(회차 낱말을 양쪽 다 뗀 뒤)·rejected 쌍을 뺀다(먼저 빼면 유사도 낮은 엉뚱한 후보가 이긴다)
+ * ③ 남은 묶음 1개 → 첫 행(id 오름차순) ④ 묶음 2개+ → 블록 글자(B)·네이버 지문(F)으로 가름, 못 가르면 비움
+ * ⑤ 자동 결과만 시도 게이트.
+ * @param {DetailRow} row
+ * @param {AptRow[]} apts complex_key 가 빈 행은 미리 채워 넘긴다(`withComputedComplexKeys`)
+ * @param {{ decisions?: NoticeDecisionIndex }} [ctx]
+ * @returns {MatchDetail}
+ */
+export function matchDetailToAptDetailed(row, apts, ctx = {}) {
+  const hmn = String(row.HOUSE_MANAGE_NO ?? "");
   const rn = normName(row.HOUSE_NM);
-  if (!rn) return null;
-  const rRegion = addrToRegion(row.HSSPLY_ADRES);
-  /** @type {AptRow | null} */
-  let best = null;
+  const dec = ctx.decisions;
+  const active = dec?.active.get(hmn);
+  if (active) {
+    // 판정 파일의 행이 apartments 에 없으면(지워진 행) 넣지 않는다 — 넣으면 FK 오류로 일정 upsert 한 묶음(500행)이 통째로 실패한다.
+    const present = new Set(apts.map((a) => a.id));
+    const ids = active.filter((id) => present.has(id));
+    const sims = apts.filter((a) => ids.includes(a.id)).map((a) => stringSimilarity(rn, normName(a.name)));
+    return { aptIds: ids, how: ids.length ? "manual" : "manual_missing", sim: sims.length ? Math.max(...sims) : 0 };
+  }
+  if (dec?.skip.has(hmn)) return { aptIds: [], how: "skip", sim: 0 };
+  if (!rn) return { aptIds: [], how: "noMatch", sim: 0 };
+
   let bestSim = 0;
+  /** @type {AptRow[]} */
+  let tops = [];
   for (const a of apts) {
     const sim = stringSimilarity(rn, normName(a.name));
-    if (sim >= MATCH_SIM_MIN && sim > bestSim) { best = a; bestSim = sim; }
+    if (sim < MATCH_SIM_MIN) continue;
+    if (sim > bestSim) { bestSim = sim; tops = [a]; } else if (sim === bestSim) tops.push(a);
   }
-  if (!best) return null;
-  // region 게이트: 청약홈 주소 시도 ↔ apartments.region 접두 일치
-  if (rRegion && best.region) {
-    const ok = rRegion.startsWith(best.region) || best.region.startsWith(rRegion);
-    if (!ok) return null;
+  if (!tops.length) return { aptIds: [], how: "noMatch", sim: 0 };
+
+  // 동점 집합을 정한 **뒤** 뺀다. 회차 낱말("임의공급3차")은 양쪽 다 떼고 블록·차수를 본다.
+  const rowName = stripRoundWords(row.HOUSE_NM);
+  /** @type {Excluded[]} */
+  const excluded = [];
+  tops = tops.filter((a) => {
+    if (String(a.name ?? "").includes("(오)")) { excluded.push({ id: a.id, why: "officetel" }); return false; }
+    const aName = stripRoundWords(a.name);
+    if (phaseConsistent(rowName, aName) === "conflict" || blockConflict(rowName, aName)) { excluded.push({ id: a.id, why: "conflict" }); return false; }
+    if (dec?.rejected.has(`${hmn}|${a.id}`)) { excluded.push({ id: a.id, why: "rejected" }); return false; }
+    return true;
+  });
+  const extra = excluded.length ? { excluded } : {};
+  if (!tops.length) {
+    const how = excluded.every((x) => x.why === "rejected") ? "rejected_all" : "conflict_all";
+    return { aptIds: [], how, sim: bestSim, ...extra };
   }
-  return { apt: best, sim: bestSim };
+  tops = byId(tops);
+
+  const bundles = new Set(tops.map(bundleKeyOf));
+  /** @type {AptRow} */
+  let chosen;
+  /** @type {MatchHow} */
+  let how;
+  if (bundles.size === 1) {
+    chosen = tops[0];
+    how = tops.length === 1 ? "single" : "same_bundle";
+  } else {
+    const B = tops.filter((a) => {
+      const aName = stripRoundWords(a.name);
+      return !blockConflict(rowName, aName) && phaseConsistent(rowName, aName) === "ok";
+    });
+    const F = tops.filter((a) => fingerprintMatches(row, a));
+    const bB = new Set(B.map(bundleKeyOf));
+    const bF = new Set(F.map(bundleKeyOf));
+    if (bF.size === 1 && (bB.size === 0 || bB.has([...bF][0]))) {
+      chosen = F[0];
+      how = bB.size === 0 ? "tie_fingerprint" : "tie_both";
+    } else if (bF.size === 0 && bB.size === 1) {
+      chosen = B[0];
+      how = "tie_block";
+    } else {
+      return {
+        aptIds: [], how: "tie_unresolved", sim: bestSim, ...extra,
+        candidates: tops.map((a) => ({ id: a.id, name: a.name, key: bundleKeyOf(a) })),
+      };
+    }
+  }
+
+  const gate = regionGate(row, chosen, bestSim);
+  // 게이트에 걸린 행을 후보로 남긴다 — 미리보기 명단(사람이 볼 재료, 세션630 검사관 🟡6)
+  if (gate !== "ok") return { aptIds: [], how: gate, sim: bestSim, ...extra, candidates: [{ id: chosen.id, name: chosen.name, key: bundleKeyOf(chosen) }] };
+  return { aptIds: [chosen.id], how, sim: bestSim, ...extra };
+}
+
+/**
+ * `matchDetailToAptDetailed` 의 얇은 껍데기 — 붙일 행이 없으면 null.
+ * @param {DetailRow} row
+ * @param {AptRow[]} apts
+ * @param {{ decisions?: NoticeDecisionIndex }} [ctx]
+ * @returns {MatchDetail | null}
+ */
+export function matchDetailToApt(row, apts, ctx = {}) {
+  const m = matchDetailToAptDetailed(row, apts, ctx);
+  return m.aptIds.length ? m : null;
 }
 
 // ── 날짜 정규화: ISO("2026-05-29") → DATE 문자열, 그 외 null ──
@@ -367,26 +609,27 @@ export function parseImpactOutArg(argv) {
 }
 
 /**
- * prices 에 price>0 행이 있는 단지 id — 매칭된 단지만 200개씩 `.in()` 으로(전체 표 훑기 금지).
- * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다.
+ * prices 의 price>0 행(단지·종류) — 매칭된 단지만 200개씩 `.in()` 으로(전체 표 훑기 금지).
+ * 한 단지에 행이 많아 1,000행을 넘을 수 있으니 id 커서로 끝까지 읽는다. 종류(house_type)는 "지운다고 가정한" 미리보기가
+ * `applyhome_rep` 행만 빼고 셀 때 쓴다(세션630).
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {string[]} aptIds
  * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(시험에선 가짜) — 이름을 selectAll 로 둬야 정적 가드(_selectall-keycol-coverage)가 keyCol 을 본다
- * @returns {Promise<Set<string>>}
+ * @returns {Promise<Array<{ apartment_id: string; house_type: string | null }>>}
  */
-async function loadAptIdsWithPrice(sb, aptIds, selectAll) {
-  /** @type {Set<string>} */
-  const has = new Set();
+async function loadPriceRows(sb, aptIds, selectAll) {
+  /** @type {Array<{ apartment_id: string; house_type: string | null }>} */
+  const out = [];
   for (let i = 0; i < aptIds.length; i += PRICE_LOOKUP_CHUNK) {
     const chunk = aptIds.slice(i, i + PRICE_LOOKUP_CHUNK);
-    const rows = /** @type {{ apartment_id: string }[]} */ (await selectAll(
-      (s) => s.from("prices").select("id, apartment_id").in("apartment_id", chunk).gt("price", 0),
+    const rows = /** @type {Array<{ apartment_id: string; house_type: string | null }>} */ (await selectAll(
+      (s) => s.from("prices").select("id, apartment_id, house_type").in("apartment_id", chunk).gt("price", 0),
       sb,
       "id",
     ));
-    for (const r of rows) has.add(r.apartment_id);
+    out.push(...rows);
   }
-  return has;
+  return out;
 }
 
 /**
@@ -422,25 +665,246 @@ export function mergeUnitRows(dbRows, roundRows) {
  * @param {import("@supabase/supabase-js").SupabaseClient} sb
  * @param {AptRow[]} apts
  * @param {UnitRow[]} roundRows
- * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(이름 유지 이유 = 위 loadAptIdsWithPrice)
+ * @param {typeof selectAll} selectAll main 이 넘긴 selectAll(이름 유지 이유 = 위 loadPriceRows)
  * @param {typeof today} todayFn main 이 넘긴 KST 날짜 함수(recorded_at)
+ * @param {{ unitDeletePairs: ReadonlyArray<{ apartment_id: string; house_manage_no: string }>; priceDeleteAptIds: readonly string[] }} [assumeDeleted]
+ *   세션630 미리보기 전용 — 정리 지우기를 했다고 가정한다(DB 평형에서 지울 `source=apt` 쌍을 빼고, 영향 단지의 `applyhome_rep`
+ *   가격 행은 없는 셈). 그때만 `assumed`(다시 채움·새로 채움·비는 곳)를 함께 돌려준다.
  */
-async function buildPricePlan(sb, apts, roundRows, selectAll, todayFn) {
-  const dbRows = /** @type {UnitRow[]} */ (await selectAll(
+async function buildPricePlan(sb, apts, roundRows, selectAll, todayFn, assumeDeleted) {
+  let dbRows = /** @type {UnitRow[]} */ (await selectAll(
     (s) => s.from("applyhome_unit_supply")
       .select("id, apartment_id, house_manage_no, model_no, house_ty, supply_area, general_supply, special_supply, top_amount, source")
       .gt("top_amount", 0),
     sb,
     "id",
   ));
+  /** @type {Set<string>} */
+  const priceDel = new Set(assumeDeleted?.priceDeleteAptIds ?? []);
+  if (assumeDeleted) {
+    const del = new Set(assumeDeleted.unitDeletePairs.map((p) => `${p.apartment_id}|${p.house_manage_no}`));
+    dbRows = dbRows.filter((u) => !((u.source ?? UNIT_SOURCE_ORIGINAL) === UNIT_SOURCE_ORIGINAL && del.has(`${u.apartment_id}|${u.house_manage_no}`)));
+  }
   const unitsByApt = mergeUnitRows(dbRows, roundRows);
   const aptById = new Map(apts.map((a) => [a.id, a]));
-  const hasPriceIds = await loadAptIdsWithPrice(sb, [...unitsByApt.keys()], selectAll);
+  const priceRows = await loadPriceRows(sb, [...new Set([...unitsByApt.keys(), ...priceDel])], selectAll);
+  // 가정 모드: 지울 단지의 applyhome_rep 행은 없는 셈(그 단지의 다른 종류 가격 행은 그대로 센다)
+  const hasPriceIds = new Set(priceRows.filter((r) => !(priceDel.has(r.apartment_id) && r.house_type === PRICE_HOUSE_TYPE)).map((r) => r.apartment_id));
   const plan = planApplyhomePrices(unitsByApt, aptById, hasPriceIds, todayFn());
   const c = plan.counts;
-  log(PHASE, `[prices] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
-  log(PHASE, `[prices] 빈칸 채움 ${c.planned}건(임대 제외 ${c.skippedLease} · 이미 값 있음 ${c.skippedHasPrice} · 평형 없음 ${c.skippedNoUnit}${c.skippedNoApt ? ` · 단지 없음 ${c.skippedNoApt}` : ""})`);
-  return plan;
+  log(PHASE, `[prices${assumeDeleted ? " · 지운다고 가정" : ""}] 평형 재료 DB ${dbRows.length}행 + 이번 회차 ${roundRows.length}행 → 단지 ${unitsByApt.size}곳`);
+  log(PHASE, `[prices${assumeDeleted ? " · 지운다고 가정" : ""}] 빈칸 채움 ${c.planned}건(임대 제외 ${c.skippedLease} · 이미 값 있음 ${c.skippedHasPrice} · 평형 없음 ${c.skippedNoUnit}${c.skippedNoApt ? ` · 단지 없음 ${c.skippedNoApt}` : ""})`);
+  if (!assumeDeleted) return plan;
+  const planned = new Set(plan.rows.map((r) => r.apartment_id));
+  const hadRep = new Set(priceRows.filter((r) => priceDel.has(r.apartment_id) && r.house_type === PRICE_HOUSE_TYPE).map((r) => r.apartment_id));
+  return {
+    ...plan,
+    assumed: {
+      refill: plan.rows.filter((r) => priceDel.has(r.apartment_id)).length,
+      fresh: plan.rows.filter((r) => !priceDel.has(r.apartment_id)).length,
+      // 지금 applyhome_rep 가 있는데 지우고 나면 다시 못 채우고 다른 가격 행도 없는 단지
+      lost: [...hadRep].filter((id) => !planned.has(id) && !hasPriceIds.has(id)).sort(),
+    },
+  };
+}
+
+// ── 쌓인 틀린 행 정리 (세션630) ─────────────────────────────────
+// 자동으로 다른 묶음을 고른 결과(지우기의 양성 증거가 되는 how) — 못 가름(tie_unresolved)은 따로 센다.
+const WINNER_HOWS = new Set(["single", "same_bundle", "tie_fingerprint", "tie_both", "tie_block", "manual"]);
+
+/**
+ * @typedef {{ aptIds: string[]; bundles: Set<string>; how: MatchHow; excluded?: Excluded[]; name?: string; candidates?: TieCandidate[] }} DesiredEntry
+ * @typedef {{ id: number | string; apartment_id: string; house_manage_no: string }} ScheduleDbRow
+ * @typedef {"other_bundle" | "decision" | "conflict" | "unresolved"} DeleteWhy
+ */
+
+/**
+ * 정리 계획 — 순수 함수(DB 0). 지우기는 **양성 증거가 있을 때만**: 다른 묶음이 이김 · 판정 파일(skip·rejected) ·
+ * 블록·차수 어긋남으로 후보에서 빠진 행 · 동점을 못 가름. 게이트 탈락·짝 없음은 지울 근거가 없어 유지(명단).
+ * 같은 묶음 추가 행은 지우지 않는다(준공월 되돌리기가 행마다 읽고, 상세 API 가 묶음 단위로 읽는다).
+ * @param {readonly ScheduleDbRow[]} dbRows 지금 presale_schedule_official(id·apartment_id·house_manage_no)
+ * @param {Map<string, DesiredEntry>} desired 이번 회차 공고번호 → 짝짓기 결과(빈 결과도 how 와 함께)
+ * @param {(aptId: string) => string} keyOf 단지 id → 묶음 열쇠(빈 열쇠는 채운 값 · 없는 행은 자기 id)
+ * @param {Set<string>} apiHmns 이번 회차 API 공고번호
+ * @param {NoticeDecisionIndex} decisions
+ */
+export function planNoticeReconcile(dbRows, desired, keyOf, apiHmns, decisions) {
+  /** @type {Array<{ id: number | string; apartment_id: string; house_manage_no: string; why: DeleteWhy }>} */
+  const deletes = [];
+  /** @type {Array<{ id: number | string; apartment_id: string; house_manage_no: string; how: string }>} */
+  const noEvidence = [];
+  let sameBundleExtra = 0;
+  let notInApi = 0;
+  let kept = 0;
+  /** @type {Set<string>} */
+  const dbPairs = new Set();
+  for (const r of dbRows) {
+    const hmn = String(r.house_manage_no);
+    dbPairs.add(`${r.apartment_id}|${hmn}`);
+    if (!apiHmns.has(hmn)) { notInApi++; continue; }
+    const d = desired.get(hmn);
+    /** @type {(why: DeleteWhy) => void} */
+    const del = (why) => { deletes.push({ id: r.id, apartment_id: r.apartment_id, house_manage_no: hmn, why }); };
+    if (decisions.skip.has(hmn) || decisions.rejected.has(`${hmn}|${r.apartment_id}`)) { del("decision"); continue; }
+    if (!d) { noEvidence.push({ id: r.id, apartment_id: r.apartment_id, house_manage_no: hmn, how: "noMatch" }); continue; }
+    if (d.aptIds.includes(r.apartment_id)) { kept++; continue; }
+    if (d.bundles.has(keyOf(r.apartment_id))) { sameBundleExtra++; continue; }
+    if (WINNER_HOWS.has(d.how)) { del("other_bundle"); continue; }
+    if (d.excluded?.some((x) => x.id === r.apartment_id && x.why === "conflict")) { del("conflict"); continue; }
+    if (d.how === "tie_unresolved") { del("unresolved"); continue; }
+    noEvidence.push({ id: r.id, apartment_id: r.apartment_id, house_manage_no: hmn, how: d.how });
+  }
+  /** @type {Array<{ apartment_id: string; house_manage_no: string; how: string }>} */
+  const adds = [];
+  /** @type {Array<{ hmn: string; name: string; candidates: TieCandidate[] }>} */
+  const unresolved = [];
+  for (const [hmn, d] of desired) {
+    for (const aptId of d.aptIds) {
+      if (!dbPairs.has(`${aptId}|${hmn}`)) adds.push({ apartment_id: aptId, house_manage_no: hmn, how: d.how });
+    }
+    if (d.how === "tie_unresolved") unresolved.push({ hmn, name: d.name ?? "", candidates: d.candidates ?? [] });
+  }
+  const unitDeletePairs = deletes.map((x) => ({ apartment_id: x.apartment_id, house_manage_no: x.house_manage_no }));
+  const priceDeleteAptIds = [...new Set(deletes.map((x) => x.apartment_id))].sort();
+  /** @type {Record<DeleteWhy, number>} */
+  const byWhy = { other_bundle: 0, decision: 0, conflict: 0, unresolved: 0 };
+  for (const x of deletes) byWhy[x.why]++;
+  return {
+    deletes, unitDeletePairs, priceDeleteAptIds, adds,
+    keep: { same_bundle_extra: sameBundleExtra, not_in_api: notInApi, no_evidence: noEvidence },
+    unresolved,
+    counts: { rows: dbRows.length, kept, deletes: deletes.length, byWhy, adds: adds.length },
+  };
+}
+
+/**
+ * 정리 차단기(정기 실행) — **지우는 일정 행만** 센다. 분모 = 일정 표 행 수.
+ * @param {{ remove: number; existing: number }} counts
+ * @returns {{ tripped: boolean; reason: string | null }}
+ */
+export function evaluateNoticeBreaker({ remove, existing }) {
+  const ratio = existing > 0 ? remove / existing : 0;
+  const tripped = remove > NOTICE_BREAKER_MAX_ROWS || ratio > NOTICE_BREAKER_RATIO;
+  return {
+    tripped,
+    reason: tripped ? `지우는 일정 행 ${remove}/${existing} = ${(ratio * 100).toFixed(1)}% — 한도(${NOTICE_BREAKER_MAX_ROWS}행 또는 ${NOTICE_BREAKER_RATIO * 100}%) 초과` : null,
+  };
+}
+
+/**
+ * 다시 계산한 정리 계획이 승인한 계획 파일과 같은가 — 지우는 일정 행 id 집합 + 넣는 (단지, 공고) 쌍 집합 둘 다.
+ * (assign-complex-keys `comparePlanToApproved` 와 같은 꼴 — 줄 = JSON 배열, 집합 대조)
+ * @param {{ deletes: ReadonlyArray<{ id: unknown }>; adds: ReadonlyArray<{ apartment_id: unknown; house_manage_no: unknown }> }} current
+ * @param {unknown} approved 계획 파일(--out) 내용
+ * @returns {{ same: boolean; onlyCurrent: string[]; onlyApproved: string[] }}
+ */
+export function compareNoticePlan(current, approved) {
+  const a = /** @type {{ deletes?: unknown; adds?: unknown }} */ (approved ?? {});
+  if (!Array.isArray(a.deletes) || !Array.isArray(a.adds)) throw new Error("승인한 계획 파일에 deletes·adds 배열이 없습니다");
+  /** @param {{ deletes: ReadonlyArray<any>; adds: ReadonlyArray<any> }} p */
+  const lines = (p) => new Set([
+    ...p.deletes.map((x) => JSON.stringify(["delete", String(x?.id ?? "")])),
+    ...p.adds.map((x) => JSON.stringify(["add", x?.apartment_id ?? null, x?.house_manage_no ?? null])),
+  ]);
+  const cur = lines(current);
+  const app = lines(/** @type {any} */ (a));
+  const onlyCurrent = [...cur].filter((x) => !app.has(x)).sort();
+  const onlyApproved = [...app].filter((x) => !cur.has(x)).sort();
+  return { same: onlyCurrent.length === 0 && onlyApproved.length === 0, onlyCurrent, onlyApproved };
+}
+
+/**
+ * 정리 인자 — `--out=<새 파일>`(dry-run 전용) · `--apply-from=<계획 파일>`(dry-run·--out 과 같이 못 씀).
+ * 꼴이 틀리면 던진다(API 호출 전).
+ * @param {readonly string[]} argv
+ * @returns {{ out: string | null; applyFrom: string | null }}
+ */
+export function parseNoticeArgs(argv) {
+  const dryRun = argv.includes("--dry-run");
+  /** @param {string} name */
+  const one = (name) => {
+    if (argv.includes(name)) throw new Error(`${name}=<경로> 꼴로 써야 한다(= 필수)`);
+    const found = argv.filter((a) => a.startsWith(`${name}=`));
+    if (found.length > 1) throw new Error(`${name} 이 두 번 나왔다`);
+    if (!found.length) return null;
+    const p = found[0].slice(name.length + 1);
+    if (!p) throw new Error(`${name} 경로가 비었다`);
+    return p;
+  };
+  const out = one("--out");
+  const applyFrom = one("--apply-from");
+  if (out != null && !dryRun) throw new Error("--out 은 --dry-run 에서만 쓸 수 있다(계획 파일은 미리보기에서만 만든다)");
+  if (applyFrom != null && dryRun) throw new Error("--apply-from 은 --dry-run 과 같이 쓸 수 없다");
+  return { out, applyFrom };
+}
+
+/**
+ * 정리 지우기 — **평형 → 분양가 → 일정** 순서(세션630 검사관: 일정을 먼저 지우고 평형에서 실패하면 다음 회차 계획에 그 쌍이
+ * 안 잡혀 `source=apt` 평형 고아가 영구히 남고 분양가 재료로 계속 쓰인다 → 일정을 마지막에). 평형 = source 'apt' 이고
+ * 지운 (단지, 공고) 쌍(공고번호별 `.in(단지)`) · 분양가 = `applyhome_rep` 이고 영향 단지(200개씩) · 일정 = id 500개씩.
+ * 돌아온 행 수로 센다. 오류는 단계 이름(`stage`)을 달아 던진다 — main 이 `NTC_WRITE <단계>` 로 기록한 뒤 끝낸다.
+ * @param {any} sb
+ * @param {{ deletes: ReadonlyArray<{ id: number | string }>; unitDeletePairs: ReadonlyArray<{ apartment_id: string; house_manage_no: string }>; priceDeleteAptIds: readonly string[] }} plan
+ * @returns {Promise<{ schedule: number; units: number; prices: number }>}
+ */
+export async function deleteNoticeRows(sb, plan) {
+  /** @param {"units" | "prices" | "schedule"} stage @param {string} msg */
+  const fail = (stage, msg) => Object.assign(new Error(`${stage} 지우기 실패: ${msg}`), { stage });
+  /** @type {Map<string, string[]>} */
+  const aptsByHmn = new Map();
+  for (const p of plan.unitDeletePairs) {
+    const list = aptsByHmn.get(p.house_manage_no) ?? [];
+    list.push(p.apartment_id);
+    aptsByHmn.set(p.house_manage_no, list);
+  }
+  let units = 0;
+  for (const [hmn, aptIds] of aptsByHmn) {
+    const { data, error } = await sb.from("applyhome_unit_supply").delete()
+      .eq("house_manage_no", hmn).eq("source", UNIT_SOURCE_ORIGINAL).in("apartment_id", aptIds).select("id");
+    if (error) throw fail("units", `${hmn} ${error.message}`);
+    units += data?.length ?? 0;
+  }
+  let prices = 0;
+  for (let i = 0; i < plan.priceDeleteAptIds.length; i += PRICE_LOOKUP_CHUNK) {
+    const { data, error } = await sb.from("prices").delete()
+      .eq("house_type", PRICE_HOUSE_TYPE).in("apartment_id", plan.priceDeleteAptIds.slice(i, i + PRICE_LOOKUP_CHUNK)).select("id");
+    if (error) throw fail("prices", error.message);
+    prices += data?.length ?? 0;
+  }
+  let schedule = 0;
+  const ids = plan.deletes.map((d) => d.id);
+  for (let i = 0; i < ids.length; i += DELETE_CHUNK) {
+    const { data, error } = await sb.from("presale_schedule_official").delete().in("id", ids.slice(i, i + DELETE_CHUNK)).select("id");
+    if (error) throw fail("schedule", error.message);
+    schedule += data?.length ?? 0;
+  }
+  return { schedule, units, prices };
+}
+
+/**
+ * 표 행 수(`count: exact, head`). 오류는 던진다 · null 은 그대로(호출자가 "모름 = 정리 건너뜀").
+ * @param {any} sb
+ * @param {string} table
+ * @returns {Promise<number | null>}
+ */
+async function countRows(sb, table) {
+  const { count, error } = await sb.from(table).select("id", { count: "exact", head: true });
+  if (error) throw new Error(`${table} 행 수 조회 실패: ${error.message}`);
+  return count ?? null;
+}
+
+/**
+ * 지금 일정 표 전체(id 커서). 인자 이름을 selectAll 로 둬야 정적 가드(_selectall-keycol-coverage)가 keyCol 을 본다.
+ * @param {any} sb
+ * @param {typeof selectAll} selectAll
+ * @returns {Promise<ScheduleDbRow[]>}
+ */
+async function loadScheduleRows(sb, selectAll) {
+  return /** @type {ScheduleDbRow[]} */ (await selectAll(
+    (s) => s.from("presale_schedule_official").select("id, apartment_id, house_manage_no"),
+    sb,
+    "id",
+  ));
 }
 
 // ── 메인 ──────────────────────────────────────────────────────
@@ -448,18 +912,21 @@ async function buildPricePlan(sb, apts, roundRows, selectAll, todayFn) {
  * @typedef {{ apiKey: string | undefined; argv: readonly string[]; getSupabase: typeof getSupabase;
  *   createReporter: typeof createReporter; fetchAllPages: typeof fetchAllPages; selectAll: typeof selectAll;
  *   upsertBatch: typeof upsertBatch; recordCollectorRun: typeof recordCollectorRun;
- *   recordApiQuota: typeof recordApiQuota; today: typeof today }} MainDeps
+ *   recordApiQuota: typeof recordApiQuota; today: typeof today;
+ *   readFileSync: (path: string, enc: "utf8") => string; countRows: typeof countRows;
+ *   deleteNoticeRows: typeof deleteNoticeRows }} MainDeps
  */
 /**
  * 매칭 후보 = apartments 전체(id 커서). main 이 넘긴 selectAll 을 받는다 — 인자 이름을 selectAll 로 둬야
  * 정적 가드(_selectall-keycol-coverage)가 이 호출의 keyCol 을 본다(점 붙은 호출은 가드가 다른 심볼로 건너뛴다, 세션623 CI).
+ * 칸(세션630): 시군구(게이트 모름 보호) · 좌표·유형(빈 묶음 열쇠 계산) · 묶음 열쇠 · 네이버 지문(번호·공고일·일반공급) · 세대수.
  * @param {any} sb
  * @param {typeof selectAll} selectAll
  * @returns {Promise<AptRow[]>}
  */
 async function loadMatchCandidates(sb, selectAll) {
   return /** @type {AptRow[]} */ (await selectAll(
-    (s) => s.from("apartments").select("id, name, region, presale_type"),
+    (s) => s.from("apartments").select("id, name, region, gu, lat, lng, presale_type, complex_key, naver_presale_no, presale_recruit_date, presale_general_supply, units, unit_source"),
     sb,
     "id", // 무정렬 OFFSET 이면 상세 매칭 후보가 조용히 빠진다 (세션543 W2)
   ));
@@ -473,7 +940,8 @@ export async function main(overrides = {}) {
   /** @type {MainDeps} */
   const deps = {
     apiKey: API_KEY, argv: process.argv, getSupabase, createReporter, fetchAllPages,
-    selectAll, upsertBatch, recordCollectorRun, recordApiQuota, today, ...overrides,
+    selectAll, upsertBatch, recordCollectorRun, recordApiQuota, today,
+    readFileSync: (p, enc) => readFileSync(p, enc), countRows, deleteNoticeRows, ...overrides,
   };
   if (!deps.apiKey) {
     logError(PHASE, "MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)");
@@ -481,6 +949,24 @@ export async function main(overrides = {}) {
   }
   const dryRun = deps.argv.includes("--dry-run");
   const impactOutPath = parseImpactOutArg(deps.argv); // dry-run 없이 오면 throw — API 호출 전
+  const { out: planOutPath, applyFrom } = parseNoticeArgs(deps.argv); // 꼴이 틀리면 throw — API 호출 전
+  // 판정 파일·승인 계획 파일은 API 를 부르기 전에 읽는다 — 깨졌으면 아무것도 안 했으므로 실행 기록 없이 멈춘다.
+  /** @type {NoticeDecisionIndex} */
+  let decisionIdx;
+  /** @type {unknown} */
+  let approvedPlan = null;
+  try {
+    decisionIdx = indexNoticeDecisions(parseNoticeDecisions(JSON.parse(deps.readFileSync(NOTICE_DECISIONS_PATH, "utf8"))).decisions);
+    if (applyFrom != null) {
+      approvedPlan = JSON.parse(deps.readFileSync(applyFrom, "utf8"));
+      compareNoticePlan({ deletes: [], adds: [] }, approvedPlan); // 꼴 검사(deletes·adds 배열이 없으면 던진다)
+    }
+  } catch (e) {
+    throw new Error(`NTC_ERROR ${e instanceof Error ? e.message : String(e)} — API 호출 전에 멈춤`);
+  }
+  if (planOutPath != null && existsSync(planOutPath)) {
+    throw new Error(`--out 파일이 이미 있다: ${planOutPath} — 승인했을 수 있는 계획 파일을 덮어쓰지 않는다, 새 이름으로 다시 주세요`);
+  }
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = deps.getSupabase();
@@ -512,44 +998,83 @@ export async function main(overrides = {}) {
     //    presale_stage NOT NULL 제약 제거 — 청약홈 공고가 있는데 분양 단계 미태깅된
     //    단지가 후보에서 빠지던 진앙 정정 (세션 360, +466 단지 회수). 적재는 별도
     //    테이블(presale_schedule_official/applyhome_unit_supply)에만 = apartments base 불변.
-    const apts = await loadMatchCandidates(sb, deps.selectAll);
-    log(PHASE, `매칭 후보 단지: ${apts.length}건`);
-
-    // 3. Detail 매칭 (sim>=0.85 AND region 일치) → house_manage_no별 apartment_id 맵
+    //    빈 묶음 열쇠(월 08:00 네이버·11:30 씨앗이 넣은 새 행 — 열쇠는 다음 날 03:00)는 열쇠 규칙으로 채워 넘긴다(세션630).
+    const rawApts = await loadMatchCandidates(sb, deps.selectAll);
+    const aptCount = await deps.countRows(sb, "apartments");
+    const apts = withComputedComplexKeys(rawApts, parseComplexExceptions(JSON.parse(deps.readFileSync(EXCEPTIONS_PATH, "utf8"))));
+    log(PHASE, `매칭 후보 단지: ${apts.length}건 (apartments count ${aptCount})`);
+    /** @type {string | null} 정리를 건너뛸 이유(받은 행이 모자람·중단) — 있으면 "기존 쌍만" */
+    let skipReason = aptCount !== rawApts.length ? `후보 ${rawApts.length}행 ≠ apartments count ${aptCount}` : null;
     /** @type {Map<string, string>} */
+    const keyById = new Map(apts.map((a) => [a.id, bundleKeyOf(a)]));
+    /** @param {string} id */
+    const keyOf = (id) => keyById.get(id) ?? id;
+    /** @type {Map<string, AptRow>} */
+    const aptById = new Map(apts.map((a) => [a.id, a]));
+
+    // 3. Detail 매칭 v3 → house_manage_no별 apartment_id 목록(판정 파일 active 는 여럿)
+    /** @type {Map<string, string[]>} */
     const hmnToApt = new Map();
+    /** @type {Map<string, DesiredEntry>} */
+    const desired = new Map();
+    /** @type {Set<string>} */
+    const apiHmns = new Set();
+    /** @type {Map<string, string>} */
+    const noticeName = new Map();
+    /** @type {Record<string, number>} */
+    const howCounts = {};
+    /** @type {Array<{ hmn: string; name: string; addr: string | null }>} */
+    const gateUnknown = [];
+    /** @type {Array<{ hmn: string; name: string; addr: string | null; candidates: TieCandidate[] }>} 시도 게이트 탈락 — 미리보기 명단 */
+    const gateBlocked = [];
+    /** @type {Array<{ hmn: string; name: string; how: string; excluded: Excluded[] }>} 동점이 전부 빠진 공고 — 미리보기 명단 */
+    const allExcluded = [];
+    /** @type {string[]} 판정 파일 행이 apartments 에 없는 공고("공고>행+행") — 표식 NTC_MANUAL_MISSING */
+    const manualMissing = [];
+    let blockRejected = 0;
     /** @type {Record<string, unknown>[]} */
     const scheduleRows = [];
     let matched = 0;
     for (const d of details) {
-      if (rpt.interrupted()) break;
-      const m = matchDetailToApt(d, apts);
-      if (!m) continue;
+      if (rpt.interrupted()) { skipReason ??= "중단 신호(매칭 도중)"; break; }
       const hmn = String(d.HOUSE_MANAGE_NO ?? "");
       if (!hmn) continue;
+      apiHmns.add(hmn);
+      noticeName.set(hmn, String(d.HOUSE_NM ?? ""));
+      const m = matchDetailToAptDetailed(d, apts, { decisions: decisionIdx });
+      howCounts[m.how] = (howCounts[m.how] ?? 0) + 1;
+      blockRejected += (m.excluded ?? []).filter((x) => x.why === "conflict").length;
+      if (m.how === "gate_unknown") gateUnknown.push({ hmn, name: String(d.HOUSE_NM ?? ""), addr: d.HSSPLY_ADRES ?? null });
+      if (m.how === "gate") gateBlocked.push({ hmn, name: String(d.HOUSE_NM ?? ""), addr: d.HSSPLY_ADRES ?? null, candidates: m.candidates ?? [] });
+      if (m.how === "conflict_all" || m.how === "rejected_all") allExcluded.push({ hmn, name: String(d.HOUSE_NM ?? ""), how: m.how, excluded: m.excluded ?? [] });
+      if (m.how === "manual_missing") manualMissing.push(`${hmn}>${(decisionIdx.active.get(hmn) ?? []).join("+")}`);
+      desired.set(hmn, {
+        aptIds: m.aptIds, bundles: new Set(m.aptIds.map(keyOf)), how: m.how, excluded: m.excluded,
+        name: String(d.HOUSE_NM ?? ""), candidates: m.candidates,
+      });
+      if (!m.aptIds.length) continue;
       matched++;
-      hmnToApt.set(hmn, m.apt.id);
-      scheduleRows.push(buildScheduleRow(d, m.apt.id));
+      hmnToApt.set(hmn, m.aptIds);
+      for (const aptId of m.aptIds) scheduleRows.push(buildScheduleRow(d, aptId));
       if (dryRun && matched <= 10) {
-        log(PHASE, `  [DRY-RUN] ${d.HOUSE_NM} → ${m.apt.name} (sim=${m.sim.toFixed(2)}, recruit=${toDate(d.RCRIT_PBLANC_DE)})`);
+        const names = m.aptIds.map((id) => aptById.get(id)?.name ?? id).join(", ");
+        log(PHASE, `  [DRY-RUN] ${d.HOUSE_NM} → ${names} (${m.how}, sim=${m.sim.toFixed(2)}, recruit=${toDate(d.RCRIT_PBLANC_DE)})`);
       }
     }
-    log(PHASE, `매칭(일정): ${matched}/${details.length}건`);
+    log(PHASE, `매칭(일정): ${matched}/${details.length}건 · ${JSON.stringify(howCounts)}`);
 
-    // 4. Mdl 평형 — 매칭된 단지(hmn)만 적재
+    // 4. Mdl 평형 — 매칭된 단지(hmn)만 적재(한 공고가 여러 행이면 행마다)
     /** @type {UnitRow[]} */
     const unitRows = [];
     for (const u of mdls) {
       if (rpt.interrupted()) break;
-      const aptId = hmnToApt.get(String(u.HOUSE_MANAGE_NO ?? ""));
-      if (!aptId) continue;
-      unitRows.push(buildUnitRow(u, aptId));
+      for (const aptId of hmnToApt.get(String(u.HOUSE_MANAGE_NO ?? "")) ?? []) unitRows.push(buildUnitRow(u, aptId));
     }
     log(PHASE, `평형 행(매칭 단지): ${unitRows.length}건`);
 
     // 4.5. prices 빈칸 채움 계획 — 중단(SIGTERM)으로 평형이 덜 모였으면 대표 평형이 틀릴 수 있어 건너뜀.
     //      조회 실패도 건너뜀(모르는 채로 쓰면 이미 값 있는 단지에 끼어든다) — 비치명.
-    //      실제 실행은 평형 upsert 뒤에 부른다(아래 5).
+    //      실제 실행은 정리 지우기·평형 upsert 뒤에 부른다(아래 5) — 지운 평형이 빠진 DB 를 읽는다.
     /** @returns {Promise<ReturnType<typeof planApplyhomePrices> | null>} */
     const planPrices = async () => {
       if (rpt.interrupted()) return null;
@@ -561,16 +1086,75 @@ export async function main(overrides = {}) {
       }
     };
 
+    // 4.6. 정리 계획(세션630) — 지금 일정 표 전체 + count 대조. 받은 행이 모자라면 정리를 건너뛴다.
+    const dbRows = await loadScheduleRows(sb, deps.selectAll);
+    const schedCount = await deps.countRows(sb, "presale_schedule_official");
+    if (!skipReason && schedCount !== dbRows.length) skipReason = `일정 표 ${dbRows.length}행 ≠ count ${schedCount}`;
+    const plan = planNoticeReconcile(dbRows, desired, keyOf, apiHmns, decisionIdx);
+    const summaryTail = `근거 없어 유지 ${plan.keep.no_evidence.length} · 게이트 모름 ${gateUnknown.length} · 어긋남 제외 ${blockRejected} · 사람 판정 필요 ${plan.unresolved.length}`;
+    log(PHASE, `[정리 계획] 일정 ${dbRows.length}행 · 지움 ${plan.deletes.length}(${JSON.stringify(plan.counts.byWhy)}) · 평형 쌍 ${plan.unitDeletePairs.length} · 분양가 단지 ${plan.priceDeleteAptIds.length} · 넣기 ${plan.adds.length} · 같은 묶음 추가 행 유지 ${plan.keep.same_bundle_extra} · API 밖 ${plan.keep.not_in_api} · ${summaryTail}`);
+    for (const u of plan.unresolved.slice(0, 20)) {
+      log(PHASE, `  사람 판정 필요 ${u.hmn} ${u.name} ↔ ${u.candidates.map((c) => `${c.id}(${c.name})`).join(" / ")}`);
+    }
+    // 조용히 넘기던 것을 실행 기록 표식으로 — status 는 그대로(REGION_UNRESOLVED 꼴 · data-changing-run-approval §4, 세션630 검사관)
+    const noticeMarkers = () => [
+      ...(skipReason ? [`NTC_SKIP ${skipReason}`] : []),
+      ...(plan.unresolved.length ? [`NTC_UNRESOLVED ${plan.unresolved.length}`] : []),
+      ...(plan.keep.no_evidence.length ? [`NTC_NO_EVIDENCE ${plan.keep.no_evidence.length}`] : []),
+      ...(manualMissing.length ? [`NTC_MANUAL_MISSING ${manualMissing.join(",")}`] : []),
+    ];
+
     if (dryRun) {
+      if (planOutPath) {
+        if (skipReason) {
+          logError(PHASE, `NTC_SKIP ${skipReason} — 계획이 온전하지 않아 --out 저장 안 함`);
+        } else {
+          /** @param {string} id */
+          const nameOf = (id) => aptById.get(id)?.name ?? null;
+          // 지운다고 가정한 분양가 계획 — 지금 DB 로 계산하면 지워질 applyhome_rep 가 "이미 값 있음"으로 잡혀
+          // 다시 채움·사라짐이 안 보인다(세션630 검사관 🟠2). 실패해도 미리보기는 계속(비치명).
+          /** @type {any} */
+          let after = null;
+          try {
+            after = await buildPricePlan(sb, apts, unitRows, deps.selectAll, deps.today, plan);
+          } catch (e) {
+            logError(PHASE, `지운다고 가정한 분양가 계획 실패 (비치명적): ${e instanceof Error ? e.message : String(e)}`);
+          }
+          if (after?.assumed) log(PHASE, `[정리 미리보기] 분양가 다시 채움 ${after.assumed.refill} · 새로 채움 ${after.assumed.fresh} · 비는 곳 ${after.assumed.lost.length}`);
+          const file = {
+            takenAt: new Date().toISOString(),
+            stats: { details: details.length, matched, how: howCounts, tableRows: dbRows.length, apartments: apts.length, byWhy: plan.counts.byWhy, kept: plan.counts.kept },
+            deletes: plan.deletes.map((x) => ({ ...x, apt_name: nameOf(x.apartment_id), apt_key: keyOf(x.apartment_id), notice_name: noticeName.get(x.house_manage_no) ?? null })),
+            adds: plan.adds.map((x) => ({ ...x, apt_name: nameOf(x.apartment_id), apt_key: keyOf(x.apartment_id), notice_name: noticeName.get(x.house_manage_no) ?? null })),
+            priceDeleteAptIds: plan.priceDeleteAptIds,
+            keep: {
+              same_bundle_extra: plan.keep.same_bundle_extra, not_in_api: plan.keep.not_in_api,
+              no_evidence: plan.keep.no_evidence.map((x) => ({ ...x, apt_name: nameOf(x.apartment_id), notice_name: noticeName.get(x.house_manage_no) ?? null })),
+            },
+            gate_unknown: gateUnknown,
+            gate: gateBlocked,
+            conflict_all: allExcluded.map((x) => ({ ...x, excluded: x.excluded.map((e) => ({ ...e, apt_name: nameOf(e.id) })) })),
+            block_rejected: blockRejected,
+            unresolved: plan.unresolved,
+            manual_missing: manualMissing,
+            pricePlanAfterDelete: after?.assumed ? {
+              counts: after.counts, refill: after.assumed.refill, fresh: after.assumed.fresh,
+              lost: after.assumed.lost.map((/** @type {string} */ id) => ({ apartment_id: id, name: nameOf(id) })),
+              rows: after.rows.map((/** @type {any} */ r) => ({ apartment_id: r.apartment_id, name: nameOf(r.apartment_id), price: r.price, pp: r.pp, area: r.area, house_type: r.house_type, recorded_at: r.recorded_at })),
+            } : null,
+          };
+          writeFileSync(planOutPath, JSON.stringify(file, null, 1) + "\n", { encoding: "utf8", flag: "wx" });
+          log(PHASE, `[정리] 계획 파일 저장: ${planOutPath}`);
+        }
+      }
       const pricePlan = await planPrices();
       if (impactOutPath && pricePlan) {
-        const plan = pricePlan;
-        const aptById = new Map(apts.map((a) => [a.id, a]));
-        const rows = plan.rows.map((r) => {
+        const pp = pricePlan;
+        const rows = pp.rows.map((r) => {
           const a = aptById.get(r.apartment_id);
           return { ...r, name: a?.name ?? null, presale_type: a?.presale_type ?? null };
         });
-        writeFileSync(impactOutPath, JSON.stringify({ takenAt: new Date().toISOString(), counts: plan.counts, byPresaleType: plan.byPresaleType, rows }, null, 2), "utf8");
+        writeFileSync(impactOutPath, JSON.stringify({ takenAt: new Date().toISOString(), counts: pp.counts, byPresaleType: pp.byPresaleType, rows }, null, 2), "utf8");
         log(PHASE, `[IMPACT] prices 빈칸 채움 계획 저장: ${impactOutPath}`);
       } else if (impactOutPath) {
         logError(PHASE, "prices 계획이 없어 --impact-out 저장 안 함");
@@ -582,25 +1166,75 @@ export async function main(overrides = {}) {
       return;
     }
 
+    // 5-0. 정리 모드 — 건너뜀(모자란 행·중단) · 승인 계획 불일치 · 차단기면 "기존 쌍만"(지우기·새 쌍·분양가 0).
+    if (rpt.interrupted()) skipReason ??= "중단 신호";
+    /** @type {string | null} failure 머리말(NTC_BREAKER·NTC_PLAN_MISMATCH) — 있으면 exit 1 */
+    let failNote = null;
+    let existingOnly = false;
+    if (skipReason) {
+      existingOnly = true;
+      log(PHASE, `[정리] NTC_SKIP 건너뜀: ${skipReason} — 기존 쌍만 다시 받는다`);
+    } else if (applyFrom != null) {
+      const cmp = compareNoticePlan(plan, approvedPlan);
+      if (!cmp.same) {
+        existingOnly = true;
+        failNote = `NTC_PLAN_MISMATCH 승인한 계획 파일과 지금 계획이 다르다 — 지금만 ${cmp.onlyCurrent.length} · 파일에만 ${cmp.onlyApproved.length}. 미리보기(--out)를 다시 떠서 승인받으세요`;
+        for (const l of [...cmp.onlyCurrent.slice(0, 10), ...cmp.onlyApproved.slice(0, 10)]) log(PHASE, `  어긋남 ${l}`);
+      } else {
+        log(PHASE, `[정리] 승인한 계획 파일과 일치(지움 ${plan.deletes.length} · 넣기 ${plan.adds.length}) — 반영합니다`);
+      }
+    } else {
+      const breaker = evaluateNoticeBreaker({ remove: plan.deletes.length, existing: schedCount ?? dbRows.length });
+      if (breaker.tripped) {
+        existingOnly = true;
+        failNote = `NTC_BREAKER ${breaker.reason} — 명단을 승인받은 뒤 --apply-from 으로`;
+      }
+    }
+    if (failNote) logError(PHASE, `${failNote} — 기존 쌍만 다시 받고 지우기·새 쌍·분양가는 멈춤`);
+
+    let deleted = { schedule: 0, units: 0, prices: 0 };
+    if (!existingOnly && (plan.deletes.length || plan.priceDeleteAptIds.length)) {
+      try {
+        deleted = await deps.deleteNoticeRows(sb, plan);
+      } catch (e) {
+        // 지우기 도중 실패 — 그 단계를 실행 기록에 남기고 끝낸다(upsert 로 넘어가지 않는다 · assign-completion CMP_WRITE 꼴)
+        const stage = /** @type {{ stage?: string }} */ (e ?? {}).stage ?? "unknown";
+        const note = `NTC_WRITE ${stage} ${e instanceof Error ? e.message : String(e)} — 지우기 도중 멈춤(일정·평형·분양가 upsert 안 함)`;
+        logError(PHASE, note);
+        await deps.recordCollectorRun(PHASE, { ...rpt.summary(), status: "failure", errorMessage: [note, ...noticeMarkers()].join(" · ") });
+        throw e;
+      }
+      if (deleted.schedule !== plan.deletes.length) logError(PHASE, `[정리] 지운 일정 행 ${deleted.schedule} ≠ 계획 ${plan.deletes.length} (그 사이 바뀐 행)`);
+    }
+    log(PHASE, `[정리] 지움 ${deleted.schedule}(평형 ${deleted.units}·분양가 ${deleted.prices}) · 넣기 ${existingOnly ? 0 : plan.adds.length} · ${summaryTail}`);
+
+    /** @type {Set<string>} */
+    const dbPairs = new Set(dbRows.map((r) => `${r.apartment_id}|${r.house_manage_no}`));
+    /** @param {{ apartment_id?: unknown; house_manage_no?: unknown }} r */
+    const isExistingPair = (r) => dbPairs.has(`${r.apartment_id}|${r.house_manage_no}`);
+    const scheduleToWrite = existingOnly ? scheduleRows.filter(isExistingPair) : scheduleRows;
+    const unitsToWrite = existingOnly ? unitRows.filter(isExistingPair) : unitRows;
+
     // 5. 적재 (apartments base 컬럼은 안 건드림)
-    if (scheduleRows.length) {
-      const ins = await deps.upsertBatch("presale_schedule_official", scheduleRows, "apartment_id,house_manage_no", 500, sb);
+    if (scheduleToWrite.length) {
+      const ins = await deps.upsertBatch("presale_schedule_official", scheduleToWrite, "apartment_id,house_manage_no", 500, sb);
       rpt.success(ins);
-      if (scheduleRows.length - ins > 0) rpt.fail(scheduleRows.length - ins);
+      if (scheduleToWrite.length - ins > 0) rpt.fail(scheduleToWrite.length - ins);
     }
     // 평형 저장이 일부라도 실패하면 이번 회차 prices 를 쓰지 않는다 — 계획 재료는 메모리 행이라 값이
     // 틀리지는 않지만 '부분 반영 금지'(세션622 결정) 때문. upsertBatch 는 429 아닌 오류에도 던지지 않고
     // 성공 행 수만 돌려주므로 그 수로 판정한다(비치명 · rpt 수치·exit 코드는 그대로, 세션623).
     let unitsComplete = true;
-    if (unitRows.length) {
-      const unitIns = await deps.upsertBatch("applyhome_unit_supply", unitRows, "apartment_id,house_manage_no,model_no", 500, sb);
-      if (unitIns < unitRows.length) {
+    if (unitsToWrite.length) {
+      const unitIns = await deps.upsertBatch("applyhome_unit_supply", unitsToWrite, "apartment_id,house_manage_no,model_no", 500, sb);
+      if (unitIns < unitsToWrite.length) {
         unitsComplete = false;
-        logError(PHASE, `평형 upsert 일부 실패 ${unitIns}/${unitRows.length} — prices 빈칸 채움 이번 회차 건너뜀 (비치명적)`);
+        logError(PHASE, `평형 upsert 일부 실패 ${unitIns}/${unitsToWrite.length} — prices 빈칸 채움 이번 회차 건너뜀 (비치명적)`);
       }
     }
-    // prices 는 평형 적재 뒤 · 실패는 비치명(naver-presale 과 같은 꼴) — rpt 수치(일정 행 수)의 뜻은 그대로
-    const pricePlan = unitsComplete ? await planPrices() : null;
+    // prices 는 평형 적재 뒤 · 실패는 비치명(naver-presale 과 같은 꼴) — rpt 수치(일정 행 수)의 뜻은 그대로.
+    // "기존 쌍만" 모드에서는 쓰지 않는다(새 규칙의 결과가 승인 없이 들어가지 않게).
+    const pricePlan = unitsComplete && !existingOnly ? await planPrices() : null;
     if (pricePlan?.rows.length) {
       try {
         await deps.upsertBatch("prices", pricePlan.rows, "apartment_id,house_type,recorded_at", 500, sb);
@@ -611,8 +1245,14 @@ export async function main(overrides = {}) {
 
     const result = rpt.summary();
     log(PHASE, "\n=== 완료 ===");
-    await deps.recordCollectorRun(PHASE, result);
-    if (result.fail > 0) shouldExit1 = true;
+    const marks = noticeMarkers();
+    if (failNote) {
+      await deps.recordCollectorRun(PHASE, { ...result, status: "failure", errorMessage: [failNote, ...marks].join(" · ") });
+      shouldExit1 = true;
+    } else {
+      await deps.recordCollectorRun(PHASE, { ...result, errorMessage: marks.length ? marks.join(" · ") : null });
+      if (result.fail > 0) shouldExit1 = true;
+    }
   } finally {
     if (!dryRun && apiCalls > 0) {
       await deps.recordApiQuota(PHASE, "MOLIT_KEY", apiCalls);

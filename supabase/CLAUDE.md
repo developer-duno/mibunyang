@@ -32,7 +32,7 @@
 | consults | 상담 신청 | api/consults.js |
 | site_feedback | 손님 의견 보내기(세션575) — RLS 켬·정책 0·service_role S/I/U/D 만·bigserial 시퀀스 USAGE service_role 만·1년 파기 | api/feedback.ts, purge-old-consults.mjs |
 | api_quota_log | API 쿼터 사용량 추적 | recordApiQuota() |
-| presale_schedule_official | 청약홈 공식 분양일정 12종 + 규제 7종 | collect-applyhome-detail |
+| presale_schedule_official | 청약홈 공식 분양일정 12종 + 규제 7종 — 한 공고가 **같은 묶음(`complex_key`) 여러 행**에 붙는 건 허용(상세 API 가 묶음 단위로 읽음) · **다른 묶음**에 붙은 행은 수집기가 정리(세션630 `planNoticeReconcile`, 감시 ⑳) | collect-applyhome-detail |
 | applyhome_unit_supply | 청약홈 주택형별 공급 세대수 (`source` = apt/remndr/opt) | collect-applyhome-detail, collect-applyhome-remndr |
 | applyhome_cancel_respl | 청약홈 취소후재공급 경쟁률 (유형별 6종 `by_type` JSONB) | collect-applyhome-remndr |
 | **dev_plans** | 개발계획·개발축 원본 (세션511 신설). `source`(naver/vworld) × `kind`(road·rail·station·jigu / industrial_complex·lh_zone). `raw` JSONB 에 원본 보존(V-WORLD 는 폴리곤 포함) | naver-devplan |
