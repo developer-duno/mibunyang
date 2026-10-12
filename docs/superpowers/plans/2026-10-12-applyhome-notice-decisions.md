@@ -126,6 +126,7 @@
 ## 5. 설계 ④ — 디센트 4행(결정 1 · 둘로 나눔 — 검사관 🟠)
 
 - **PR-B1(세대수 — 승인 뒤 바로)**: `.omc/artifacts/session630/fix-descent-rows.mjs`(dry-run 기본 · `--apply` · `--undo`): 사본 `descent-before.json`(4행 `id,name,units,unsold,unsold_rate,unit_source,complex_key`) → 조건부 UPDATE(`.eq("units", prev)`): `ah-2026910003` 326 · `ah-2026910004` 450 · `ah-2025930027` 450 · `ah-2026910005` 388 · 넷 다 `unit_source='applyhome'` · `unsold_rate` = `round(unsold/units*1000)/10`(8/326=2.5 · 8/450=1.8 · 8/388=2.1) → 재조회 4/4. `_trade-links.mjs` 는 `units` 를 안 쓰므로 10/22 와 무관 · `molit-units` 는 `units<=1 OR unsold_rate>=100` 만 다시 쓴다(`:54`) · 열쇠 영향 0(검사관 4ⓐ).
+  - ✅ **반영(세션632 10/13 00:17)** — 실제 도구 `.omc/artifacts/session632/fix-descent-rows.mjs`(행별 상태 이전/새/그 밖 · 이어서 반영 · 행별 `--undo`) · **5행**: 위 4행 + `ah-2024930001`「계약취소주택」 391→**388**(사장님 결정 10/13 00:0x — 3단지 값 차용. 근거 = 사장님 세션600 거래 연결 `docs/audits/trade-link-decisions.json:34-35` 가 3단지 · 묶음 열쇠 `#3단지+H4BL` · 이 행엔 자기 공고 일정 0행이라 출처 `applyhome` 은 729 공고 값을 빌린 것) · 검사관 2인(적대·맹점 Opus 🟠1 → 보완 → 재검사 🔴🟠0) · 반영 5/5 · 재조회 5/5 · 열쇠 미리보기 바뀜 0 · 사본 `.omc/artifacts/session632/descent-before.json` · 화면: 0004 만 상품성 +3(400세대 경계) · ⚠️ 미분양률(2.5·1.8·2.1)은 11/09 KOSIS 회차가 새 세대수로 다시 나눠 바뀐다(점수 구간 그대로).
 - **PR-B2(이름 — 10/22(목) 01:00 거래 연결 회차 뒤)**: 0027 `name` → `용인 경남아너스빌 디센트 H3BL(2단지)`. 이유 = 차수 집합이 {2}→{3,2} 가 되어 3단지 거래 후보(3616)를 받고 형제 보류 줄이 늘 수 있는데 10/22 기대값 여유가 2줄뿐(검사관 🟠). 반영 전 `assign-trade-links` 미리보기 재측정 + `assign-complex-keys` 미리보기 "바뀜 0" + 이름 설명 갱신(`same-complex-exceptions.json:19` · `trade-link-decisions.json:96` 의 0027 서술). 화면: 0027 은 VIEW 묶기로 **0004 카드에 접힌다**(끝 괄호 뗀 이름이 같아짐) → live-verify 는 0004·0003 카드(0027 카드는 없음 — 검사관 🟡).
 - 전이표(`data-changing-run-approval` §1) + 검사관 2인(적대 Opus + 맹점 Opus — 운영 DB 일회성) → 사장님 승인 → 반영. 되돌리기 = `--undo`.
 
@@ -157,6 +158,8 @@
 - 19:5x PR-A #743 합침(`0a60941a`) → 19:58 미리보기(지움 110·넣기 15·사람 판정 필요 0 · 50건 밖 38행) → 검사관 2인(적대 `review-adv-apply.md` 🔴0🟠1🟡4 · 맹점 `review-blind-apply.md` 🔴0🟠2🟡8) → 정리 뒤 준공월 흉내 미리보기(순수 함수 `planCompletionUpdates` 에 "지금 일정 − 110 + 15" 를 넣음 · 바뀜 3) → 전이표 페이지 → 사장님 승인 4건 → 20:37 사본 `ntc-before.json` → 20:38 `--apply-from`(계획 일치 · 93초) → 재조회 지우기 0 · 감시 ⑳ 51→0 · 카드 5곳 · 분양가 7곳 · 준공월 실측 바뀜 3 = 흉내.
 - 검사관 둘(반영 전 적대 7건 + PR #747 적대 1건)이 찾은 "일정 0 이 되는 공고 중 맞는 단지가 우리 표에 있는 8건"(괄호 뗀 이름 동점 + 블록 어긋남 → `conflict_all` 꼴, 래미안 3BL 은 skip 근거가 틀렸던 것) → PR #747(`fbe3548c`) 판정 파일 active 8줄 → 21:43 정기 실행 꼴 1회(넣기 8·지우기 0) → 일정 1,940행 · 판정 23줄(active 12·skip 11). **교훈**: 판정 파일을 고치면 `collect-applyhome-detail.test.mjs` 와 `monitor-notice-cross-bundle.test.mjs`(`loadNoticeActivePairs` 기대 명단) **둘 다** 바꿔야 한다 — 후자를 놓쳐 CI 가 한 번 빨갔다.
 - 반영 시각: 설계 ⑥의 "화~일 낮" 대신 **월요일 밤(12:30 회차 뒤 · 03:00 전)** 에 했다 — 맹점 검사관이 20:30~02:50 사이 네 표를 쓰는 예약 작업 0 을 확인(네이버 러너는 월·목 08:00 · 로컬 러너는 04:30·05:30) · 평일 낮은 새 공고 때문에 `NTC_PLAN_MISMATCH` 위험이 더 컸다.
+
+- (세션632 10/13 00:17) §5 PR-B1 디센트 세대수 5행 반영(위 §5 ✅ 줄).
 
 ## 9. 되돌리기 · 범위 밖
 
