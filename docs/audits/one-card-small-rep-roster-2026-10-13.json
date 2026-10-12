@@ -1,0 +1,287 @@
+{
+  "measured_at": "2026-10-13 KST (세션633·634, apartments 3,282행, 읽기 전용)",
+  "rule": "VIEW apartments_flat 이름 끝 괄호 뗀 열쇠 + 시도·구·동 묶음에서 지금 대표(id DESC)가 묶음 최대 세대수 행의 1/3 미만",
+  "groups_2plus": 270,
+  "rep_changes_under_d11": 230,
+  "rows": [
+    {
+      "now_rep": "ah-2021910177",
+      "now_rep_name": "심곡본동 한울에이치밸리움 디그니어스",
+      "now_rep_units": 1,
+      "hidden_biggest": "ah-2021910013",
+      "hidden_name": "심곡본동 한울에이치밸리움 디그니어스",
+      "hidden_units": 37,
+      "d11_rep": "ah-2021910013"
+    },
+    {
+      "now_rep": "ah-2022910055",
+      "now_rep_name": "에비뉴 청계 I",
+      "now_rep_units": 1,
+      "hidden_biggest": "ah-2021910073",
+      "hidden_name": "에비뉴 청계 I",
+      "hidden_units": 56,
+      "d11_rep": "ah-2021910073"
+    },
+    {
+      "now_rep": "ah-2025910102",
+      "now_rep_name": "에비뉴 청계 II(12차)",
+      "now_rep_units": 12,
+      "hidden_biggest": "ah-2024910178",
+      "hidden_name": "에비뉴 청계 II(4차)",
+      "hidden_units": 39,
+      "d11_rep": "ah-2021910079"
+    },
+    {
+      "now_rep": "ah-2025910006",
+      "now_rep_name": "신림스카이아파트(17차)",
+      "now_rep_units": 4,
+      "hidden_biggest": "ah-2022910144",
+      "hidden_name": "신림스카이아파트",
+      "hidden_units": 132,
+      "d11_rep": "ah-2021910083"
+    },
+    {
+      "now_rep": "ah-2025910171",
+      "now_rep_name": "세종자이 더 시티(산울마을2단지)",
+      "now_rep_units": 2,
+      "hidden_biggest": "ah-2021910092",
+      "hidden_name": "세종자이 더 시티",
+      "hidden_units": 626,
+      "d11_rep": "ah-2021910092"
+    },
+    {
+      "now_rep": "ah-2022910053",
+      "now_rep_name": "의정부역 리버카운티아파트",
+      "now_rep_units": 2,
+      "hidden_biggest": "ah-2021910105",
+      "hidden_name": "의정부역 리버카운티아파트",
+      "hidden_units": 37,
+      "d11_rep": "ah-2021910105"
+    },
+    {
+      "now_rep": "ah-2022910006",
+      "now_rep_name": "동래 다솜시티",
+      "now_rep_units": 12,
+      "hidden_biggest": "ah-2021910121",
+      "hidden_name": "동래 다솜시티",
+      "hidden_units": 47,
+      "d11_rep": "ah-2021910121"
+    },
+    {
+      "now_rep": "ah-2024910006",
+      "now_rep_name": "평택화양 휴먼빌 퍼스트시티(무순위 4차)",
+      "now_rep_units": 8,
+      "hidden_biggest": "ah-2022910081",
+      "hidden_name": "평택화양 휴먼빌 퍼스트시티",
+      "hidden_units": 1468,
+      "d11_rep": "ah-2022910081"
+    },
+    {
+      "now_rep": "ah-2022910331",
+      "now_rep_name": "송도 Luxe Ocean SK VIEW(인천시 거주자,세대 전원 무주택자, 계약금20프로/전매제한,재당첨제한7년,청약접수 전 반드시 대표전화 문의)",
+      "now_rep_units": 2,
+      "hidden_biggest": "ah-2022910085",
+      "hidden_name": "송도 Luxe Ocean SK VIEW",
+      "hidden_units": 129,
+      "d11_rep": "ah-2022910085"
+    },
+    {
+      "now_rep": "ah-2024910184",
+      "now_rep_name": "대전 도마·변동 11구역 호반써밋 그랜드 센트럴(무순위 3차)",
+      "now_rep_units": 8,
+      "hidden_biggest": "ah-2022910141",
+      "hidden_name": "대전 도마·변동 11구역 호반써밋 그랜드 센트럴",
+      "hidden_units": 1560,
+      "d11_rep": "ah-2022910098"
+    },
+    {
+      "now_rep": "ah-2022910285",
+      "now_rep_name": "문수로 푸르지오 어반피스(청약전 반드시 대표전화 문의 재당첨 제한 7년, 울산거주자,무주택자만 해당)",
+      "now_rep_units": 9,
+      "hidden_biggest": "ah-2022910142",
+      "hidden_name": "문수로 푸르지오 어반피스",
+      "hidden_units": 339,
+      "d11_rep": "ah-2022910142"
+    },
+    {
+      "now_rep": "ah-2023910013",
+      "now_rep_name": "인천 신흥동 3가 숭의역 엘크루(3차)",
+      "now_rep_units": 5,
+      "hidden_biggest": "ah-2022910150",
+      "hidden_name": "인천 신흥동 3가 숭의역 엘크루",
+      "hidden_units": 28,
+      "d11_rep": "ah-2022910150"
+    },
+    {
+      "now_rep": "ah-2022910363",
+      "now_rep_name": "남악 오룡지구 36BL 남악오룡 시티프라디움",
+      "now_rep_units": 27,
+      "hidden_biggest": "ah-2022910170",
+      "hidden_name": "남악 오룡지구 36BL 남악오룡 시티프라디움",
+      "hidden_units": 178,
+      "d11_rep": "ah-2022910170"
+    },
+    {
+      "now_rep": "ah-2022910302",
+      "now_rep_name": "영통 푸르지오 트레센츠(A1BL)",
+      "now_rep_units": 17,
+      "hidden_biggest": "ah-2022910215",
+      "hidden_name": "영통 푸르지오 트레센츠(A1BL)",
+      "hidden_units": 98,
+      "d11_rep": "ah-2022910215"
+    },
+    {
+      "now_rep": "ah-2022910303",
+      "now_rep_name": "영통 푸르지오 파인베르(A2BL)",
+      "now_rep_units": 8,
+      "hidden_biggest": "ah-2022910216",
+      "hidden_name": "영통 푸르지오 파인베르(A2BL)",
+      "hidden_units": 43,
+      "d11_rep": "ah-2022910216"
+    },
+    {
+      "now_rep": "ah-2023910020",
+      "now_rep_name": "더퍼스트시티 송도(임의공급)",
+      "now_rep_units": 36,
+      "hidden_biggest": "ah-2022910225",
+      "hidden_name": "더퍼스트시티 송도",
+      "hidden_units": 1596,
+      "d11_rep": "ah-2022910225"
+    },
+    {
+      "now_rep": "ah-2023910084",
+      "now_rep_name": "신독산 솔리힐 뉴포레(임의공급2차,할인공급)",
+      "now_rep_units": 10,
+      "hidden_biggest": "ah-2022910243",
+      "hidden_name": "신독산 솔리힐 뉴포레",
+      "hidden_units": 34,
+      "d11_rep": "ah-2022910243"
+    },
+    {
+      "now_rep": "ah-2022910318",
+      "now_rep_name": "한화 포레나 인천구월 (청약전 반드시 대표번호문의, 재당첨제한 7년, 인천거주자/무주택세대구성원만 해당)",
+      "now_rep_units": 6,
+      "hidden_biggest": "ah-2022910299",
+      "hidden_name": "한화 포레나 인천구월 (청약전 반드시 대표번호문의, 재당첨제한 10년, 인천거주자/무주택세대구성원만 해당)",
+      "hidden_units": 21,
+      "d11_rep": "ah-2022910299"
+    },
+    {
+      "now_rep": "ah-2022910332",
+      "now_rep_name": "오산 세교2지구 A10블록 칸타빌 더퍼스트(2차)",
+      "now_rep_units": 2,
+      "hidden_biggest": "ah-2022910312",
+      "hidden_name": "오산 세교2지구 A10블록 칸타빌 더퍼스트",
+      "hidden_units": 11,
+      "d11_rep": "ah-2022910312"
+    },
+    {
+      "now_rep": "ah-2025910133",
+      "now_rep_name": "파주 운정신도시 A39BL 호반써밋(2차)",
+      "now_rep_units": 2,
+      "hidden_biggest": "ah-2023910044",
+      "hidden_name": "파주 운정신도시 A39BL 호반써밋(임의공급 2차)",
+      "hidden_units": 13,
+      "d11_rep": "ah-2023910044"
+    },
+    {
+      "now_rep": "ah-2024910012",
+      "now_rep_name": "e편한세상 답십리 아르테포레(국민주택)(무순위3차)",
+      "now_rep_units": 8,
+      "hidden_biggest": "ah-2023910137",
+      "hidden_name": "e편한세상 답십리 아르테포레(국민주택)(무순위1차)",
+      "hidden_units": 54,
+      "d11_rep": "ah-2023910137"
+    },
+    {
+      "now_rep": "ah-2024910223",
+      "now_rep_name": "용인 에버랜드역 칸타빌 무순위(임의공급 6차)",
+      "now_rep_units": 12,
+      "hidden_biggest": "ah-2024910027",
+      "hidden_name": "용인 에버랜드역 칸타빌 무순위(1차)",
+      "hidden_units": 49,
+      "d11_rep": "ah-2024910027"
+    },
+    {
+      "now_rep": "ah-2024910099",
+      "now_rep_name": "상도 푸르지오 클라베뉴(임의공급 8차)",
+      "now_rep_units": 14,
+      "hidden_biggest": "ah-2024910035",
+      "hidden_name": "상도 푸르지오 클라베뉴(임의공급 4차)",
+      "hidden_units": 68,
+      "d11_rep": "ah-2024910035"
+    },
+    {
+      "now_rep": "ah-2026910017",
+      "now_rep_name": "어반클라쎄목동(11차)",
+      "now_rep_units": 5,
+      "hidden_biggest": "ah-2024910076",
+      "hidden_name": "어반클라쎄목동",
+      "hidden_units": 27,
+      "d11_rep": "ah-2024910076"
+    },
+    {
+      "now_rep": "ah-2024910241",
+      "now_rep_name": "힐스테이트 세종 리버파크(행정중심복합도시 3-3생활권 H4블록)",
+      "now_rep_units": 2,
+      "hidden_biggest": "ah-2024910240",
+      "hidden_name": "힐스테이트 세종 리버파크(행정중심복합도시 3-3생활권 H3블록)",
+      "hidden_units": 342,
+      "d11_rep": "ah-2024910240"
+    },
+    {
+      "now_rep": "ah-2025910050",
+      "now_rep_name": "의왕 월암지구 대방 디에트르 레이크파크(2차)",
+      "now_rep_units": 22,
+      "hidden_biggest": "ah-2025910036",
+      "hidden_name": "의왕 월암지구 대방 디에트르 레이크파크",
+      "hidden_units": 68,
+      "d11_rep": "ah-2025910036"
+    },
+    {
+      "now_rep": "ah-2025930029",
+      "now_rep_name": "익산 제일풍경채 어바니티",
+      "now_rep_units": 4,
+      "hidden_biggest": "ah-2025910099",
+      "hidden_name": "익산 제일풍경채 어바니티",
+      "hidden_units": 1566,
+      "d11_rep": "ah-2025910099"
+    },
+    {
+      "now_rep": "ah-2026910016",
+      "now_rep_name": "경산 하양 제일풍경채(2차)",
+      "now_rep_units": 3,
+      "hidden_biggest": "ah-2025910105",
+      "hidden_name": "경산 하양 제일풍경채",
+      "hidden_units": 614,
+      "d11_rep": "ah-2025910105"
+    },
+    {
+      "now_rep": "ah-2025910187",
+      "now_rep_name": "오산 세교2지구 A12블록 공공분양주택(3차)",
+      "now_rep_units": 7,
+      "hidden_biggest": "ah-2025910128",
+      "hidden_name": "오산 세교2지구 A12블록 공공분양주택",
+      "hidden_units": 125,
+      "d11_rep": "ah-2025910128"
+    },
+    {
+      "now_rep": "ah-2025910271",
+      "now_rep_name": "고덕 자연앤 하우스디(A4BL)(국민)(3차)",
+      "now_rep_units": 3,
+      "hidden_biggest": "ah-2025910215",
+      "hidden_name": "고덕 자연앤 하우스디(A4BL)(국민)(2차)",
+      "hidden_units": 26,
+      "d11_rep": "ah-2025910215"
+    },
+    {
+      "now_rep": "ap-6027800",
+      "now_rep_name": "e편한세상동인천베이프런트",
+      "now_rep_units": 579,
+      "hidden_biggest": "ap-6027843",
+      "hidden_name": "e편한세상동인천베이프런트(오)",
+      "hidden_units": 2708,
+      "d11_rep": "ap-6027800"
+    }
+  ]
+}
