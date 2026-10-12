@@ -251,14 +251,14 @@ describe("parseNoticeDecisions — 사람 판정 파일(거부 7종)", () => {
     expect(() => parseNoticeDecisions({ decisions: [decLine({ apartment_id: null, status: "skip" }), decLine({ status: "rejected" })] })).toThrow(/skip 과 다른 status/);
     expect(parseNoticeDecisions({ decisions: [decLine(), decLine({ apartment_id: "ah-2", status: "rejected" })] }).decisions).toHaveLength(2); // active·rejected 섞임은 받는다
   });
-  it("운영 파일 = 22줄(active 11 · skip 11) · 승인 칸이 다 차 있다", () => {
-    // 세션631: 래미안 3BL skip→active(ap-6027744) + 정리 뒤 일정 0 이 된 공고 6건 active(검사관이 세대수·공고일·블록으로 대조)
+  it("운영 파일 = 23줄(active 12 · skip 11) · 승인 칸이 다 차 있다", () => {
+    // 세션631: 래미안 3BL skip→active(ap-6027744) + 정리 뒤 일정 0 이 된 공고 7건 active(검사관이 세대수·공고일·블록으로 대조)
     const p = parseNoticeDecisions(JSON.parse(readFileSync(NOTICE_DECISIONS_PATH, "utf8")));
     expect(p.decisions.filter((d) => d.status === "active").map((d) => `${d.house_manage_no}>${d.apartment_id}`).sort())
       .toEqual([
         "2021000727>ah-2026910003", "2021000772>ap-6025315", "2023000532>ap-6027298", "2024000594>ap-6027744",
-        "2025000271>ap-6027978", "2025000273>ap-6027979", "2025000634>ap-6028253", "2025820017>ap-6025730",
-        "2026000091>ap-6028369", "2026000105>ap-6028349", "2026000195>ap-6028499",
+        "2025000271>ap-6027978", "2025000273>ap-6027979", "2025000585>ap-6025980", "2025000634>ap-6028253",
+        "2025820017>ap-6025730", "2026000091>ap-6028369", "2026000105>ap-6028349", "2026000195>ap-6028499",
       ]);
     expect(p.decisions.filter((d) => d.status === "skip").map((d) => d.house_manage_no).sort())
       .toEqual(["2020001404", "2021000106", "2021000349", "2021000368", "2021000617", "2023000129", "2023000359", "2023000406", "2023000407", "2024000187", "2024000188"]);

@@ -58,13 +58,18 @@ describe("runNoticeCrossBundleCheck — fail-open", () => {
     expect(issues[0].detail).toBe("⑳ 공고 다른 묶음 점검 실행 실패 — boom");
   });
 
-  it("주입 재료로 판정 · 운영 판정 파일의 active 쌍 = 4", async () => {
+  it("주입 재료로 판정 · 운영 판정 파일의 active 쌍 = 12", async () => {
     const issues = await runNoticeCrossBundleCheck({
       fetchRows: async () => ({ schedRows: [{ apartment_id: "ah-1", house_manage_no: "H1" }, { apartment_id: "ah-2", house_manage_no: "H1" }], keyById: KEYS }),
       loadActive: () => new Set(),
     });
     expect(issues.map((i) => i.kind)).toEqual(["notice-cross-bundle"]);
-    expect([...loadNoticeActivePairs()].sort()).toEqual(["2021000727|ah-2026910003", "2021000772|ap-6025315", "2023000532|ap-6027298", "2025820017|ap-6025730"]);
+    // 세션631: 정리 뒤 일정 0 이 된 공고 8건 active 추가(래미안 3BL skip→active 포함) — 운영 파일과 쌍 단위로 맞춘다
+    expect([...loadNoticeActivePairs()].sort()).toEqual([
+      "2021000727|ah-2026910003", "2021000772|ap-6025315", "2023000532|ap-6027298", "2024000594|ap-6027744",
+      "2025000271|ap-6027978", "2025000273|ap-6027979", "2025000585|ap-6025980", "2025000634|ap-6028253",
+      "2025820017|ap-6025730", "2026000091|ap-6028369", "2026000105|ap-6028349", "2026000195|ap-6028499",
+    ]);
   });
 });
 
