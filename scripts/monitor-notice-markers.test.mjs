@@ -41,6 +41,8 @@ describe("parseNoticeMarkers", () => {
     expect(parseNoticeMarkers(null)).toEqual([]);
     expect(parseNoticeMarkers("")).toEqual([]);
     expect(parseNoticeMarkers("REGION_UNRESOLVED n=2: 전남광주")).toEqual([]);
+    // 조각 머리에서만 읽는다 — 실패 문구 본문에 박힌 글자는 표식이 아니다(세션632 적대 M7)
+    expect(parseNoticeMarkers("NTC_BREAKER 지움 31 > 30 — NTC_UNRESOLVED 9 를 본 뒤 --apply-from 으로")).toEqual([]);
   });
 });
 
@@ -177,8 +179,12 @@ describe("㉑ 배선", () => {
   it("수집기 PHASE·표식 문구·이음이 감시와 같다(한쪽만 바뀌면 빨강)", () => {
     const src = readFileSync(fileURLToPath(new URL("./collectors/collect-applyhome-detail.mjs", import.meta.url)), "utf8");
     expect(src).toContain(`const PHASE = "${NOTICE_MARKER_COLLECTOR}";`);
-    for (const name of Object.keys(NOTICE_MARKER_MEANINGS)) expect(src).toContain(`\`NTC_${name} \${`);
+    // 표식 배열 안의 글자만(앞 `[`) — 같은 글자가 logError 줄에도 있어 그것만으로는 표식 이름 변경을 못 잡는다(세션632 적대 M1)
+    for (const name of Object.keys(NOTICE_MARKER_MEANINGS)) expect(src).toContain(`[\`NTC_${name} \${`);
     expect(src).toContain('errorMessage: marks.length ? marks.join(" · ") : null');
+    // failure 기록 두 길도 같은 이음 — 바뀌면 실패 실행의 성공 표식이 조용히 사라진다(세션632 적대 M6)
+    expect(src).toContain('errorMessage: [failNote, ...marks].join(" · ")');
+    expect(src).toContain('errorMessage: [note, ...noticeMarkers()].join(" · ")');
   });
 
   it("텔레그램 문구 — 제목·조치가 있고 undefined 가 없다", () => {

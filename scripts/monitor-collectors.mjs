@@ -3537,7 +3537,9 @@ export async function runDailyGuardedChecks(deps = {}) {
   }));
 
   // ㉑ 청약홈 공고 정리 경고 표식 — 성공 실행에 남는 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING 은 status 가 success 라
-  //    ①⑬ 이 못 본다(세션632, BACKLOG 세션631 후속 ⓒ). 공개 Actions 로그엔 표식 이름만(공고·단지 번호는 텔레그램에만).
+  //    ①⑬ 이 못 본다(세션632, BACKLOG 세션631 후속 ⓒ). 이 줄의 console 은 표식 이름만 찍지만 main 끝의 이슈 출력
+//    (formatIssueForConsole)은 MANUAL_MISSING 의 공고>단지 id 도 공개 Actions 로그에 찍는다 — 수집기 로그가 이미 같은 번호를 남긴다.
+//    조회 창 = ⑪ 의 24행(주간 수집이면 약 24주) — 그보다 길게 이어진 구간은 시작이 창 끝 행으로 밀려 매주 다시 울린다(BACKLOG).
   issues = issues.concat(await runFailOpenCheck("㉑ 청약홈 공고 정리 표식 점검", async () => {
     const runs = (await fetchNoticeRuns([NOTICE_MARKER_COLLECTOR]))[NOTICE_MARKER_COLLECTOR] ?? [];
     const noticeIssues = checkNoticeMarkers(runs);
