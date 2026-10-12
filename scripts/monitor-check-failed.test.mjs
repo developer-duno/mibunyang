@@ -31,6 +31,7 @@ const LABELS = {
   fetchTradeDeals: "⑯ trade_deals 점검",
   fetchTradeLinks: "⑰ 연결 표 점검",
   fetchSgisMapRun: "⑱ SGIS 매핑 표시 점검",
+  fetchNoticeRuns: "㉑ 청약홈 공고 정리 표식 점검",
 };
 
 /** 전부 정상으로 도는 가짜 조회 — 판정 결과(이상)는 나올 수 있지만 실행 실패는 없다. */
@@ -58,6 +59,8 @@ function okDeps() {
     fetchTradeLinks: async () => ({ links: /** @type {Array<Record<string, any>>} */ ([]), apts: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: null }),
     // SGIS 매핑 기록이 아직 없음 — ⑱ 은 침묵하고 지나간다(세션614)
     fetchSgisMapRun: async () => /** @type {Array<{ error_message?: string | null, finished_at?: string | null }>} */ ([]),
+    // 청약홈 상세 실행 기록이 없음 — ㉑ 은 침묵하고 지나간다(세션632)
+    fetchNoticeRuns: async () => ({}),
     // 운영 monitor_alert_state 를 절대 지우지 않게 — 시험은 항상 가짜(세션572)
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
@@ -95,17 +98,17 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     expect(issues.some((i) => i.kind === "applyhome-unsold")).toBe(true);
   });
 
-  it("열하나 다 실패하면 11건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) + ⑱(세션614) 그대로", async () => {
+  it("열둘 다 실패하면 12건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) + ⑱(세션614) + ㉑(세션632) 그대로", async () => {
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
       fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchFailureRuns: boom, fetchKeyHealth: boom,
-      fetchKaptWindowRuns: boom, fetchTradeDeals: boom, fetchTradeLinks: boom, fetchSgisMapRun: boom,
+      fetchKaptWindowRuns: boom, fetchTradeDeals: boom, fetchTradeLinks: boom, fetchSgisMapRun: boom, fetchNoticeRuns: boom,
       clearHoldAlertKeys: async () => {},
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
       "⑬ 로컬 수집기 실패 점검", "⑭ 묶음 열쇠 칸 점검", "⑮ 2u 창 건너뜀 점검", "⑯ trade_deals 점검", "⑰ 연결 표 점검",
-      "⑱ SGIS 매핑 표시 점검",
+      "⑱ SGIS 매핑 표시 점검", "㉑ 청약홈 공고 정리 표식 점검",
     ]);
   });
 });

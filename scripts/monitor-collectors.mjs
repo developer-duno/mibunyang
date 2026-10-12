@@ -17,6 +17,7 @@
  *   ⑦ 시군구 짝 불일치 — apartments.gu 가 regions 시군구 행과 안 이어져 rg 조인 컬럼이 빈칸
  *   (⑧~⑲ 는 각 점검 머리 주석)
  *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(모든 묶음이 판정 파일 active 일 때만 제외 · KST 월요일 · 세션630)
+ *   ㉑ 청약홈 공고 정리 경고 표식 — applyhome-detail 최신 실행의 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING(매일 · dedup · 세션632)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -276,7 +277,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1067,6 +1068,100 @@ export function checkRegionUnresolved(runsByCollector, targets = REGION_UNRESOLV
     });
   }
   return issues;
+}
+
+// ── ㉑ 청약홈 공고 정리 경고 표식 (세션632) ──────────────────────────────────
+/** ㉑ 대상 수집기 — `collect-applyhome-detail.mjs` 의 PHASE 상수 그대로(`recordCollectorRun` 첫 인자). */
+export const NOTICE_MARKER_COLLECTOR = "applyhome-detail";
+
+/**
+ * ㉑ 성공 표식 4종과 그 뜻(알림 상세 줄). 수집기는 정리(세션630)가 조용히 넘긴 것을 status 는 그대로 둔 채
+ * error_message 에 남긴다 — success 라 ①⑬ 이 못 본다. failure 표식(`NTC_BREAKER`·`NTC_PLAN_MISMATCH`·`NTC_WRITE`·`NTC_ERROR`)은
+ * status failure 라 ①⑬ 몫이고 여기서는 읽지 않는다.
+ */
+export const NOTICE_MARKER_MEANINGS = {
+  SKIP: "계획이 온전하지 않아 이번 회차 정리를 건너뜀(기존 쌍만 다시 받음)",
+  UNRESOLVED: "어느 단지인지 못 가른 공고 — 판정 파일에 적기 전까지 어느 단지에도 안 붙습니다",
+  NO_EVIDENCE: "근거가 없어 지우지 않고 유지한 일정 행",
+  MANUAL_MISSING: "판정 파일에 적은 단지가 apartments 표에 없음",
+};
+
+/** ㉑ 알림 상세 줄에 펼칠 MANUAL_MISSING 공고 수 — 나머지는 "외 N건". */
+export const NOTICE_MARKER_LIST_LIMIT = 5;
+
+/** 표식 한 조각. 이름 뒤 한 칸 공백, 값은 비어 있지 않다(수집기가 값 없는 표식은 안 남긴다). */
+const NOTICE_MARKER_RE = /^NTC_(SKIP|UNRESOLVED|NO_EVIDENCE|MANUAL_MISSING) (.+)$/;
+
+/**
+ * error_message 에서 ㉑ 성공 표식을 뽑는다. 수집기는 표식들을 `" · "` 로 잇고(실패 실행이면 실패 문구가 맨 앞),
+ * 조각 머리가 `NTC_<이름> ` 인 것만 표식이다 — 실패 문구 안의 " · "(NTC_PLAN_MISMATCH) 로 생긴 조각은 머리가 달라 안 걸린다.
+ * SKIP 이유는 자유 문장이지만 지금 세 출처(후보 행 수·중단 신호·일정 표 행 수)에 " · " 가 없다.
+ * @param {string | null | undefined} message
+ * @returns {Array<{ name: keyof typeof NOTICE_MARKER_MEANINGS, value: string }>} 수집기가 남긴 순서
+ */
+export function parseNoticeMarkers(message) {
+  if (typeof message !== "string") return [];
+  /** @type {Array<{ name: keyof typeof NOTICE_MARKER_MEANINGS, value: string }>} */
+  const out = [];
+  for (const part of message.split(" · ")) {
+    const m = NOTICE_MARKER_RE.exec(part.trim());
+    if (m) out.push({ name: /** @type {keyof typeof NOTICE_MARKER_MEANINGS} */ (m[1]), value: m[2] });
+  }
+  return out;
+}
+
+/**
+ * ㉑ dedup 구간을 끊는 **깨끗한 실행** = status success 이고 성공 표식이 없는 실행 1회(⑪ `isCleanRegionRun` 과 같은 결).
+ * 표식 없는 실패 실행은 정리 판정까지 못 간 것이라 구간을 끊지 않는다.
+ * @param {{ status?: string|null, error_message?: string|null }} run
+ * @returns {boolean}
+ */
+export function isCleanNoticeRun(run) {
+  return run.status === "success" && parseNoticeMarkers(run.error_message).length === 0;
+}
+
+/**
+ * ㉑ 청약홈 공고 정리 경고 — `applyhome-detail` 의 **가장 최근 실행 1행**의 성공 표식을 알림 1건으로.
+ * 최신 실행에 표식이 없으면(실패 실행이어도) 침묵 — 옛 실행의 표식은 dedup 구간 시작을 찾는 데만 쓴다.
+ * 사람이 판정 파일을 고쳐야 풀리는 종류라 daily 에서도 dedup 한다(`ALWAYS_DEDUP_KINDS`, ⑪ 과 같은 방식):
+ * 지문 = 표식 이름+값 정렬 해시 + 끊기지 않은 구간의 첫 실행 시각.
+ * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC, [0] 이 최신)
+ * @returns {Issue[]}
+ */
+export function checkNoticeMarkers(runs) {
+  const latest = runs[0];
+  if (!latest) return [];
+  const marks = parseNoticeMarkers(latest.error_message);
+  if (marks.length === 0) return [];
+  let streakStart = latest.finished_at ?? "";
+  for (const r of runs) {
+    if (isCleanNoticeRun(r)) break; // 구간 끝 — 이 뒤(더 옛날)는 다른 구간
+    if (parseNoticeMarkers(r.error_message).length) streakStart = r.finished_at ?? streakStart;
+  }
+  const fp = fingerprintIds(marks.map((m) => `${m.name}=${m.value}`).sort());
+  const order = /** @type {Array<keyof typeof NOTICE_MARKER_MEANINGS>} */ (Object.keys(NOTICE_MARKER_MEANINGS));
+  const sorted = [...marks].sort((a, b) => order.indexOf(a.name) - order.indexOf(b.name));
+  /** @param {{ name: keyof typeof NOTICE_MARKER_MEANINGS, value: string }} m */
+  const label = (m) => (m.name === "SKIP" ? "SKIP" : m.name === "MANUAL_MISSING" ? `MANUAL_MISSING ${m.value.split(",").length}` : `${m.name} ${m.value}`);
+  /** @param {{ name: keyof typeof NOTICE_MARKER_MEANINGS, value: string }} m */
+  const line = (m) => {
+    if (m.name === "SKIP") return `SKIP(${m.value}) — ${NOTICE_MARKER_MEANINGS.SKIP}`;
+    if (m.name !== "MANUAL_MISSING") return `${label(m)} — ${NOTICE_MARKER_MEANINGS[m.name]}`;
+    const items = m.value.split(",");
+    const shown = items.slice(0, NOTICE_MARKER_LIST_LIMIT).join(", ");
+    const rest = items.length - NOTICE_MARKER_LIST_LIMIT;
+    return `${label(m)} — ${NOTICE_MARKER_MEANINGS.MANUAL_MISSING}: ${shown}${rest > 0 ? ` 외 ${rest}건` : ""}`;
+  };
+  return [{
+    kind: "notice-markers",
+    collector: NOTICE_MARKER_COLLECTOR,
+    detail: `NTC_MARKERS 청약홈 공고 정리 경고 — ${sorted.map(label).join(" · ")}`,
+    lines: [
+      ...sorted.map(line),
+      ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+    ],
+    at: `${fp}@${streakStart}`,
+  }];
 }
 
 /**
@@ -2373,7 +2468,8 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
 // 창(50시간)이 겹친 이튿날 한 번 더 알리지 않게 dedup 한다(세션570) — 새 실패 행은 새 키라 그대로 울린다.
 // ⑮ kapt-window 도 at=최근 실행 finished_at — 같은 실행은 한 번만, 다음 회차가 또 건너뛰면 새로 울린다(세션589).
 // ⑱ sgis-map-* 도 at=그 실행의 finished_at — 같은 화요일 행은 한 번만, 다음 화요일 행이 또 그러면 새로 울린다(세션614 보완 W2).
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch"]);
+// ㉑ notice-markers 는 ⑪ 과 같은 지문(표식 이름+값 해시 @ 구간 시작) — 같은 내용이 이어지면 다음 날부터 침묵(세션632).
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers"]);
 
 /**
  * @param {Issue} issue
@@ -3280,7 +3376,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632)을 돌려 이슈를 합친다.
  * ⑲(소유권 정본 대조, 세션617)는 KST 월요일에만 돌아 이 열 밖 `runOwnershipCheck` 로 main 이 바로 뒤에 부른다
  * (이 열에 넣으면 요일에 따라 이 열의 시험 결과가 달라진다).
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
@@ -3296,6 +3392,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchTradeDeals?: () => ReturnType<typeof fetchTradeDealsHealth>,
  *   fetchTradeLinks?: () => ReturnType<typeof fetchTradeLinksHealth>,
  *   fetchSgisMapRun?: () => ReturnType<typeof fetchSgisMapLatestRun>,
+ *   fetchNoticeRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -3313,6 +3410,8 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchTradeDeals = deps.fetchTradeDeals ?? (() => fetchTradeDealsHealth());
   const fetchTradeLinks = deps.fetchTradeLinks ?? (() => fetchTradeLinksHealth());
   const fetchSgisMapRun = deps.fetchSgisMapRun ?? (() => fetchSgisMapLatestRun());
+  // ㉑ 도 ⑪ 과 같은 조회(수집기 이름별 최근 REGION_UNRESOLVED_RUN_WINDOW 행) — 이름만 다르다(세션632).
+  const fetchNoticeRuns = deps.fetchNoticeRuns ?? fetchRegionUnresolvedRuns;
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -3435,6 +3534,18 @@ export async function runDailyGuardedChecks(deps = {}) {
     const sgisIssues = checkSgisMapMarkers(runs);
     console.log(`[monitor] ⑱ SGIS 매핑 표시 점검: 최근 행 ${runs.length ? (runs[0].error_message ?? "표시 없음") : "없음"} → 이상 ${sgisIssues.length}건`);
     return sgisIssues;
+  }));
+
+  // ㉑ 청약홈 공고 정리 경고 표식 — 성공 실행에 남는 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING 은 status 가 success 라
+  //    ①⑬ 이 못 본다(세션632, BACKLOG 세션631 후속 ⓒ). 이 줄의 console 은 표식 이름만 찍지만 main 끝의 이슈 출력
+//    (formatIssueForConsole)은 MANUAL_MISSING 의 공고>단지 id 도 공개 Actions 로그에 찍는다 — 수집기 로그가 이미 같은 번호를 남긴다.
+//    조회 창 = ⑪ 의 24행(주간 수집이면 약 24주) — 그보다 길게 이어진 구간은 시작이 창 끝 행으로 밀려 매주 다시 울린다(BACKLOG).
+  issues = issues.concat(await runFailOpenCheck("㉑ 청약홈 공고 정리 표식 점검", async () => {
+    const runs = (await fetchNoticeRuns([NOTICE_MARKER_COLLECTOR]))[NOTICE_MARKER_COLLECTOR] ?? [];
+    const noticeIssues = checkNoticeMarkers(runs);
+    const names = runs.length ? parseNoticeMarkers(runs[0].error_message).map((m) => m.name).join(",") || "표식 없음" : "실행 없음";
+    console.log(`[monitor] ㉑ 청약홈 공고 정리 표식 점검: 최근 행 ${names} → 이상 ${noticeIssues.length}건`);
+    return noticeIssues;
   }));
 
   return issues;
@@ -4140,7 +4251,7 @@ async function main() {
       return scopeIssues;
     }));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
