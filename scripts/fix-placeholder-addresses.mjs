@@ -1670,7 +1670,7 @@ async function purgeDerived(sb, ids) {
  * @param {any[]} fixList `{ id, newAddress, oldAddress, newLat, newLng }`
  * @returns {Promise<{ ok: number, fail: number, okIds: string[] }>}
  */
-async function applyCoordFixes(sb, fixList) {
+export async function applyCoordFixes(sb, fixList) {
   let ok = 0;
   let fail = 0;
   /** @type {string[]} */
@@ -1683,6 +1683,10 @@ async function applyCoordFixes(sb, fixList) {
         road_address: null,
         lat: f.newLat,
         lng: f.newLng,
+        // 좌표로 매핑된 SGIS 행정동 코드는 옛 좌표 기준이라 비운다 — sgis-map-emd 가 빈칸만 채우므로
+        // 다음 회차가 새 좌표로 다시 채운다(세션635, BACKLOG A-16).
+        sgis_emd_cd: null,
+        sgis_mapped_at: null,
         updated_at: new Date().toISOString(),
       })
       .eq("id", f.id);
