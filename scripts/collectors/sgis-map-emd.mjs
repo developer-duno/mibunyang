@@ -21,7 +21,9 @@
  * ⚠️ `--dry-run` 이면 `recordCollectorRun` 이 스스로 기록을 건너뛴다(_shared.mjs) — 미리보기는 기록 0 이 의도다.
  * ⚠️ 쓰기마다 `apartments.updated_at` 트리거(init 마이그 trg_apartments_updated)가 오른다 — `collect-maintenance.mjs` 가
  *   updated_at 오래된 순으로 회차를 고르므로 첫 회차 때 한 번 밀린다(세션614 메인 판정: 받아들임, 1회성).
- * ⚠️ 좌표가 바뀐 단지는 옛 코드가 남는다 — 재매핑은 후속(정정 도구가 좌표를 옮길 때 sgis_emd_cd 를 비우는 한 줄).
+ * ⚠️ 좌표가 바뀐 단지는 옛 코드가 남지 않게 정정 도구(`fix-placeholder-addresses.mjs` `applyCoordFixes`)가 좌표를 옮길 때
+ *   `sgis_emd_cd`·`sgis_mapped_at` 을 비운다(세션635) — 그래서 다음 회차가 새 좌표로 다시 채운다. 이 도구 밖에서 lat·lng 를
+ *   바꾸는 경로(seed·naver-presale upsert 등)는 미확인(BACKLOG A-16).
  * ⚠️ 마이그 전(칸 없음, PG 42703) 등으로 매핑 본체가 던지면 `runAndRecord` 가 받아 failure 1행(fail 1 · 사유)을 기록하고
  *   exit 1 이다(보완 W6 — 옛 판은 기록 0행으로 죽었다). Supabase 연결 자체가 안 되면 기록할 곳이 없어 exit 1 만 남는다.
  * ⚠️ `coord_shared = true`(좌표가 남의 단지와 공유 = 자리표시, 세션560) 행은 호출하지 않고 건너뛴다(보완 W3 —
