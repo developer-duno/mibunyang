@@ -12,15 +12,17 @@
  * 이 테스트는 그 셋이 되돌아오는 것을 막는다.
  */
 import { describe, it, expect } from "vitest";
-import { esc, aptFacts, buildAptHtml, buildSitemap } from "./postbuild-prerender.mjs";
+import { esc, aptFacts, buildAptHtml, buildUpcomingHtml, buildSitemap } from "./postbuild-prerender.mjs";
 
 /** index.html 의 관련 태그만 추린 최소 틀 (실제 파일과 같은 형태) */
 const TEMPLATE = [
   `<!DOCTYPE html><html lang="ko"><head>`,
   `<meta name="description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />`,
   `<meta property="og:title" content="미분양 비교 엔진 v3.0" />`,
+  `<meta property="og:description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />`,
   `<meta property="og:url" content="https://www.xn--hg3bi2ac4o1ig57cnoa.com/" />`,
   `<meta name="twitter:title" content="미분양 비교 엔진 v3.0" />`,
+  `<meta name="twitter:description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />`,
   `<link rel="canonical" href="https://www.xn--hg3bi2ac4o1ig57cnoa.com/" />`,
   `<title>미분양 비교 엔진 v3.0</title>`,
   `</head><body><div id="root" class="notranslate"></div></body></html>`,
@@ -106,9 +108,52 @@ describe("buildAptHtml — 단지마다 제 canonical·제목·본문", () => {
     expect(html).not.toMatch(/<div id="root"[^>]*>\s*<\/div>/); // 빈 root 가 남으면 안 된다
   });
 
+  it("og:description 과 twitter:description 도 단지 요약 정보로 치환된다 (홈 문구가 아니라)", () => {
+    expect(html).toContain(
+      `<meta property="og:description" content="강서　크라운팰리스（서울） (서울 강서구) 분양가·미분양 정보.`,
+    );
+    expect(html).toContain(
+      `<meta name="twitter:description" content="강서　크라운팰리스（서울） (서울 강서구) 분양가·미분양 정보.`,
+    );
+    expect(html).not.toContain(
+      `<meta property="og:description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />`,
+    );
+    expect(html).not.toContain(
+      `<meta name="twitter:description" content="전국 미분양 아파트를 6개 카테고리 41개 지표로 비교 분석" />`,
+    );
+  });
+
   it("틀을 망가뜨리지 않는다 — 치환은 각 1곳뿐", () => {
     expect((html.match(/rel="canonical"/g) ?? [])).toHaveLength(1);
     expect((html.match(/<title>/g) ?? [])).toHaveLength(1);
+  });
+});
+
+describe("buildUpcomingHtml — /upcoming 정적 페이지 프리렌더", () => {
+  const html = buildUpcomingHtml(TEMPLATE);
+
+  it("canonical 과 og:url 이 /upcoming 주소다", () => {
+    expect(html).toContain(
+      `<link rel="canonical" href="https://www.xn--hg3bi2ac4o1ig57cnoa.com/upcoming" />`,
+    );
+    expect(html).toContain(
+      `<meta property="og:url" content="https://www.xn--hg3bi2ac4o1ig57cnoa.com/upcoming" />`,
+    );
+  });
+
+  it("제목과 설명이 분양 예정 캘린더 안내로 치환된다", () => {
+    expect(html).toContain("<title>분양 예정 아파트 캘린더·일정 | 전국 미분양 비교 엔진</title>");
+    expect(html).toContain(
+      `<meta property="og:title" content="분양 예정 아파트 캘린더·일정 | 전국 미분양 비교 엔진" />`,
+    );
+    expect(html).toContain(
+      `<meta property="og:description" content="전국 분양 예정·청약 일정 및 분양 현황을 캘린더와 단지 목록으로 확인하고 비교 분석해 보세요." />`,
+    );
+  });
+
+  it("본문에 분양 예정 안내 골격이 실려 있다", () => {
+    expect(html).toContain("<h1>전국 분양 예정 아파트</h1>");
+    expect(html).not.toMatch(/<div id="root"[^>]*>\s*<\/div>/);
   });
 });
 
