@@ -20,7 +20,8 @@
  */
 import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
-import { writeFileSync } from "node:fs";
+import { foldForUnsold, summarizeFold } from "./_unsold-bundle.mjs";
+import { readFileSync, writeFileSync } from "node:fs";
 
 /** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {Record<string, Record<string, Record<string, number>>>} UnsoldByRegionGuMonth */
@@ -264,8 +265,13 @@ export function resolveKosisGuKey(region, gu, guMap) {
  * 적용된다. kosis 출처의 0(write_zero 로 쓴 값)은 이 규칙에 안 걸려 다음 회차가 다시 갱신한다
  * (`shouldSkipKosisFill` 이 kosis 출처를 항상 false 로 돌려주므로).
  *
+ * ## 세션635 — 분모·추정치는 묶음 단위(`_unsold-bundle.mjs`), 받는 행 전부 같은 값
+ * 행을 같은 단지 묶음(`complex_key ?? id`, `(오)` 행은 따로)으로 접어 분모 = 같은 KOSIS 키 안 **묶음 세대수(D7) 합**,
+ * 추정치·률은 묶음마다 한 번 계산해 받는 구성원 전부에 같은 값을 준다. hold·존중 행은 그 행만 안 받는다(사장님 결정
+ * §6-9). 무효(규칙 1) 판정의 세대수도 행이 아니라 묶음 세대수다. 계획 행에 `bundleKey`·`bundleUnits`·`bundleSize`.
+ *
  * @param {{
- *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null; unsold_as_of?: string | null }>;
+ *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null; unsold_as_of?: string | null; complex_key?: string | null; naver_presale_no?: string | null; unit_source?: string | null }>;
  *   unsoldByRegionGu: UnsoldByRegionGu;
  *   now?: Date;
  * }} params  now = applyhome 만료 판정 기준 시각(없으면 지금 — main 은 항상 넣는다)
@@ -281,30 +287,39 @@ export function resolveKosisGuKey(region, gu, guMap) {
  *   currentRate: number | null;
  *   currentSource: string | null;
  *   applyhomeExpired: boolean;
+ *   bundleKey: string; bundleUnits: number | null; bundleSize: number;
  * }>}
  */
 export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date() }) {
-  // 1단계 — 각 단지의 kosisKey 를 먼저 계산한다(분모를 그 키 단위로 모으기 위해).
-  // "천안시 동남구"·"천안시 서북구" 는 서로 다른 gu 지만 같은 kosisKey("천안시")로 모여야
-  // "분모는 그 시 전체"(사장님 결정 ①)가 성립한다. 임대형은 분모에서도 제외(사장님 결정 ④).
-  /** @type {Map<string, string | null>} apt.id → kosisKey */
-  const keyByAptId = new Map();
-  /** @type {Record<string, number>} kosisKey 단위 분모("${region}::${kosisKey}") */
+  // 0단계(세션635) — 행을 같은 단지 묶음으로 접는다. 존중 판정(유효 applyhome·옛 완판)은 행 단위 그대로.
+  const isRespected = (/** @type {any} */ apt) =>
+    apt.unsold_source !== "hold" && !!apt.region && (!!apt.gu || apt.region === "세종") && shouldSkipKosisFill({ ...apt, units: 2 }, now);
+  //   ↑ shouldSkipKosisFill 의 무효 분기(units<=1)를 피하려고 units 를 2 로 넘긴다 — 무효는 아래에서 묶음 세대수로 따로 판정한다.
+  const bundles = foldForUnsold(/** @type {any} */ (apartments), { isRespected });
+  /** @type {Map<string, import("./_unsold-bundle.mjs").UnsoldBundle>} apt.id → 묶음 */
+  const bundleOfApt = new Map();
+  for (const b of bundles) for (const m of b.members) bundleOfApt.set(m.id, b);
+
+  // 1단계 — 묶음마다 kosisKey 를 계산하고 분모를 그 키 단위로 모은다(묶음 세대수 D7 을 한 번만 더한다).
+  /** @type {Map<string, string | null>} 묶음 key → kosisKey */
+  const keyByBundle = new Map();
+  /** @type {Record<string, number>} */
   const unitsByKosisKey = {};
-  for (const apt of apartments) {
-    if (!apt.region || !apt.units) { keyByAptId.set(apt.id, null); continue; }
-    const guMap = unsoldByRegionGu[apt.region];
-    const kosisKey = resolveKosisGuKey(apt.region, apt.gu, guMap);
-    keyByAptId.set(apt.id, kosisKey);
-    if (!kosisKey || isLeaseUnit(apt)) continue;
-    const denomKey = `${apt.region}::${kosisKey}`;
-    unitsByKosisKey[denomKey] = (unitsByKosisKey[denomKey] || 0) + apt.units;
+  for (const b of bundles) {
+    if (!b.region || !b.units) { keyByBundle.set(b.key, null); continue; }
+    const kosisKey = resolveKosisGuKey(b.region, b.gu, unsoldByRegionGu[b.region]);
+    keyByBundle.set(b.key, kosisKey);
+    if (!kosisKey || b.lease) continue;
+    const denomKey = `${b.region}::${kosisKey}`;
+    unitsByKosisKey[denomKey] = (unitsByKosisKey[denomKey] || 0) + b.units;
   }
 
   /** @type {ReturnType<typeof planUnsoldUpdates>} */
   const plan = [];
 
   for (const apt of apartments) {
+    const b = /** @type {import("./_unsold-bundle.mjs").UnsoldBundle} */ (bundleOfApt.get(apt.id));
+    const kosisKey = keyByBundle.get(b.key) ?? null;
     /** @type {ReturnType<typeof planUnsoldUpdates>[number]} */
     const base = {
       id: apt.id, name: apt.name, region: apt.region, gu: apt.gu,
@@ -314,112 +329,61 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       currentUnsold: apt.unsold, currentRate: apt.unsold_rate,
       currentSource: apt.unsold_source ?? null,
       applyhomeExpired: applyhomeStatus(apt, now) === "expired",
+      bundleKey: b.key, bundleUnits: b.units, bundleSize: b.members.length,
     };
 
-    // 규칙 0 — 사람 보류(세션570). 무효·임대형보다 먼저. 분모(unitsByKosisKey)는 위 1단계에서
-    // 이미 이 단지를 포함해 모았으므로 여기서 건너뛰어도 이웃 단지 추정치는 변하지 않는다.
-    if (apt.unsold_source === "hold") {
-      plan.push({ ...base, action: "skip_hold", kosisKey: keyByAptId.get(apt.id) ?? null });
-      continue;
-    }
+    // 규칙 0 — 사람 보류(그 행만). 분모(묶음 세대수)에는 이미 들어 있다.
+    if (apt.unsold_source === "hold") { plan.push({ ...base, action: "skip_hold", kosisKey }); continue; }
 
-    // 규칙 1 — 무효(지역·구·세대수<=1). shouldSkipKosisFill 도 이 조건에서 true 를 주지만,
-    // 그건 "존중"(규칙3·4용)과 의미가 다르므로 skip_invalid 로 먼저 갈라낸다(검사관 지적:
-    // units<=1 무효 단지가 규칙3·4 의 skip_preserved 로 잘못 섞이던 결함 수정).
+    // 규칙 1 — 무효: 지역·구 없음, 또는 묶음 세대수 재료 없음(구성원 전부 1 이하·(오)뿐).
     const guOkForInvalid = !!apt.gu || apt.region === "세종";
-    if (!apt.region || !guOkForInvalid || !apt.units || apt.units <= 1) {
-      plan.push({ ...base, action: "skip_invalid" });
-      continue;
-    }
+    if (!apt.region || !guOkForInvalid || !b.units || b.units <= 1) { plan.push({ ...base, action: "skip_invalid" }); continue; }
 
-    // 규칙 2 — 임대형 = 유형(presale_type) 또는 이름(국민임대·행복주택·장기전세·재개발임대·청년안심주택, 세션577·579 — isLeaseUnit).
-    if (isLeaseUnit(apt)) {
-      plan.push({ ...base, action: "skip_lease" });
-      continue;
-    }
+    // 규칙 2 — 임대형(묶음은 임대 여부가 같다 — findMixedBundles 가 섞임을 막는다).
+    if (isLeaseUnit(apt)) { plan.push({ ...base, action: "skip_lease" }); continue; }
 
-    // 규칙 3·4 — shouldSkipKosisFill 이 존중으로 판정한 값(applyhome·NULL출처 완판)은 KOSIS
-    // 매칭을 시도하지도 않고 그대로 존중한다. 새 추정치는 참고용으로 계산해 함께 기록한다.
-    // (여기 도달했다는 것은 이미 규칙1 무효 검사를 통과했다는 뜻이다.)
-    if (shouldSkipKosisFill(apt, now)) {
-      const guMapForRef = apt.region ? unsoldByRegionGu[apt.region] : undefined;
-      const kosisKeyForRef = keyByAptId.get(apt.id) ?? null;
-      /** @type {number | null} */
-      let refEstimate = null;
-      /** @type {number | null} */
-      let refRate = null;
-      if (kosisKeyForRef && guMapForRef) {
-        const guUnsoldForRef = /** @type {Record<string, number>} */ (guMapForRef)[kosisKeyForRef];
-        if (guUnsoldForRef != null) {
-          const denomKeyForRef = `${apt.region}::${kosisKeyForRef}`;
-          const totalForRef = unitsByKosisKey[denomKeyForRef] || apt.units || 0;
-          const refResult = calcProportionalUnsold(guUnsoldForRef, apt.units, totalForRef);
-          if (refResult) { refEstimate = refResult.estimated; refRate = refResult.unsoldRate; }
-        }
-      }
-      // C6 — 공고일 빈 applyhome 은 존중하되 따로 센다(조용히 넘기면 영구 동결 — 경고 마커로 올린다).
+    // 규칙 3·4 — 존중(유효 applyhome·공고일 없음·옛 완판). 참고 추정치는 묶음 값으로 적는다.
+    if (b.respected.includes(apt.id)) {
+      const ref = kosisKey ? estimateBundle(b, kosisKey) : null;
       const preservedAction = applyhomeStatus(apt, now) === "no_date" ? "skip_applyhome_no_date" : "skip_preserved";
-      plan.push({ ...base, action: preservedAction, kosisKey: kosisKeyForRef, newEstimate: refEstimate, newRate: refRate });
+      plan.push({ ...base, action: preservedAction, kosisKey, newEstimate: ref?.estimated ?? null, newRate: ref?.rate ?? null });
       continue;
     }
 
-    // 규칙 5 — 여기부터는 출처 kosis·NULL 출처 값>0·값 없음. KOSIS 가 정한다.
-    const guMap = apt.region ? unsoldByRegionGu[apt.region] : undefined;
-    const kosisKey = keyByAptId.get(apt.id) ?? null;
-
-    // 5a — 매칭 실패(검사관 H1: 시도/구 응답 자체가 없다 ≠ 값이 0). 값을 유지한다.
-    if (!kosisKey) {
-      plan.push({ ...base, action: "skip_no_match" });
-      continue;
-    }
+    // 규칙 5 — 받는 행. 묶음마다 한 번 계산한 값을 그대로.
+    if (!kosisKey) { plan.push({ ...base, action: "skip_no_match" }); continue; }
+    const guMap = unsoldByRegionGu[/** @type {string} */ (apt.region)];
     const guUnsold = /** @type {Record<string, number>} */ (guMap)[kosisKey];
-    if (guUnsold == null) {
-      plan.push({ ...base, action: "skip_no_match", kosisKey });
-      continue;
-    }
+    if (guUnsold == null) { plan.push({ ...base, action: "skip_no_match", kosisKey }); continue; }
+    if (guUnsold <= 0) { plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, newEstimate: 0, newRate: 0 }); continue; }
 
-    // 5b — 그 구 응답은 왔고 값이 0 이하. 0 을 쓴다(비우지 않는다 — 사장님 결정).
-    if (guUnsold <= 0) {
-      plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, newEstimate: 0, newRate: 0 });
-      continue;
-    }
-
-    // 비례배분 분모 — 같은 kosisKey 로 모인 시 전체(비임대) 합. 세션567 사장님 결정 ①.
     const denomKey = `${apt.region}::${kosisKey}`;
-    const totalUnitsInGu = unitsByKosisKey[denomKey] || apt.units || 0;
-
-    const result = calcProportionalUnsold(guUnsold, apt.units, totalUnitsInGu);
+    const totalUnitsInGu = unitsByKosisKey[denomKey] || b.units;
+    const result = calcProportionalUnsold(guUnsold, b.units, totalUnitsInGu);
     if (!result) {
-      // 5c — 합계는 0 초과인데 비례배분 결과(반올림)가 0 이하(단지가 그 구에서 아주 작은 비중).
-      // 5d — 100% 초과(비정상)는 값을 유지한다(비우지도, 0 을 쓰지도 않는다).
-      const rawEstimate = totalUnitsInGu > 0 && apt.units ? Math.round(guUnsold * (apt.units / totalUnitsInGu)) : null;
-      if (rawEstimate != null && rawEstimate <= 0) {
-        plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, totalUnitsInGu, newEstimate: 0, newRate: 0 });
-        continue;
-      }
+      const rawEstimate = totalUnitsInGu > 0 ? Math.round(guUnsold * (b.units / totalUnitsInGu)) : null;
+      if (rawEstimate != null && rawEstimate <= 0) { plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, totalUnitsInGu, newEstimate: 0, newRate: 0 }); continue; }
       plan.push({ ...base, action: "skip_no_estimate", kosisKey, guUnsold, totalUnitsInGu });
       continue;
     }
-
     const { estimated, unsoldRate } = result;
-
-    // 5e — 추정률 50% 이상은 신뢰 못 할 만큼 커서 보류(값 유지).
     if (unsoldRate >= UNRELIABLE_RATE_THRESHOLD) {
-      plan.push({
-        ...base, action: "hold_ge50", kosisKey, guUnsold, totalUnitsInGu,
-        newEstimate: estimated, newRate: unsoldRate,
-      });
+      plan.push({ ...base, action: "hold_ge50", kosisKey, guUnsold, totalUnitsInGu, newEstimate: estimated, newRate: unsoldRate });
       continue;
     }
-
-    // 5f — 정상 추정치를 쓴다.
-    plan.push({
-      ...base, action: "write", kosisKey, guUnsold, totalUnitsInGu,
-      newEstimate: estimated, newRate: unsoldRate,
-    });
+    plan.push({ ...base, action: "write", kosisKey, guUnsold, totalUnitsInGu, newEstimate: estimated, newRate: unsoldRate });
   }
-
   return plan;
+
+  /** 존중 행의 참고 추정치(묶음 값). @param {import("./_unsold-bundle.mjs").UnsoldBundle} b @param {string} kosisKey */
+  function estimateBundle(b, kosisKey) {
+    const guMap = b.region ? unsoldByRegionGu[b.region] : undefined;
+    const guUnsold = guMap ? /** @type {Record<string, number>} */ (guMap)[kosisKey] : undefined;
+    if (guUnsold == null || !b.units) return null;
+    const total = unitsByKosisKey[`${b.region}::${kosisKey}`] || b.units;
+    const r = calcProportionalUnsold(guUnsold, b.units, total);
+    return r ? { estimated: r.estimated, rate: r.unsoldRate } : null;
+  }
 }
 
 /**
@@ -535,6 +499,57 @@ export function parseExpectZeroArg(argv) {
   return { expectZero: n, explicit: true, invalid: false, raw };
 }
 
+/**
+ * `--apply-from=<승인한 impact json>` 인자를 읽는다(세션635, 맹점 O8 · `data-changing-run-approval` §2 — 행마다 값이
+ * 다른 반영은 숫자 하나로 승인하지 않는다). 값이 비었거나 두 번 나오거나 `--expect-zero` 와 같이 주면 던진다(승인 수단은 하나).
+ * @param {string[]} argv
+ * @returns {{ applyFrom: string | null }}
+ */
+export function parseApplyFromArg(argv) {
+  const args = argv.filter((a) => a.startsWith("--apply-from"));
+  if (args.length === 0) return { applyFrom: null };
+  if (args.length > 1) throw new Error("--apply-from 이 두 번 나왔습니다 — 승인한 계획 파일은 하나만 줍니다");
+  const m = /^--apply-from=(.+)$/.exec(args[0]);
+  if (!m) throw new Error(`--apply-from 에는 승인한 계획 파일 경로가 필요합니다: ${args[0]}`);
+  if (argv.some((a) => a.startsWith("--expect-zero"))) {
+    throw new Error("--apply-from 과 --expect-zero 는 같이 줄 수 없습니다 — 승인 수단은 하나입니다(계획 파일 대조가 곧 승인)");
+  }
+  return { applyFrom: m[1] };
+}
+
+/**
+ * 다시 세운 계획이 사람이 승인한 계획 파일(`--impact-out` 의 `plan`)과 **쓰는 행의 내용까지** 같은가. DB 접근 없는 순수 함수.
+ * 비교 대상 = 양쪽에서 `action ∈ {write, write_zero}` 인 행만, 비교 칸 = `id·currentUnsold·newEstimate·newRate·action`.
+ * 개수만 맞추면 그 사이 다른 행이 바뀐 반영을 통과시킨다 — 그래서 id 로 맞대 명단을 낸다(`assign-complex-keys.mjs` 의 같은 이름 함수 꼴).
+ * @param {ReadonlyArray<any>} current 지금 다시 세운 계획(`planUnsoldUpdates` 결과)
+ * @param {unknown} approved 승인한 계획 파일의 `plan`
+ * @returns {{ same: boolean, onlyCurrent: string[], onlyApproved: string[], changed: Array<{ id: string, cur: unknown, app: unknown }> }}
+ */
+export function comparePlanToApproved(current, approved) {
+  if (!Array.isArray(approved)) throw new Error("승인한 계획 파일에 plan 배열이 없습니다");
+  const writesOf = (/** @type {ReadonlyArray<any>} */ arr) => {
+    /** @type {Map<string, { currentUnsold: unknown, newEstimate: unknown, newRate: unknown, action: unknown }>} */
+    const m = new Map();
+    for (const p of arr) {
+      if (p?.action !== "write" && p?.action !== "write_zero") continue;
+      m.set(String(p.id), { currentUnsold: p.currentUnsold ?? null, newEstimate: p.newEstimate ?? null, newRate: p.newRate ?? null, action: p.action });
+    }
+    return m;
+  };
+  const cur = writesOf(current);
+  const app = writesOf(approved);
+  const onlyCurrent = [...cur.keys()].filter((id) => !app.has(id)).sort();
+  const onlyApproved = [...app.keys()].filter((id) => !cur.has(id)).sort();
+  /** @type {Array<{ id: string, cur: unknown, app: unknown }>} */
+  const changed = [];
+  for (const [id, c] of cur) {
+    const a = app.get(id);
+    if (a && JSON.stringify(c) !== JSON.stringify(a)) changed.push({ id, cur: c, app: a });
+  }
+  changed.sort((x, y) => (x.id < y.id ? -1 : x.id > y.id ? 1 : 0));
+  return { same: onlyCurrent.length === 0 && onlyApproved.length === 0 && changed.length === 0, onlyCurrent, onlyApproved, changed };
+}
+
 // 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로
 // 남는 사각 정정 (PR #97 collect-regional-economy 패턴 답습).
 export async function main() {
@@ -554,6 +569,17 @@ export async function main() {
   let noDateMarker = null;
   try {
     if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
+
+    // 세션635(맹점 O8) — 승인한 계획 파일은 DB·KOSIS 를 보기 **전에** 읽어 plan 배열인지 확인한다(try 안 — 실패도 기록에 남게).
+    const { applyFrom } = parseApplyFromArg(process.argv);
+    /** @type {any[] | null} */
+    let approvedPlan = null;
+    if (applyFrom != null) {
+      const approved = /** @type {{ plan?: unknown }} */ (JSON.parse(readFileSync(applyFrom, "utf8")))?.plan;
+      if (!Array.isArray(approved)) throw new Error(`승인한 계획 파일에 plan 배열이 없습니다: ${applyFrom}`);
+      approvedPlan = approved;
+      log(PHASE, `--apply-from: 승인한 계획 ${approvedPlan.length}행 — 이번 계획과 write/write_zero 행이 전부 같을 때만 씁니다`);
+    }
 
     const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 321: graceful shutdown
     const sb = getSupabase();
@@ -659,12 +685,12 @@ export async function main() {
     // 2. apartments unsold 추정 (KOSIS 비례배분) — 계획만 세운다, 아직 쓰지 않는다.
     // 세션549: 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
     // 세션566: apartments 는 selectAll(..., "id") 로 전수 확보한다(1,000행 컷 수리).
-    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null; unsold_as_of: string | null }} AptRow */
+    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null; unsold_as_of: string | null; complex_key: string | null; naver_presale_no: string | null; unit_source: string | null }} AptRow */
     /** @type {AptRow[]} */
     let apartmentsTyped;
     try {
       apartmentsTyped = /** @type {any} */ (
-        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of"), sb, "id")
+        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of, complex_key, naver_presale_no, unit_source"), sb, "id")
       );
     } catch (e) {
       // 세션569 검사관: return 하면 finally 가 success ok=0 으로 조용히 기록한다(마이그보다 머지가 먼저라
@@ -679,6 +705,8 @@ export async function main() {
     const actionCounts = {};
     for (const p of plan) actionCounts[p.action] = (actionCounts[p.action] || 0) + 1;
     log(PHASE, `apartments 계획: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")}`);
+    const fold = summarizeFold(foldForUnsold(/** @type {any} */ (apartmentsTyped), { isRespected: () => false }));
+    log(PHASE, `[묶음] 묶음 ${fold.bundles} · 2행+ ${fold.multi} · 받는 행 ${fold.receivers} (존중 판정 전 수)`);
 
     // 세션570 A5 — 사람 보류(hold)와 "빈칸 → 0" 은 개수만이 아니라 명단을 남긴다(다음 회차 뒤 대조용).
     const { holdIds, nullToZeroIds } = summarizeHoldAndNullToZero(plan);
@@ -735,7 +763,7 @@ export async function main() {
           generatedAt: new Date().toISOString(), actionCounts, breaker,
           applyhomeExpiredCount: expiredPlans.length, applyhomeNoDateIds: noDateIds,
           holdIds, nullToZeroIds,
-          regionUpdateCount: regionUpdates.length, plan,
+          regionUpdateCount: regionUpdates.length, fold, plan,
         }, null, 2), "utf8");
         log(PHASE, `[IMPACT] 계획 ${plan.length}행 저장(breaker 포함): ${impactOutPath}`);
       } catch (e) {
@@ -743,7 +771,27 @@ export async function main() {
       }
     }
 
-    if (breaker.fired) {
+    // 세션635(맹점 O8) — 승인한 계획 파일로만 쓰는 실행. write/write_zero 행의 id·현재값·새값·률·action 이 전부 같을 때만
+    // 쓴다(같으면 그 계획이 곧 승인이라 0-쓰기 차단기는 보지 않는다 — `--expect-zero` 와 같이 못 주는 이유). 다르면 regions·
+    // apartments 어느 것도 쓰지 않고 failure 로 남긴다(impact-out 은 위에서 이미 썼다).
+    if (approvedPlan) {
+      const cmp = comparePlanToApproved(plan, approvedPlan);
+      if (!cmp.same) {
+        const n = cmp.onlyCurrent.length + cmp.onlyApproved.length + cmp.changed.length;
+        if (cmp.onlyCurrent.length > 0) log(PHASE, `  어긋남(이번에만 씀) ${cmp.onlyCurrent.length}건: ${cmp.onlyCurrent.slice(0, 20).join(",")}`);
+        if (cmp.onlyApproved.length > 0) log(PHASE, `  어긋남(승인에만 있음) ${cmp.onlyApproved.length}건: ${cmp.onlyApproved.slice(0, 20).join(",")}`);
+        for (const c of cmp.changed.slice(0, 20)) log(PHASE, `  어긋남(값 다름) ${c.id}: 승인 ${JSON.stringify(c.app)} → 지금 ${JSON.stringify(c.cur)}`);
+        const msg = `KOSIS_PLAN_MISMATCH ${n}건 — 승인한 계획 파일과 지금 계획이 다릅니다(이번에만 ${cmp.onlyCurrent.length} · 승인에만 ${cmp.onlyApproved.length} · 값 다름 ${cmp.changed.length})` +
+          ` — regions·apartments 어느 것도 쓰지 않습니다. 미리보기를 다시 떠서 승인받으세요`;
+        if (dryRun) {
+          logError(PHASE, `[DRY-RUN 경고] ${msg}`);
+          ok = 0;
+          return;
+        }
+        throw new Error(msg);
+      }
+      log(PHASE, `승인한 계획 파일과 일치(write/write_zero 행 기준) — 반영합니다(0-쓰기 차단기는 보지 않음)`);
+    } else if (breaker.fired) {
       const msg = `KOSIS 0-쓰기 차단기 발동 — 값>0 인데 0 으로 바뀌는 행 ${breaker.zeroChanges}/${breaker.denominator} ` +
         `(${breaker.ratio.toFixed(1)}%)${breaker.expectZero != null ? ` (expect-zero=${breaker.expectZero} 와 불일치)` : ` 가 임계 ${breaker.limit}% 를 초과`}` +
         ` — regions·apartments 어느 것도 쓰지 않고 전체를 중단합니다`;
@@ -827,58 +875,48 @@ export async function main() {
     // 세션567: 시군구 매칭은 resolveKosisGuKey 로 통일(시 단위·세종 포함) — 임대형 제외,
     // 새 추정 미분양률 50% 이상은 저장하지 않는다(사장님 결정).
     const allMonthsMap = parseKosisRowsAllMonths(rows);
-    // 세션567: 각 단지의 kosisKey 를 먼저 계산해 그 키 단위로 분모를 모은다(§ planUnsoldUpdates
-    // 와 동일한 이유 — "천안시 동남구"·"천안시 서북구" 가 같은 "천안시" 분모를 공유해야 한다).
-    // 분모에서도 임대형 제외(사장님 결정 ④).
-    /** @type {Map<string, string | null>} apt.id → kosisKey(월별 맵 기준) */
-    const historyKeyByAptId = new Map();
+    // 세션635: 분모·추정치는 묶음 단위(planUnsoldUpdates 와 같은 접기). hold 행은 시계열 행을 만들지 않는다(A7).
+    const historyBundles = foldForUnsold(/** @type {any} */ (apartmentsTyped), { isRespected: () => false });
+    /** @type {Map<string, string | null>} 묶음 key → kosisKey(월별 맵 기준) */
+    const historyKeyByBundle = new Map();
     /** @type {Record<string, number>} */
     const unitsByGuForHistory = {};
-    for (const apt of apartmentsTyped) {
-      if (!apt.region || !apt.units || apt.units <= 1) { historyKeyByAptId.set(apt.id, null); continue; }
-      const monthMap = allMonthsMap[apt.region];
-      const kosisKey = monthMap ? resolveKosisGuKey(apt.region, apt.gu, /** @type {any} */ (monthMap)) : null;
-      historyKeyByAptId.set(apt.id, kosisKey);
-      if (!kosisKey || isLeaseUnit(apt)) continue;
-      const denomKey = `${apt.region}::${kosisKey}`;
-      unitsByGuForHistory[denomKey] = (unitsByGuForHistory[denomKey] || 0) + apt.units;
+    for (const b of historyBundles) {
+      if (!b.region || !b.units || b.units <= 1) { historyKeyByBundle.set(b.key, null); continue; }
+      const monthMap = allMonthsMap[b.region];
+      const kosisKey = monthMap ? resolveKosisGuKey(b.region, b.gu, /** @type {any} */ (monthMap)) : null;
+      historyKeyByBundle.set(b.key, kosisKey);
+      if (!kosisKey || b.lease) continue;
+      const denomKey = `${b.region}::${kosisKey}`;
+      unitsByGuForHistory[denomKey] = (unitsByGuForHistory[denomKey] || 0) + b.units;
     }
 
     /** @type {Array<{ apartment_id: string; base_month: string; unsold_count: number; post_completion_unsold: number | null; change: number | null; recorded_at: string }>} */
     const historyRows = [];
     let heldHistoryCount = 0;
     const todayDate = today(); // KST 고정 (루프 밖 1회 — 자정 경계 중복 0)
-    // 세션570 A7 — 사람 보류(hold) 단지는 시계열 행을 만들지 않는다(분모 계산은 위에서 이미 포함했다).
-    const { kept: historyApartments, excludedIds: holdHistoryExcluded } = excludeHoldFromHistory(apartmentsTyped);
-    if (holdHistoryExcluded.length > 0) log(PHASE, `unsold_history hold 제외: ${holdHistoryExcluded.length}건`);
-    for (const apt of historyApartments) {
-      if (!apt.region || !apt.units || apt.units <= 1) continue;
-      if (isLeaseUnit(apt)) continue;
-
-      const monthMap = allMonthsMap[apt.region];
-      if (!monthMap) continue;
-      const kosisKey = historyKeyByAptId.get(apt.id) ?? null;
-      if (!kosisKey) continue;
+    let holdHistoryExcluded = 0;
+    for (const b of historyBundles) {
+      if (!b.region || !b.units || b.units <= 1 || b.lease) continue;
+      const monthMap = allMonthsMap[b.region];
+      const kosisKey = historyKeyByBundle.get(b.key) ?? null;
+      if (!monthMap || !kosisKey) continue;
       const periodMap = /** @type {any} */ (monthMap)[kosisKey];
       if (!periodMap) continue;
-
-      const denomKey = `${apt.region}::${kosisKey}`;
-      const totalUnitsInGu = unitsByGuForHistory[denomKey] || apt.units;
-
+      const totalUnitsInGu = unitsByGuForHistory[`${b.region}::${kosisKey}`] || b.units;
+      // 받는 행 = hold 가 아닌 구성원 전부(존중 행도 시계열은 KOSIS 계열 그대로 — 지금 설계).
+      const targets = b.members.filter((m) => m.unsold_source !== "hold").map((m) => m.id);
+      holdHistoryExcluded += b.holds.length;
       for (const [period, guUnsold] of Object.entries(periodMap)) {
-        const result = calcProportionalUnsold(/** @type {number} */ (guUnsold), apt.units, totalUnitsInGu);
+        const result = calcProportionalUnsold(/** @type {number} */ (guUnsold), b.units, totalUnitsInGu);
         if (!result) continue;
-        if (result.unsoldRate >= UNRELIABLE_RATE_THRESHOLD) { heldHistoryCount++; continue; }
-        historyRows.push({
-          apartment_id: apt.id,
-          base_month: period,
-          unsold_count: result.estimated,
-          post_completion_unsold: null,
-          change: null,
-          recorded_at: todayDate,
-        });
+        if (result.unsoldRate >= UNRELIABLE_RATE_THRESHOLD) { heldHistoryCount += targets.length; continue; }
+        for (const apartment_id of targets) {
+          historyRows.push({ apartment_id, base_month: period, unsold_count: result.estimated, post_completion_unsold: null, change: null, recorded_at: todayDate });
+        }
       }
     }
+    if (holdHistoryExcluded > 0) log(PHASE, `unsold_history hold 제외: ${holdHistoryExcluded}건`);
 
     if (heldHistoryCount > 0) log(PHASE, `unsold_history 보류(≥${UNRELIABLE_RATE_THRESHOLD}%): ${heldHistoryCount}건 — 저장 안 함`);
 

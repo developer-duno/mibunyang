@@ -33,7 +33,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_KEY = "test-key";
 
-const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, evaluateZeroBreaker, parseExpectZeroArg, main } =
+const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, evaluateZeroBreaker, parseExpectZeroArg, comparePlanToApproved, main } =
   await import("./collect-unsold-kosis.mjs");
 const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -321,7 +321,7 @@ describe("apartments 조회 배선 — select 에 unsold_source 포함", () => {
 
   it("apartmentsTyped 조회 select 문자열에 unsold_source 가 들어 있다", () => {
     expect(src).toMatch(
-      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of"\), sb, "id"\)/, // 세션569 C6: 공고일 칸
+      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of, complex_key, naver_presale_no, unit_source"\), sb, "id"\)/, // 세션569 C6: 공고일 칸 · 세션635: 묶음 재료 3칸
     );
   });
 });
@@ -1543,7 +1543,8 @@ describe("사람 보류 hold (세션570)", () => {
     expect(src.match(/from\("apartments"\)\.update\(/g) ?? []).toHaveLength(1);
     expect(src).toContain('sb.from("apartments").update(payload).eq("id", id).or(NOT_HOLD_FILTER).select("id")');
     expect(src.match(/await updateApartmentUnlessHold\(sb, p\.id, /g) ?? []).toHaveLength(2);
-    expect(src).toContain("for (const apt of historyApartments) {");
+    // 세션635: 시계열은 묶음 단위로 만든다 — hold 행을 빼는 자리는 묶음의 받는 행(targets) 거르기다(A7 그대로).
+    expect(src).toContain('const targets = b.members.filter((m) => m.unsold_source !== "hold").map((m) => m.id);');
   });
 
   describe("main() 배선", () => {
@@ -1670,5 +1671,110 @@ describe("main() unsold_history — 이름-임대 제외 (세션577)", () => {
     expect(historyRows.map((/** @type {any} */ r) => [r.apartment_id, r.base_month, r.unsold_count])).toEqual([["target-1", "202607", 20]]);
     // 규칙 2(계획) 쪽도 — apartments UPDATE 는 target 하나뿐(이름-임대는 skip_lease)
     expect(updateCalls.filter((c) => c.table === "apartments").map((c) => [c.id, c.payload.unsold])).toEqual([["target-1", 20]]);
+  });
+});
+
+describe("planUnsoldUpdates — 묶음 단위 배분(세션635 나)", () => {
+  const guMap = { 경북: { 경산시: 100 } }; // 경산시 미분양 100
+  const base = { region: "경북", gu: "경산시", unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null, unit_source: null, naver_presale_no: null, complex_key: null };
+  it("같은 묶음 세 행이 같은 추정치·같은 률을 받고, 분모는 묶음 세대수 한 번만", () => {
+    const apartments = [
+      { ...base, id: "ah-1", name: "하양", units: 614, unit_source: "molit", complex_key: "하양" },
+      { ...base, id: "ah-2", name: "하양(2차)", units: 3, unit_source: "applyhome", complex_key: "하양" },
+      { ...base, id: "ap-9", name: "하양", units: 614, unit_source: "naver_presale", naver_presale_no: "9", complex_key: "하양" },
+      { ...base, id: "ah-3", name: "다른단지", units: 386 },
+    ];
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap });
+    const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
+    // 분모 = 614(하양 묶음) + 386 = 1000 → 하양 묶음 61.4 → 61, 률 61/614 = 9.9
+    expect(byId["ah-1"].totalUnitsInGu).toBe(1000);
+    expect(byId["ah-1"].newEstimate).toBe(61);
+    expect(byId["ah-2"].newEstimate).toBe(61);
+    expect(byId["ap-9"].newEstimate).toBe(61);
+    expect(byId["ah-2"].newRate).toBe(byId["ah-1"].newRate);
+    expect(byId["ah-1"].bundleKey).toBe("하양");
+    expect(byId["ah-1"].bundleUnits).toBe(614);
+    expect(byId["ah-1"].bundleSize).toBe(3);
+    expect(byId["ah-3"].newEstimate).toBe(39);
+  });
+  it("회차 행(units 3)은 혼자였으면 skip_invalid 가 아니지만, 묶음에선 묶음 세대수로 판정해 write 를 받는다", () => {
+    const apartments = [
+      { ...base, id: "ah-1", name: "하양", units: 614, complex_key: "하양" },
+      { ...base, id: "ah-2", name: "하양(2차)", units: 1, complex_key: "하양" },
+    ];
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap });
+    expect(plan.find((p) => p.id === "ah-2")?.action).toBe("write");
+  });
+  it("hold 행은 skip_hold 그대로, 형제는 받는다 · 분모에는 hold 묶음 세대수도 든다", () => {
+    const apartments = [
+      { ...base, id: "ah-1", name: "엘리프", units: 127, unsold_source: "hold", complex_key: "엘리프" },
+      { ...base, id: "ap-2", name: "엘리프", units: 452, unit_source: "naver_presale", naver_presale_no: "2", unsold: 0, unsold_source: "kosis", complex_key: "엘리프" },
+      { ...base, id: "ah-3", name: "남악", units: 178, unsold_source: "hold", complex_key: "남악" },
+      { ...base, id: "ah-4", name: "남악", units: 27, unsold_source: "hold", complex_key: "남악" },
+    ];
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap });
+    const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
+    expect(byId["ah-1"].action).toBe("skip_hold");
+    expect(byId["ap-2"].action).toBe("write");
+    expect(byId["ap-2"].totalUnitsInGu).toBe(452 + 178); // 남악 묶음 D7 = 178(큰 값)
+    expect(byId["ah-3"].action).toBe("skip_hold");
+  });
+  it("유효 applyhome 행은 skip_preserved 그대로, 형제 네이버 행은 받는다", () => {
+    const now = new Date("2026-10-13T03:00:00Z");
+    const apartments = [
+      { ...base, id: "ah-1", name: "르네오션", units: 63, unsold: 63, unsold_source: "applyhome", unsold_as_of: "2026-05-12", complex_key: "르네" },
+      { ...base, id: "ap-2", name: "르네오션", units: 263, unit_source: "naver_presale", naver_presale_no: "2", unsold: 40, unsold_source: "kosis", complex_key: "르네" },
+    ];
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap, now });
+    const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
+    expect(byId["ah-1"].action).toBe("skip_preserved");
+    expect(byId["ap-2"].action).toBe("write");
+    expect(byId["ap-2"].bundleUnits).toBe(263);
+  });
+  it("(오) 행은 같은 열쇠여도 따로 배분받는다", () => {
+    const apartments = [
+      { ...base, id: "ah-1", name: "그란테르", units: 500, complex_key: "G" },
+      { ...base, id: "ah-2", name: "그란테르(오)", units: 500, complex_key: "G" },
+    ];
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap });
+    const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
+    expect(byId["ah-2"].bundleKey).toBe("G#off:ah-2");
+    expect(byId["ah-1"].totalUnitsInGu).toBe(1000);
+  });
+  it("complex_key 가 없는 옛 입력(기존 시험 꼴)은 행마다 혼자 묶음 — 결과가 전과 같다", () => {
+    const apartments = [{ ...base, id: "ah-1", name: "A", units: 400 }, { ...base, id: "ah-2", name: "B", units: 600 }];
+    const plan = planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap });
+    expect(plan.map((p) => p.newEstimate)).toEqual([40, 60]);
+    expect(plan.every((p) => p.bundleSize === 1)).toBe(true);
+  });
+});
+
+describe("comparePlanToApproved — --apply-from 승인 계획 대조(세션635 나, 맹점 O8)", () => {
+  /** @param {Record<string, unknown>} o */
+  const p = (o) => ({ id: "x", action: "write", currentUnsold: 10, newEstimate: 20, newRate: 5.5, ...o });
+  it("write/write_zero 행의 id·현재값·새값·률·action 이 전부 같으면 same (skip 행 차이는 보지 않는다)", () => {
+    const approved = [p({ id: "a" }), p({ id: "b", action: "write_zero", newEstimate: 0, newRate: 0 }), p({ id: "s", action: "skip_hold" })];
+    const current = [p({ id: "a" }), p({ id: "b", action: "write_zero", newEstimate: 0, newRate: 0 }), p({ id: "s", action: "skip_preserved", newEstimate: 99 })];
+    const r = comparePlanToApproved(current, approved);
+    expect(r.same).toBe(true);
+    expect(r).toEqual({ same: true, onlyCurrent: [], onlyApproved: [], changed: [] });
+  });
+  it("승인 뒤 값이 바뀐 행 1 → same=false · changed 명단", () => {
+    const approved = [p({ id: "a" }), p({ id: "b" })];
+    const current = [p({ id: "a" }), p({ id: "b", currentUnsold: 11 })];
+    const r = comparePlanToApproved(current, approved);
+    expect(r.same).toBe(false);
+    expect(r.changed.map((c) => c.id)).toEqual(["b"]);
+    expect(r.onlyCurrent).toEqual([]);
+    expect(r.onlyApproved).toEqual([]);
+  });
+  it("승인에 없는 행 1(이번 계획에만 write) → same=false · onlyCurrent 명단", () => {
+    const approved = [p({ id: "a" }), p({ id: "n", action: "skip_no_match" })];
+    const current = [p({ id: "a" }), p({ id: "n" })];
+    const r = comparePlanToApproved(current, approved);
+    expect(r.same).toBe(false);
+    expect(r.onlyCurrent).toEqual(["n"]);
+    expect(r.onlyApproved).toEqual([]);
+    expect(r.changed).toEqual([]);
   });
 });
