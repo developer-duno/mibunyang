@@ -119,7 +119,49 @@ export function buildAptHtml(template, a) {
   html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(url)}" />`);
   html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(url)}" />`);
   html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(desc)}" />`);
   html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(desc)}" />`);
+  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(desc)}" />`);
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
+  html = html.replace(ROOT_RE, body);
+  return html;
+}
+
+/**
+ * 분양 예정(/upcoming) 페이지 HTML 생성.
+ * 홈 index.html 을 틀로 삼아 head (canonical, og, twitter, title, desc) + #root 를 바꾼다.
+ *
+ * @param {string} template dist/index.html 원본 (프리렌더 주입 전)
+ * @returns {string}
+ */
+export function buildUpcomingHtml(template) {
+  const title = "분양 예정 아파트 캘린더·일정 | 전국 미분양 비교 엔진";
+  const desc = "전국 분양 예정·청약 일정 및 분양 현황을 캘린더와 단지 목록으로 확인하고 비교 분석해 보세요.";
+  const url = `${ORIGIN}/upcoming`;
+
+  const body =
+    `<div id="root" class="notranslate">` +
+    `<main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif">` +
+    `<h1>전국 분양 예정 아파트</h1>` +
+    `<p>${esc(desc)}</p>` +
+    `<h2>주요 기능</h2>` +
+    `<ul>` +
+    `<li>전국 분양 예정 단지 일정 캘린더</li>` +
+    `<li>지역별 분양 예정·청약중 단지 필터링</li>` +
+    `<li>단지별 분양가 및 상세 분석 정보</li>` +
+    `</ul>` +
+    `<p><a href="/">전국 미분양 아파트 비교 목록으로</a></p>` +
+    `<p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p>` +
+    `</main></div>`;
+
+  let html = template;
+  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(url)}" />`);
+  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(url)}" />`);
+  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(desc)}" />`);
+  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(desc)}" />`);
   html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(desc)}" />`);
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
   html = html.replace(ROOT_RE, body);
@@ -174,6 +216,12 @@ function main() {
   const out = html.replace(ROOT_RE, SKELETON);
   writeFileSync(DIST_INDEX, out, "utf-8");
   console.log("[postbuild-prerender] dist/index.html #root 에 검색봇용 골격 주입 완료");
+
+  // ── /upcoming 정적 페이지 ──
+  const upcomingDir = join(DIST, "upcoming");
+  mkdirSync(upcomingDir, { recursive: true });
+  writeFileSync(join(upcomingDir, "index.html"), buildUpcomingHtml(template), "utf-8");
+  console.log("[postbuild-prerender] dist/upcoming/index.html 프리렌더 주입 완료");
 
   // ── 단지별 정적 페이지 + sitemap (세션 504) ──
   if (!existsSync(DIST_LIST)) {
