@@ -1908,3 +1908,33 @@ describe("formatFailedComplexList — [실패 명단] 로그 상한 20 (세션57
     expect(got).toBe(`[실패 명단] 21건: ${shown.join(" / ")}, …`);
   });
 });
+
+import { unitsFollowUpdate, applyUnitsFollow } from "./naver-presale.mjs";
+describe("unitsFollowUpdate — 번호 주인 행의 네이버 총세대수 따라가기(세션635)", () => {
+  it("주인 행 + naver_presale 출처 + 값 다름 → 따라간다", () => {
+    expect(unitsFollowUpdate({ id: "ap-1", naver_presale_no: "1", units: 486, unit_source: "naver_presale" }, 638)).toEqual({ units: 638, unit_source: "naver_presale" });
+  });
+  it("값이 같으면 null", () => {
+    expect(unitsFollowUpdate({ id: "ap-1", naver_presale_no: "1", units: 638, unit_source: "naver_presale" }, 638)).toBeNull();
+  });
+  it("주인이 아닌 행(ah-·남의 번호)은 null — 사람이 옮겨 적은 값·국토부 값을 덮지 않는다", () => {
+    expect(unitsFollowUpdate({ id: "ah-7", naver_presale_no: "1", units: 100, unit_source: "naver_presale" }, 638)).toBeNull();
+    expect(unitsFollowUpdate({ id: "ap-1", naver_presale_no: "1", units: 100, unit_source: "molit" }, 638)).toBeNull();
+  });
+  it("네이버 값이 없거나 1 이하면 null", () => {
+    expect(unitsFollowUpdate({ id: "ap-1", naver_presale_no: "1", units: 486, unit_source: "naver_presale" }, null)).toBeNull();
+    expect(unitsFollowUpdate({ id: "ap-1", naver_presale_no: "1", units: 486, unit_source: "naver_presale" }, 1)).toBeNull();
+  });
+  it("applyUnitsFollow — 인자 없이(followOn=false) 후보면 update 에 units 가 없고 후보 줄만, --follow-units 면 units·unit_source 가 들어간다", () => {
+    const apt = { id: "ap-1", naver_presale_no: "1", units: 486, unit_source: "naver_presale" };
+    /** @type {Record<string, unknown>} */
+    const off = { id: "ap-1" };
+    expect(applyUnitsFollow(off, apt, 638, false)).toBe("ap-1 486→638");
+    expect(off).toEqual({ id: "ap-1" });
+    /** @type {Record<string, unknown>} */
+    const on = { id: "ap-1" };
+    expect(applyUnitsFollow(on, apt, 638, true)).toBe("ap-1 486→638");
+    expect(on).toEqual({ id: "ap-1", units: 638, unit_source: "naver_presale" });
+    expect(applyUnitsFollow({ id: "ap-1" }, { ...apt, units: 638 }, 638, true)).toBeNull();
+  });
+});

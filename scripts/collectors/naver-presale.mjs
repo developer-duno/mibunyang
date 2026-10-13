@@ -23,15 +23,16 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
-  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP,
+  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP, joinRunMessage,
 } from "./_shared.mjs";
 import { isLeaseName, isLeasePresale } from "../../src/constants/leaseTypes.mjs";
+import { isPresaleOwner } from "./_same-complex.mjs";
 import {
   cleanName, stripRoundWords, phaseConsistent, blockConflict, KAKAO_STRONG_SIM, KAKAO_SUB_MIN_LEN,
 } from "./_kakao-poi.mjs";
 
 /** @typedef {{ name: string; tier: number; sim: number; reason: "차수충돌" | "이름약함" }} GateBlocked */
-/** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
+/** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; unit_source: string | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
 /** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]>; byId: Map<string, AptForMatch> }} AptIndexes */
 /** @typedef {{ build_dtl_cd?: number | string | null; supp_cd?: number | string | null; build_nm?: string; min_price?: number | null; max_price?: number | null; pyper_price?: number | null; supp_sclass?: string | null; supp_proc_step_nm?: string | null; preview_image?: string | null; house_supp_cnt?: number | null; dong_cnt?: number | null; parking_cnt?: number | null; sell_office_phone?: string | null; build_point?: string | null; mvi_date?: string | null; recruit_date?: string | null; schdl_info?: unknown; bclass_nm?: string | null; total_house_cnt?: number | null; cmpy_nm?: string | null; max_flr_cnt?: number | null; ypos?: number | string | null; xpos?: number | string | null; bubdong_code?: string | null; address?: string | null }} ComplexData */
 /** @typedef {{ dong_cnt?: number | null; parking_cnt?: number | null; inquiry_tel?: string | null; features?: string | null; move_in_date?: string | null }} DetailData */
@@ -139,6 +140,8 @@ const probeOnly = args.includes("--probe");
 // 이미 면적을 아는 단지도 강제로 다시 조회한다(최저가 주택형이 완판돼 바뀐 경우 등).
 // 기본값은 이월 — 단지당 요청 1개(2초)를 아낀다.
 const refreshArea = args.includes("--refresh-area");
+// 세션635: 번호 주인 행의 네이버 총세대수 따라가기 — 이 인자가 있을 때만 쓴다(없으면 후보 로그 + UNITS_FOLLOW_CANDIDATES 표식만).
+const FOLLOW_UNITS = args.includes("--follow-units");
 const limitArg = args.find(a => a.startsWith("--limit="));
 const complexLimit = limitArg ? parseInt(limitArg.replace("--limit=", ""), 10) : 0;
 const regionArg = args.find(a => a.startsWith("--region="));
@@ -618,6 +621,36 @@ export function dedupUpdateRows(rows) {
 }
 
 /**
+ * 번호 주인 네이버 행(`ap-<자기 번호>`)의 총세대수가 네이버 단지 표와 다르면 따라간다(설계서 §4-7 (4) ④, 세션635).
+ * 처음 저장 뒤 "빈칸일 때만" 채우던 탓에 네이버가 고쳐도 안 따라가던 것. 주인이 아닌 행·다른 출처(molit 등)는 건드리지 않는다.
+ * @param {{ id: string; naver_presale_no: string | null; units: number | null; unit_source: string | null }} apt
+ * @param {number | null | undefined} enrichUnits
+ * @returns {{ units: number; unit_source: "naver_presale" } | null}
+ */
+export function unitsFollowUpdate(apt, enrichUnits) {
+  if (enrichUnits == null || enrichUnits <= 1) return null;
+  if (!isPresaleOwner(apt) || apt.unit_source !== "naver_presale") return null;
+  if (apt.units === enrichUnits) return null;
+  return { units: enrichUnits, unit_source: "naver_presale" };
+}
+
+/**
+ * 기존 행 갱신 경로의 세대수 따라가기 분기(세션635). 후보면 `id 옛→새` 한 줄을 돌려주고, `followOn`(`--follow-units`)일 때만
+ * `update` 에 units·unit_source 를 넣는다 — 인자 없으면 후보만 센다(첫 회차 명단 → 승인 → 러너에 인자, 맹점 O9).
+ * @param {Record<string, unknown>} update
+ * @param {{ id: string; naver_presale_no: string | null; units: number | null; unit_source: string | null }} apt
+ * @param {number | null | undefined} enrichUnits
+ * @param {boolean} followOn
+ * @returns {string | null}
+ */
+export function applyUnitsFollow(update, apt, enrichUnits, followOn) {
+  const follow = unitsFollowUpdate(apt, enrichUnits);
+  if (!follow) return null;
+  if (followOn) Object.assign(update, follow);
+  return `${apt.id} ${apt.units}→${follow.units}`;
+}
+
+/**
  * 두 시군구 표기가 같은 시군구를 가리키는가 (세션578 — 분양 매칭 게이트와 정리 도구가 **같은 잣대**를 쓴다).
  *
  * 규칙:
@@ -1017,7 +1050,7 @@ async function main() {
     apts = /** @type {AptForMatch[]} */ (/** @type {unknown} */ (
       await selectAll(
         (s) => s.from("apartments")
-          .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion"),
+          .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion, unit_source"),
         sb,
         "id",
       )
@@ -1158,6 +1191,8 @@ async function main() {
   // 세션582: 목록 밖 임대 모양 유형 — 같은 값은 회차당 한 번만 경고(isUnlistedLeaseLikeType)
   /** @type {Set<string>} */
   const warnedLeaseTypes = new Set();
+  // 세션635: 번호 주인 행의 세대수 따라가기 후보(`id 옛→새`) — 루프 뒤 한 줄 + 인자 없으면 collector_runs 표식
+  /** @type {string[]} */ const unitsFollowed = [];
 
   for (let idx = 0; idx < total; idx++) {
     if (reporter.interrupted()) break;
@@ -1233,6 +1268,11 @@ async function main() {
       const enrich = row._enrich;
       if (enrich) {
         if (!match.apartment.units && enrich.units) update.units = enrich.units;
+        else {
+          // 인자 없으면 후보만 센다(첫 회차 명단 → 승인 → 러너에 인자)
+          const followLine = applyUnitsFollow(update, match.apartment, enrich.units, FOLLOW_UNITS);
+          if (followLine) unitsFollowed.push(followLine);
+        }
         if (!match.apartment.builder && enrich.builder) update.builder = enrich.builder;
         if (!match.apartment.max_floor && enrich.max_floor) update.max_floor = enrich.max_floor;
         if (!match.apartment.lat && enrich.lat) update.lat = enrich.lat;
@@ -1283,6 +1323,7 @@ async function main() {
   if (failedComplexes.length > 0) {
     log(PHASE, formatFailedComplexList(failedComplexes, FAILED_COMPLEX_LOG_LIMIT));
   }
+  if (unitsFollowed.length > 0) log(PHASE, `[세대수 따라감${FOLLOW_UNITS ? "" : " 후보"}] ${unitsFollowed.length}건: ${unitsFollowed.slice(0, 20).join(", ")}${unitsFollowed.length > 20 ? " …" : ""}`);
 
   // 매칭 tier 집계
   log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch} id복원=${matchStats.idHealed} 차수충돌=${matchStats.phaseConflict} 이름약함=${matchStats.nameWeak}`);
@@ -1323,7 +1364,9 @@ async function main() {
   }
 
   const result = reporter.summary();
-  await recordCollectorRun(PHASE, result);
+  // 세션635: 인자 없이 세대수 따라가기 후보를 센 회차는 표식을 남긴다(status 그대로 — 감시가 읽을 수 있게).
+  const followMarker = !FOLLOW_UNITS && unitsFollowed.length > 0 ? `UNITS_FOLLOW_CANDIDATES ${unitsFollowed.length}` : null;
+  await recordCollectorRun(PHASE, followMarker ? { ...result, errorMessage: joinRunMessage(null, followMarker) } : result);
 }
 
 // CLI 직접 실행 시에만 main() 호출 (테스트 환경 보호)
