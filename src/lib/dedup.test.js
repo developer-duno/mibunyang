@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { dedupApartments } from "./dedup";
+import { dedupApartments, buildIdAlias, resolveAptId } from "./dedup";
 
 // 테스트 데이터 팩토리
 function makeApt(overrides = {}) {
@@ -107,5 +107,61 @@ describe("dedupApartments", () => {
     const input = [makeApt({ id: "ah-zzz" }), makeApt({ id: "ah-aaa" }), makeApt({ id: "ah-mmm" })];
     const result = dedupApartments(input);
     expect(result[0].siblingIds).toEqual(["ah-aaa", "ah-mmm", "ah-zzz"]);
+  });
+});
+
+describe("dedupApartments — memberIds 가 있으면 통과(세션635 다)", () => {
+  it("다시 묶지 않고 siblingIds = materialId 먼저 + 나머지 오름차순", () => {
+    const rows = [
+      {
+        id: "ah-1",
+        name: "하양",
+        region: "경북",
+        gu: "경산시",
+        memberIds: ["ah-1", "ah-2", "ap-9"],
+        materialId: "ap-9",
+      },
+      { id: "ah-5", name: "하양", region: "경북", gu: "경산시", memberIds: ["ah-5"], materialId: "ah-5" },
+    ];
+    const out = dedupApartments(rows);
+    expect(out.map((r) => r.id)).toEqual(["ah-1", "ah-5"]); // 같은 이름·지역이어도 묶지 않는다
+    expect(out[0].siblingIds).toEqual(["ap-9", "ah-1", "ah-2"]);
+  });
+  it("memberIds 가 null 인 행(오피스텔뿐)은 자기 id", () => {
+    expect(dedupApartments([{ id: "ah-7", name: "x(오)", memberIds: null }])[0].siblingIds).toEqual(["ah-7"]);
+  });
+  it("memberIds 가 없는 옛 목록은 지금 규칙 그대로", () => {
+    const out = dedupApartments([
+      { id: "ah-1", name: "A(1차)" },
+      { id: "ah-2", name: "A(2차)" },
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].id).toBe("ah-2");
+  });
+});
+describe("buildIdAlias / resolveAptId", () => {
+  const alias = buildIdAlias([
+    { id: "ah-1", memberIds: ["ah-1", "ah-2", "ap-9"], aliasIds: ["ah-1", "ah-2", "ah-7", "ap-9"] },
+    { id: "ah-5", memberIds: null },
+  ]);
+  it("(오) 행 id(aliasIds 에만 있음)도 카드로 이어진다", () => {
+    expect(resolveAptId(alias, "ah-7")).toBe("ah-1");
+  });
+  it("구성원 → 카드 id, 자기 자신도", () => {
+    expect(resolveAptId(alias, "ah-2")).toBe("ah-1");
+    expect(resolveAptId(alias, "ap-9")).toBe("ah-1");
+    expect(resolveAptId(alias, "ah-1")).toBe("ah-1");
+    expect(resolveAptId(alias, "ah-5")).toBe("ah-5");
+  });
+  it("모르는 id·빈 값은 null", () => {
+    expect(resolveAptId(alias, "ah-999")).toBeNull();
+    expect(resolveAptId(alias, null)).toBeNull();
+  });
+  it("자기 카드 id 는 뒤에 온 남의 구성원 목록에 덮이지 않는다", () => {
+    const a2 = buildIdAlias([
+      { id: "ah-2", memberIds: ["ah-2"] },
+      { id: "ah-1", memberIds: ["ah-1", "ah-2", "ap-9"] },
+    ]);
+    expect(resolveAptId(a2, "ah-2")).toBe("ah-2");
   });
 });
