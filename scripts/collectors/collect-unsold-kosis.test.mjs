@@ -1862,6 +1862,69 @@ describe("planUnsoldUpdates — 세션636 보완(검사관 적대 🟠1·🟠2·
     expect(byId["j-1"].action).toBe("skip_no_match");
     expect(byId["g-1"].newEstimate).toBe(40);
   });
+  it("보완 2 — 창원시·창원시 성산구는 KOSIS 가 한 시로 접으므로 한 묶음: 분모 1500 · K 두 행 각 67 · 다른 단지 133", () => {
+    const byId = plan([
+      { ...base, id: "k-1", name: "창원A", region: "경남", gu: "창원시", units: 500, complex_key: "K" },
+      { ...base, id: "k-2", name: "창원A", region: "경남", gu: "창원시 성산구", units: 500, complex_key: "K" },
+      { ...base, id: "o-1", name: "의창", region: "경남", gu: "창원시 의창구", units: 1000 },
+    ], { 경남: { 창원시: 200 } });
+    expect([byId["k-1"].bundleKey, byId["k-2"].bundleKey]).toEqual(["K", "K"]);
+    expect(byId["k-1"].totalUnitsInGu).toBe(1500);
+    expect([byId["k-1"].newEstimate, byId["k-2"].newEstimate, byId["o-1"].newEstimate]).toEqual([67, 67, 133]);
+  });
+  it("보완 2 — 응답에 없는 시도(제주) 행이 묶음 첫째여도 시도·구는 KOSIS 로 풀리는 구성원(경산시)에서 → 경북 행 40", () => {
+    const byId = plan([
+      { ...base, id: "j-1", name: "A", region: "제주", gu: "제주시", units: 400, complex_key: "K" },
+      { ...base, id: "g-1", name: "A", units: 400, complex_key: "K" },
+      { ...base, id: "n-1", name: "이웃", units: 600 },
+    ], { 경북: { 경산시: 100 } });
+    expect(byId["g-1"].newEstimate).toBe(40);
+    expect(byId["j-1"].action).toBe("skip_no_match");
+  });
+  it("보완 2 (N3) — 세종 빈 구 행과 경북 경산시 행이 한 열쇠에 섞이면 KOSIS 짝(세종시·경산시)으로 갈려 각자 값", () => {
+    const byId = plan([
+      { ...base, id: "s-1", name: "A", region: "세종", gu: null, units: 400, complex_key: "K" },
+      { ...base, id: "g-1", name: "A", units: 400, complex_key: "K" },
+      { ...base, id: "n-1", name: "이웃경산", units: 600 },
+      { ...base, id: "n-2", name: "이웃세종", region: "세종", gu: null, units: 600 },
+    ], { 세종: { 세종시: 30 }, 경북: { 경산시: 100 } });
+    expect([byId["s-1"].bundleKey, byId["s-1"].newEstimate]).toEqual(["K#rg:세종|세종시", 12]);
+    expect([byId["g-1"].bundleKey, byId["g-1"].newEstimate]).toEqual(["K#rg:경북|경산시", 40]);
+  });
+});
+
+describe("main() unsold_history — 보완 2: 추이 표도 KOSIS 짝으로 접는다", () => {
+  beforeEach(() => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+  });
+  it("--apply — 수원시·수원시 장안구 한 열쇠는 한 묶음: history 각 67, 다른 단지 133", async () => {
+    /** @param {Record<string, unknown>} o */
+    const r = (o) => ({ name: "단지", region: "경기", units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null, complex_key: null, ...o });
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      r({ id: "k-1", gu: "수원시", complex_key: "K" }),
+      r({ id: "k-2", gu: "수원시 장안구", complex_key: "K" }),
+      r({ id: "o-1", gu: "수원시 권선구", units: 1000 }),
+    ]);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202607", DT: "200" }] });
+    /** @type {any[]} */
+    const updateCalls = [];
+    mockSb({ from: (/** @type {string} */ table) => ({ update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, table, payload) }) }) });
+    const { upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
+    upsertBatch.mockReset();
+    upsertBatch.mockResolvedValue(0);
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+    try {
+      await main();
+    } finally {
+      process.argv = originalArgv;
+      getSupabase.mockReset();
+    }
+    const historyRows = upsertBatch.mock.calls.find((/** @type {any[]} */ c) => c[0] === "unsold_history")?.[1] ?? [];
+    expect(historyRows.map((/** @type {any} */ x) => [x.apartment_id, x.unsold_count]).sort()).toEqual([["k-1", 67], ["k-2", 67], ["o-1", 133]]);
+  });
 });
 
 describe("planUnsoldUpdates·묶음 요약 — 세션636 보완(맹점 🟡 F7·F8·F9)", () => {
@@ -2031,6 +2094,21 @@ describe("main() — --apply-from 배선·첫 반영 차단기(세션636 F4·F6)
     expect(updateCalls.filter((c) => c.table === "apartments").map((c) => [c.id, c.payload.unsold])).toEqual([["w1", 10], ["w2", 10]]);
     expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 3, errorMessage: "KOSIS_BUNDLE_APPLIED" });
     expect(runsCalls).toEqual([]);
+  });
+  it("보완 2 — --apply-from 회차에서 단지 쓰기 1건이 실패하면 첫 반영 표식을 남기지 않는다(status 는 그대로 success)", async () => {
+    const f = await approvedFile();
+    getSupabase.mockReturnValue({
+      from: (/** @type {string} */ t) => ({
+        update: () => ({
+          eq: (/** @type {string} */ _c, /** @type {string} */ id) => Object.assign(Promise.resolve({ error: null }), {
+            or: () => ({ select: () => Promise.resolve(t === "apartments" && id === "w2" ? { data: null, error: { message: "boom" } } : { data: [{ id }], error: null }) }),
+          }),
+        }),
+      }),
+    });
+    await runMain([`--apply-from=${f}`]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 2 });
+    expect(errLines.some((l) => l.includes("쓰기 실패 1건") && l.includes("KOSIS_BUNDLE_APPLIED"))).toBe(true);
   });
   it("F6 인자 없는 쓰기 실행 + 첫 반영 표식 없음 → KOSIS 조회 전에 차단, 쓰기 0, failure", async () => {
     /** @type {any[]} */ const runsCalls = [];

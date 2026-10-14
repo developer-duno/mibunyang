@@ -234,6 +234,20 @@ export function resolveKosisGuKey(region, gu, guMap) {
 }
 
 /**
+ * 묶음 시도·구 갈림 판정용 짝 함수 — 구성원을 그 회차 KOSIS 지도로 풀어 `<시도>|<KOSIS 시군구>`, 못 풀면 null(세션636 보완 2).
+ * 구 원문("창원시"·"창원시 성산구")이 아니라 KOSIS 가 실제로 나누는 단위로 센다 — 분모를 세는 단위와 같아야 두 번 세지 않는다.
+ * @param {Record<string, Record<string, unknown> | undefined>} byRegion 시도 → (KOSIS 시군구 → 값) 지도(최신 월 또는 월별)
+ * @returns {(m: { region: string | null; gu: string | null }) => string | null}
+ */
+export function kosisPairOf(byRegion) {
+  return (m) => {
+    if (!m.region) return null;
+    const k = resolveKosisGuKey(m.region, m.gu, /** @type {any} */ (byRegion[m.region]));
+    return k ? `${m.region}|${k}` : null;
+  };
+}
+
+/**
  * apartments 배분 계획을 순수 함수로 산출한다 (세션567 신설 — 시험 가능하게 분리. 세션568-3 규칙 전면 개정).
  *
  * ## 판정 순서 (사장님 결정 2026-09-24 3차 — 위에서부터)
@@ -297,7 +311,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
   const isRespected = (/** @type {any} */ apt) =>
     apt.unsold_source !== "hold" && !!apt.region && (!!apt.gu || apt.region === "세종") && shouldSkipKosisFill({ ...apt, units: 2 }, now);
   //   ↑ shouldSkipKosisFill 의 무효 분기(units<=1)를 피하려고 units 를 2 로 넘긴다 — 무효는 아래에서 묶음 세대수로 따로 판정한다.
-  const bundles = foldForUnsold(/** @type {any} */ (apartments), { isRespected });
+  const bundles = foldForUnsold(/** @type {any} */ (apartments), { isRespected, pairOf: kosisPairOf(unsoldByRegionGu) });
   /** @type {Map<string, import("./_unsold-bundle.mjs").UnsoldBundle>} apt.id → 묶음 */
   const bundleOfApt = new Map();
   for (const b of bundles) for (const m of b.members) bundleOfApt.set(m.id, b);
@@ -877,6 +891,8 @@ export async function main() {
     }
 
     // 4. 차단기를 통과했을 때만 실제로 쓴다 — regions 먼저, 그 다음 apartments.
+    /** 보완 2(재검사 🟡) — 로그만 남기는 쓰기 실패 수. 0 일 때만 첫 반영 표식을 남긴다(일부 실패 회차로 차단기가 풀리지 않게). */
+    let writeFailures = 0;
     let regUpdated = 0;
     for (const reg of regionUpdates) {
       if (isInterrupted()) break;  // 세션 321: graceful shutdown
@@ -891,7 +907,7 @@ export async function main() {
         regional_unsold: reg.newValue,
       }).eq("id", reg.id);
 
-      if (error) logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`);
+      if (error) { writeFailures++; logError(PHASE, `  regions ${reg.id} UPDATE 실패: ${error.message}`); }
       else regUpdated++;
     }
     log(PHASE, `regions 갱신: ${regUpdated}건`);
@@ -909,7 +925,7 @@ export async function main() {
       }
 
       const r = await updateApartmentUnlessHold(sb, p.id, kosisWritePayload(p.newEstimate, p.newRate));
-      if (r.status === "error") logError(PHASE, `  ${p.name} UPDATE 실패: ${r.message}`);
+      if (r.status === "error") { writeFailures++; logError(PHASE, `  ${p.name} UPDATE 실패: ${r.message}`); }
       else if (r.status === "protected") { protectedByHold++; log(PHASE, `  ${p.name}(${p.id}) hold 보호로 건너뜀`); }
       else aptUpdated++;
     }
@@ -930,7 +946,7 @@ export async function main() {
       }
 
       const r = await updateApartmentUnlessHold(sb, p.id, kosisWritePayload(0, 0));
-      if (r.status === "error") logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${r.message}`);
+      if (r.status === "error") { writeFailures++; logError(PHASE, `  ${p.name} 0-쓰기 UPDATE 실패: ${r.message}`); }
       else if (r.status === "protected") { protectedByHold++; log(PHASE, `  ${p.name}(${p.id}) 0-쓰기 hold 보호로 건너뜀`); }
       else aptZeroed++;
     }
@@ -948,7 +964,7 @@ export async function main() {
     // 새 추정 미분양률 50% 이상은 저장하지 않는다(사장님 결정).
     const allMonthsMap = parseKosisRowsAllMonths(rows);
     // 세션635: 분모·추정치는 묶음 단위(planUnsoldUpdates 와 같은 접기). hold 행은 시계열 행을 만들지 않는다(A7).
-    const historyBundles = foldForUnsold(/** @type {any} */ (apartmentsTyped), { isRespected: () => false });
+    const historyBundles = foldForUnsold(/** @type {any} */ (apartmentsTyped), { isRespected: () => false, pairOf: kosisPairOf(allMonthsMap) });
     /** @type {Map<string, string | null>} 묶음 key → kosisKey(월별 맵 기준) */
     const historyKeyByBundle = new Map();
     /** @type {Record<string, number>} */
@@ -1004,7 +1020,8 @@ export async function main() {
     // 4. API 쿼터 기록 (KOSIS 단일 호출)
     if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
     ok = regUpdated + aptUpdated + aptZeroed;
-    if (!dryRun && approvedPlan) bundleApplied = true; // F6 — 다음 인자 없는 회차가 이 표식을 찾는다
+    if (!dryRun && approvedPlan && writeFailures === 0) bundleApplied = true; // F6 — 다음 인자 없는 회차가 이 표식을 찾는다(쓰기 실패 0 일 때만)
+    else if (!dryRun && approvedPlan) logError(PHASE, `[경고] --apply-from 반영 중 쓰기 실패 ${writeFailures}건 — 첫 반영 표식(${KOSIS_BUNDLE_APPLIED_MARKER})을 남기지 않는다. 실패 원인을 고치고 미리보기를 다시 떠 승인받은 뒤 --apply-from`);
 
     log(PHASE, "\n=== 완료 ===");
   } catch (err) {

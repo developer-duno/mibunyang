@@ -6,6 +6,8 @@ import { bundleKeyOf, foldForUnsold } from "./_unsold-bundle.mjs";
 const row = (o) => ({ name: o.id, region: "경북", gu: "경산시", units: null, unit_source: null, unsold: null, unsold_rate: null,
   unsold_source: null, unsold_as_of: null, presale_type: null, naver_presale_no: null, complex_key: null, ...o });
 const notRespected = { isRespected: () => false };
+/** 시험용 짝 함수 — 구 원문 그대로(갈림 동작만 볼 때). 운영 호출부는 KOSIS 로 푼 짝을 넘긴다(collect-unsold-kosis kosisPairOf). */
+const withPair = { isRespected: () => false, pairOf: (/** @type {any} */ m) => (m.gu ? `${m.region}|${m.gu}` : m.region === "세종" ? "세종|" : null) };
 
 describe("bundleKeyOf", () => {
   it("열쇠가 있으면 열쇠, 없으면 자기 id", () => {
@@ -123,7 +125,7 @@ describe("foldForUnsold — 세션636 보완(검사관 적대 🟠1·🟠2·🟠
       row({ id: "ah-2", complex_key: "K", gu: "포항시", units: 500 }),
       row({ id: "ah-3", complex_key: "K", gu: "경산시", units: 3 }),
     ];
-    const bs = foldForUnsold(rows, notRespected);
+    const bs = foldForUnsold(rows, withPair);
     expect(bs.map((b) => [b.key, b.gu, b.units, b.members.map((m) => m.id)]).sort()).toEqual([
       ["K#rg:경북|경산시", "경산시", 400, ["ah-1", "ah-3"]],
       ["K#rg:경북|포항시", "포항시", 500, ["ah-2"]],
@@ -135,7 +137,7 @@ describe("foldForUnsold — 세션636 보완(검사관 적대 🟠1·🟠2·🟠
       row({ id: "ah-2", complex_key: "K", region: "제주", gu: "제주시", units: 500 }),
       row({ id: "ah-3", complex_key: "K", gu: null, units: 600 }),
     ];
-    const bs = foldForUnsold(rows, notRespected);
+    const bs = foldForUnsold(rows, withPair);
     expect(bs.map((b) => b.key).sort()).toEqual(["K#rg:경북|", "K#rg:경북|경산시", "K#rg:제주|제주시"]);
     expect(bs.find((b) => b.key === "K#rg:경북|")?.gu).toBeNull();
   });
@@ -144,7 +146,22 @@ describe("foldForUnsold — 세션636 보완(검사관 적대 🟠1·🟠2·🟠
       row({ id: "ah-1", complex_key: "S", region: "세종", gu: null, units: 400 }),
       row({ id: "ah-2", complex_key: "S", region: "세종", gu: null, units: 3 }),
     ];
-    const bs = foldForUnsold(rows, notRespected);
+    const bs = foldForUnsold(rows, withPair);
     expect(bs.map((b) => b.key)).toEqual(["S"]);
+  });
+  it("보완 2 — 짝 함수가 없으면 나누지 않는다(원문 구로 기본값을 두지 않는다)", () => {
+    const rows = [
+      row({ id: "ah-1", complex_key: "K", gu: "경산시", units: 400 }),
+      row({ id: "ah-2", complex_key: "K", gu: "포항시", units: 500 }),
+    ];
+    expect(foldForUnsold(rows, notRespected).map((b) => b.key)).toEqual(["K"]);
+  });
+  it("보완 2 — 짝 함수가 같은 짝으로 푸는 구(창원시·창원시 성산구 → 창원시)는 한 묶음", () => {
+    const rows = [
+      row({ id: "ah-1", complex_key: "K", region: "경남", gu: "창원시", units: 500 }),
+      row({ id: "ah-2", complex_key: "K", region: "경남", gu: "창원시 성산구", units: 500 }),
+    ];
+    const firstWord = (/** @type {any} */ m) => (m.gu ? `${m.region}|${String(m.gu).split(" ")[0]}` : null);
+    expect(foldForUnsold(rows, { isRespected: () => false, pairOf: firstWord }).map((b) => b.key)).toEqual(["K"]);
   });
 });
