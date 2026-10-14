@@ -577,13 +577,14 @@ describe('sanitize — 한 단지 = 한 장 묶음 칸 통과(세션635 다)', (
 //   주석(-- …)은 걷어내고 본다 — 머리말에 칸 이름·옛 식이 설명으로 적혀 있어 그대로 세면 무효다.
 //   세션609 라): 화면 칸 3개(dongFact·complexTable·complexJeonseTable)가 끝에 붙어 9 → 12. `dong_fact` 는
 //   `cmp_`·`complex_` 접두가 아니라 정규식에 `dong_` 를 더했다(빠뜨리면 11 로 세어 빨강).
-describe('VIEW 마이그 20261007000000 ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
+describe('VIEW 마이그(최신 20261013000000) ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
   const stripSql = (p: string) =>
     readFileSync(new URL(p, import.meta.url), 'utf8')
       .split(/\r?\n/)
       .map((l) => l.replace(/--.*$/, ''))
       .join('\n');
-  const mig = stripSql('../../supabase/migrations/20261007000000_view_add_trade_scope.sql');
+  // 세션635 다: 최신 VIEW 파일을 읽는다(묶음 VIEW 가 20261007 판 본문을 이어받음). 롤백은 거래 범위 칸을 처음 넣은 20261007 판의 것 그대로.
+  const mig = stripSql('../../supabase/migrations/20261013000000_view_one_card_bundle.sql');
   const rollback = stripSql('../../supabase/migrations/_rollbacks/20261007000001_rollback_view_add_trade_scope.sql');
   const aliasesOf = (sql: string) =>
     [...sql.matchAll(/\bts\.(?:cmp_|complex_|dong_)[a-z_]+\s+AS\s+"([A-Za-z]+)"/g)].map((m) => m[1]);
