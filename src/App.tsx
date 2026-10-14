@@ -233,7 +233,14 @@ export default function App() {
 
   // 로그인 여부 파생 (카카오 또는 관리자 — 같은 authToken 축)
   const isLoggedIn = auth.loggedIn;
-  const { apartments, loading: dataLoading, error: dataError, retry: retryData, dataUpdatedAt } = useApartmentData();
+  const {
+    apartments,
+    loading: dataLoading,
+    error: dataError,
+    retry: retryData,
+    dataUpdatedAt,
+    idAlias,
+  } = useApartmentData();
   // 편차 스트립용 지역 분포 (세션 487) — useDataPipeline 의 needsFallback 게이트와 무관하게 상시 계산.
   // 운영에선 catsCache 가 다 차 있어 그 게이트가 거의 안 열린다.
   const regionStats = useRegionalStats(apartments);
@@ -434,6 +441,7 @@ export default function App() {
     dataError,
     setFavoriteIds,
     showToast,
+    idAlias,
   });
 
   // 문의 버튼(FeedbackFab)을 그리는 조건 — 관리자 대시보드·지도 탭에서는 숨김(세션574 사장님 결정).
@@ -622,6 +630,7 @@ export default function App() {
           compIds={compIds}
           recentIds={recentIds}
           scoredMap={scoredMap}
+          idAlias={idAlias}
           onClearRecent={clearRecent}
         />
       ) : tab === "list" ? (

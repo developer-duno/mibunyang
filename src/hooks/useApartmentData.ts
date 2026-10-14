@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { fetchStaticApartments } from "@/services/staticDataApi";
-import { dedupApartments } from "@/lib/dedup";
+import { dedupApartments, buildIdAlias } from "@/lib/dedup";
 import type { Apt } from "@/types/scoring";
 import type { UseApartmentDataReturn } from "@/types/hooks";
 
@@ -51,11 +51,14 @@ export function useApartmentData(): UseApartmentDataReturn {
     load();
   }, [load]);
 
+  // 세션635 다: 옛 카드 id(묶음 구성원) → 지금 카드 id. 목록이 바뀔 때만 다시 만든다.
+  const idAlias = useMemo(() => buildIdAlias(apartments as Array<Apt & { id: string }>), [apartments]);
+
   useEffect(() => {
     const ac = new AbortController();
     load(ac.signal);
     return () => ac.abort();
   }, [load]);
 
-  return { apartments, loading, error, retry, dataUpdatedAt };
+  return { apartments, loading, error, retry, dataUpdatedAt, idAlias };
 }
