@@ -85,3 +85,30 @@ describe("RecentlyViewedWidget", () => {
     expect(props.onDetail).toHaveBeenCalledWith("a1");
   });
 });
+
+// 세션636 D10ⓒ: 옛 구성원 id 는 거르기 전에 대표 카드 id 로 바꾸고, 같은 카드로 모이면 하나만(세션635 다)
+describe("RecentlyViewedWidget — 옛 id 넘김(idAlias)", () => {
+  const items = [makeScored("a1", "가단지", 90), makeScored("a2", "나단지", 80)];
+  const scoredMap = mapOf(items);
+  const idAlias = new Map([
+    ["a1", "a1"],
+    ["old-a1", "a1"],
+    ["a2", "a2"],
+  ]);
+  it("옛 구성원 id(old-a1)는 대표 카드(a1)로 보인다", () => {
+    render(<RecentlyViewedWidget {...baseProps()} recentIds={["old-a1"]} scoredMap={scoredMap} idAlias={idAlias} />);
+    expect(screen.getByText(/가단지/)).toBeInTheDocument();
+  });
+  it("같은 카드로 모이는 id 는 한 장만(최근순 유지)", () => {
+    render(
+      <RecentlyViewedWidget
+        {...baseProps()}
+        recentIds={["old-a1", "a2", "a1"]}
+        scoredMap={scoredMap}
+        idAlias={idAlias}
+      />
+    );
+    expect(screen.getAllByText(/가단지/)).toHaveLength(1);
+    expect(screen.getByText(/나단지/)).toBeInTheDocument();
+  });
+});

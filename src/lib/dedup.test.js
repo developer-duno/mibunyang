@@ -164,4 +164,14 @@ describe("buildIdAlias / resolveAptId", () => {
     ]);
     expect(resolveAptId(a2, "ah-2")).toBe("ah-2");
   });
+  it("옛 목록(memberIds 없음)은 dedup 이 만든 siblingIds 로 푼다 — 되돌린 날 VIEW 기간의 대표 id 도 카드로(세션636 D1)", () => {
+    const old = dedupApartments([
+      { id: "ah-1", name: "하양(1차)", region: "경북", gu: "경산시" },
+      { id: "ah-2", name: "하양(2차)", region: "경북", gu: "경산시" },
+    ]);
+    const a3 = buildIdAlias(old);
+    expect(old).toHaveLength(1);
+    expect(resolveAptId(a3, "ah-1")).toBe("ah-2"); // VIEW 기간 대표(가장 오래된 ah-1) → 옛 목록 카드(ah-2)
+    expect(resolveAptId(a3, "ah-2")).toBe("ah-2");
+  });
 });

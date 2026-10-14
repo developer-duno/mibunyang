@@ -46,6 +46,7 @@ import {
   recordCollectorRun, selectAll, REGION_MAP, today,
 } from "./collectors/_shared.mjs";
 import { sendTelegram } from "./notify-telegram.mjs";
+import { isOffName } from "./collectors/_same-complex.mjs";
 
 loadEnv();
 
@@ -162,6 +163,20 @@ export function matchPairs(subs, events, aptById, bundleOf = (/** @type {string}
     }
   }
   return pairs;
+}
+
+/**
+ * 단지 id → 묶음 열쇠 함수(matchPairs 의 bundleOf). 세션636 D9: 오피스텔 `(오)` 행은 묶음 매칭에서 빠진다 —
+ * 열쇠(complex_key)는 `(오)` 를 떼지 않아 아파트와 같은 열쇠를 가질 수 있는데, 화면 카드(memberIds)는 `(오)` 를 뺀다.
+ * 그래서 `(오)` 행은 자기 id 로만 맞춘다(구독·공고 어느 쪽이든). 표에 없는 id 도 자기 id.
+ * @param {Array<{ id: string, name: string|null, complex_key: string|null }>} rows
+ * @returns {(id: string) => string}
+ */
+export function makeBundleOf(rows) {
+  /** @type {Map<string, string>} */
+  const keyById = new Map();
+  for (const r of rows) keyById.set(r.id, isOffName(r.name) ? r.id : (r.complex_key ?? r.id));
+  return (id) => keyById.get(id) ?? id;
 }
 
 /**
@@ -343,9 +358,7 @@ async function main() {
     );
   }
   const aptById = new Map(aptRows.map((a) => [a.id, { name: a.name, region: a.region }]));
-  const keyById = new Map(aptRows.map((a) => [a.id, a.complex_key ?? a.id]));
-
-  const pairs = matchPairs(subs, events, aptById, (id) => keyById.get(id) ?? id);
+  const pairs = matchPairs(subs, events, aptById, makeBundleOf(aptRows));
 
   // 4. 기존 로그 제외 (멱등키) — sent/pending/failed 재발송 금지, dry_run 은 live 승격 허용
   const subIds = [...new Set(pairs.map((p) => p.sub.id))];

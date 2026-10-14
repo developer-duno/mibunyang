@@ -11,6 +11,7 @@ import { describe, it, expect, vi } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DetailModal } from "./DetailModal";
 import { makeScoredItem } from "@/__tests__/factories";
+import { buildListData, buildDetailBuckets } from "../../scripts/static-outputs.mjs";
 
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 
@@ -63,6 +64,20 @@ describe("DetailModal 머리글 공고명 — 상세 버킷의 noticeName 을 �
     const item = makeItem({ id: "ah-1", name: "X", priceByArea: undefined });
     expect(/** @type {any} */ (item.apt).noticeName).toBeUndefined();
     render(<DetailModal {...makeProps(item)} />);
+    expect(await screen.findByText(/공고명: X\(임의공급 1차\)/)).toBeTruthy();
+  });
+
+  // 세션636 D7(적대 🟠1): 위 시험은 버킷을 손으로 만들어 "굽기가 버킷에 noticeName 을 싣는가"를 못 봤다 —
+  //   실제 굽기 함수(buildListData·buildDetailBuckets)의 출력을 그대로 목록 행·상세 조회에 넣어 화면까지 잇는다.
+  it("굽기 → 버킷 → 화면: VIEW 행의 noticeName 이 목록에선 빠지고 버킷을 거쳐 '공고명: …' 으로 뜬다", async () => {
+    const viewRow = { id: "ah-1", name: "X", noticeName: "X(임의공급 1차)", priceByArea: [] };
+    const [listRow] = /** @type {any[]} */ (buildListData([viewRow]));
+    const bucketRow = buildDetailBuckets([viewRow])
+      .flatMap((b) => /** @type {any[]} */ (b.data))
+      .find((r) => r.id === "ah-1");
+    expect(listRow.noticeName).toBeUndefined(); // 목록에선 빠진다(DETAIL_ONLY_FIELDS)
+    fetchApartmentDetail.mockResolvedValue(bucketRow);
+    render(<DetailModal {...makeProps(makeItem({ ...listRow, priceByArea: undefined }))} />);
     expect(await screen.findByText(/공고명: X\(임의공급 1차\)/)).toBeTruthy();
   });
 });

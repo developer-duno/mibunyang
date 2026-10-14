@@ -47,14 +47,24 @@ export function dedupApartments<T extends DedupCandidate>(
   }));
 }
 
-/** 구성원 id → 카드 id. 관심 단지·최근 본 단지·딥링크·알림 신청의 옛 id 를 읽을 때 대표로 바꾼다(저장소는 고쳐 쓰지 않는다). */
+/**
+ * 구성원 id → 카드 id. 관심 단지·최근 본 단지·딥링크·알림 신청의 옛 id 를 읽을 때 대표로 바꾼다(저장소는 고쳐 쓰지 않는다).
+ * 재료 = aliasIds(새 VIEW, (오) 포함 전 구성원) → memberIds → siblingIds(옛 목록 — dedupApartments 가 만든 묶음).
+ * 옛 목록 폴백이 없으면 되돌린 날(memberIds 없음) VIEW 기간에 대표 id 로 다시 쓴 관심매물이 지워진다(세션636 맹점 🟠1).
+ * 호출부는 dedupApartments **뒤** 목록을 넘긴다(useApartmentData).
+ */
 export function buildIdAlias(
-  apartments: ReadonlyArray<{ id: string; memberIds?: string[] | null; aliasIds?: string[] | null }>
+  apartments: ReadonlyArray<{
+    id: string;
+    memberIds?: string[] | null;
+    aliasIds?: string[] | null;
+    siblingIds?: string[] | null;
+  }>
 ): Map<string, string> {
   const alias = new Map<string, string>();
   for (const a of apartments) {
     alias.set(a.id, a.id);
-    for (const m of a.aliasIds ?? a.memberIds ?? []) if (!alias.has(m)) alias.set(m, a.id); // aliasIds = (오) 포함 전 구성원
+    for (const m of a.aliasIds ?? a.memberIds ?? a.siblingIds ?? []) if (!alias.has(m)) alias.set(m, a.id); // aliasIds = (오) 포함 전 구성원
   }
   return alias;
 }

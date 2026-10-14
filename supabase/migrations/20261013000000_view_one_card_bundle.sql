@@ -42,8 +42,9 @@ bundle_mat AS (                       -- 재료 행(§4-7 (3))
 ),
 bundle_units AS (                     -- 세대수(D7)
   SELECT DISTINCT ON (bkey) bkey, units AS b_units
-  FROM members
+  FROM members mu
   WHERE units IS NOT NULL AND units > 1
+    AND (NOT is_off OR NOT EXISTS (SELECT 1 FROM members o WHERE o.bkey = mu.bkey AND NOT o.is_off))   -- (오) 행은 비오피스텔 구성원이 하나도 없는 묶음에서만(세션636 D2 — JS pickBundleUnits·계획서 "(오) 제외")
   ORDER BY bkey, is_off ASC,            -- (오) 행은 뒤로(묶음이 (오) 뿐이면 그 값 — JS pickBundleUnits 는 (오)뿐이면 null 을 주지만 KOSIS 쪽은 (오) 를 자기 묶음으로 떼어 자기 값을 쓰므로(Task 1) 화면도 자기 값이 맞다. 리허설 대조(Task 6 Step 3)는 이 경우를 "(오)뿐인 2행+ 묶음"으로 따로 센다 — 맹점 O3)
            CASE WHEN unit_source = 'naver_presale' AND is_owner THEN 0
                 WHEN unit_source IN ('naver_presale', 'naver') THEN 1
@@ -396,13 +397,13 @@ LEFT JOIN latest_regions_gu rg ON rg.region = a.region
 LEFT JOIN trade_stats ts ON ts.apartment_id = a.id
 LEFT JOIN (                            -- 무순위 공고 횟수·최근 공고일 = 구성원 합·최댓값
   SELECT m.bkey, COUNT(*) AS event_count, MAX(e.recorded_at) AS last_event_at
-    FROM applyhome_events e JOIN members m ON m.id = e.apartment_id
+    FROM applyhome_events e JOIN members m ON m.id = e.apartment_id AND NOT m.is_off   -- (오) 구성원 공고 제외(세션636 D3)
    GROUP BY m.bkey
 ) ae ON ae.bkey = a.bkey
 -- 진짜 모집공고일 소스 (세션 489) — presale_schedule_official.recruit_date = RCRIT_PBLANC_DE.
 LEFT JOIN (
   SELECT m.bkey, MAX(s.recruit_date) AS last_recruit_date
-    FROM presale_schedule_official s JOIN members m ON m.id = s.apartment_id
+    FROM presale_schedule_official s JOIN members m ON m.id = s.apartment_id AND NOT m.is_off   -- (오) 구성원 공고 제외(세션636 D3)
    WHERE s.recruit_date IS NOT NULL
    GROUP BY m.bkey
 ) pso ON pso.bkey = a.bkey;

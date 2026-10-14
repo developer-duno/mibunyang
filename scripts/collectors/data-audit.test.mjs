@@ -836,3 +836,32 @@ describe("fetchAllFromView — 묶음 VIEW 의 재료 행으로 파생표를 붙
     expect(rows[0].units).toBe(3);
   });
 });
+
+describe("fetchAllFromView — 칸 없음이 아닌 오류(세션636 D10ⓐ)", () => {
+  it("칸 없음이 아닌 오류(시간 초과)면 id 만으로 재시도하지 않고 보정을 건너뛴다(세션636 D10ⓐ)", async () => {
+    /** @type {string[]} */
+    const flatSelects = [];
+    const sb = {
+      from(/** @type {string} */ table) {
+        /** @type {string} */
+        let cols = "";
+        /** @type {any} */
+        const builder = {
+          select: (/** @type {string} */ c) => { cols = c; if (table === "apartments_flat") flatSelects.push(c); return builder; },
+          eq: () => builder, order: () => builder, gt: () => builder, limit: () => builder, range: () => builder,
+          then: (/** @type {any} */ resolve, /** @type {any} */ reject) => {
+            const res = table === "apartments_flat"
+              ? { data: null, error: { message: "canceling statement due to statement timeout" } }
+              : { data: table === "apartments" ? [{ id: "ah-1", region: "경북" }, { id: "ah-9", region: "경북" }] : [], error: null };
+            void cols;
+            return Promise.resolve(res).then(resolve, reject);
+          },
+        };
+        return builder;
+      },
+    };
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(flatSelects).toHaveLength(1); // 재시도 없음
+    expect(rows).toHaveLength(2); // 보정 건너뜀 = 테이블 전체(fail-open)
+  });
+});

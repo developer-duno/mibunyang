@@ -125,3 +125,18 @@ describe("fetchLayoutTargets — VIEW 적용 전 칸 없음이면 materialId 빼
     expect(rows.map((r) => r.id)).toEqual(["ah-1"]);
   });
 });
+
+describe("fetchLayoutTargets — 칸 없음이 아닌 오류는 다시 던진다(세션636 D10ⓐ)", () => {
+  it("다른 오류(시간 초과)면 재시도하지 않고 던진다", async () => {
+    /** @type {string[]} */
+    const selects = [];
+    /** @type {any} */
+    const q = {
+      is: () => q, order: () => q, limit: () => q, gt: () => q,
+      then: (/** @type {any} */ r, /** @type {any} */ j) => Promise.resolve({ data: null, error: { message: "canceling statement due to statement timeout" } }).then(r, j),
+    };
+    const sb = { from: () => ({ select: (/** @type {string} */ cols) => (selects.push(cols), q) }) };
+    await expect(fetchLayoutTargets(sb)).rejects.toThrow(/statement timeout/);
+    expect(selects).toHaveLength(1);
+  });
+});

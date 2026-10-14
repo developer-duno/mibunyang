@@ -317,7 +317,9 @@ LEFT JOIN (
    GROUP BY apartment_id
 ) pso ON pso.apartment_id = a.id;
 
--- 위 SELECT 로 적어 둔 권한을 여기서 다시 준다(예: GRANT SELECT ON apartments_flat TO <grantee>;) — 목록을 확인한 뒤 실행
+-- 위 SELECT 로 적어 둔 권한을 여기서 다시 준다 — 아래 역할 목록이 적어 둔 목록과 다르면 실행 전에 이 줄을 고친다.
+--   (2026-10-30 부터 Supabase 는 새 public 객체에 기본 권한을 주지 않는다 — DROP 뒤 재생성은 새 객체라 GRANT 를 빠뜨리면 API·굽기가 읽지 못한다)
+GRANT SELECT ON apartments_flat TO anon, authenticated, service_role;
 COMMIT;
 
 NOTIFY pgrst, 'reload schema';

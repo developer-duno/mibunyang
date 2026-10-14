@@ -98,6 +98,8 @@ export function buildDetailBuckets(apartments, n = DETAIL_BUCKET_COUNT) {
       dongFact: apt.dongFact ?? null,
       complexTable: apt.complexTable ?? null,
       complexJeonseTable: apt.complexJeonseTable ?? null,
+      // 세션636 D7: 목록에서 지운 칸(DETAIL_ONLY_FIELDS)은 여기 실어야 화면에 닿는다 — 빠지면 정적 모드에서 공고명 줄이 영영 안 뜬다
+      noticeName: apt.noticeName ?? null,
     });
   }
   return buckets.map((data, bucket) => ({ bucket, data }));
