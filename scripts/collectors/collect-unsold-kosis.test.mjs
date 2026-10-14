@@ -4,7 +4,7 @@
  *
  * 대상: parseKosisRows, aggregateRegionTotals, calcProportionalUnsold
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "fs";
 import path from "path";
 
@@ -62,6 +62,31 @@ function fakeEq(updateCalls, table, payload, protectedIds = new Set()) {
     });
   };
 }
+
+/**
+ * 가짜 collector_runs 조회(세션636 F6) — `select().eq().eq().like().limit()` 사슬. 건 조건을 calls 에 남기고 rows 를 돌려준다.
+ * @param {any[]} rows @param {any[]} [calls]
+ */
+function fakeRunsQuery(rows, calls = []) {
+  /** @type {any} */
+  const q = {
+    select: (/** @type {any[]} */ ...a) => (calls.push(["select", ...a]), q),
+    eq: (/** @type {any[]} */ ...a) => (calls.push(["eq", ...a]), q),
+    like: (/** @type {any[]} */ ...a) => (calls.push(["like", ...a]), q),
+    limit: (/** @type {any[]} */ ...a) => (calls.push(["limit", ...a]), Promise.resolve({ data: rows, error: null })),
+  };
+  return q;
+}
+
+/**
+ * 가짜 sb 에 "묶음 배분 첫 반영(--apply-from) 끝남" collector_runs 를 붙인다 — 인자 없는 쓰기 실행 시험이 F6 차단기를 지나게.
+ * @param {any} sb
+ */
+function withBundleApplied(sb) {
+  return { from: (/** @type {string} */ t) => (t === "collector_runs" ? fakeRunsQuery([{ id: 1 }]) : sb.from(t)) };
+}
+/** 쓰기 실행 시험용 — 가짜 sb 에 첫 반영 표식을 붙여 getSupabase 가 돌려주게. @param {any} sb */
+const mockSb = (sb) => getSupabase.mockReturnValue(withBundleApplied(sb));
 
 // ── 팩토리 ───────────────────────────────────────────────────
 /** KOSIS 행 팩토리 */
@@ -267,6 +292,7 @@ describe("main() recordCollectorRun 하드닝", () => {
   beforeEach(() => {
     fetchWithRetryMock.mockReset();
     recordCollectorRun.mockClear();
+    getSupabase.mockReturnValue(withBundleApplied({ from: () => ({}) })); // 세션636 F6 — 쓰기 실행은 첫 반영 표식이 있어야 KOSIS 를 부른다
   });
 
   it("KOSIS fetch 실패 → rethrow + status=failure 기록", async () => {
@@ -586,7 +612,7 @@ describe("main() — write_zero 가 dry-run 로그·ok 카운트·DB 반영에 �
 
     /** @type {any[]} */
     const updateCalls = [];
-    getSupabase.mockReturnValue({
+    mockSb({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
           eq: fakeEq(updateCalls, table, payload),
@@ -724,7 +750,7 @@ describe("main() — 0-쓰기 차단기 (세션568-5: DB 쓰기 전 판정 + exp
 
     /** @type {any[]} */
     const updateCalls = [];
-    getSupabase.mockReturnValue({
+    mockSb({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
           eq: fakeEq(updateCalls, table, payload),
@@ -756,7 +782,7 @@ describe("main() — 0-쓰기 차단기 (세션568-5: DB 쓰기 전 판정 + exp
 
     /** @type {any[]} */
     const updateCalls = [];
-    getSupabase.mockReturnValue({
+    mockSb({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
           eq: fakeEq(updateCalls, table, payload),
@@ -780,7 +806,7 @@ describe("main() — 0-쓰기 차단기 (세션568-5: DB 쓰기 전 판정 + exp
     const { regions, apartments, kosisRows } = makeFixture();
     selectAllMock.mockResolvedValueOnce(regions).mockResolvedValueOnce(apartments);
     fetchWithRetryMock.mockResolvedValue({ json: async () => kosisRows });
-    getSupabase.mockReturnValue({
+    mockSb({
       from: () => ({ update: () => ({ eq: () => Promise.resolve({ error: null }) }) }),
     });
 
@@ -1349,7 +1375,7 @@ describe("main() — 값 유지 대상(skip_no_match·skip_no_estimate·hold_ge5
 
     /** @type {any[]} */
     const updateCalls = [];
-    getSupabase.mockReturnValue({
+    mockSb({
       from: (/** @type {string} */ table) => ({
         update: (/** @type {any} */ payload) => ({
           eq: fakeEq(updateCalls, table, payload),
@@ -1596,7 +1622,7 @@ describe("사람 보류 hold (세션570)", () => {
       /** @type {any[]} */
       const updateCalls = [];
       // race-1 = 계획 뒤 사람이 hold 로 바꾼 행 — DB WHERE 가 막아 빈 배열을 돌려준다
-      getSupabase.mockReturnValue({
+      mockSb({
         from: (/** @type {string} */ table) => ({ update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, table, payload, new Set(["race-1"])) }) }),
       });
       const { log: logMock, upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
@@ -1651,7 +1677,7 @@ describe("main() unsold_history — 이름-임대 제외 (세션577)", () => {
     fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202607", DT: "20" }] });
     /** @type {any[]} */
     const updateCalls = [];
-    getSupabase.mockReturnValue({
+    mockSb({
       from: (/** @type {string} */ table) => ({ update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, table, payload) }) }),
     });
     const { log: logMock, upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
@@ -1780,5 +1806,255 @@ describe("comparePlanToApproved — --apply-from 승인 계획 대조(세션635 
   it("parseApplyFromArg — --impact-out 이 승인 파일과 같은 경로면 던진다(승인 기록 덮어쓰기 방지), 다른 경로면 통과", () => {
     expect(() => parseApplyFromArg(["--apply-from=plan/a.json", "--impact-out=./plan/a.json"])).toThrow(/같은 파일/);
     expect(parseApplyFromArg(["--apply-from=plan/a.json", "--impact-out=plan/applied.json"])).toEqual({ applyFrom: "plan/a.json" });
+  });
+});
+
+describe("planUnsoldUpdates — 세션636 보완(검사관 적대 🟠1·🟠2·🟠3·🟠6)", () => {
+  const NOW = new Date("2026-10-13T03:00:00Z");
+  const base = { region: "경북", gu: "경산시", unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null, unit_source: null, naver_presale_no: null, complex_key: null };
+  /** @param {any[]} apartments @param {any} u */
+  const plan = (apartments, u) => Object.fromEntries(planUnsoldUpdates({ apartments, unsoldByRegionGu: u, now: NOW }).map((p) => [p.id, p]));
+
+  // 검사관 재현의 43 은 열쇠 없는 옛 코드 값(임대 300 까지 분모에 든 1400)이다 — 승인된 계획은 임대 묶음을 분모에서 빼므로 60(메인 승인 2026-10-14).
+  it("F1 임대가 섞인 묶음 — 유효 청약홈 행은 skip_preserved, 임대 행은 skip_lease·분모 제외, 이웃은 분모 1000(400+600)으로 60", () => {
+    const byId = plan([
+      { ...base, id: "ah-L", name: "경산 임대", units: 300, unit_source: "molit", presale_type: "국민임대", complex_key: "K" },
+      { ...base, id: "ah-A", name: "경산 분양", units: 400, unit_source: "applyhome", unsold: 400, unsold_rate: 100, unsold_source: "applyhome", unsold_as_of: "2026-09-01", complex_key: "K" },
+      { ...base, id: "ah-N", name: "이웃", units: 600 },
+    ], { 경북: { 경산시: 100 } });
+    expect(byId["ah-A"].action).toBe("skip_preserved");
+    expect(byId["ah-L"].action).toBe("skip_lease");
+    expect(byId["ah-L"].bundleKey).toBe("K#lease:ah-L");
+    expect(byId["ah-N"].action).toBe("write");
+    expect(byId["ah-N"].totalUnitsInGu).toBe(1000);
+    expect(byId["ah-N"].newEstimate).toBe(60);
+  });
+  it("F2 첫 행 구가 비고 형제에 구가 있으면 형제가 묶음 값 30 을 받는다(구 빈 행은 skip_invalid)", () => {
+    const byId = plan([
+      { ...base, id: "ah-0", name: "A", gu: null, units: 300, complex_key: "K" },
+      { ...base, id: "ah-1", name: "A", units: 300, complex_key: "K" },
+      { ...base, id: "ah-9", name: "이웃", units: 700 },
+    ], { 경북: { 경산시: 100 } });
+    expect(byId["ah-1"].action).toBe("write");
+    expect(byId["ah-1"].newEstimate).toBe(30);
+    expect(byId["ah-0"].action).toBe("skip_invalid");
+  });
+  it("F2 한 열쇠에 경산시·포항시가 섞이면 두 묶음으로 갈려 각자 자기 구 값", () => {
+    const byId = plan([
+      { ...base, id: "ah-1", name: "A", units: 400, complex_key: "K" },
+      { ...base, id: "ah-2", name: "A", gu: "포항시", units: 400, complex_key: "K" },
+      { ...base, id: "n-1", name: "이웃1", units: 600 },
+      { ...base, id: "n-2", name: "이웃2", gu: "포항시", units: 600 },
+    ], { 경북: { 경산시: 100, 포항시: 50 } });
+    expect([byId["ah-1"].bundleKey, byId["ah-1"].newEstimate]).toEqual(["K#rg:경북|경산시", 40]);
+    expect([byId["ah-2"].bundleKey, byId["ah-2"].newEstimate]).toEqual(["K#rg:경북|포항시", 20]);
+  });
+  it("F3 경북+제주 묶음에 제주 응답이 없으면 제주 행은 skip_no_match, 예외 없음", () => {
+    /** @type {any} */
+    let byId;
+    expect(() => {
+      byId = plan([
+        { ...base, id: "g-1", name: "A", units: 400, complex_key: "K" },
+        { ...base, id: "j-1", name: "A", region: "제주", gu: "제주시", units: 400, complex_key: "K" },
+        { ...base, id: "n-1", name: "이웃", units: 600 },
+      ], { 경북: { 경산시: 100 } });
+    }).not.toThrow();
+    expect(byId["j-1"].action).toBe("skip_no_match");
+    expect(byId["g-1"].newEstimate).toBe(40);
+  });
+});
+
+describe("planUnsoldUpdates·묶음 요약 — 세션636 보완(맹점 🟡 F7·F8·F9)", () => {
+  const NOW = new Date("2026-10-13T03:00:00Z");
+  const base = { region: "경북", gu: "경산시", unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null, unit_source: null, naver_presale_no: null, complex_key: null };
+  const u = { 경북: { 경산시: 100 } };
+  it("F7 묶음 세대수 재료가 없으면(구성원 전부 1 이하·빈칸) 구성원 모두 skip_invalid", () => {
+    const plan = planUnsoldUpdates({ apartments: [
+      { ...base, id: "ah-1", name: "A", units: 1, complex_key: "K" },
+      { ...base, id: "ah-2", name: "A", units: null, complex_key: "K" },
+      { ...base, id: "n-1", name: "이웃", units: 600 },
+    ], unsoldByRegionGu: u, now: NOW });
+    const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
+    expect([byId["ah-1"].action, byId["ah-2"].action]).toEqual(["skip_invalid", "skip_invalid"]);
+    expect(byId["ah-1"].bundleUnits).toBeNull();
+    expect(byId["n-1"].totalUnitsInGu).toBe(600);
+  });
+  it("F8 계획 행에 그 행 세대수(rowUnits) — 묶음 세대수와 따로", () => {
+    const plan = planUnsoldUpdates({ apartments: [
+      { ...base, id: "ah-1", name: "하양", units: 614, complex_key: "하양" },
+      { ...base, id: "ah-2", name: "하양(2차)", units: 3, complex_key: "하양" },
+    ], unsoldByRegionGu: u, now: NOW });
+    const byId = Object.fromEntries(plan.map((p) => [p.id, p]));
+    expect([byId["ah-2"].rowUnits, byId["ah-2"].bundleUnits]).toEqual([3, 614]);
+    expect(byId["ah-1"].rowUnits).toBe(614);
+  });
+  it("F9 묶음 요약은 계획 결과(존중 판정 뒤)로 — 존중 행 1 섞인 3행 묶음 → 존중 1·받는 행 2, 시도·구 갈림 수", async () => {
+    const { summarizePlanFold } = await import("./collect-unsold-kosis.mjs");
+    const plan = planUnsoldUpdates({ apartments: [
+      { ...base, id: "ah-A", name: "르네", units: 63, unit_source: "applyhome", unsold: 63, unsold_source: "applyhome", unsold_as_of: "2026-09-01", complex_key: "R" },
+      { ...base, id: "ap-1", name: "르네", units: 263, unit_source: "naver_presale", naver_presale_no: "1", complex_key: "R" },
+      { ...base, id: "ah-2", name: "르네", units: 3, complex_key: "R" },
+      { ...base, id: "h-1", name: "남악", units: 178, unsold_source: "hold", complex_key: "N" },
+      { ...base, id: "h-2", name: "남악", units: 27, complex_key: "N" },
+      { ...base, id: "g-1", name: "갈림", units: 400, complex_key: "G" },
+      { ...base, id: "g-2", name: "갈림", gu: "포항시", units: 400, complex_key: "G" },
+    ], unsoldByRegionGu: { 경북: { 경산시: 100, 포항시: 50 } }, now: NOW });
+    expect(summarizePlanFold(plan)).toEqual({ bundles: 4, multi: 2, receivers: 5, holdsInMulti: 1, respectedInMulti: 1, rgSplit: 1 });
+  });
+  it("F9 main 미리보기 — impact fold·[묶음] 로그가 존중 판정 뒤 수", async () => {
+    const os = await import("node:os");
+    const { rmSync } = await import("node:fs");
+    const impactPath = path.join(os.tmpdir(), `s636_fold_${Date.now()}.json`);
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { ...base, id: "ah-A", name: "르네", units: 63, unit_source: "applyhome", unsold: 63, unsold_source: "applyhome", unsold_as_of: new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10), complex_key: "R" },
+      { ...base, id: "ap-1", name: "르네", units: 263, unit_source: "naver_presale", naver_presale_no: "1", complex_key: "R" },
+      { ...base, id: "ah-2", name: "르네", units: 3, complex_key: "R" },
+    ]);
+    fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경북", C2_NM: "경산시", PRD_DE: "202601", DT: "10" }] });
+    /** @type {string[]} */
+    const lines = [];
+    const { log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
+    logMock.mockImplementation((/** @type {string} */ _p, /** @type {string} */ m) => { lines.push(m); });
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, "--dry-run", `--impact-out=${impactPath}`];
+    try {
+      await main();
+      const parsed = JSON.parse(readFileSync(impactPath, "utf8"));
+      expect(parsed.fold).toEqual({ bundles: 1, multi: 1, receivers: 2, holdsInMulti: 0, respectedInMulti: 1, rgSplit: 0 });
+    } finally {
+      process.argv = originalArgv;
+      logMock.mockReset();
+      try { rmSync(impactPath); } catch { /* noop */ }
+    }
+    expect(lines).toContain("[묶음] 묶음 1 · 2행+ 1 · 받는 행 2 · 2행+ 존중 1 · 2행+ hold 0 (계획 결과 기준)");
+    expect(lines).toContain("[묶음] 시도·구 갈림 0묶음");
+  });
+});
+
+describe("comparePlanToApproved — 세션636 보완(적대 🟠5·🟡)", () => {
+  /** @param {Record<string, unknown>} o */
+  const p = (o) => ({ id: "x", action: "write", currentUnsold: 10, newEstimate: 20, newRate: 5.5, ...o });
+  it("F5 추정치는 같고 률만 다른 행 → same=false · changed 명단", () => {
+    const r = comparePlanToApproved([p({ id: "a", newRate: 6.1 })], [p({ id: "a" })]);
+    expect(r.same).toBe(false);
+    expect(r.changed.map((c) => c.id)).toEqual(["a"]);
+  });
+  it("F10 승인 파일에 같은 id 가 두 줄이면 던진다(뒤 줄이 조용히 이기지 않게)", () => {
+    expect(() => comparePlanToApproved([p({ id: "a" })], [p({ id: "a", newEstimate: 99 }), p({ id: "a" })])).toThrow(/같은 id 가 두 줄/);
+  });
+});
+
+describe("main() — --apply-from 배선·첫 반영 차단기(세션636 F4·F6)", () => {
+  const regionsFx = () => [{ id: "reg-1", region: "경기", gu: "수원시", regional_unsold: 999 }];
+  const aptsFx = () => [
+    { id: "w1", name: "정상1", region: "경기", gu: "수원시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null },
+    { id: "w2", name: "정상2", region: "경기", gu: "수원시", units: 100, unsold: 5, unsold_rate: 5, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null },
+  ];
+  const kosisFx = () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202601", DT: "20" }]; // w1·w2 각 10(률 10)
+  /** @type {any} */ let shared;
+  /** @type {string[]} */ let tmpFiles = [];
+  /** @type {string[]} */ let errLines = [];
+  /** @type {any[]} */ let updateCalls = [];
+  beforeEach(async () => {
+    selectAllMock.mockReset();
+    fetchWithRetryMock.mockReset();
+    recordCollectorRun.mockClear();
+    getSupabase.mockReset();
+    shared = /** @type {any} */ (await import("./_shared.mjs"));
+    shared.upsertBatch.mockReset();
+    shared.upsertBatch.mockResolvedValue(0);
+    errLines = [];
+    shared.logError.mockImplementation((/** @type {string} */ _p, /** @type {string} */ m) => { errLines.push(m); });
+    updateCalls = [];
+    selectAllMock.mockResolvedValueOnce(regionsFx()).mockResolvedValueOnce(aptsFx());
+    fetchWithRetryMock.mockResolvedValue({ json: async () => kosisFx() });
+  });
+  afterEach(async () => {
+    shared.logError.mockReset();
+    const { rmSync } = await import("node:fs");
+    for (const f of tmpFiles) { try { rmSync(f); } catch { /* noop */ } }
+    tmpFiles = [];
+  });
+  /** 승인 파일을 만든다 — tweak 로 한 행을 바꾸면 어긋난 승인. @param {(plan: any[]) => void} [tweak] */
+  async function approvedFile(tweak) {
+    const os = await import("node:os");
+    const { writeFileSync } = await import("node:fs");
+    const plan = planUnsoldUpdates({ apartments: /** @type {any} */ (aptsFx()), unsoldByRegionGu: parseKosisRows(kosisFx()) });
+    if (tweak) tweak(plan);
+    const f = path.join(os.tmpdir(), `s636_approved_${Date.now()}_${Math.random().toString(36).slice(2)}.json`);
+    writeFileSync(f, JSON.stringify({ plan }), "utf8");
+    tmpFiles.push(f);
+    return f;
+  }
+  /** @param {any[]} runsRows @param {any[]} [runsCalls] */
+  const sbWith = (runsRows, runsCalls = []) => ({
+    from: (/** @type {string} */ t) => (t === "collector_runs"
+      ? fakeRunsQuery(runsRows, runsCalls)
+      : { update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, t, payload) }) }),
+  });
+  /** @param {string[]} extra */
+  async function runMain(extra) {
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv.filter((a) => a !== "--dry-run"), ...extra];
+    try { return await main(); } finally { process.argv = originalArgv; }
+  }
+  const historyWrites = () => shared.upsertBatch.mock.calls.filter((/** @type {any[]} */ c) => c[0] === "unsold_history");
+
+  it("F4ⓐ 승인 파일과 어긋나면 regions·apartments·history 쓰기 0 + failure(KOSIS_PLAN_MISMATCH) + 던짐", async () => {
+    const f = await approvedFile((plan) => { plan[0].newEstimate = 11; });
+    getSupabase.mockReturnValue(sbWith([{ id: 1 }]));
+    await expect(runMain([`--apply-from=${f}`])).rejects.toThrow(/KOSIS_PLAN_MISMATCH 1건/);
+    expect(updateCalls).toEqual([]);
+    expect(historyWrites()).toEqual([]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", expect.objectContaining({ status: "failure", errorMessage: expect.stringContaining("KOSIS_PLAN_MISMATCH") }));
+  });
+  it("F4ⓑ 미리보기(dry-run)에서 어긋나면 던지지 않고 경고만(exit 0)", async () => {
+    const f = await approvedFile((plan) => { plan[0].newEstimate = 11; });
+    await expect(runMain(["--dry-run", `--apply-from=${f}`])).resolves.toBeUndefined();
+    expect(errLines.some((l) => l.startsWith("[DRY-RUN 경고] KOSIS_PLAN_MISMATCH 1건"))).toBe(true);
+  });
+  it("F4ⓒ --apply-from 과 --expect-zero 를 같이 주면 KOSIS 조회 전에 던지고 failure 기록", async () => {
+    const f = await approvedFile();
+    getSupabase.mockReturnValue(sbWith([{ id: 1 }]));
+    await expect(runMain([`--apply-from=${f}`, "--expect-zero=0"])).rejects.toThrow(/같이 줄 수 없습니다/);
+    expect(fetchWithRetryMock).not.toHaveBeenCalled();
+    expect(updateCalls).toEqual([]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", expect.objectContaining({ status: "failure" }));
+  });
+  it("F6 승인 파일과 같으면 쓰고, 성공 기록에 KOSIS_BUNDLE_APPLIED 표식(차단기 조회는 하지 않는다)", async () => {
+    const f = await approvedFile();
+    /** @type {any[]} */ const runsCalls = [];
+    getSupabase.mockReturnValue(sbWith([], runsCalls));
+    await runMain([`--apply-from=${f}`]);
+    expect(updateCalls.filter((c) => c.table === "apartments").map((c) => [c.id, c.payload.unsold])).toEqual([["w1", 10], ["w2", 10]]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 3, errorMessage: "KOSIS_BUNDLE_APPLIED" });
+    expect(runsCalls).toEqual([]);
+  });
+  it("F6 인자 없는 쓰기 실행 + 첫 반영 표식 없음 → KOSIS 조회 전에 차단, 쓰기 0, failure", async () => {
+    /** @type {any[]} */ const runsCalls = [];
+    getSupabase.mockReturnValue(sbWith([], runsCalls));
+    await expect(runMain([])).rejects.toThrow(/KOSIS_BUNDLE_NOT_APPLIED/);
+    expect(fetchWithRetryMock).not.toHaveBeenCalled();
+    expect(updateCalls).toEqual([]);
+    expect(historyWrites()).toEqual([]);
+    expect(errLines).toContain("[차단] KOSIS_BUNDLE_NOT_APPLIED — 첫 반영(--apply-from) 전이라 쓰지 않는다");
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", expect.objectContaining({ status: "failure", errorMessage: expect.stringContaining("KOSIS_BUNDLE_NOT_APPLIED") }));
+    expect(runsCalls).toEqual([
+      ["select", "id"], ["eq", "collector", "kosis-unsold"], ["eq", "status", "success"],
+      ["like", "error_message", "%KOSIS_BUNDLE_APPLIED%"], ["limit", 1],
+    ]);
+  });
+  it("F6 인자 없는 쓰기 실행 + 첫 반영 표식 있음 → 정상 진행(쓰기), 성공 기록엔 표식을 새로 남기지 않는다", async () => {
+    getSupabase.mockReturnValue(sbWith([{ id: 1 }]));
+    await runMain([]);
+    expect(updateCalls.filter((c) => c.table === "apartments").map((c) => c.id)).toEqual(["w1", "w2"]);
+    expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 3 });
+  });
+  it("F6 collector_runs 조회가 실패하면 쓰지 않는다(확인 못 하면 막는다)", async () => {
+    getSupabase.mockReturnValue({ from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ like: () => ({ limit: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }) }) }) }) });
+    await expect(runMain([])).rejects.toThrow(/collector_runs 조회 실패/);
+    expect(fetchWithRetryMock).not.toHaveBeenCalled();
   });
 });

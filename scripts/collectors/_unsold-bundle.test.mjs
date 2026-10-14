@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { bundleKeyOf, foldForUnsold, summarizeFold } from "./_unsold-bundle.mjs";
+import { bundleKeyOf, foldForUnsold } from "./_unsold-bundle.mjs";
 
 /** @param {Partial<import("./_unsold-bundle.mjs").UnsoldRow> & { id: string }} o */
 const row = (o) => ({ name: o.id, region: "경북", gu: "경산시", units: null, unit_source: null, unsold: null, unsold_rate: null,
@@ -85,11 +85,66 @@ describe("foldForUnsold — 섞인 묶음", () => {
     expect(bs.find((b) => b.key === "K")?.units).toBe(500);
     expect(bs.find((b) => b.key === "K#off:ah-2")?.units).toBe(900);
   });
-  it("summarizeFold 는 묶음·2행+·받는 행 수를 센다", () => {
+});
+
+describe("foldForUnsold — 세션636 보완(검사관 적대 🟠1·🟠2·🟠6)", () => {
+  it("F1 임대 행은 자기 묶음(#lease:<id>)으로 떨어지고, 비임대 형제는 원래 열쇠 묶음에 남아 존중 판정을 받는다", () => {
     const rows = [
-      row({ id: "ah-1", complex_key: "K", units: 500 }), row({ id: "ah-2", complex_key: "K", units: 3, unsold_source: "hold" }),
-      row({ id: "ah-3", units: 10 }),
+      row({ id: "ah-L", complex_key: "K", units: 300, presale_type: "국민임대" }),
+      row({ id: "ah-A", complex_key: "K", units: 400, unit_source: "applyhome", unsold: 400, unsold_source: "applyhome", unsold_as_of: "2026-09-01" }),
     ];
-    expect(summarizeFold(foldForUnsold(rows, notRespected))).toEqual({ bundles: 2, multi: 1, receivers: 2, holdsInMulti: 1, respectedInMulti: 0 });
+    const bs = foldForUnsold(rows, { isRespected: (r) => r.unsold_source === "applyhome" });
+    const lease = bs.find((b) => b.key === "K#lease:ah-L");
+    const main = bs.find((b) => b.key === "K");
+    expect(bs).toHaveLength(2);
+    expect(lease?.lease).toBe(true);
+    expect(lease?.receivers).toEqual([]);
+    expect(main?.lease).toBe(false);
+    expect(main?.respected).toEqual(["ah-A"]);
+    expect(main?.units).toBe(400); // 임대 행 세대수는 이 묶음 재료가 아니다
+  });
+  it("F1 bundleKeyOf — 임대 행은 열쇠 뒤 #lease:<id>, (오) 가 먼저", () => {
+    expect(bundleKeyOf(row({ id: "ah-1", complex_key: "K", presale_type: "국민임대" }))).toBe("K#lease:ah-1");
+    expect(bundleKeyOf(row({ id: "ah-2", name: "행복주택 단지", complex_key: "K" }))).toBe("K#lease:ah-2");
+    expect(bundleKeyOf(row({ id: "ah-3", name: "임대(오)", complex_key: "K", presale_type: "국민임대" }))).toBe("K#off:ah-3");
+  });
+  it("F2 시도·구는 구가 있는 구성원에서 — 첫 행 구가 비어도 형제의 구를 쓴다", () => {
+    const rows = [
+      row({ id: "ah-0", complex_key: "K", gu: null, units: 300 }),
+      row({ id: "ah-1", complex_key: "K", gu: "경산시", units: 300 }),
+    ];
+    const [b] = foldForUnsold(rows, notRespected);
+    expect(b.key).toBe("K");
+    expect([b.region, b.gu]).toEqual(["경북", "경산시"]);
+  });
+  it("F2 구성원의 (시도, 구) 짝이 둘이면 짝마다 나눈다(#rg:<시도>|<구>) — 각자 자기 구 값", () => {
+    const rows = [
+      row({ id: "ah-1", complex_key: "K", gu: "경산시", units: 400 }),
+      row({ id: "ah-2", complex_key: "K", gu: "포항시", units: 500 }),
+      row({ id: "ah-3", complex_key: "K", gu: "경산시", units: 3 }),
+    ];
+    const bs = foldForUnsold(rows, notRespected);
+    expect(bs.map((b) => [b.key, b.gu, b.units, b.members.map((m) => m.id)]).sort()).toEqual([
+      ["K#rg:경북|경산시", "경산시", 400, ["ah-1", "ah-3"]],
+      ["K#rg:경북|포항시", "포항시", 500, ["ah-2"]],
+    ]);
+  });
+  it("F2 갈린 묶음에서 구 없는 구성원은 자기들끼리(#rg:<시도>|) — 남의 구 값을 받지 않는다", () => {
+    const rows = [
+      row({ id: "ah-1", complex_key: "K", gu: "경산시", units: 400 }),
+      row({ id: "ah-2", complex_key: "K", region: "제주", gu: "제주시", units: 500 }),
+      row({ id: "ah-3", complex_key: "K", gu: null, units: 600 }),
+    ];
+    const bs = foldForUnsold(rows, notRespected);
+    expect(bs.map((b) => b.key).sort()).toEqual(["K#rg:경북|", "K#rg:경북|경산시", "K#rg:제주|제주시"]);
+    expect(bs.find((b) => b.key === "K#rg:경북|")?.gu).toBeNull();
+  });
+  it("F2 세종(구 없음이 정상)은 짝 (세종, 빈 구) 하나로 센다 — 혼자면 나누지 않는다", () => {
+    const rows = [
+      row({ id: "ah-1", complex_key: "S", region: "세종", gu: null, units: 400 }),
+      row({ id: "ah-2", complex_key: "S", region: "세종", gu: null, units: 3 }),
+    ];
+    const bs = foldForUnsold(rows, notRespected);
+    expect(bs.map((b) => b.key)).toEqual(["S"]);
   });
 });

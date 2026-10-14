@@ -20,7 +20,7 @@
  */
 import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
-import { foldForUnsold, summarizeFold } from "./_unsold-bundle.mjs";
+import { foldForUnsold } from "./_unsold-bundle.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
 import { resolve as resolvePath } from "node:path";
 
@@ -289,6 +289,7 @@ export function resolveKosisGuKey(region, gu, guMap) {
  *   currentSource: string | null;
  *   applyhomeExpired: boolean;
  *   bundleKey: string; bundleUnits: number | null; bundleSize: number;
+ *   rowUnits: number | null;
  * }>}
  */
 export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date() }) {
@@ -331,6 +332,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       currentSource: apt.unsold_source ?? null,
       applyhomeExpired: applyhomeStatus(apt, now) === "expired",
       bundleKey: b.key, bundleUnits: b.units, bundleSize: b.members.length,
+      rowUnits: apt.units, // 세션636 F8 — 그 행 세대수(미분양 > 행 세대수 명단을 impact 만으로 뽑게)
     };
 
     // 규칙 0 — 사람 보류(그 행만). 분모(묶음 세대수)에는 이미 들어 있다.
@@ -340,7 +342,7 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
     const guOkForInvalid = !!apt.gu || apt.region === "세종";
     if (!apt.region || !guOkForInvalid || !b.units || b.units <= 1) { plan.push({ ...base, action: "skip_invalid" }); continue; }
 
-    // 규칙 2 — 임대형(묶음은 임대 여부가 같다 — findMixedBundles 가 섞임을 막는다).
+    // 규칙 2 — 임대형(행 단위. 임대 행은 접기에서 자기 묶음 `#lease:<id>` 로 떨어져 분모에도 안 든다 — 세션636 F1).
     if (isLeaseUnit(apt)) { plan.push({ ...base, action: "skip_lease" }); continue; }
 
     // 규칙 3·4 — 존중(유효 applyhome·공고일 없음·옛 완판). 참고 추정치는 묶음 값으로 적는다.
@@ -351,10 +353,12 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       continue;
     }
 
-    // 규칙 5 — 받는 행. 묶음마다 한 번 계산한 값을 그대로.
+    // 규칙 5 — 받는 행(b.receivers)만 묶음마다 한 번 계산한 값을 받는다(세션636 F1). 접기 규칙상 hold·존중·임대가 아닌
+    // 행은 전부 받는 행이라 아래 분기는 생기지 않는 꼴이다 — 생기면 쓰지 않는다(묶음 접기가 바뀌어도 받는 행 명단 밖엔 안 쓴다).
+    if (!b.receivers.includes(apt.id)) { plan.push({ ...base, action: "skip_invalid" }); continue; }
     if (!kosisKey) { plan.push({ ...base, action: "skip_no_match" }); continue; }
-    const guMap = unsoldByRegionGu[/** @type {string} */ (apt.region)];
-    const guUnsold = /** @type {Record<string, number>} */ (guMap)[kosisKey];
+    // F3(세션636) — 시도가 응답에 통째로 없으면 예외 대신 매칭 실패(skip_no_match).
+    const guUnsold = unsoldByRegionGu[/** @type {string} */ (apt.region)]?.[kosisKey];
     if (guUnsold == null) { plan.push({ ...base, action: "skip_no_match", kosisKey }); continue; }
     if (guUnsold <= 0) { plan.push({ ...base, action: "write_zero", kosisKey, guUnsold, newEstimate: 0, newRate: 0 }); continue; }
 
@@ -385,6 +389,31 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
     const r = calcProportionalUnsold(guUnsold, b.units, total);
     return r ? { estimated: r.estimated, rate: r.unsoldRate } : null;
   }
+}
+
+/** 규칙 5(받는 행)에 닿은 계획 action — 묶음 요약의 "받는 행". */
+const RECEIVER_ACTIONS = new Set(["write", "write_zero", "hold_ge50", "skip_no_match", "skip_no_estimate"]);
+
+/**
+ * 묶음 요약(impact `fold` · `[묶음]` 로그) — **계획 결과(존중 판정 뒤)** 로 센다(세션636 F9: 옛 요약은 존중 판정 전 접기라
+ * 받는 행이 부풀고 존중이 늘 0 이었다). 받는 행 = 규칙 5 에 닿은 행 · 존중 = skip_preserved·skip_applyhome_no_date ·
+ * hold = skip_hold · 시도·구 갈림 = `#rg:` 로 나뉜 원래 열쇠 수. DB 접근 없는 순수 함수.
+ * @param {ReturnType<typeof planUnsoldUpdates>} plan
+ */
+export function summarizePlanFold(plan) {
+  const keys = new Set(), multiKeys = new Set(), rgBase = new Set();
+  let receivers = 0, holdsInMulti = 0, respectedInMulti = 0;
+  for (const p of plan) {
+    keys.add(p.bundleKey);
+    const multi = p.bundleSize >= 2;
+    if (multi) multiKeys.add(p.bundleKey);
+    if (RECEIVER_ACTIONS.has(p.action)) receivers++;
+    if (multi && p.action === "skip_hold") holdsInMulti++;
+    if (multi && (p.action === "skip_preserved" || p.action === "skip_applyhome_no_date")) respectedInMulti++;
+    const i = p.bundleKey.indexOf("#rg:");
+    if (i >= 0) rgBase.add(p.bundleKey.slice(0, i));
+  }
+  return { bundles: keys.size, multi: multiKeys.size, receivers, holdsInMulti, respectedInMulti, rgSplit: rgBase.size };
 }
 
 /**
@@ -536,6 +565,13 @@ export function parseApplyFromArg(argv) {
  */
 export function comparePlanToApproved(current, approved) {
   if (!Array.isArray(approved)) throw new Error("승인한 계획 파일에 plan 배열이 없습니다");
+  // 세션636 F10 — 같은 id 가 두 줄이면 뒤 줄이 조용히 이긴다 → 어느 줄이 승인인지 모르므로 던진다.
+  const seenIds = new Set();
+  for (const p of approved) {
+    const id = String(p?.id);
+    if (seenIds.has(id)) throw new Error(`승인한 계획 파일에 같은 id 가 두 줄 있습니다: ${id} — 어느 줄이 승인인지 알 수 없어 쓰지 않습니다`);
+    seenIds.add(id);
+  }
   const writesOf = (/** @type {ReadonlyArray<any>} */ arr) => {
     /** @type {Map<string, { currentUnsold: unknown, newEstimate: unknown, newRate: unknown, action: unknown }>} */
     const m = new Map();
@@ -559,6 +595,22 @@ export function comparePlanToApproved(current, approved) {
   return { same: onlyCurrent.length === 0 && onlyApproved.length === 0 && changed.length === 0, onlyCurrent, onlyApproved, changed };
 }
 
+/** `--apply-from` 으로 묶음 배분을 반영한 성공 회차가 `collector_runs.error_message` 에 남기는 표식(세션636 F6). */
+export const KOSIS_BUNDLE_APPLIED_MARKER = "KOSIS_BUNDLE_APPLIED";
+
+/**
+ * 묶음 배분을 사람이 승인해 반영(`--apply-from` 성공)한 회차가 있었나 — 같은 수집기·success·표식 포함 행 1건(세션636 F6).
+ * 조회 실패는 던진다(확인 못 하면 쓰지 않는다).
+ * @param {any} sb Supabase 클라이언트(시험에서는 같은 모양의 가짜)
+ * @returns {Promise<boolean>}
+ */
+export async function hasBundleApplied(sb) {
+  const { data, error } = await sb.from("collector_runs").select("id").eq("collector", PHASE).eq("status", "success")
+    .like("error_message", `%${KOSIS_BUNDLE_APPLIED_MARKER}%`).limit(1);
+  if (error) throw new Error(`collector_runs 조회 실패 — 묶음 배분 첫 반영 여부를 확인 못 해 쓰지 않습니다: ${error.message}`);
+  return (data?.length ?? 0) > 0;
+}
+
 // 세션 395: try/catch/finally 하드닝 — KOSIS 실패가 collector_runs 에 0행으로
 // 남는 사각 정정 (PR #97 collect-regional-economy 패턴 답습).
 export async function main() {
@@ -576,6 +628,8 @@ export async function main() {
   let errorMessage = /** @type {string | undefined} */ (undefined);
   /** C6 공고일 빈 applyhome 경고 마커(세션569) — status 는 그대로 두고 error_message 에만 남긴다. @type {string | null} */
   let noDateMarker = null;
+  /** F6(세션636) — `--apply-from` 반영이 끝난 회차면 true(성공 기록에 KOSIS_BUNDLE_APPLIED 표식). */
+  let bundleApplied = false;
   try {
     if (!KOSIS_KEY) throw new Error("KOSIS_KEY not configured");
 
@@ -592,6 +646,14 @@ export async function main() {
 
     const isInterrupted = setupGracefulShutdown(PHASE);  // 세션 321: graceful shutdown
     const sb = getSupabase();
+
+    // 세션636 F6(맹점 🟠1) — 인자 없는 쓰기 실행은 묶음 배분을 사람이 승인해 처음 반영(--apply-from)한 뒤에만 쓴다.
+    // 0-쓰기 차단기는 "값→0" 만 세어 묶음 배분(값→다른 값)이 승인 없이 쓰일 수 있었다. KOSIS 조회 **전에** 막는다.
+    if (!dryRun && applyFrom == null && !(await hasBundleApplied(sb))) {
+      const msg = "[차단] KOSIS_BUNDLE_NOT_APPLIED — 첫 반영(--apply-from) 전이라 쓰지 않는다";
+      logError(PHASE, msg);
+      throw new Error(msg);
+    }
 
     // 월간 데이터 조회 (DT_MLTM_2082 시군구별 미분양, 1~2개월 지연)
     const now = new Date();
@@ -714,8 +776,9 @@ export async function main() {
     const actionCounts = {};
     for (const p of plan) actionCounts[p.action] = (actionCounts[p.action] || 0) + 1;
     log(PHASE, `apartments 계획: ${Object.entries(actionCounts).map(([a, n]) => `${a}=${n}`).join(", ")}`);
-    const fold = summarizeFold(foldForUnsold(/** @type {any} */ (apartmentsTyped), { isRespected: () => false }));
-    log(PHASE, `[묶음] 묶음 ${fold.bundles} · 2행+ ${fold.multi} · 받는 행 ${fold.receivers} (존중 판정 전 수)`);
+    const fold = summarizePlanFold(plan);
+    log(PHASE, `[묶음] 묶음 ${fold.bundles} · 2행+ ${fold.multi} · 받는 행 ${fold.receivers} · 2행+ 존중 ${fold.respectedInMulti} · 2행+ hold ${fold.holdsInMulti} (계획 결과 기준)`);
+    log(PHASE, `[묶음] 시도·구 갈림 ${fold.rgSplit}묶음`);
 
     // 세션570 A5 — 사람 보류(hold)와 "빈칸 → 0" 은 개수만이 아니라 명단을 남긴다(다음 회차 뒤 대조용).
     const { holdIds, nullToZeroIds } = summarizeHoldAndNullToZero(plan);
@@ -941,15 +1004,17 @@ export async function main() {
     // 4. API 쿼터 기록 (KOSIS 단일 호출)
     if (!dryRun) await recordApiQuota(PHASE, "KOSIS_KEY", 1);
     ok = regUpdated + aptUpdated + aptZeroed;
+    if (!dryRun && approvedPlan) bundleApplied = true; // F6 — 다음 인자 없는 회차가 이 표식을 찾는다
 
     log(PHASE, "\n=== 완료 ===");
   } catch (err) {
     errorMessage = err instanceof Error ? err.message : String(err);
     throw err;
   } finally {
+    const successMessage = joinRunMessage(bundleApplied ? KOSIS_BUNDLE_APPLIED_MARKER : null, noDateMarker);
     await recordCollectorRun(PHASE, errorMessage
       ? { ok, status: "failure", errorMessage: joinRunMessage(errorMessage, noDateMarker) }
-      : (noDateMarker ? { ok, errorMessage: noDateMarker } : { ok }));
+      : (successMessage ? { ok, errorMessage: successMessage } : { ok }));
   }
 }
 
