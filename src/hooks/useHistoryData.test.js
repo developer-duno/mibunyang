@@ -84,4 +84,17 @@ describe("useHistoryData", () => {
     await waitFor(() => expect(result.current.loading).toBe(false));
     expect(result.current.error).toBe("요청이 너무 많습니다. 잠시 후 다시 시도해주세요");
   });
+
+  // 세션635 다: API 상한 20개(apartmentValidation.ts) — 묶음 구성원이 더 많아도 앞 20개만 묻는다
+  it("siblingIds 25개면 apartment_ids 에 앞 20개만 싣는다", async () => {
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(
+      /** @type {Response} */ ({ ok: true, json: () => Promise.resolve({ ok: true, data: [] }) })
+    );
+    const ids = Array.from({ length: 25 }, (_, i) => `ah-${i + 1}`);
+    const { result } = renderHook(() => useHistoryData("/api/supabase/unsold-history", "ah-1", ids));
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    const url = String(vi.mocked(fetch).mock.calls[0][0]);
+    const sent = decodeURIComponent(url.split("apartment_ids=")[1]).split(",");
+    expect(sent).toEqual(ids.slice(0, 20));
+  });
 });

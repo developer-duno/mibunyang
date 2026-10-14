@@ -624,7 +624,7 @@ export function selectCandidates(target, notices) {
  *
  * 순수 함수로 뽑아 둔 이유: DB 없이 회귀 가드를 걸기 위해서다.
  *
- * @param {Array<{ id: string; name: string | null; region: string | null; gu?: string | null;
+ * @param {Array<{ id: string; materialId?: string | null; name: string | null; region: string | null; gu?: string | null;
  *   address?: string | null; roadAddress?: string | null; area: unknown }>} visible
  *   `apartments_flat` 에서 임대형을 걷어낸 목록(= 손님이 보는 단지)
  * @param {Array<{ id: number; apartment_id: string; area: unknown; price: unknown; house_type: string | null; recorded_at: string | null }>} priceRows
@@ -662,14 +662,15 @@ export function selectNoticeAreaTargets(visible, priceRows, hasSupply) {
   let noPriceRow = 0;
 
   for (const a of visible) {
-    const aptId = String(a.id);
+    // 세션635 다: 카드의 가격·면적은 재료 행(materialId)의 가격 행에서 온다 — 그 행으로 찾는다(VIEW 적용 전엔 자기 id).
+    const aptId = String(a.materialId ?? a.id);
     const area = Number(a.area);
     if (Number.isFinite(area) && area > 0) {
       alreadyFilled++;
       continue;
     }
     // 청약홈 표가 있으면 backfill-presale-area-applyhome.mjs 소관 — 여기서 두 번 손대지 않는다.
-    if (hasSupply.has(aptId)) {
+    if (hasSupply.has(String(a.id))) {
       hasSupplyRows++;
       continue;
     }
@@ -791,6 +792,24 @@ async function fetchLhSupply(n) {
 
 // ── 메인 ────────────────────────────────────────────────────────────────
 
+const FLAT_COLS = "id, name, region, gu, address, roadAddress, area, presaleType";
+
+/**
+ * 대상 도출용 VIEW 행 — 세션635 다: 재료 행 id(materialId)도 함께 읽는다. VIEW 적용 전(또는 되돌린 날)엔 그 칸이
+ * 없어 PostgREST 가 칸 없음 오류(42703)를 내므로, 오류 문구에 materialId 가 있으면 빼고 처음부터 한 번 더.
+ * @param {any} sb
+ * @returns {Promise<Array<{ id: string; materialId?: string | null; name: string | null; region: string | null; gu: string | null; address: string | null; roadAddress: string | null; area: unknown; presaleType: string | null }>>}
+ */
+export async function fetchFlatForNotices(sb) {
+  try {
+    return /** @type {any} */ (await fetchAllByCursor(sb, "apartments_flat", `id, materialId, ${FLAT_COLS.slice("id, ".length)}`, "id"));
+  } catch (err) {
+    if (!String(err instanceof Error ? err.message : err).includes("materialId")) throw err;
+    log("VIEW 에 materialId 칸 없음(묶음 VIEW 적용 전) — 카드 자기 id 로 가격 행을 찾는다");
+    return /** @type {any} */ (await fetchAllByCursor(sb, "apartments_flat", FLAT_COLS, "id"));
+  }
+}
+
 async function main() {
   if (!API_KEY) {
     console.error(`[${PHASE}] MOLIT_KEY 환경변수 필요 (data.go.kr 인증키)`);
@@ -800,10 +819,7 @@ async function main() {
   log(dryRun ? "DRY-RUN 모드 (저장 안 함)" : "실행 모드 — ⚠️ --dry-run 매칭표를 먼저 검수했는지 확인할 것");
 
   // 1. 대상 도출 (손님이 보는 단지 = apartments_flat − 임대형)
-  const flat =
-    /** @type {Array<{ id: string; name: string | null; region: string | null; gu: string | null; address: string | null; roadAddress: string | null; area: unknown; presaleType: string | null }>} */ (
-      await fetchAllByCursor(sb, "apartments_flat", "id, name, region, gu, address, roadAddress, area, presaleType", "id")
-    );
+  const flat = await fetchFlatForNotices(sb);
   const visible = excludeLeaseUnits(flat);
   log(`apartments_flat ${flat.length}행 → 임대형 ${flat.length - visible.length}건 제외 = 손님 노출 ${visible.length}건`);
 

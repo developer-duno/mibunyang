@@ -158,7 +158,11 @@
       ]
     },
     "collector_runs": {
-      "owner": "mibunyang"
+      "owner": "mibunyang",
+      "readers": [
+        "2u"
+      ],
+      "note": "2u 가 collector='kosis-unsold'·status='success' 행의 error_message 에 든 전환 표식(KOSIS_BUNDLE_APPLIED, LIKE) 을 10분마다 읽어 apartments_flat 묶음 칸 사용을 켠다(2u 세션466, 2026-10-14). 표식 글자·칸을 바꾸면 2u 통보."
     },
     "complex_links": {
       "owner": "mibunyang",
@@ -498,7 +502,10 @@
         "applyhome_events",
         "presale_schedule_official"
       ],
-      "note": "읽는 곳은 미분양뿐(2u 레포 전체 grep 0건 · 세션617). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261007000000_view_add_trade_scope.sql"
+      "readers": [
+        "2u"
+      ],
+      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261013000000_view_one_card_bundle.sql(묶음당 1행, 되돌림 _rollbacks/20261013000001)"
     },
     "api_quota_daily": {
       "owner": "mibunyang",

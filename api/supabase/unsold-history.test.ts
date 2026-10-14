@@ -78,3 +78,23 @@ describe('supabase/unsold-history handler', () => {
     expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', expect.stringContaining('s-maxage=3600'));
   });
 });
+
+// 세션636 D10ⓑ: unsold-history 는 복수 id 응답을 한 달 한 값으로 접는다(mergeMonthly 배선) — 단일 함수 시험만으론 배선을 못 본다
+describe('supabase/unsold-history — 한 달 한 값 배선(세션635 다)', () => {
+  it('같은 달 두 행(복수 id) → 응답은 그 달 한 행, 요청 순서 첫 id 의 값', async () => {
+    mockQuery.order.mockImplementationOnce(() =>
+      Promise.resolve({
+        data: [
+          { apartment_id: 'ah-1', base_month: '2025-01', unsold_count: 50 },
+          { apartment_id: 'ap-9', base_month: '2025-01', unsold_count: 7 },
+        ],
+        error: null,
+      })
+    );
+    const res = makeRes();
+    await handler({ method: 'GET', query: { apartment_ids: 'ap-9,ah-1' }, headers: {} }, res);
+    const body = res.json.mock.calls[0][0];
+    expect(body.count).toBe(1);
+    expect(body.data).toEqual([{ apartment_id: 'ap-9', base_month: '2025-01', unsold_count: 7 }]);
+  });
+});

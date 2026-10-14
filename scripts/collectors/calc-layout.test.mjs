@@ -10,7 +10,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
   return { ...orig, loadEnv: vi.fn(), getSupabase: vi.fn() };
 });
 
-const { estimateBayCount, estimateBuildingType, toLayoutString, median } = await import("./calc-layout.mjs");
+const { estimateBayCount, estimateBuildingType, toLayoutString, median, layoutTargetId, fetchLayoutTargets } = await import("./calc-layout.mjs");
 
 describe("estimateBayCount", () => {
   // 경계값: 100m² 이상 → 4베이
@@ -88,5 +88,55 @@ describe("median", () => {
 
   it("단일 요소 배열은 해당 값을 반환한다", () => {
     expect(median([42])).toBe(42);
+  });
+});
+
+describe("layoutTargetId — 재료 행에 쓴다(세션635 다)", () => {
+  it("materialId 가 있으면 그 행(ap-9)에 쓴다", () => {
+    expect(layoutTargetId({ id: "ah-1", materialId: "ap-9", name: "하양", area: 84 })).toBe("ap-9");
+  });
+  it("materialId 가 없으면(VIEW 적용 전) 자기 id", () => {
+    expect(layoutTargetId({ id: "ah-1", name: "하양", area: 84 })).toBe("ah-1");
+  });
+});
+
+describe("fetchLayoutTargets — VIEW 적용 전 칸 없음이면 materialId 빼고 다시(세션635 다)", () => {
+  /** 첫 select 가 materialId 를 고르면 칸 없음 오류, 아니면 행 1개를 주는 가짜 클라이언트 */
+  const makeSb = () => {
+    /** @type {string[]} */
+    const selects = [];
+    /** @param {string} cols */
+    const builder = (cols) => {
+      const res = cols.includes("materialId")
+        ? { data: null, error: { message: "column apartments_flat.materialId does not exist" } }
+        : { data: [{ id: "ah-1", name: "하양", area: 84 }], error: null };
+      /** @type {any} */
+      const q = { is: () => q, order: () => q, limit: () => q, gt: () => q, then: (/** @type {any} */ r, /** @type {any} */ j) => Promise.resolve(res).then(r, j) };
+      return q;
+    };
+    const sb = { from: () => ({ select: (/** @type {string} */ cols) => (selects.push(cols), builder(cols)) }) };
+    return { sb, selects };
+  };
+  it("첫 조회는 materialId 를 포함하고, 칸 없음이면 빼고 다시 물어 행을 돌려준다", async () => {
+    const { sb, selects } = makeSb();
+    const rows = await fetchLayoutTargets(sb);
+    expect(selects[0]).toContain("materialId");
+    expect(selects[1]).not.toContain("materialId");
+    expect(rows.map((r) => r.id)).toEqual(["ah-1"]);
+  });
+});
+
+describe("fetchLayoutTargets — 칸 없음이 아닌 오류는 다시 던진다(세션636 D10ⓐ)", () => {
+  it("다른 오류(시간 초과)면 재시도하지 않고 던진다", async () => {
+    /** @type {string[]} */
+    const selects = [];
+    /** @type {any} */
+    const q = {
+      is: () => q, order: () => q, limit: () => q, gt: () => q,
+      then: (/** @type {any} */ r, /** @type {any} */ j) => Promise.resolve({ data: null, error: { message: "canceling statement due to statement timeout" } }).then(r, j),
+    };
+    const sb = { from: () => ({ select: (/** @type {string} */ cols) => (selects.push(cols), q) }) };
+    await expect(fetchLayoutTargets(sb)).rejects.toThrow(/statement timeout/);
+    expect(selects).toHaveLength(1);
   });
 });

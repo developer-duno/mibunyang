@@ -1,6 +1,7 @@
 import { memo, useCallback } from "react";
 import { isFeatureUpcoming } from "@/constants/featureFlags";
 import { trackEvent } from "@/lib/analytics";
+import { resolveAptId } from "@/lib/dedup";
 import { SkeletonList } from "@/components/primitives";
 import { MapEntryWidget } from "./MapEntryWidget";
 import { UpcomingWidget } from "./UpcomingWidget";
@@ -37,6 +38,8 @@ type HomePageProps = {
   /** 최근 본 단지 — id 배열(최근순) + id→ScoredApt 복원 Map + 지우기 */
   recentIds: string[];
   scoredMap: Map<string, ScoredApt>;
+  /** 구성원 id → 카드 id(세션635 다) — 옛 카드 id 로 저장된 최근 본 단지를 대표 카드로 잇는다. 없으면 id 그대로. */
+  idAlias?: Map<string, string>;
   onClearRecent: () => void;
 };
 
@@ -66,12 +69,14 @@ export const HomePage = memo(function HomePage({
   compIds,
   recentIds,
   scoredMap,
+  idAlias,
   onClearRecent,
 }: HomePageProps) {
   const upcomingEnabled = isFeatureUpcoming();
   const pad = isDesktop ? "0 24px" : "0 16px"; // App.tsx L301·L324 list/map 탭 패딩과 통일
   // 최근 본 단지: 데이터에 살아있는 단지가 1개+ 일 때만 위젯 노출 (빈 위젯 자리 차지 방지)
-  const hasRecent = recentIds.some((id) => scoredMap.has(id));
+  //   세션635: 옛 구성원 id 는 대표 카드 id 로 바꿔 본다(위젯도 같은 규칙).
+  const hasRecent = recentIds.some((id) => scoredMap.has((idAlias && resolveAptId(idAlias, id)) || id));
 
   // 홈 위젯 계측 (M3) — 펼치기는 어느 위젯인지, 상세 진입은 홈 출처 표시. 기존 trackEvent 명명 규칙 답습.
   const expandWidget = useCallback(
@@ -148,6 +153,7 @@ export const HomePage = memo(function HomePage({
             <RecentlyViewedWidget
               recentIds={recentIds}
               scoredMap={scoredMap}
+              idAlias={idAlias}
               pw={pw}
               onDetail={handleDetail}
               onFav={onFav}

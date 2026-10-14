@@ -74,6 +74,15 @@ export function normalizeComplexName(name) {
  * @typedef {{ always?: Array<[string, string]>, isolate?: string[] }} KeyExceptions
  */
 
+/**
+ * 오피스텔 행인가 — 이름의 `(오)` 표시(정규화가 뗀 오 괄호 포함). 열쇠 계산(isOff)과 알림 묶음 매칭(세션636 D9)이 같은 규칙을 쓴다.
+ * @param {unknown} name
+ * @returns {boolean}
+ */
+export function isOffName(name) {
+  return normalizeComplexName(name).isOfficetel || String(name ?? "").includes("(오)");
+}
+
 /** @param {Set<string>} a @param {Set<string>} b */
 const disjoint = (a, b) => { for (const v of a) if (b.has(v)) return false; return true; };
 
@@ -93,7 +102,7 @@ export function assignComplexKeys(rows, exceptions = {}) {
     const n = normalizeComplexName(r.name);
     info.set(r.id, {
       ...n,
-      isOff: n.isOfficetel || String(r.name ?? "").includes("(오)"),
+      isOff: isOffName(r.name),
       isLease: isLeaseUnit(r),
       ctx: `${n.skel}|${r.region || ""}|${guFirst(r)}`,
       tokStr: [...[...n.bl].sort(), ...[...n.dan].sort()].join("+"),

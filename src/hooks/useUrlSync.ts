@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { PROFILES } from "@/constants/profiles";
 import { isFeatureHome } from "@/constants/featureFlags";
 import { MAX_COMPARE } from "@/hooks/useComparison";
+import { resolveAptId } from "@/lib/dedup";
 import type { Apt, Profile } from "@/types/scoring";
 
 interface UseUrlSyncArgs {
@@ -19,15 +20,18 @@ interface UseUrlSyncArgs {
   dataError: string | null;
   setFavoriteIds: (_idsOrFn: string[] | ((_prev: string[]) => string[])) => void;
   showToast: (_msg: string) => void;
+  /** 구성원 id → 카드 id(useApartmentData — 세션635 다). 옛 카드 id 를 지우지 않고 대표로 넘긴다. */
+  idAlias: Map<string, string>;
 }
 
 /**
- * URL 동기화 5종 useEffect 훅 (App.tsx L389~455 추출, 세션 485 / 2·3번 신설 세션 503).
+ * URL 동기화 useEffect 훅 (App.tsx L389~455 추출, 세션 485 / 2·3번 신설 세션 503).
  * 1) tab="upcoming" ↔ URL "/upcoming" 동기화 ([tab] deps)
  * 2) 상세 열림 ↔ 주소 "/apt/{id}" 동기화 ([detailAptId] deps — 단계 2-B)
  * 3) popstate(뒤로/앞으로) ↔ 상세 열림 (단계 2-B)
- * 4) URL 딥링크 복원 (경로형 /apt/{id} + 옛 detail/compare/profile 쿼리, mount 1회 [] deps)
- * 5) dedup 후 무효 ID 정리 (apartments 갱신 시 관심매물/비교 목록 정리)
+ * 4) URL 딥링크 복원 — 쿼리(profile·compare·옛 ?detail= → /apt/ 승격)는 mount 1회 [] deps,
+ *    상세 열기는 목록이 들어온 뒤 한 번만(옛 구성원 id 는 대표로 넘김 — 세션635)
+ * 5) 묶음 전환 뒤 옛 id 넘김 + 무효 ID 정리 (apartments 갱신 시 관심매물/비교 목록)
  */
 export function useUrlSync({
   tab,
@@ -43,6 +47,7 @@ export function useUrlSync({
   dataError,
   setFavoriteIds,
   showToast,
+  idAlias,
 }: UseUrlSyncArgs): void {
   // ── 독립 useEffect: tab="upcoming" ↔ URL "/upcoming" 동기화 ──
   useEffect(() => {
@@ -120,7 +125,7 @@ export function useUrlSync({
     const compareStr = params.get("compare");
     const profileParam = params.get("profile");
     if (profileParam && profileParam in PROFILES) setProfile(profileParam as Profile);
-    if (detailId) openDetail(detailId);
+    // 상세 열기는 아래 "목록 로드 뒤 한 번만" effect 가 한다(세션635 — 옛 구성원 id 를 대표로 넘기려면 목록이 필요).
     if (compareStr) {
       const ids = compareStr.split(",").filter(Boolean).slice(0, MAX_COMPARE);
       if (ids.length >= 2) {
@@ -152,20 +157,46 @@ export function useUrlSync({
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── 독립 useEffect: dedup 후 무효 ID 정리 ──
+  // ── URL 딥링크 복원 — 목록 로드 뒤 한 번만(세션635: 옛 구성원 id 는 대표로 넘겨 연다) ──
+  const deepLinkDoneRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkDoneRef.current) return;
+    const fromPath = /^\/apt\/([^/?#]+)/.exec(window.location.pathname)?.[1];
+    const fromQuery = new URLSearchParams(window.location.search).get("detail");
+    const raw = fromPath ? decodeURIComponent(fromPath) : fromQuery;
+    if (!raw) {
+      deepLinkDoneRef.current = true;
+      return;
+    } // 딥링크 아님 — 다시 볼 일 없음
+    if (dataLoading || !apartments.length) return; // 목록이 아직 — 들어오면 다시 돈다
+    deepLinkDoneRef.current = true;
+    const to = resolveAptId(idAlias, raw) ?? raw;
+    openDetail(to);
+    if (to !== raw || fromQuery) window.history.replaceState(null, "", `/apt/${encodeURIComponent(to)}`);
+  }, [apartments, dataLoading, idAlias, openDetail]);
+
+  // ── 독립 useEffect: 묶음 전환 뒤 옛 id 넘김 + 무효 ID 정리 ──
+  //   세션635: 지우기 **전에** 구성원 id → 카드 id 로 바꾼다. 안 바꾸면 전환일에 손님 관심매물이 통째로 지워진다(설계서 §4-7 (10)).
   useEffect(() => {
     if (dataLoading || dataError || !apartments.length) return;
-    const validIds = new Set(apartments.map((a) => a.id));
+    const remap = (ids: string[]) => {
+      const out: string[] = [];
+      for (const id of ids) {
+        const to = resolveAptId(idAlias, id);
+        if (to && !out.includes(to)) out.push(to);
+      }
+      return out;
+    };
     setFavoriteIds((ids) => {
-      const next = ids.filter((id) => validIds.has(id));
-      if (next.length === ids.length) return ids;
-      if (ids.length - next.length > 0)
-        showToast(`데이터 변경으로 관심매물 ${ids.length - next.length}개가 정리되었습니다`);
+      const next = remap(ids);
+      if (next.length === ids.length && next.every((id, i) => id === ids[i])) return ids;
+      const removed = ids.filter((id) => !resolveAptId(idAlias, id)).length;
+      if (removed > 0) showToast(`데이터 변경으로 관심매물 ${removed}개가 정리되었습니다`);
       return next;
     });
     setCompIds((ids) => {
-      const next = ids.filter((id) => validIds.has(id));
-      return next.length === ids.length ? ids : next;
+      const next = remap(ids);
+      return next.length === ids.length && next.every((id, i) => id === ids[i]) ? ids : next;
     });
-  }, [apartments, dataLoading, dataError, setFavoriteIds, setCompIds, showToast]);
+  }, [apartments, idAlias, dataLoading, dataError, setFavoriteIds, setCompIds, showToast]);
 }

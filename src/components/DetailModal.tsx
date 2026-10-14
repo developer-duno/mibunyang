@@ -412,6 +412,13 @@ export const DetailModal = memo(function DetailModal({
               <h1 style={{ fontSize: isDesktop ? F.xl : F.lg, fontWeight: 800, color: C.text, margin: 0 }}>
                 {apt.name}
               </h1>
+              {/* 세션635 다: 카드 제목은 회차·안내문을 뗀 이름 — 원래 공고 이름이 다르면 한 줄로 보여 준다. */}
+              {/*   noticeName 은 정적 모드에서 상세 버킷에만 있다(static-outputs DETAIL_ONLY_FIELDS) — 머리글이지만 병합본에서 읽는다. */}
+              {(mergedApt ?? apt).noticeName && (mergedApt ?? apt).noticeName !== apt.name ? (
+                <div style={{ fontSize: F.xs, color: C.sub, marginTop: 2 }}>
+                  공고명: {(mergedApt ?? apt).noticeName as string}
+                </div>
+              ) : null}
               <div style={{ fontSize: isDesktop ? F.base : F.sm, color: C.muted }}>
                 {/* 면적을 모르면 ㎡ 토큰을 통째로 뺀다 — 전에는 "경기 수원시 · ㎡ · 3억" 처럼 단위만 남았다
                     (세션576 D2). AptCard 태그 줄과 같은 모양(빈 토큰은 filter 로 거른다). */}
@@ -644,11 +651,15 @@ export const DetailModal = memo(function DetailModal({
                   );
                 })()}
 
-                {Array.isArray(apt.siblingIds) && (apt.siblingIds as string[]).length > 1 && (
-                  <div style={DM_S.republishBadge}>
-                    재공고 {(apt.siblingIds as string[]).length}회 · 시계열 통합 조회
-                  </div>
-                )}
+                {/* 세션635 다: 재공고 수 = 청약홈 공고(ah-)만 센다 — 네이버 행(ap-)은 공고가 아니다. */}
+                {(() => {
+                  const notices = (Array.isArray(apt.siblingIds) ? (apt.siblingIds as string[]) : []).filter((id) =>
+                    id.startsWith("ah-")
+                  );
+                  return notices.length > 1 ? (
+                    <div style={DM_S.republishBadge}>재공고 {notices.length}회 · 시계열 통합 조회</div>
+                  ) : null;
+                })()}
 
                 {/* 건물 정보 카드 (세션508 PR-3c C4) — 최고층·구조·용적률·향 7필드. 기본 접힘 —
                   BuilderCard(와 세션591 에 해체된 옛 TransportCard) 패턴 답습. layout 은 카드 자체가 점수 접미어 없는

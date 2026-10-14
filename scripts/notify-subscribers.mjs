@@ -46,6 +46,7 @@ import {
   recordCollectorRun, selectAll, REGION_MAP, today,
 } from "./collectors/_shared.mjs";
 import { sendTelegram } from "./notify-telegram.mjs";
+import { isOffName } from "./collectors/_same-complex.mjs";
 
 loadEnv();
 
@@ -138,10 +139,11 @@ export function normalizeRegionKey(name) {
  * @param {Array<{ id: number, phone: string, region: string|null, apartment_id: string|null }>} subs
  * @param {Array<{ aptId: string, houseNo: string, receiptDate: string, url: string|null }>} events
  * @param {Map<string, { name: string, region: string|null }>} aptById
+ * @param {(id: string) => string} [bundleOf] 단지 id → 묶음 열쇠(세션635 다 — 옛 카드 id 로 구독한 손님도 같은 묶음 공고면 받는다). 기본 = id 그대로
  * @returns {Array<{ sub: { id: number, phone: string, region: string|null, apartment_id: string|null },
  *   ev: { aptId: string, houseNo: string, receiptDate: string, url: string|null } }>}
  */
-export function matchPairs(subs, events, aptById) {
+export function matchPairs(subs, events, aptById, bundleOf = (/** @type {string} */ id) => id) {
   const pairs = [];
   for (const ev of events) {
     const apt = aptById.get(ev.aptId);
@@ -150,7 +152,7 @@ export function matchPairs(subs, events, aptById) {
     for (const sub of subs) {
       let matched;
       if (sub.apartment_id) {
-        matched = sub.apartment_id === ev.aptId;
+        matched = bundleOf(sub.apartment_id) === bundleOf(ev.aptId);
       } else if (sub.region) {
         const subRegion = normalizeRegionKey(sub.region);
         matched = subRegion != null && subRegion === aptRegion;
@@ -161,6 +163,35 @@ export function matchPairs(subs, events, aptById) {
     }
   }
   return pairs;
+}
+
+/**
+ * 단지 id → 묶음 열쇠 함수(matchPairs 의 bundleOf). 세션636 D9: 오피스텔 `(오)` 행은 묶음 매칭에서 빠진다 —
+ * 열쇠(complex_key)는 `(오)` 를 떼지 않아 아파트와 같은 열쇠를 가질 수 있는데, 화면 카드(memberIds)는 `(오)` 를 뺀다.
+ * 그래서 `(오)` 행은 자기 id 로만 맞춘다(구독·공고 어느 쪽이든). 표에 없는 id 도 자기 id.
+ * @param {Array<{ id: string, name: string|null, complex_key: string|null }>} rows
+ * @returns {(id: string) => string}
+ */
+export function makeBundleOf(rows) {
+  /** @type {Map<string, string>} */
+  const keyById = new Map();
+  for (const r of rows) keyById.set(r.id, isOffName(r.name) ? r.id : (r.complex_key ?? r.id));
+  return (id) => keyById.get(id) ?? id;
+}
+
+/**
+ * 단지 정보를 읽을 id — 이벤트 단지 ∪ 단지 구독자의 apartment_id(중복 없이, 처음 나온 순서).
+ * 세션635 다: 구독자의 옛 카드 id 도 묶음 열쇠를 알아야 같은 묶음 공고와 맞출 수 있다.
+ * @param {Array<{ aptId: string }>} events
+ * @param {Array<{ apartment_id: string|null }>} subs
+ * @returns {string[]}
+ */
+export function rosterIds(events, subs) {
+  /** @type {Set<string>} */
+  const ids = new Set();
+  for (const e of events) ids.add(e.aptId);
+  for (const s of subs) if (s.apartment_id) ids.add(s.apartment_id);
+  return [...ids];
 }
 
 /**
@@ -312,15 +343,22 @@ async function main() {
   }
 
   // 3. 이벤트 단지 정보 + 매칭
-  const aptRows = /** @type {Array<{ id: string, name: string, region: string|null }>} */ (
-    await selectAll(
-      (s) => s.from("apartments").select("id, name, region").in("id", events.map((e) => e.aptId)),
-      sb,
-      "id",
-    ));
+  //   세션635 다: 단지 구독자의 apartment_id 도 같이 읽어 묶음 열쇠(complex_key)를 안다 — 이벤트 단지만 읽으면
+  //   옛 카드 id 로 구독한 손님의 열쇠를 몰라 같은 묶음 공고를 놓친다. 200개씩 나눠 묻는다.
+  //   aptById 에 이벤트 아닌 단지가 들어가도 matchPairs 는 ev.aptId 로만 찾으므로 무해.
+  const rosterIdList = rosterIds(events, subs);
+  /** @type {Array<{ id: string, name: string, region: string|null, complex_key: string|null }>} */
+  const aptRows = [];
+  for (let i = 0; i < rosterIdList.length; i += 200) {
+    const chunk = rosterIdList.slice(i, i + 200);
+    aptRows.push(
+      .../** @type {Array<{ id: string, name: string, region: string|null, complex_key: string|null }>} */ (
+        await selectAll((s) => s.from("apartments").select("id, name, region, complex_key").in("id", chunk), sb, "id")
+      ),
+    );
+  }
   const aptById = new Map(aptRows.map((a) => [a.id, { name: a.name, region: a.region }]));
-
-  const pairs = matchPairs(subs, events, aptById);
+  const pairs = matchPairs(subs, events, aptById, makeBundleOf(aptRows));
 
   // 4. 기존 로그 제외 (멱등키) — sent/pending/failed 재발송 금지, dry_run 은 live 승격 허용
   const subIds = [...new Set(pairs.map((p) => p.sub.id))];

@@ -29,7 +29,8 @@ export function useHistoryData(
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // 원시값으로 직렬화하여 무한 루프 방지
-  const idsKey = siblingIds?.length && siblingIds.length > 1 ? siblingIds.join(",") : "";
+  //   세션635 다: API 상한 20개(api/_lib/apartmentValidation.ts) — 묶음 구성원이 더 많아도 앞 20개(재료 먼저)만 묻는다
+  const idsKey = siblingIds?.length && siblingIds.length > 1 ? siblingIds.slice(0, 20).join(",") : "";
 
   const load = useCallback(
     async (signal?: AbortSignal, forceRefresh = false) => {
