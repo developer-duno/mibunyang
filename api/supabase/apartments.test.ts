@@ -543,6 +543,35 @@ describe('sanitize (null → 기본값)', () => {
   });
 });
 
+// 세션635 다: VIEW 가 새로 내는 묶음 칸 5개는 정보성(점수 미사용) — sanitize 가 그대로 통과시킨다.
+//   허용목록이라 이 줄이 빠지면 VIEW 에 값이 있어도 응답에서 사라지고, 화면은 옛 규칙으로 다시 묶는다.
+describe('sanitize — 한 단지 = 한 장 묶음 칸 통과(세션635 다)', () => {
+  it('complexKey·memberIds·materialId·noticeName·aliasIds 를 그대로 낸다', async () => {
+    const row = {
+      id: 'ah-1', name: '하양', region: '경북',
+      complexKey: 'K', memberIds: ['ah-1', 'ap-9'], materialId: 'ap-9', noticeName: '하양(2차)', aliasIds: ['ah-1', 'ah-7', 'ap-9'],
+    };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.complexKey).toBe('K');
+    expect(d.memberIds).toEqual(['ah-1', 'ap-9']);
+    expect(d.materialId).toBe('ap-9');
+    expect(d.noticeName).toBe('하양(2차)');
+    expect(d.aliasIds).toEqual(['ah-1', 'ah-7', 'ap-9']);
+  });
+  it('칸이 없으면(옛 VIEW) memberIds·aliasIds·complexKey 는 null', async () => {
+    mockQuery.range.mockResolvedValue({ data: [{ id: 'ah-1', name: '하양', region: '경북' }], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.memberIds).toBeNull();
+    expect(d.aliasIds).toBeNull();
+    expect(d.complexKey).toBeNull();
+  });
+});
+
 // 세션607 다) 보완(검사관 A M12 · 사장님 결정 B4) — VIEW 마이그 파일을 직접 읽는 정적 가드.
 //   VIEW 별칭 하나가 오타면 그 칸은 화이트리스트에서 늘 undefined → null 이 되어 점수가 조용히 중립이 된다.
 //   주석(-- …)은 걷어내고 본다 — 머리말에 칸 이름·옛 식이 설명으로 적혀 있어 그대로 세면 무효다.
@@ -568,7 +597,8 @@ describe('VIEW 마이그 20261007000000 ↔ 라이브 API 화이트리스트 (�
     const res = makeRes();
     await handler(makeReq(), res);
     const d = res.json.mock.calls[0][0].data[0];
-    const whitelist = Object.keys(d).filter((k) => /^(cmp|complex|dong)[A-Z]/.test(k));
+    // complexKey 는 묶음 열쇠(세션635)이지 거래 범위 칸이 아니라 마이그 별칭 12개 대조에서 뺀다
+    const whitelist = Object.keys(d).filter((k) => /^(cmp|complex|dong)[A-Z]/.test(k) && k !== 'complexKey');
     expect(whitelist).toHaveLength(12);
     expect(new Set(viewAliases)).toEqual(new Set(whitelist));
   });

@@ -15,4 +15,6 @@ export default createTimeseriesHandler({
   select: SELECT,
   orderBy: "base_month",
   errorLabel: "미분양",
+  // 세션635 다: 묶음 구성원 여러 행 → 한 달 한 값(재료 행 먼저, 없으면 최댓값)
+  mergeMonthly: { key: "base_month", value: "unsold_count" },
 });
