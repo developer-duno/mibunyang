@@ -234,15 +234,25 @@ describe("배선 가드 — 출력 길목에 실제로 꽂혀 있는가", () => 
     expect(src).toMatch(/import\s*\{[^}]*\bisLeaseUnit\b[^}]*\}\s*from\s*["']\.\.\/\.\.\/src\/constants\/leaseTypes\.mjs["']/);
   });
 
-  it("collect-unsold-kosis.mjs 의 임대 제외 4곳(분모·규칙 2·history 분모·history 행)이 isLeaseUnit(apt) 다 — 좌변 고정", () => {
+  it("collect-unsold-kosis.mjs 의 임대 제외 4곳(분모·규칙 2·history 분모·history 행) — 세션635 묶음 배선(b.lease ← isLeaseUnit(m)) · 좌변 고정", () => {
     const src = readStripped("scripts/collectors/collect-unsold-kosis.mjs");
-    // 분모 2곳(planUnsoldUpdates 1단계 · unsold_history 분모) — `if (!kosisKey || isLeaseUnit(apt)) continue;`
-    expect(src.match(/if \(!kosisKey \|\| isLeaseUnit\(apt\)\) continue;/g) ?? []).toHaveLength(2);
-    // 규칙 2 — `if (isLeaseUnit(apt)) {` 다음 줄이 skip_lease
+    // 세션635: 임대 판정은 묶음 접기(_unsold-bundle.mjs)가 구성원마다 isLeaseUnit(m) 로 하고, 수집기는 그 결과 b.lease 로 거른다.
+    // 분모 2곳(planUnsoldUpdates 1단계 · unsold_history 분모) — 거르는 줄 바로 뒤가 그 분모에 더하는 줄이어야 한다.
+    expect(src.match(/if \(!kosisKey \|\| b\.lease\) continue;/g) ?? []).toHaveLength(2);
+    expect(src).toMatch(/if \(!kosisKey \|\| b\.lease\) continue;\s*const denomKey = `\$\{b\.region\}::\$\{kosisKey\}`;\s*unitsByKosisKey\[denomKey\] = /);
+    expect(src).toMatch(/if \(!kosisKey \|\| b\.lease\) continue;\s*const denomKey = `\$\{b\.region\}::\$\{kosisKey\}`;\s*unitsByGuForHistory\[denomKey\] = /);
+    // 규칙 2 — 행 단위 `if (isLeaseUnit(apt)) {` 다음이 skip_lease (그대로)
     expect(src).toMatch(/if \(isLeaseUnit\(apt\)\) \{\s*plan\.push\(\{ \.\.\.base, action: "skip_lease" \}\);/);
-    // history 행 생성 루프 — `if (isLeaseUnit(apt)) continue;`
-    expect(src.match(/if \(isLeaseUnit\(apt\)\) continue;/g) ?? []).toHaveLength(1);
-    expect(src.match(/isLeaseUnit\(apt\)/g)?.length ?? 0).toBeGreaterThanOrEqual(4);
+    // history 행 생성 루프 — 두 번째 historyBundles 루프의 첫 줄이 b.lease 로 거른다
+    expect(src).toMatch(/for \(const b of historyBundles\) \{\s*if \(!b\.region \|\| !b\.units \|\| b\.units <= 1 \|\| b\.lease\) continue;/);
+    // 묶음은 둘 다 foldForUnsold 로 만든다(b.lease 의 출처)
+    expect(src).toMatch(/const bundles = foldForUnsold\(/);
+    expect(src).toMatch(/const historyBundles = foldForUnsold\(/);
+    // b.lease 의 출처 — _unsold-bundle.mjs 가 구성원마다 isLeaseUnit(m), 임대 묶음은 받는 행 0
+    const bundleSrc = readStripped("scripts/collectors/_unsold-bundle.mjs");
+    expect(bundleSrc).toMatch(/import\s*\{[^}]*\bisLeaseUnit\b[^}]*\}\s*from\s*["']\.\.\/\.\.\/src\/constants\/leaseTypes\.mjs["']/);
+    expect(bundleSrc).toMatch(/const lease = members\.some\(\(m\) => isLeaseUnit\(m\)\);/);
+    expect(bundleSrc).toMatch(/if \(m\.unsold_source === "hold"\) \{ holds\.push\(m\.id\); continue; \}\s*if \(lease\) continue;/);
   });
 
   it("네 길목 전부 단일 출처(src/constants/leaseTypes.mjs)를 import 한다 — 목록 복제 금지", () => {

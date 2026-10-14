@@ -22,6 +22,7 @@ import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fet
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 import { foldForUnsold, summarizeFold } from "./_unsold-bundle.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
+import { resolve as resolvePath } from "node:path";
 
 /** @typedef {{ C1_NM: string; C2_NM: string; PRD_DE: string; DT: string }} KosisRow */
 /** @typedef {Record<string, Record<string, Record<string, number>>>} UnsoldByRegionGuMonth */
@@ -513,6 +514,14 @@ export function parseApplyFromArg(argv) {
   if (!m) throw new Error(`--apply-from 에는 승인한 계획 파일 경로가 필요합니다: ${args[0]}`);
   if (argv.some((a) => a.startsWith("--expect-zero"))) {
     throw new Error("--apply-from 과 --expect-zero 는 같이 줄 수 없습니다 — 승인 수단은 하나입니다(계획 파일 대조가 곧 승인)");
+  }
+  // 같은 경로면 impact-out 이 승인 파일을 이번 계획으로 덮어써 승인 기록이 사라진다(세션635 — assign-complex-keys 의 --out 거부와 같은 이유).
+  const impactArg = argv.find((a) => a.startsWith("--impact-out="));
+  if (impactArg) {
+    const norm = (/** @type {string} */ p) => (process.platform === "win32" ? resolvePath(p).toLowerCase() : resolvePath(p));
+    if (norm(impactArg.slice("--impact-out=".length)) === norm(m[1])) {
+      throw new Error("--apply-from 과 --impact-out 이 같은 파일입니다 — 승인한 계획 파일을 이번 계획으로 덮어쓰게 됩니다. 다른 경로를 주세요");
+    }
   }
   return { applyFrom: m[1] };
 }

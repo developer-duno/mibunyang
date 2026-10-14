@@ -33,7 +33,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 process.env.KOSIS_KEY = "test-key";
 
-const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, evaluateZeroBreaker, parseExpectZeroArg, comparePlanToApproved, main } =
+const { parseKosisRows, parseKosisRowsAllMonths, aggregateRegionTotals, calcProportionalUnsold, resolveKosisGuKey, planUnsoldUpdates, evaluateZeroBreaker, parseExpectZeroArg, comparePlanToApproved, parseApplyFromArg, main } =
   await import("./collect-unsold-kosis.mjs");
 const { recordCollectorRun, getSupabase } = /** @type {any} */ (await import("./_shared.mjs"));
 
@@ -1776,5 +1776,9 @@ describe("comparePlanToApproved — --apply-from 승인 계획 대조(세션635 
     expect(r.onlyCurrent).toEqual(["n"]);
     expect(r.onlyApproved).toEqual([]);
     expect(r.changed).toEqual([]);
+  });
+  it("parseApplyFromArg — --impact-out 이 승인 파일과 같은 경로면 던진다(승인 기록 덮어쓰기 방지), 다른 경로면 통과", () => {
+    expect(() => parseApplyFromArg(["--apply-from=plan/a.json", "--impact-out=./plan/a.json"])).toThrow(/같은 파일/);
+    expect(parseApplyFromArg(["--apply-from=plan/a.json", "--impact-out=plan/applied.json"])).toEqual({ applyFrom: "plan/a.json" });
   });
 });

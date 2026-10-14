@@ -25,6 +25,8 @@ paths:
 
 ⚠️ **`unit_source = "molit"` 은 "국토부가 확인한 값"이 아니다**(세션587) — 국토부 단지 목록과 **이름 맞추기**(`_molit-api.mjs` `findBestMatch`, 하한 0.5 + 같은 구 가산 0.15)로 고른 단지의 값이라, 아직 목록에 없는 분양 중(준공 전) 단지에는 같은 구의 **이웃 단지 세대수·최고층·주차**가 붙는다(김해 안동 에피트 ← 김해삼계동일스위트 299, 유사도 0.50). 10/01 의심 82행. 세대수를 고르거나 비교할 땐 네이버 분양 총세대수를 앞세우고(설계서 `2026-10-01-one-complex-one-card.md` D7·§4-6), 이 수집기의 맞추기 기준을 바꾸기 전엔 그 82행 명단(BACKLOG A-14)부터 본다.
 
+**번호 주인 네이버 행의 세대수 따라가기(세션635)**: `naver-presale.mjs` `unitsFollowUpdate` — `ap-<자기 번호>` 행이고 `unit_source = "naver_presale"` 인데 네이버 단지 표 총세대수와 다르면 그 값으로 따라간다(주인이 아닌 행·다른 출처는 그대로). 쓰기는 `--follow-units` 인자가 있을 때만 — 없으면 `[세대수 따라감 후보]` 로그 + `collector_runs.error_message` 의 `UNITS_FOLLOW_CANDIDATES n` 만 남긴다(러너에 인자를 넣는 것은 첫 회차 후보 명단 승인 뒤 별도 PR).
+
 **신규 ah-* seeding (세션 466)**: `collect-applyhome-seed.mjs` (collect-applyhome.yml 앞단 스텝, 주간 월)가
 `getRemndrLttotPblancDetail` 로스터 부재 + 공고일≥since(기본 2026-03-14) 공고를 INSERT. 현행 API 에
 REMNDR_HSHLDCO 부재라 **units=unsold=회차 공급분, unsold_rate=100** 으로 박아 molit-units 보정 대상에
