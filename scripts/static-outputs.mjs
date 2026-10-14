@@ -19,6 +19,9 @@ const DETAIL_ONLY_FIELDS = [
   "dongFact",
   "complexTable",
   "complexJeonseTable",
+  // 세션635 다: 원래 공고 이름(상세 제목 아래 한 줄만 씀). memberIds·aliasIds·materialId·complexKey 는
+  //   목록에 남긴다 — 옛 id 넘김표·시계열 id 가 목록에서 만들어진다.
+  "noticeName",
 ];
 
 // 목록에 잔존할 catsCache subs (첫 항목만) — AptCard 가 price/location subs[0] 의 info/detail 사용.

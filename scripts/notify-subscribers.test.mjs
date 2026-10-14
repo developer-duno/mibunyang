@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import {
   pickEvents, addDays, normalizeRegionKey, matchPairs, dedupeByPhone,
   maskPhone, optOutToken, buildMessage, isNightKst, kstHour, hasLiveEnv,
-  e164ToLocal, SMS_ADAPTER_READY,
+  e164ToLocal, SMS_ADAPTER_READY, rosterIds,
 } from "./notify-subscribers.mjs";
 
 const TODAY = "2026-07-06";
@@ -123,6 +123,15 @@ describe("matchPairs — 단지/지역/전국 3분기", () => {
   it("미등재 지역 표기는 매칭 0 (전국으로 새지 않음)", () => {
     expect(matchPairs([sub({ region: "서울시" })], events, aptById)).toHaveLength(0);
   });
+  it("단지 구독 = 같은 묶음이면 매칭(세션635 다 — 옛 카드 id ah-2 로 구독, 공고는 ah-1)", () => {
+    const subs = [{ id: 1, phone: "01000000000", region: null, apartment_id: "ah-2" }];
+    const evs = [{ aptId: "ah-1", houseNo: "H", receiptDate: "2026-10-20", url: null }];
+    const byId = new Map([["ah-1", { name: "하양", region: "경북" }]]);
+    /** @param {string} id */
+    const bundleOf = (id) => /** @type {Record<string, string>} */ ({ "ah-1": "K", "ah-2": "K" })[id] ?? id;
+    expect(matchPairs(subs, evs, byId, bundleOf)).toHaveLength(1);
+    expect(matchPairs(subs, evs, byId)).toHaveLength(0); // bundleOf 기본값 = id 정확 일치
+  });
   it("로스터에 없는 단지 이벤트는 매칭하지 않는다", () => {
     const ev2 = [{ aptId: "ap-없음", houseNo: "h1", receiptDate: "2026-07-08", url: null }];
     expect(matchPairs([sub()], ev2, aptById)).toHaveLength(0);
@@ -228,5 +237,13 @@ describe("buildMessage", () => {
     const text = buildMessage({ receiptDate: "2026-07-08", url: null }, { name: "단지" }, null);
     expect(text).not.toContain("공고:");
     expect(text).not.toContain("수신거부");
+  });
+});
+
+describe("rosterIds — 단지 정보를 읽을 id(세션635 다)", () => {
+  it("이벤트 단지 ∪ 단지 구독자의 apartment_id(중복 없이) — 지역·전국 구독(null)은 빠진다", () => {
+    const events = [{ aptId: "ah-1" }, { aptId: "ah-5" }];
+    const subs = [{ apartment_id: "ah-2" }, { apartment_id: null }, { apartment_id: "ah-1" }];
+    expect(rosterIds(events, subs)).toEqual(["ah-1", "ah-5", "ah-2"]);
   });
 });

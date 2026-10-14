@@ -310,6 +310,55 @@ describe("findStalePlanIds — 접수시작일 지난 곧분양 제외 (세션 4
   });
 });
 
+describe("findStalePlanIds — 묶음 구성원 id 로 일정 조회(세션635 다)", () => {
+  // .in("apartment_id", ids) 로 받은 ids 를 호출마다 기록하는 sb 스텁
+  const makeRecSb = (scheduleRows: any[]) => {
+    const calls: string[][] = [];
+    const sb = {
+      from: () => ({
+        select: () => ({
+          in: (_col: string, ids: string[]) => {
+            calls.push(ids);
+            return Promise.resolve({ data: scheduleRows.filter((r) => ids.includes(r.apartment_id)), error: null });
+          },
+        }),
+      }),
+    };
+    return { sb, calls };
+  };
+
+  it("구성원(ah-2)에 붙은 지난 공고 → 조회 ids 에 ah-2 가 있고 stale 은 카드 id(ah-1)", async () => {
+    const rows = [{ id: "ah-1", presaleStage: "분양계획", presaleRecruitDate: null, memberIds: ["ah-1", "ah-2"] }];
+    const { sb, calls } = makeRecSb([{ apartment_id: "ah-2", general_rank1_bgnde: "2026-01-01", recruit_date: "2025-12-01" }]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(calls.flat()).toContain("ah-2");
+    expect(stale.has("ah-1")).toBe(true);
+    expect(stale.has("ah-2")).toBe(false);
+  });
+
+  it("memberIds 가 없는 행은 지금과 같다(조회 ids = 자기 id 만)", async () => {
+    const rows = [{ id: "ah-1", presaleStage: "분양계획", presaleRecruitDate: null }];
+    const { sb, calls } = makeRecSb([]);
+    await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(calls).toEqual([["ah-1"]]);
+  });
+
+  it("카드 모집일(2026.11)보다 이전 공고(2021)뿐이면 stale 에 없다(옛 회차가 새 회차를 가리지 않게)", async () => {
+    const rows = [{ id: "ah-1", presaleStage: "분양계획", presaleRecruitDate: "2026.11", memberIds: ["ah-1", "ah-2"] }];
+    const { sb } = makeRecSb([{ apartment_id: "ah-2", general_rank1_bgnde: "2021-05-10", recruit_date: "2021-05-01" }]);
+    const stale = await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(stale.has("ah-1")).toBe(false);
+  });
+
+  it("구성원 id 450개면 .in 을 200·200·50 세 번으로 나눠 묻는다(응답 1,000행 상한)", async () => {
+    const memberIds = Array.from({ length: 450 }, (_, i) => `ah-${i}`);
+    const rows = [{ id: "ah-0", presaleStage: "분양계획", presaleRecruitDate: null, memberIds }];
+    const { sb, calls } = makeRecSb([]);
+    await findStalePlanIds(sb, rows, "2026-07-04");
+    expect(calls.map((c) => c.length)).toEqual([200, 200, 50]);
+  });
+});
+
 describe("recruitDateIsPast — 자체 모집일 과거 판정 (세션 470)", () => {
   const today = "2026-07-04";
   it("과거 full-date (YYYY-MM-DD) → true", () => {
@@ -481,5 +530,22 @@ describe("handleGet — Supabase select 컬럼명 + 핸들러 분기 (회귀 방
     const body = res.json.mock.calls[0][0];
     expect(body.totals.sale).toBe(1005);
     expect(mockIn).toHaveBeenCalledTimes(2);
+  });
+
+  // 세션635 다: VIEW 적용 전엔 memberIds 칸이 없어 PostgREST 가 칸 없음 오류(42703)를 낸다 —
+  //   그때는 memberIds 를 빼고 처음부터 한 번 더 묻는다("VIEW 적용 전에 합쳐도 화면 그대로").
+  it("첫 조회는 memberIds 를 포함하고, 칸 없음 오류면 빼고 다시 물어 200", async () => {
+    mockInPages([
+      { data: null, error: { message: "column apartments_flat.memberIds does not exist" } },
+      { data: [{ id: "ap-1", presaleStage: "분양중", presaleRecruitDate: null, presaleSchedule: null }], error: null },
+    ]);
+    const req = { method: "GET", headers: {} };
+    const res = makeRes();
+    await handler(req, res);
+    const selects = mockSelect.mock.calls.map((c: any[]) => String(c[0]));
+    expect(selects[0]).toContain("memberIds");
+    expect(selects[1]).not.toContain("memberIds");
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json.mock.calls[0][0].totals.sale).toBe(1);
   });
 });

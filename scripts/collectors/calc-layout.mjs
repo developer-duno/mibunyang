@@ -115,9 +115,7 @@ async function main() {
   //    전량 조회는 selectAll 페이지네이션으로만. 선례 = 커밋 01d0dd4(세션 295)·b348ac1(세션 490).
 
   // 1. layout이 없는 아파트 조회
-  const apts = /** @type {{ id: string, name: string, area: number | null }[]} */ (
-    await selectAll((s) => s.from("apartments_flat").select("id, name, area").is("layout", null), sb, "id")
-  );
+  const apts = await fetchLayoutTargets(sb);
   log(PHASE, `대상: ${apts.length}건 (layout null)`);
 
   if (!apts.length) {
@@ -284,7 +282,7 @@ async function main() {
     const { error } = await sb
       .from("apartments")
       .update({ layout, updated_at: new Date().toISOString() })
-      .eq("id", apt.id);
+      .eq("id", layoutTargetId(apt));
     // 저장 실패는 skip 이 아니라 fail 이다 — skip 으로 묻으면 collector_runs 가 success 로
     // 남아 실패가 감시망에 안 걸린다. (exit code 정책은 이번 범위 밖이라 그대로 둔다.)
     if (error) { logError(PHASE, `${apt.name}: ${error.message}`); failed++; }
@@ -307,6 +305,34 @@ if (isCLI) main().catch(err => {
   logError(PHASE, msg);
   process.exit(1);
 });
+
+/**
+ * layout 이 빈 VIEW 행 — 세션635 다: 재료 행 id(materialId)도 함께 읽는다. VIEW 적용 전(또는 되돌린 날)엔
+ * 그 칸이 없어 PostgREST 가 칸 없음 오류(42703)를 내므로, 오류 문구에 materialId 가 있으면 빼고 처음부터 한 번 더.
+ * @param {any} sb
+ * @returns {Promise<{ id: string, materialId?: string | null, name: string, area: number | null }[]>}
+ */
+export async function fetchLayoutTargets(sb) {
+  // select 는 글자 그대로 둔다 — 정적 가드(_selectall-keycol-coverage)가 커서 키 id 가 select 에 있는지 본다.
+  try {
+    return /** @type {any} */ (
+      await selectAll((s) => s.from("apartments_flat").select("id, materialId, name, area").is("layout", null), sb, "id")
+    );
+  } catch (err) {
+    if (!String(err instanceof Error ? err.message : err).includes("materialId")) throw err;
+    log(PHASE, "VIEW 에 materialId 칸 없음(묶음 VIEW 적용 전) — 자기 id 에 쓴다");
+    return /** @type {any} */ (
+      await selectAll((s) => s.from("apartments_flat").select("id, name, area").is("layout", null), sb, "id")
+    );
+  }
+}
+
+/**
+ * VIEW 행의 layout 을 어느 원본 행에 쓰나 — 재료 행(세션635 다 · 대표 ≠ 재료인 묶음 388 에서 대표 행에 쓰면 화면에 안 나온다).
+ * @param {{ id: string, materialId?: string | null, [k: string]: unknown }} row
+ * @returns {string}
+ */
+export function layoutTargetId(row) { return row.materialId ?? row.id; }
 
 // 테스트용 순수 함수 export
 export { estimateBayCount, estimateBuildingType, toLayoutString, median };

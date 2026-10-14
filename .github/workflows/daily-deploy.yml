@@ -3,6 +3,10 @@ on:
   schedule:
     - cron: '0 18 * * *' # UTC 18:00 = KST 03:00
   workflow_dispatch: # 수동 트리거
+    inputs:
+      expect_count:
+        description: "전환일 1회용 승인 장수(세션635 다 — 비우면 평소 회귀 가드)"
+        required: false
 
 # 세션 305 P0 spec v3: git push 권한 필요 (Vercel git auto-deploy 가 hook 대체).
 permissions:
@@ -77,6 +81,8 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          # 셸에 바로 끼우지 않고 env 로만 넘긴다(입력 주입 방지). cron 실행에선 빈 문자열 → 평소 가드.
+          EXPECT_COUNT: ${{ inputs.expect_count }}
         run: node scripts/collect-data.mjs --from-supabase-only
 
       - name: Commit + push (변경 있을 때만)

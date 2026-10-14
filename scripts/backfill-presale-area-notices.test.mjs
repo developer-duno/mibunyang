@@ -49,6 +49,7 @@ import {
   toNotice,
   selectCandidates,
   selectNoticeAreaTargets,
+  fetchFlatForNotices,
 } from "./backfill-presale-area-notices.mjs";
 import { MAX_PRICE_GAP_RATIO } from "./backfill-presale-area-applyhome.mjs";
 import { stringSimilarity } from "./collectors/_shared.mjs";
@@ -847,5 +848,43 @@ describe("배선 가드 — main 이 실제로 이 함수들을 지나는가", (
 
   it("손님 노출 목록은 임대형을 걷어낸 것이다", () => {
     expect(src).toMatch(/const\s+visible\s*=\s*excludeLeaseUnits\(\s*flat\s*\)/);
+  });
+});
+
+describe("한 단지 = 한 장 다 — 재료 행(materialId)의 가격 행으로 찾는다(세션635)", () => {
+  it("카드 ah-1 의 materialId 가 ap-9 면 ap-9 의 presale 행이 대상이 된다", () => {
+    const r = selectNoticeAreaTargets(
+      [{ id: "ah-1", materialId: "ap-9", name: "하양", region: "경북", area: null }],
+      [{ id: 7, apartment_id: "ap-9", area: null, price: 41000, house_type: "presale_min", recorded_at: "2026-10-01" }],
+      new Set(),
+    );
+    expect(r.targets).toHaveLength(1);
+    expect(r.targets[0]).toMatchObject({ rowId: 7, aptId: "ap-9" });
+  });
+  it("materialId 가 없으면(VIEW 적용 전) 카드 id 로 찾아 ap-9 행은 대상이 아니다", () => {
+    const r = selectNoticeAreaTargets(
+      [{ id: "ah-1", name: "하양", region: "경북", area: null }],
+      [{ id: 7, apartment_id: "ap-9", area: null, price: 41000, house_type: "presale_min", recorded_at: "2026-10-01" }],
+      new Set(),
+    );
+    expect(r.targets).toHaveLength(0);
+  });
+  it("fetchFlatForNotices — 칸 없음(materialId) 오류면 빼고 처음부터 다시 묻는다", async () => {
+    /** @type {string[]} */
+    const selects = [];
+    /** @param {string} cols */
+    const builder = (cols) => {
+      const res = cols.includes("materialId")
+        ? { data: null, error: { message: "column apartments_flat.materialId does not exist" } }
+        : { data: [{ id: "ah-1", name: "하양" }], error: null };
+      /** @type {any} */
+      const q = { order: () => q, limit: () => q, gt: () => q, then: (/** @type {any} */ r, /** @type {any} */ j) => Promise.resolve(res).then(r, j) };
+      return q;
+    };
+    const sb = { from: () => ({ select: (/** @type {string} */ cols) => (selects.push(cols), builder(cols)) }) };
+    const rows = await fetchFlatForNotices(sb);
+    expect(selects[0]).toContain("materialId");
+    expect(selects[1]).not.toContain("materialId");
+    expect(rows.map((x) => x.id)).toEqual(["ah-1"]);
   });
 });
