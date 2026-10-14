@@ -189,7 +189,9 @@ describe("A — collect-unsold-kosis main 배선 (소스)", () => {
   it("공고일 없음 마커가 collector_runs 기록에 실린다(성공 경로·실패 경로 둘 다)", () => {
     expect(src).toMatch(/noDateMarker = formatApplyhomeNoDate\(noDateIds\);/);
     expect(src).toMatch(/errorMessage: joinRunMessage\(errorMessage, noDateMarker\)/);
-    expect(src).toMatch(/noDateMarker \? \{ ok, errorMessage: noDateMarker \} : \{ ok \}/);
+    // 세션636 F6: 성공 기록은 묶음 첫 반영 표식과 공고일 없음 표식을 이어 싣는다(둘 다 없으면 { ok }).
+    expect(src).toMatch(/const successMessage = joinRunMessage\(bundleApplied \? KOSIS_BUNDLE_APPLIED_MARKER : null, noDateMarker\);/);
+    expect(src).toMatch(/successMessage \? \{ ok, errorMessage: successMessage \} : \{ ok \}/);
   });
 });
 
