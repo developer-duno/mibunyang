@@ -40,10 +40,16 @@ describe("stripNoticeWords", () => {
   it("가운데 괄호를 떼도 좌우가 붙지 않는다", () => {
     expect(stripNoticeWords("A(1차) B")).toBe("A B");
   });
+  it("조합원 자격상실·제명 안내 괄호도 뗀다(Task 5 보완 — 운영 입력 2건)", () => {
+    expect(isNoticeParen("조합원 자격상실 및 제명세대")).toBe(true);
+    expect(isNoticeParen("조합원 자격상실세대 3회차")).toBe(true);
+    expect(stripNoticeWords("가나 아파트(조합원 자격상실 및 제명세대)")).toBe("가나 아파트");
+    expect(stripNoticeWords("가나 아파트 (조합원 자격상실세대 3회차)")).toBe("가나 아파트");
+  });
 });
 describe("SQL 패턴은 JS 패턴과 같은 낱말로 조립된다", () => {
   it("JS 정규식 소스의 낱말이 SQL 문자열에 전부 들어 있다", () => {
-    for (const w of ["무순위", "임의공급", "사후", "계약취소주택", "취소후", "조합원", "불법행위", "재공급", "선착순", "청약", "문의", "재당첨", "거주자", "무주택", "세대구성원"]) {
+    for (const w of ["무순위", "임의공급", "사후", "계약취소주택", "취소후", "조합원", "불법행위", "재공급", "선착순", "청약", "문의", "재당첨", "거주자", "무주택", "세대구성원", "자격상실", "제명"]) {
       expect(NOTICE_WORD_RE.source.includes(w), w).toBe(true);
       expect(NOTICE_PAREN_SQL.includes(w), w).toBe(true);
     }

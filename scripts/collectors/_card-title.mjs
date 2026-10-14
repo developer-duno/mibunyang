@@ -12,7 +12,7 @@
 
 /** 괄호 안쪽 글자에 적용 — 회차 꼴(낱말 또는 숫자+차가 **하나는** 있어야 한다 — 빈 괄호·공백만은 아님) 또는 안내문 낱말. */
 export const ROUND_WORDS = "무순위|임의공급|사후|추가(?:모집)?|잔여(?:세대)?|선착순";
-export const NOTICE_WORDS = "계약취소주택|취소후\\s*재공급|조합원\\s*취소분|불법행위\\s*재공급|재공급|청약|문의|재당첨|거주자|무주택|세대구성원";
+export const NOTICE_WORDS = "계약취소주택|취소후\\s*재공급|조합원\\s*취소분|불법행위\\s*재공급|재공급|청약|문의|재당첨|거주자|무주택|세대구성원|자격상실|제명";
 const ROUND_FORM = `(?:(?:${ROUND_WORDS})\\s*(?:\\d+\\s*(?:차|회차|회))?|\\d+\\s*(?:차|회차|회))`;
 export const NOTICE_WORD_RE = new RegExp(`^\\s*${ROUND_FORM}\\s*$|${NOTICE_WORDS}`);
 
