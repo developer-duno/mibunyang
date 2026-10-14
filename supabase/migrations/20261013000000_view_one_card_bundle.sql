@@ -17,6 +17,7 @@
 --   맨 끝 새 칸 5개 · ae·pso 서브쿼리를 묶음 합·최댓값으로. 그 밖의 줄은 글자 그대로.
 --
 -- 적용 방법: Supabase Dashboard SQL Editor 수동 실행(운영 단계 B-4 — 리허설 B-1·검사·승인 뒤). 작업반은 실행하지 않는다.
+SET lock_timeout = '5s';  -- 세션637(B-2 migration-safety 🟡): VIEW 를 읽는 조회가 잠금을 쥐고 있으면 5초만 기다리고 실패시킨다(뒤에 줄 서는 손님 조회가 멈추지 않게) — 실패하면 잠시 뒤 다시 Run
 CREATE OR REPLACE VIEW apartments_flat WITH (security_invoker = on) AS
 WITH members AS (
   SELECT *,

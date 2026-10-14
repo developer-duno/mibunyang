@@ -10,6 +10,7 @@
 --       WHERE table_schema = 'public' AND table_name = 'apartments_flat' ORDER BY 1, 2;
 --    (권한 기준선 = scripts/perm-baseline.mjs · 감시 ⑩ — 재생성 뒤 지문이 같아야 한다)
 -- ⚠️ 한 트랜잭션으로 묶는다 — DROP 과 CREATE 사이에 굽기가 VIEW 를 읽으면 그날 화면 JSON 이 실패한다.
+SET lock_timeout = '5s';  -- 세션637(B-2 migration-safety 🟡): VIEW 를 읽는 조회가 잠금을 쥐고 있으면 5초만 기다리고 실패시킨다(뒤에 줄 서는 손님 조회가 멈추지 않게) — 실패하면 잠시 뒤 다시 Run
 BEGIN;
 DROP VIEW IF EXISTS apartments_flat;
 CREATE OR REPLACE VIEW apartments_flat WITH (security_invoker = on) AS
