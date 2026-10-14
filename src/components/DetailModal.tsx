@@ -413,8 +413,11 @@ export const DetailModal = memo(function DetailModal({
                 {apt.name}
               </h1>
               {/* 세션635 다: 카드 제목은 회차·안내문을 뗀 이름 — 원래 공고 이름이 다르면 한 줄로 보여 준다. */}
-              {apt.noticeName && apt.noticeName !== apt.name ? (
-                <div style={{ fontSize: F.xs, color: C.sub, marginTop: 2 }}>공고명: {apt.noticeName as string}</div>
+              {/*   noticeName 은 정적 모드에서 상세 버킷에만 있다(static-outputs DETAIL_ONLY_FIELDS) — 머리글이지만 병합본에서 읽는다. */}
+              {(mergedApt ?? apt).noticeName && (mergedApt ?? apt).noticeName !== apt.name ? (
+                <div style={{ fontSize: F.xs, color: C.sub, marginTop: 2 }}>
+                  공고명: {(mergedApt ?? apt).noticeName as string}
+                </div>
               ) : null}
               <div style={{ fontSize: isDesktop ? F.base : F.sm, color: C.muted }}>
                 {/* 면적을 모르면 ㎡ 토큰을 통째로 뺀다 — 전에는 "경기 수원시 · ㎡ · 3억" 처럼 단위만 남았다
