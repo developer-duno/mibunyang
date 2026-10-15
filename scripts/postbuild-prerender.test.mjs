@@ -217,6 +217,7 @@ describe("buildSitemap — 단지를 구글이 발견할 수 있게", () => {
 });
 
 describe("buildHomeSkeleton — 홈에서 지역별 단지로 건너갈 링크", () => {
+  /** @param {string} region @param {number} n */
   const mk = (region, n, prefix = "p") =>
     Array.from({ length: n }, (_, i) => ({ id: `${prefix}-${region || "none"}-${i + 1}`, name: `${region || "무지역"}단지${i + 1}`, region }));
   const list = [
@@ -275,17 +276,18 @@ describe("buildHomeSkeleton — 홈에서 지역별 단지로 건너갈 링크",
   });
 
   it("id/name 없는 항목은 건너뛴다", () => {
-    const h = buildHomeSkeleton([null, { id: "a" }, { name: "n" }, { id: "ok", name: "정상", region: "서울" }]);
+    const h = buildHomeSkeleton(/** @type {any[]} */ ([null, { id: "a" }, { name: "n" }, { id: "ok", name: "정상", region: "서울" }]));
     expect(h).toContain("<h3>서울 (1곳)</h3>");
     expect(h).not.toContain("기타");
   });
 });
 
 describe("buildAptHtml — JSON-LD", () => {
+  /** @param {string} html */
   const ldOf = (html) => {
     const m = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/);
     expect(m).toBeTruthy();
-    return JSON.parse(m[1]);
+    return JSON.parse(m ? m[1] : "null");
   };
 
   it("</head> 바로 앞에 JSON-LD 하나, 파싱 가능하고 화면 값만 담는다", () => {
@@ -319,7 +321,7 @@ describe("buildAptHtml — JSON-LD", () => {
 
   it("이름에 </script> 가 들어 있어도 스크립트가 끊기지 않는다", () => {
     const html = buildAptHtml(TEMPLATE, { ...APT, name: 'A</script><img src=x onerror=alert(1)>' });
-    const block = html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/)[0];
+    const block = (html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/) ?? [""])[0];
     expect(block.slice(block.indexOf(">") + 1, -"</script>".length)).not.toContain("<");
     expect(ldOf(html).name).toBe('A</script><img src=x onerror=alert(1)>');
     expect((html.match(/<\/script>/g) ?? [])).toHaveLength(1);
@@ -328,7 +330,7 @@ describe("buildAptHtml — JSON-LD", () => {
   it("이름이 </script><script>alert(1)</script> 여도 블록 안에 <, >, & 가 날것으로 없고 JSON.parse 하면 원래 이름이 나온다", () => {
     const evil = "</script><script>alert(1)</script> & x" + String.fromCharCode(0x2028);
     const html = buildAptHtml(TEMPLATE, { ...APT, name: evil });
-    const block = html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/)[0];
+    const block = (html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/) ?? [""])[0];
     const inner = block.slice(block.indexOf(">") + 1, -"</script>".length);
     expect(inner).not.toMatch(/[<>&\u2028\u2029]/);
     expect(inner).toContain("\\u003c/script\\u003e");
