@@ -225,9 +225,31 @@ export const AptCard = memo(
             <div style={S.nameWrap}>
               <div style={S.nameRow}>
                 {rank > 0 && <span style={dynStyles.rank}>{rank}위</span>}
-                <span title={String(apt.name ?? "")} style={{ ...dynStyles.nameText, color: C.text }}>
-                  {String(apt.name ?? "")}
-                </span>
+                {apt.id != null && apt.id !== "" ? (
+                  // 세션640: 구글이 JS 를 돌린 화면에서 홈 → 단지 페이지로 따라갈 진짜 링크(a href).
+                  // 그냥 클릭은 지금처럼 카드(부모 div) 가 상세를 열고 주소 이동만 막는다.
+                  // Ctrl/Meta/Shift/Alt·가운데 버튼 클릭은 브라우저가 새 탭으로 열도록 부모에 안 올린다.
+                  // tabIndex -1 = 키보드 탭 순서는 지금처럼 카드 하나(Enter/Space 는 부모 div 담당).
+                  <a
+                    href={`/apt/${encodeURIComponent(String(apt.id))}`}
+                    tabIndex={-1}
+                    title={String(apt.name ?? "")}
+                    style={{ ...dynStyles.nameText, color: C.text, textDecoration: "none" }}
+                    onClick={(e) => {
+                      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) {
+                        e.stopPropagation();
+                      } else {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
+                    {String(apt.name ?? "")}
+                  </a>
+                ) : (
+                  <span title={String(apt.name ?? "")} style={{ ...dynStyles.nameText, color: C.text }}>
+                    {String(apt.name ?? "")}
+                  </span>
+                )}
               </div>
               <div style={S.tagRow}>
                 {[
