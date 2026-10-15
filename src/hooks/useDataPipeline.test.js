@@ -118,6 +118,18 @@ describe("useDataPipeline", () => {
       expect(result.current.dataFreshnessText).toBe("2026-04-10 업데이트");
     });
 
+    it("dataFreshnessText 는 한국 날짜 — 03:11 KST 굽기(전날 18:11 UTC)도 그날로", () => {
+      const { result } = renderPipeline({ dataUpdatedAt: "2026-10-14T18:11:59.344Z" });
+      expect(result.current.dataFreshnessText).toBe("2026-10-15 업데이트");
+    });
+
+    it("시각으로 못 읽는 값이면 앞 10자 그대로", () => {
+      const { result } = renderPipeline({ dataUpdatedAt: "2026-10-15" });
+      expect(result.current.dataFreshnessText).toBe("2026-10-15 업데이트");
+      const { result: r2 } = renderPipeline({ dataUpdatedAt: "이상한값입니다아아" });
+      expect(r2.current.dataFreshnessText).toBe("이상한값입니다아아".slice(0, 10) + " 업데이트");
+    });
+
     it("dataUpdatedAt null → dataFreshnessText null", () => {
       const { result } = renderPipeline({ dataUpdatedAt: null });
       expect(result.current.dataFreshnessText).toBeNull();
