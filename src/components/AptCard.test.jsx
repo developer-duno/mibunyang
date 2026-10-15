@@ -835,3 +835,60 @@ describe("AptCard — 면적 자료가 없을 때", () => {
     expect(screen.getByText("84.93㎡")).toBeInTheDocument();
   });
 });
+
+// 세션640: 구글이 홈에서 단지 페이지로 따라가도록 단지 이름이 진짜 링크(a href)다
+describe("단지 이름 링크", () => {
+  it("이름이 /apt/<id> 링크다", () => {
+    const apt = /** @type {any} */ (makeApt({ id: 77 }));
+    render(<AptCard {...makeProps({ apt })} />);
+    const a = screen.getByText("테스트아파트").closest("a");
+    expect(a).not.toBeNull();
+    expect(a?.getAttribute("href")).toBe("/apt/77");
+    expect(a?.getAttribute("tabindex")).toBe("-1");
+  });
+
+  it("그냥 클릭은 상세를 한 번 열고 주소 이동은 막는다", () => {
+    const props = makeProps({ apt: makeApt({ id: 77 }) });
+    render(<AptCard {...props} />);
+    const notPrevented = fireEvent.click(screen.getByText("테스트아파트"));
+    expect(notPrevented).toBe(false);
+    expect(props.onDetail).toHaveBeenCalledTimes(1);
+    expect(props.onDetail).toHaveBeenCalledWith(77);
+  });
+
+  it.each([["ctrlKey"], ["metaKey"], ["shiftKey"], ["altKey"]])(
+    "%s 클릭은 상세를 열지 않고 브라우저에 맡긴다",
+    (key) => {
+      const props = makeProps({ apt: makeApt({ id: 77 }) });
+      render(<AptCard {...props} />);
+      const notPrevented = fireEvent.click(screen.getByText("테스트아파트"), { [key]: true });
+      expect(notPrevented).toBe(true);
+      expect(props.onDetail).toHaveBeenCalledTimes(0);
+    }
+  );
+
+  it("가운데 버튼(button 1) 클릭도 상세를 열지 않는다", () => {
+    const props = makeProps({ apt: makeApt({ id: 77 }) });
+    render(<AptCard {...props} />);
+    fireEvent.click(screen.getByText("테스트아파트"), { button: 1 });
+    fireEvent.mouseUp(screen.getByText("테스트아파트"), { button: 1 });
+    fireEvent(
+      screen.getByText("테스트아파트"),
+      new MouseEvent("auxclick", { bubbles: true, cancelable: true, button: 1 })
+    );
+    expect(props.onDetail).toHaveBeenCalledTimes(0);
+  });
+
+  it("id 에 / ? 가 있으면 인코딩한다", () => {
+    const apt = /** @type {any} */ (makeApt({ id: "a/b?c" }));
+    render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("테스트아파트").closest("a")?.getAttribute("href")).toBe("/apt/a%2Fb%3Fc");
+  });
+
+  it("id 가 없으면 링크 없이 이름만 보인다", () => {
+    const apt = /** @type {any} */ (makeApt({ id: null }));
+    const { container } = render(<AptCard {...makeProps({ apt })} />);
+    expect(screen.getByText("테스트아파트")).toBeInTheDocument();
+    expect(container.querySelector("a")).toBeNull();
+  });
+});
