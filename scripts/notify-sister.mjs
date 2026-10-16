@@ -17,10 +17,10 @@
  * ## 통보 대상 (설계서 §3-2)
  *
  * - `supabase/ownership.json` 변경 — 항상(2u 가드가 읽는 정본)
- * - `supabase/migrations/` 새 파일(`_rollbacks/` 제외) 중 2u 가 읽거나 공유하는 표·VIEW 이름이 든 것
+ * - `supabase/migrations/` 새 파일·고친 파일(`_rollbacks/` 제외) 중 2u 가 읽거나 공유하는 표·VIEW 이름이 든 것
  * - 정본 `writers.mibunyang` 에 등록된 파일 중 공유(shared)·2u 소유 표를 쓰는 파일의 변경(14파일 · 2u 가 읽기만 하는 표는 마이그 통보 몫) —
- *   단 바뀐 줄이 전부 주석(`//`·`#`·`/*`·`*`·`--`)·빈 줄이면 제외(`git diff -w` 는 주석을 못 거른다)
- * - 제외: 굽기 커밋(제목 `data: daily refresh`) · Dependabot
+ *   단 바뀐 줄이 전부 주석·빈 줄이면 제외(`git diff -w` 는 주석을 못 거른다). 주석 기호는 확장자별(JS·py·sql, 그 밖은 없음 · 세션643)
+ * - 제외: push 범위 커밋이 전부 굽기 커밋(제목 `data: daily refresh`)·Dependabot 일 때만
  *
  * 실행: .github/workflows/notify-sister.yml 이 main push 마다(GH_TOKEN 필요). 로컬 미리보기 = `--dry-run`.
  */
@@ -37,6 +37,7 @@ export const STALE_DAYS = 14;
 const MIGRATIONS_DIR = "supabase/migrations/";
 const REGISTRY_PATH = "supabase/ownership.json";
 const MIGRATION_REASON = "새 마이그";
+const MODIFIED_MIGRATION_REASON = "고친 마이그";
 
 /**
  * 2u 가 신경 쓰는 표·VIEW — 공유 표, 2u 소유 표, 2u 가 읽는 표·VIEW.
@@ -72,37 +73,132 @@ export function tablesWrittenTogether(registry) {
 }
 
 /**
- * diff 에서 바뀐 줄(+/-) 중 주석·빈 줄이 아닌 것.
- * @param {string} diffText `git diff` 한 파일분
+ * 파일 확장자 → 주석 문법(세션643). 모르는 확장자는 null — 어떤 줄도 주석으로 보지 않는다(애매하면 통보 쪽).
+ * 옛 판정은 언어를 안 가려 JS `--i;`·`#private`, py `*args,` 줄을 주석으로 지워 통보를 빠뜨렸다.
+ * @param {string} filePath
+ * @returns {"js" | "py" | "sql" | null}
  */
-export function substantiveLines(diffText) {
-  return diffText
-    .split(/\r?\n/)
-    .filter((l) => (l.startsWith("+") || l.startsWith("-")) && !l.startsWith("+++") && !l.startsWith("---"))
-    .map((l) => l.slice(1).trim())
-    // 줄 머리 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면(`/* a */ const x = 1;`) 뒤 코드는 실질 줄
-    // (audit-shared-db-ownership.mjs stripCommentLines 와 같은 판정 · fix2 🟡)
-    .map((l) => {
-      if (!l.startsWith("/*") && !l.startsWith("*")) return l;
-      const close = l.indexOf("*/", l.startsWith("/*") ? 2 : 0);
-      return close >= 0 ? l.slice(close + 2).trim() : "";
-    })
-    .filter((l) => l !== "" && !/^(\/\/|#|--)/.test(l));
+export function commentSyntaxOf(filePath) {
+  if (/\.(mjs|cjs|js|jsx|ts|tsx)$/.test(filePath)) return "js";
+  if (filePath.endsWith(".py")) return "py";
+  if (filePath.endsWith(".sql")) return "sql";
+  return null;
+}
+
+/**
+ * JS 한 줄(앞뒤 공백 뗌)에서 주석을 걷어낸 나머지. 블록 주석 안인지를 st 에 이어 간다.
+ * 덩어리(@@) 첫머리에선 블록 안인지 모른다(null) — 그때는 `* 설명`·닫는 기호 꼴만 블록 안 줄로 본다(`*gen() {` 는 코드).
+ * 줄 중간에서 여는 `/*` 는 문자열일 수 있어 블록 시작으로 치지 않는다(틀려도 뒤 `*` 줄이 코드로 남을 뿐 = 통보 쪽).
+ * @param {string} line
+ * @param {{ inBlock: boolean | null }} st
+ */
+function stripJsComment(line, st) {
+  let s = line;
+  if (s === "") return "";
+  if (st.inBlock === true || (st.inBlock === null && /^\*(\/|\s|$)/.test(s))) {
+    const close = s.indexOf("*/");
+    if (close < 0) {
+      st.inBlock = true;
+      return "";
+    }
+    s = s.slice(close + 2).trim();
+  }
+  // 줄 머리 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면(`/* a */ const x = 1;`) 뒤 코드는 실질 줄
+  // (audit-shared-db-ownership.mjs stripCommentLines 와 같은 판정 · fix2 🟡)
+  if (s.startsWith("/*")) {
+    const close = s.indexOf("*/", 2);
+    if (close < 0) {
+      st.inBlock = true;
+      return "";
+    }
+    s = s.slice(close + 2).trim();
+  }
+  st.inBlock = false;
+  return s.startsWith("//") ? "" : s;
+}
+
+/**
+ * 파일 경로 없이 부른 옛 판정 — `//`·`#`·`--`·`/*`·`*` 를 언어 구분 없이 주석으로 본다(옛 호출 호환 전용).
+ * @param {string} l
+ */
+function stripAnyComment(l) {
+  if (l.startsWith("/*") || l.startsWith("*")) {
+    const close = l.indexOf("*/", l.startsWith("/*") ? 2 : 0);
+    l = close >= 0 ? l.slice(close + 2).trim() : "";
+  }
+  return /^(\/\/|#|--)/.test(l) ? "" : l;
+}
+
+/**
+ * diff 에서 바뀐 줄(+/-) 중 주석·빈 줄이 아닌 것. 주석 기호는 `filePath` 확장자로 고른다
+ * (JS `//`·`/*`·블록 안 `*` / py `#` / sql `--` / 그 밖은 없음). `filePath` 없이 부르면 옛 판정.
+ * 머리줄(`--- a/…`·`+++ b/…`)은 덩어리(@@) 밖에서만 건너뛴다 — 덩어리 안의 `---i;` 는 지운 줄 `--i;` 다.
+ * @param {string} diffText `git diff` 한 파일분
+ * @param {string} [filePath]
+ */
+export function substantiveLines(diffText, filePath) {
+  const syntax = filePath === undefined ? "any" : commentSyntaxOf(filePath);
+  /** @type {string[]} */
+  const out = [];
+  // 블록 주석 상태는 옛 쪽(- 와 문맥 줄)·새 쪽(+ 와 문맥 줄)을 따로 잇는다
+  /** @type {Record<string, { inBlock: boolean | null }>} */
+  const side = { "-": { inBlock: null }, "+": { inBlock: null } };
+  let inHunk = false;
+  for (const raw of diffText.split(/\r?\n/)) {
+    if (raw.startsWith("diff --git")) inHunk = false;
+    if (raw.startsWith("@@")) {
+      inHunk = true;
+      side["-"].inBlock = side["+"].inBlock = null;
+    }
+    if (!inHunk && /^(---|\+\+\+)( |$)/.test(raw)) continue;
+    const mark = raw[0];
+    if (mark !== "+" && mark !== "-" && mark !== " ") continue;
+    const line = raw.slice(1).trim();
+    if (syntax === "js") {
+      if (mark === " ") {
+        stripJsComment(line, side["-"]);
+        stripJsComment(line, side["+"]);
+        continue;
+      }
+      const code = stripJsComment(line, side[mark]);
+      if (code !== "") out.push(code);
+      continue;
+    }
+    if (mark === " ") continue;
+    const code =
+      syntax === "any" ? stripAnyComment(line) : syntax === "py" ? line.replace(/^#.*/, "") : syntax === "sql" ? line.replace(/^--.*/, "") : line;
+    if (code !== "") out.push(code);
+  }
+  return out;
 }
 
 /**
  * @typedef {{ path: string, status: string }} ChangedFile  status = git --name-status 첫 글자(A/M/D/R…)
  * @typedef {{ notify: boolean, skipped?: string, reasons: string[] }} Decision
+ * @typedef {{ title: string, author: string }} CommitInfo
  */
 
 /**
+ * 제외 꼴 커밋이면 그 이름(굽기 커밋 · Dependabot), 아니면 null.
+ * @param {CommitInfo} c
+ */
+export function excludedKind(c) {
+  if (/^data: daily refresh/.test(c.title)) return "굽기 커밋";
+  if (/dependabot/i.test(c.author)) return "Dependabot";
+  return null;
+}
+
+/**
  * 통보할지 판정.
- * @param {{ registry: any, changed: ChangedFile[], diffOf: (p: string) => string, readFile: (p: string) => string, commitTitle: string, author: string }} input
+ * `commits` = 이번 push 범위의 커밋들. 제외는 범위 안 커밋이 **전부** 제외 꼴일 때만(굽기 1 + 사람 1 이면 판정 · 세션643).
+ * 생략하면 `commitTitle`·`author` 한 커밋으로 보고, null(범위를 다 못 읽음)이면 제외하지 않는다(애매하면 통보 쪽).
+ * @param {{ registry: any, changed: ChangedFile[], diffOf: (p: string) => string, readFile: (p: string) => string, commitTitle: string, author: string, commits?: CommitInfo[] | null }} input
  * @returns {Decision}
  */
-export function decideNotice({ registry, changed, diffOf, readFile, commitTitle, author }) {
-  if (/^data: daily refresh/.test(commitTitle)) return { notify: false, skipped: "굽기 커밋", reasons: [] };
-  if (/dependabot/i.test(author)) return { notify: false, skipped: "Dependabot", reasons: [] };
+export function decideNotice({ registry, changed, diffOf, readFile, commitTitle, author, commits }) {
+  const list = commits === undefined ? [{ title: commitTitle, author }] : commits;
+  const kinds = (list ?? []).map(excludedKind);
+  if (kinds.length && kinds.every((k) => k !== null)) return { notify: false, skipped: [...new Set(kinds)].join("·"), reasons: [] };
 
   const care = tablesTheyCareAbout(registry);
   const together = tablesWrittenTogether(registry);
@@ -115,17 +211,20 @@ export function decideNotice({ registry, changed, diffOf, readFile, commitTitle,
       reasons.push(`정본 \`${REGISTRY_PATH}\` 변경 — 2u 가드가 읽는 목록`);
       continue;
     }
-    if (f.path.startsWith(MIGRATIONS_DIR) && !f.path.includes("/_rollbacks/") && f.path.endsWith(".sql") && f.status.startsWith("A")) {
-      const sql = readFile(f.path).replace(/\/\*[\s\S]*?\*\//g, " ").replace(/--[^\n]*/g, " ");
+    // 새 마이그(A)와 고친 마이그(M·R·C) 모두 — 지운 마이그(D)는 읽을 파일이 없다(세션643)
+    if (f.path.startsWith(MIGRATIONS_DIR) && !f.path.includes("/_rollbacks/") && f.path.endsWith(".sql") && !f.status.startsWith("D")) {
+      // 작은따옴표 문자열은 남기고 주석만 걷는다 — 문자열 속 `--` 가 줄 나머지(표 이름)를 지우던 것(세션643)
+      const sql = readFile(f.path).replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g, (m) => (m.startsWith("'") ? m : " "));
       const hit = [...care].filter((t) => new RegExp(`\\b${t}\\b`, "i").test(sql)).sort();
-      if (hit.length) reasons.push(`${MIGRATION_REASON} \`${f.path}\` — 표: ${hit.join(", ")}`);
+      const kind = f.status.startsWith("A") ? MIGRATION_REASON : MODIFIED_MIGRATION_REASON;
+      if (hit.length) reasons.push(`${kind} \`${f.path}\` — 표: ${hit.join(", ")}`);
       continue;
     }
     const byTable = mine[f.path];
     if (byTable) {
       const hit = Object.keys(byTable).filter((t) => together.has(t)).sort();
       if (!hit.length) continue;
-      const lines = substantiveLines(diffOf(f.path));
+      const lines = substantiveLines(diffOf(f.path), f.path);
       if (!lines.length) continue;
       reasons.push(`등록된 쓰기 파일 \`${f.path}\` 변경(${lines.length}줄) — 표: ${hit.map((t) => `${t}${byTable[t]?.[0] === "*" ? "" : `(${byTable[t].length}칸)`}`).join(", ")}`);
     }
@@ -140,7 +239,7 @@ export function decideNotice({ registry, changed, diffOf, readFile, commitTitle,
  */
 export function buildIssue({ reasons, commitTitle, commitUrl, sha }) {
   const title = `[→2u] ${commitTitle}`.slice(0, 250);
-  const hasMigration = reasons.some((r) => r.startsWith(MIGRATION_REASON));
+  const hasMigration = reasons.some((r) => r.startsWith(MIGRATION_REASON) || r.startsWith(MODIFIED_MIGRATION_REASON));
   const body = [
     "미분양 레포 main 에 공유 DB 를 건드린 커밋이 합쳐졌습니다(자동 통보 · `scripts/notify-sister.mjs`).",
     "",
@@ -178,6 +277,28 @@ export function pickBase(before, hasCommit) {
 }
 
 /**
+ * push 범위(base..HEAD) 커밋의 제목·작성자(새 것부터). base 에서 HEAD 까지 이어지지 않으면 null —
+ * Actions 는 얕게 받아(fetch-depth 2 + before 1개) 여러 커밋 push 의 중간 커밋이 없다. 그때는 제외 판정을 안 한다.
+ * @param {(args: string[]) => string} git
+ * @param {string} base
+ * @returns {CommitInfo[] | null}
+ */
+export function listRangeCommits(git, base) {
+  try {
+    git(["merge-base", "--is-ancestor", base, "HEAD"]);
+    return git(["log", "--format=%s%x1f%an <%ae>", `${base}..HEAD`])
+      .split("\n")
+      .filter(Boolean)
+      .map((l) => {
+        const [title, author = ""] = l.split("\x1f");
+        return { title, author };
+      });
+  } catch {
+    return null;
+  }
+}
+
+/**
  * 본체 — git·gh 를 주입받는다(시험은 가짜를 넣는다).
  * `base` = 비교 기준 — push 이벤트의 `github.event.before`(한 번에 여러 커밋을 밀어도 전부 본다 · fix1 🟡),
  * 없으면 HEAD~1(squash 합침 = PR 전체가 한 커밋).
@@ -191,17 +312,23 @@ export function runNotify({ git, gh, registry, readFile, commitUrl, now, base = 
       const parts = line.split("\t");
       return { status: parts[0], path: parts[parts.length - 1] };
     });
-  const commitTitle = git(["log", "-1", "--format=%s"]).trim();
+  const headTitle = git(["log", "-1", "--format=%s"]).trim();
   const author = git(["log", "-1", "--format=%an <%ae>"]).trim();
   const sha = git(["rev-parse", "HEAD"]).trim();
+  // push 범위가 HEAD 하나(HEAD~1)가 아니면 범위 안 커밋을 다 본다 — 제외 판정이 마지막 커밋 하나로 정해지지 않게(세션643)
+  const commits = base === "HEAD~1" ? undefined : listRangeCommits(git, base);
+  if (commits === null) log(`범위 ${base.slice(0, 8)}..HEAD 커밋을 다 못 읽음 — 굽기·Dependabot 제외 판정 안 함`);
   const decision = decideNotice({
     registry,
     changed,
     diffOf: (p) => git(["diff", base, "HEAD", "--", p]),
     readFile,
-    commitTitle,
+    commitTitle: headTitle,
     author,
+    commits,
   });
+  // 이슈 제목 = 범위 안 가장 새 사람 커밋(뒤에 굽기 커밋이 얹혀도 그 제목이 안 되게)
+  const commitTitle = commits?.find((c) => excludedKind(c) === null)?.title ?? headTitle;
 
   /** @type {{ created: boolean, closed: number[] }} */
   const result = { created: false, closed: [] };

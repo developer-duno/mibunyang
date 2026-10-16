@@ -3,7 +3,7 @@
  * notify-sister.mjs 시험 — 통보 대상 4 · 제외 3 + 본체(가짜 git·gh) (세션617 · 설계서 §3-2)
  */
 import { describe, it, expect } from "vitest";
-import { buildIssue, decideNotice, substantiveLines, pickBase, pickStale, runNotify, tablesTheyCareAbout, tablesWrittenTogether } from "./notify-sister.mjs";
+import { buildIssue, decideNotice, listRangeCommits, substantiveLines, pickBase, pickStale, runNotify, tablesTheyCareAbout, tablesWrittenTogether } from "./notify-sister.mjs";
 
 const registry = {
   version: 1,
@@ -151,6 +151,89 @@ describe("buildIssue — 마이그 통보엔 DB 반영 시각 칸(설계서 §3-
   });
 });
 
+describe("세션643 — 통보 판정 빈틈(애매하면 통보 쪽)", () => {
+  const reg2 = {
+    ...registry,
+    writers: { mibunyang: { ...registry.writers.mibunyang, "scripts/collectors/x.mjs": { complexes: ["*"] }, "scripts/y.py": { complexes: ["*"] } } },
+  };
+  /** @param {string[]} lines */
+  const hunk = (...lines) => ["@@ -1,3 +1,3 @@", ...lines].join("\n");
+  /** @param {string} p @param {string[]} lines */
+  const fileDiff = (p, ...lines) => [`diff --git a/${p} b/${p}`, `--- a/${p}`, `+++ b/${p}`, hunk(...lines)].join("\n");
+
+  it("a JS: `--i;`(더한 줄·지운 줄)·`#private` 는 코드, `//` 는 주석 — 등록 .mjs 파일이면 통보", () => {
+    expect(substantiveLines(hunk("+--i;"), "scripts/collectors/x.mjs")).toEqual(["--i;"]);
+    expect(substantiveLines(hunk("---i;"), "x.mjs")).toEqual(["--i;"]);
+    expect(substantiveLines(hunk("+#private = 1;"), "x.ts")).toEqual(["#private = 1;"]);
+    expect(substantiveLines(hunk("+// 메모"), "x.mjs")).toEqual([]);
+    const d = decide({ registry: reg2, changed: [{ path: "scripts/collectors/x.mjs", status: "M" }], diffOf: (p) => fileDiff(p, "-i++;", "+--i;") });
+    expect(d.notify).toBe(true);
+    const d2 = decide({ registry: reg2, changed: [{ path: "scripts/collectors/x.mjs", status: "M" }], diffOf: (p) => fileDiff(p, "+#private = 1;") });
+    expect(d2.notify).toBe(true);
+  });
+
+  it("a py: `*args,` 는 코드 · `# 메모` 는 주석", () => {
+    expect(substantiveLines(hunk("+    *args,"), "scripts/y.py")).toEqual(["*args,"]);
+    expect(substantiveLines(hunk("+# 메모", "-    # 옛 메모"), "scripts/y.py")).toEqual([]);
+    expect(decide({ registry: reg2, changed: [{ path: "scripts/y.py", status: "M" }], diffOf: (p) => fileDiff(p, "+    *args,") }).notify).toBe(true);
+  });
+
+  it("a sql 은 `--` 만 주석 · 모르는 확장자는 아무 줄도 주석 아님", () => {
+    expect(substantiveLines(hunk("+-- 메모", "+select 1;"), "a.sql")).toEqual(["select 1;"]);
+    expect(substantiveLines(hunk("+# 메모", "+// 메모"), "a.yml")).toEqual(["# 메모", "// 메모"]);
+  });
+
+  it("a JS 블록 주석: 덩어리 안에서 연 블록의 `*` 줄·블록 중간에서 시작한 덩어리의 `* 설명` 은 주석, `*gen() {` 는 코드", () => {
+    expect(substantiveLines(hunk(" /**", "+ * 새 설명", "- * 옛 설명", " */", "+const x = 1;"), "a.mjs")).toEqual(["const x = 1;"]);
+    expect(substantiveLines(hunk("+ * 설명만 고침"), "a.mjs")).toEqual([]);
+    expect(substantiveLines(hunk("+  *gen() {"), "a.mjs")).toEqual(["*gen() {"]);
+  });
+
+  it("b JS·py 문자열 속 `--` 는 줄을 지우지 않는다", () => {
+    expect(substantiveLines(hunk('+x = "a--b"; update('), "a.mjs")).toEqual(['x = "a--b"; update(']);
+    expect(substantiveLines(hunk("+x = 'a -- b'"), "a.py")).toEqual(["x = 'a -- b'"]);
+  });
+
+  it("b SQL 마이그: 작은따옴표 문자열 속 `--` 가 같은 줄 표 이름을 지우지 않는다 · 진짜 주석은 그대로 걷는다", () => {
+    const mig = [{ path: "supabase/migrations/20261017000000_s.sql", status: "A" }];
+    const d = decide({ changed: mig, readFile: () => "UPDATE consults SET memo = 'a--b' FROM apartments WHERE consults.id = apartments.id;" });
+    expect(d.notify).toBe(true);
+    expect(d.reasons[0]).toContain("apartments");
+    expect(decide({ changed: mig, readFile: () => "-- it's apartments 메모\n/* apartments */\nALTER TABLE consults ADD COLUMN m text;" }).notify).toBe(false);
+  });
+
+  it("c 범위에 굽기 1 + 사람 1 이면 판정 · 전부 제외 꼴이면 제외 · 범위를 다 못 읽으면(null) 제외 안 함", () => {
+    const bake = { title: "data: daily refresh 2026-10-17 (auto)", author: "github-actions[bot] <a@b>" };
+    const human = { title: "feat(db): 정본", author: "developer-duno <x@example.com>" };
+    const bot = { title: "chore(deps): bump", author: "dependabot[bot] <c@d>" };
+    const changed = [{ path: "supabase/ownership.json", status: "M" }];
+    expect(decide({ commitTitle: bake.title, commits: [bake, human], changed }).notify).toBe(true);
+    expect(decide({ commits: [bake, bake], changed })).toEqual({ notify: false, skipped: "굽기 커밋", reasons: [] });
+    expect(decide({ commits: [bake, bot], changed })).toEqual({ notify: false, skipped: "굽기 커밋·Dependabot", reasons: [] });
+    expect(decide({ commitTitle: bake.title, commits: null, changed }).notify).toBe(true);
+  });
+
+  it("d 고친 마이그(M)도 통보 · 사유 '고친 마이그' + DB 반영 시각 칸 · 지운 마이그(D)는 안 읽는다", () => {
+    const d = decide({ changed: [{ path: "supabase/migrations/20261010000000_x.sql", status: "M" }], readFile: () => "ALTER TABLE apartments ADD COLUMN foo text;" });
+    expect(d.notify).toBe(true);
+    expect(d.reasons[0]).toMatch(/^고친 마이그 /);
+    expect(buildIssue({ reasons: d.reasons, commitTitle: "t", commitUrl: "u", sha: "abcdef12" }).body).toContain("**DB 반영 시각**");
+    const gone = decide({
+      changed: [{ path: "supabase/migrations/20261010000000_x.sql", status: "D" }],
+      readFile: () => {
+        throw new Error("지운 파일을 읽음");
+      },
+    });
+    expect(gone.notify).toBe(false);
+  });
+
+  it("d(현재 동작 확인) TRUNCATE·DELETE FROM 도 표 이름이 들면 통보된다", () => {
+    const mig = [{ path: "supabase/migrations/20261017000001_t.sql", status: "A" }];
+    expect(decide({ changed: mig, readFile: () => "TRUNCATE complexes;" }).notify).toBe(true);
+    expect(decide({ changed: mig, readFile: () => "DELETE FROM public.apartments WHERE id = 'x';" }).notify).toBe(true);
+  });
+});
+
 describe("본체 runNotify(가짜 git·gh)", () => {
   const now = new Date("2026-10-30T00:00:00Z");
 
@@ -164,6 +247,12 @@ describe("본체 runNotify(가짜 git·gh)", () => {
       if (k === "log -1 --format=%an <%ae>") return answers.author ?? "developer-duno <x@example.com>";
       if (k === "rev-parse HEAD") return "abcdef1234567890";
       if (/^diff \S+ HEAD --/.test(k)) return answers.diff ?? "";
+      // 세션643 범위 커밋 읽기 — 답을 준 시험에서만(안 주면 아래 throw → 범위 못 읽음)
+      if (k.startsWith("merge-base --is-ancestor") && answers.ancestor !== undefined) {
+        if (answers.ancestor !== "yes") throw new Error("not ancestor");
+        return "";
+      }
+      if (k.startsWith("log --format=%s%x1f") && answers.range !== undefined) return answers.range;
       throw new Error(`예상 못 한 git ${k}`);
     };
   }
@@ -247,6 +336,39 @@ describe("본체 runNotify(가짜 git·gh)", () => {
     expect(r.created).toBe(false);
     expect(calls.some((c) => c[1] === "create")).toBe(false);
     expect(calls.some((c) => c[1] === "list")).toBe(true);
+  });
+
+  it("c 여러 커밋 push — 범위 커밋으로 제외를 정하고 이슈 제목은 가장 새 사람 커밋 · 범위를 못 읽으면 제외 안 함", () => {
+    const base = "b".repeat(40);
+    const bakeLine = "data: daily refresh 2026-10-17 (auto)\x1fgithub-actions[bot] <a@b>";
+    const humanLine = "feat(db): 정본 고침\x1fdeveloper-duno <x@example.com>";
+    /** @param {Record<string,string>} extra */
+    const run = (extra) => {
+      /** @type {string[]} */
+      const logs = [];
+      const r = runNotify({
+        git: fakeGit({ nameStatus: "M\tsupabase/ownership.json\n", title: "data: daily refresh 2026-10-17 (auto)", ...extra }),
+        gh: (/** @type {string[]} */ args) => (args[1] === "list" ? "[]" : ""),
+        registry,
+        readFile: () => "",
+        commitUrl: "x",
+        now,
+        base,
+        dryRun: true,
+        log: (s) => logs.push(s),
+      });
+      return { r, logs: logs.join("\n") };
+    };
+    const mixed = run({ ancestor: "yes", range: `${bakeLine}\n${humanLine}\n` });
+    expect(mixed.r.decision.notify).toBe(true);
+    expect(mixed.logs).toContain("통보: [→2u] feat(db): 정본 고침");
+    const allBake = run({ ancestor: "yes", range: `${bakeLine}\n${bakeLine}\n` });
+    expect(allBake.r.decision).toEqual({ notify: false, skipped: "굽기 커밋", reasons: [] });
+    const shallow = run({ ancestor: "no" });
+    expect(shallow.r.decision.notify).toBe(true);
+    expect(shallow.logs).toContain("다 못 읽음");
+    expect(listRangeCommits(fakeGit({ ancestor: "yes", range: `${humanLine}\n` }), base)).toEqual([{ title: "feat(db): 정본 고침", author: "developer-duno <x@example.com>" }]);
+    expect(listRangeCommits(fakeGit({ ancestor: "no" }), base)).toBeNull();
   });
 
   it("pickStale — 정확히 14일 경계", () => {
