@@ -39,6 +39,7 @@ import { useMarketingConsent } from "@/hooks/useMarketingConsent";
 import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useFeedback, buildFeedbackContext, feedbackContextLabel } from "@/hooks/useFeedback";
 import { useBizInquiry } from "@/hooks/useBizInquiry";
+import { useDirectDetailEntry } from "@/hooks/useDirectDetailEntry";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
@@ -436,9 +437,51 @@ export default function App() {
     showToast,
   });
 
+  // 단지 주소로 바로 들어오면 단지 상세만 — 뒤 화면(필터 막대·탭 내용)을 안 그린다(세션641 「단지 페이지만」)
+  const directEntry = useDirectDetailEntry({
+    detailAptId: detail.detailAptId,
+    dataLoading,
+    dataError,
+    found: detail.detailAptId ? scoredMap.has(detail.detailAptId) : false,
+  });
+
   // 문의 버튼(FeedbackFab)을 그리는 조건 — 관리자 대시보드·지도 탭에서는 숨김(세션574 사장님 결정).
   // 휴대폰 상세 모달도 같은 변수로 "버튼이 위에 떠 있나"를 판단해 맨 아래 여백을 둔다(세션594 S6).
   const fabVisible = tab !== "admin" && tab !== "map";
+
+  // 상세 창 로딩 뼈대 — DetailModal(lazy) 받는 중 + 단지 주소 직접 진입의 데이터 받는 중(세션641) 두 자리가 함께 쓴다
+  const detailSkeleton = (
+    <div
+      data-testid="detail-skeleton"
+      style={{
+        position: "fixed",
+        top: 0,
+        right: 0,
+        bottom: 0,
+        left: 0,
+        background: "rgba(0,0,0,0.5)",
+        zIndex: 1000,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <div
+        style={{
+          background: C.card,
+          borderRadius: 16,
+          padding: 32,
+          width: isDesktop ? 760 : "90%",
+          maxHeight: "80vh",
+          animation: "skeleton-pulse 1.5s ease-in-out infinite",
+        }}
+      >
+        <div style={{ height: 20, width: "50%", background: C.slate100, borderRadius: 4, marginBottom: 16 }} />
+        <div style={{ height: 14, width: "70%", background: C.slate100, borderRadius: 4, marginBottom: 12 }} />
+        <div style={{ height: 200, background: C.slate100, borderRadius: 8 }} />
+      </div>
+    </div>
+  );
 
   // ── JSX ──
   return (
@@ -474,6 +517,7 @@ export default function App() {
         consentMarketing={consentMarketing}
         consentSubmitting={consentSubmitting}
         onToggleMarketingConsent={toggleMarketingConsent}
+        demoteTitle={directEntry}
       />
 
       {dataLoading && (
@@ -511,7 +555,7 @@ export default function App() {
         </div>
       )}
 
-      {(tab === "list" || tab === "map") && (
+      {!directEntry && (tab === "list" || tab === "map") && (
         <div style={{ padding: isDesktop ? "0 24px" : "0 16px" }}>
           <SearchFilterBar
             filterRegion={filterRegion}
@@ -590,7 +634,7 @@ export default function App() {
         </div>
       )}
 
-      {tab === "home" ? (
+      {directEntry ? null : tab === "home" ? (
         <HomePage
           scored={scored}
           filtered={filtered}
@@ -796,48 +840,13 @@ export default function App() {
       ) : null}
 
       {/* 상세 분석 모달 */}
-      {detail.detailAptId &&
+      {(detail.detailAptId || directEntry) &&
         (() => {
-          const item = scored.find((x) => x.apt.id === detail.detailAptId);
-          if (!item) return null;
+          const item = detail.detailAptId ? scored.find((x) => x.apt.id === detail.detailAptId) : undefined;
+          // 단지 주소로 바로 들어와 데이터를 받는 중이면(상세 id 가 아직 안 정해졌어도) 빈 화면 대신 상세 창 로딩 뼈대(세션641)
+          if (!item || !detail.detailAptId) return directEntry ? detailSkeleton : null;
           return (
-            <Suspense
-              fallback={
-                <div
-                  style={{
-                    position: "fixed",
-                    top: 0,
-                    right: 0,
-                    bottom: 0,
-                    left: 0,
-                    background: "rgba(0,0,0,0.5)",
-                    zIndex: 1000,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: C.card,
-                      borderRadius: 16,
-                      padding: 32,
-                      width: isDesktop ? 760 : "90%",
-                      maxHeight: "80vh",
-                      animation: "skeleton-pulse 1.5s ease-in-out infinite",
-                    }}
-                  >
-                    <div
-                      style={{ height: 20, width: "50%", background: C.slate100, borderRadius: 4, marginBottom: 16 }}
-                    />
-                    <div
-                      style={{ height: 14, width: "70%", background: C.slate100, borderRadius: 4, marginBottom: 12 }}
-                    />
-                    <div style={{ height: 200, background: C.slate100, borderRadius: 8 }} />
-                  </div>
-                </div>
-              }
-            >
+            <Suspense fallback={detailSkeleton}>
               <DetailModal
                 item={item}
                 onClose={detail.handleCloseDetail}
