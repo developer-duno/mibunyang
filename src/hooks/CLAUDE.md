@@ -18,6 +18,7 @@ useState (7개: profile, customWeights, hideNoUnsold, upcomingData, upcomingErro
   → useKeyboardShortcuts (void, 데스크톱 가드)
   → 독립 useEffect (print CSS)
   → useUrlSync (void, URL 동기화 5종 — 세션 485 추출 + 503 상세 URL 2종)
+  → useDirectDetailEntry (boolean, 단지 주소 직접 진입이면 뒤 화면을 안 그림 — 세션641)
   → JSX
 ```
 

@@ -140,7 +140,10 @@ export const HeaderSection = memo(function HeaderSection({
   consentMarketing,
   consentSubmitting,
   onToggleMarketingConsent,
+  demoteTitle,
 }: HeaderSectionProps) {
+  // 단지 주소 직접 진입 중엔 h1 을 같은 style 의 div 로 — 겉모양은 그대로(style 에 margin·fontSize·fontWeight 다 있음, 세션641)
+  const TitleTag = demoteTitle ? "div" : "h1";
   const [helpOpen, setHelpOpen] = useState(false);
   const toggleHelp = useCallback(() => setHelpOpen((v) => !v), []);
   const closeHelp = useCallback(() => setHelpOpen(false), []);
@@ -189,7 +192,7 @@ export const HeaderSection = memo(function HeaderSection({
         >
           {/* 좌측: 로고 */}
           <div style={HS_S.desktopLeft}>
-            <h1 style={HS_S.desktopH1}>미분양 비교</h1>
+            <TitleTag style={HS_S.desktopH1}>미분양 비교</TitleTag>
             <span style={HS_S.desktopCount}>{apartmentCount}개 단지</span>
           </div>
 
@@ -307,7 +310,7 @@ export const HeaderSection = memo(function HeaderSection({
     >
       <div style={HS_S.mobileHeaderRow}>
         <div>
-          <h1 style={HS_S.mobileH1}>전국 미분양 비교 엔진</h1>
+          <TitleTag style={HS_S.mobileH1}>전국 미분양 비교 엔진</TitleTag>
           <p style={HS_S.mobileSubtitle}>전국 {apartmentCount}개 단지 · 6개 항목 · 41+ 지표</p>
         </div>
         <div style={HS_S.mobileTopRight}>
