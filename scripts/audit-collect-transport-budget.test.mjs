@@ -25,7 +25,7 @@
  */
 import { readFile } from "node:fs/promises";
 import { describe, it, expect } from "vitest";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 
 const YML_PATH = ".github/workflows/collect-transport.yml";
 const STEP_NAME = "Collect transport data";
