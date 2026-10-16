@@ -87,7 +87,8 @@ export function commentSyntaxOf(filePath) {
 
 /**
  * JS 한 줄(앞뒤 공백 뗌)에서 주석을 걷어낸 나머지. 블록 주석 안인지를 st 에 이어 간다.
- * 덩어리(@@) 첫머리에선 블록 안인지 모른다(null) — 그때는 `* 설명`·닫는 기호 꼴만 블록 안 줄로 본다(`*gen() {` 는 코드).
+ * 덩어리(@@) 첫머리에선 블록 안인지 모른다(null) — 그때는 `* 설명`·닫는 기호 꼴 줄을 그 한 줄만 주석으로 보고
+ * 상태는 모름 그대로 둔다(`*gen() {` 는 코드).
  * 줄 중간에서 여는 `/*` 는 문자열일 수 있어 블록 시작으로 치지 않는다(틀려도 뒤 `*` 줄이 코드로 남을 뿐 = 통보 쪽).
  * @param {string} line
  * @param {{ inBlock: boolean | null }} st
@@ -97,10 +98,8 @@ function stripJsComment(line, st) {
   if (s === "") return "";
   if (st.inBlock === true || (st.inBlock === null && /^\*(\/|\s|$)/.test(s))) {
     const close = s.indexOf("*/");
-    if (close < 0) {
-      st.inBlock = true;
-      return "";
-    }
+    // 닫히지 않으면 이 줄만 지운다 — 모름(null)이면 모름 그대로(`* 3;` 곱셈 이어짐 뒤 줄까지 지우지 않게)
+    if (close < 0) return "";
     s = s.slice(close + 2).trim();
   }
   // 줄 머리 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면(`/* a */ const x = 1;`) 뒤 코드는 실질 줄
@@ -118,26 +117,14 @@ function stripJsComment(line, st) {
 }
 
 /**
- * 파일 경로 없이 부른 옛 판정 — `//`·`#`·`--`·`/*`·`*` 를 언어 구분 없이 주석으로 본다(옛 호출 호환 전용).
- * @param {string} l
- */
-function stripAnyComment(l) {
-  if (l.startsWith("/*") || l.startsWith("*")) {
-    const close = l.indexOf("*/", l.startsWith("/*") ? 2 : 0);
-    l = close >= 0 ? l.slice(close + 2).trim() : "";
-  }
-  return /^(\/\/|#|--)/.test(l) ? "" : l;
-}
-
-/**
  * diff 에서 바뀐 줄(+/-) 중 주석·빈 줄이 아닌 것. 주석 기호는 `filePath` 확장자로 고른다
- * (JS `//`·`/*`·블록 안 `*` / py `#` / sql `--` / 그 밖은 없음). `filePath` 없이 부르면 옛 판정.
+ * (JS `//`·`/*`·블록 안 `*` / py `#` / sql `--` / 그 밖은 없음).
  * 머리줄(`--- a/…`·`+++ b/…`)은 덩어리(@@) 밖에서만 건너뛴다 — 덩어리 안의 `---i;` 는 지운 줄 `--i;` 다.
  * @param {string} diffText `git diff` 한 파일분
- * @param {string} [filePath]
+ * @param {string} filePath
  */
 export function substantiveLines(diffText, filePath) {
-  const syntax = filePath === undefined ? "any" : commentSyntaxOf(filePath);
+  const syntax = commentSyntaxOf(filePath);
   /** @type {string[]} */
   const out = [];
   // 블록 주석 상태는 옛 쪽(- 와 문맥 줄)·새 쪽(+ 와 문맥 줄)을 따로 잇는다
@@ -165,8 +152,7 @@ export function substantiveLines(diffText, filePath) {
       continue;
     }
     if (mark === " ") continue;
-    const code =
-      syntax === "any" ? stripAnyComment(line) : syntax === "py" ? line.replace(/^#.*/, "") : syntax === "sql" ? line.replace(/^--.*/, "") : line;
+    const code = syntax === "py" ? line.replace(/^#.*/, "") : syntax === "sql" ? line.replace(/^--.*/, "") : line;
     if (code !== "") out.push(code);
   }
   return out;
@@ -213,6 +199,8 @@ export function decideNotice({ registry, changed, diffOf, readFile, commitTitle,
     }
     // 새 마이그(A)와 고친 마이그(M·R·C) 모두 — 지운 마이그(D)는 읽을 파일이 없다(세션643)
     if (f.path.startsWith(MIGRATIONS_DIR) && !f.path.includes("/_rollbacks/") && f.path.endsWith(".sql") && !f.status.startsWith("D")) {
+      // 고친 마이그는 바뀐 줄이 전부 주석·빈 줄이면 사유 아님(예 acd023b5 주석 경로 정정)
+      if (!f.status.startsWith("A") && !substantiveLines(diffOf(f.path), f.path).length) continue;
       // 작은따옴표 문자열은 남기고 주석만 걷는다 — 문자열 속 `--` 가 줄 나머지(표 이름)를 지우던 것(세션643)
       const sql = readFile(f.path).replace(/'(?:[^']|'')*'|--[^\n]*|\/\*[\s\S]*?\*\//g, (m) => (m.startsWith("'") ? m : " "));
       const hit = [...care].filter((t) => new RegExp(`\\b${t}\\b`, "i").test(sql)).sort();

@@ -103,13 +103,13 @@ describe("제외 3", () => {
   it("⑦ 등록 파일이어도 주석·빈 줄만 바뀌면 통보 안 함", () => {
     const d = decide({ changed: [{ path: "scripts/collectors/naver-collect.py", status: "M" }], diffOf: () => COMMENT_DIFF });
     expect(d.notify).toBe(false);
-    expect(substantiveLines(COMMENT_DIFF)).toEqual([]);
+    expect(substantiveLines(COMMENT_DIFF, "scripts/collectors/naver-collect.py")).toEqual([]);
   });
 
   it("[fix2] 줄 머리 블록 주석이 그 줄에서 닫히고 뒤에 코드가 있으면 실질 줄 · 안 닫히면 주석", () => {
-    expect(substantiveLines("+/* a */ const x = 1;")).toEqual(["const x = 1;"]);
-    expect(substantiveLines("+/* a")).toEqual([]);
-    expect(substantiveLines("+ * 설명 */")).toEqual([]);
+    expect(substantiveLines("+/* a */ const x = 1;", "a.mjs")).toEqual(["const x = 1;"]);
+    expect(substantiveLines("+/* a", "a.mjs")).toEqual([]);
+    expect(substantiveLines("+ * 설명 */", "a.mjs")).toEqual([]);
   });
 });
 
@@ -189,6 +189,29 @@ describe("세션643 — 통보 판정 빈틈(애매하면 통보 쪽)", () => {
     expect(substantiveLines(hunk("+  *gen() {"), "a.mjs")).toEqual(["*gen() {"]);
   });
 
+  const WRITE = 'await SB.update("complexes", r);';
+
+  it("[B2 ⓐ] 덩어리(@@)가 바뀌면 블록 상태를 모름으로 되돌린다 — 앞 덩어리의 열린 블록이 다음 덩어리 쓰기 줄을 지우지 않게", () => {
+    expect(substantiveLines(["@@ -1,2 +1,2 @@", " /*", "+ * x", "@@ -40,1 +40,1 @@", `+${WRITE}`].join("\n"), "a.mjs")).toEqual([WRITE]);
+  });
+
+  it("[B2 ⓑ] 옛 쪽(-)에서 연 블록이 새 쪽(+) 쓰기 줄을 지우지 않는다", () => {
+    expect(substantiveLines(hunk("-/* 옛 주석 시작", `+${WRITE}`), "a.mjs")).toEqual([WRITE]);
+  });
+
+  it("[B2 4] 블록 안인지 모를 때 `* ` 줄은 그 한 줄만 지운다 — `* 3;`(곱셈 이어짐) 뒤 쓰기 줄은 남는다", () => {
+    expect(substantiveLines(hunk("+ * 3;", `+${WRITE}`), "a.mjs")).toEqual([WRITE]);
+  });
+
+  it("[B2 3] 고친 마이그(M)는 바뀐 줄이 주석뿐이면 사유 없음 · 실질 1줄이면 '고친 마이그'", () => {
+    const changed = [{ path: "supabase/migrations/20261010000000_x.sql", status: "M" }];
+    const readFile = () => "-- 경로 메모\nALTER TABLE apartments ADD COLUMN foo text;";
+    const commentOnly = decide({ changed, readFile, diffOf: (p) => fileDiff(p, "--- 옛 경로 메모", "+-- 경로 메모") });
+    expect(commentOnly.notify).toBe(false);
+    const real = decide({ changed, readFile, diffOf: (p) => fileDiff(p, "+ALTER TABLE apartments ADD COLUMN foo text;") });
+    expect(real.reasons).toEqual(["고친 마이그 `supabase/migrations/20261010000000_x.sql` — 표: apartments"]);
+  });
+
   it("b JS·py 문자열 속 `--` 는 줄을 지우지 않는다", () => {
     expect(substantiveLines(hunk('+x = "a--b"; update('), "a.mjs")).toEqual(['x = "a--b"; update(']);
     expect(substantiveLines(hunk("+x = 'a -- b'"), "a.py")).toEqual(["x = 'a -- b'"]);
@@ -214,7 +237,11 @@ describe("세션643 — 통보 판정 빈틈(애매하면 통보 쪽)", () => {
   });
 
   it("d 고친 마이그(M)도 통보 · 사유 '고친 마이그' + DB 반영 시각 칸 · 지운 마이그(D)는 안 읽는다", () => {
-    const d = decide({ changed: [{ path: "supabase/migrations/20261010000000_x.sql", status: "M" }], readFile: () => "ALTER TABLE apartments ADD COLUMN foo text;" });
+    const d = decide({
+      changed: [{ path: "supabase/migrations/20261010000000_x.sql", status: "M" }],
+      readFile: () => "ALTER TABLE apartments ADD COLUMN foo text;",
+      diffOf: (p) => fileDiff(p, "+ALTER TABLE apartments ADD COLUMN foo text;"),
+    });
     expect(d.notify).toBe(true);
     expect(d.reasons[0]).toMatch(/^고친 마이그 /);
     expect(buildIssue({ reasons: d.reasons, commitTitle: "t", commitUrl: "u", sha: "abcdef12" }).body).toContain("**DB 반영 시각**");
@@ -369,6 +396,12 @@ describe("본체 runNotify(가짜 git·gh)", () => {
     expect(shallow.logs).toContain("다 못 읽음");
     expect(listRangeCommits(fakeGit({ ancestor: "yes", range: `${humanLine}\n` }), base)).toEqual([{ title: "feat(db): 정본 고침", author: "developer-duno <x@example.com>" }]);
     expect(listRangeCommits(fakeGit({ ancestor: "no" }), base)).toBeNull();
+  });
+
+  it("[B2 ⓒ] base 가 HEAD 조상이 아니면 log 가 결과를 줘도(얕은 받기라 일부만) null — 제외 판정 안 함", () => {
+    const base = "c".repeat(40);
+    const range = ["feat: 사람\x1fdeveloper-duno <x@example.com>", "data: daily refresh 2026-10-17 (auto)\x1fgithub-actions[bot] <a@b>", "data: daily refresh 2026-10-16 (auto)\x1fgithub-actions[bot] <a@b>"].join("\n");
+    expect(listRangeCommits(fakeGit({ ancestor: "no", range }), base)).toBeNull();
   });
 
   it("pickStale — 정확히 14일 경계", () => {
