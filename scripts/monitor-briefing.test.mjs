@@ -78,6 +78,46 @@ describe("splitRuns — 24h runs 를 정상수집/갱신없음/총합 으로 가
     const runs = [{ collector: "school-walk", status: "failure", ok_count: 0, skip_count: 1900 }];
     expect(splitRuns(runs, IDEM).idle).toEqual([]);
   });
+
+  // 세션643: 같은 이름은 한 줄로 합친다 (세션641 아침 브리핑 실측 — sync-naver 두 줄 · excl-ratio 양쪽에 같이 뜸)
+  it("같은 수집기 ok 120 + ok 30 → active 한 줄 150 (totalOk 는 전체 합 그대로)", () => {
+    const runs = [
+      { collector: "sync-naver", status: "success", ok_count: 120 },
+      { collector: "other", status: "success", ok_count: 40 },
+      { collector: "sync-naver", status: "success", ok_count: 30 },
+    ];
+    const { active, idle, totalOk } = splitRuns(runs, IDEM);
+    expect(active).toEqual([
+      { collector: "sync-naver", ok: 150 },
+      { collector: "other", ok: 40 },
+    ]);
+    expect(idle).toEqual([]);
+    expect(totalOk).toBe(190);
+  });
+
+  it("ok 5 + (ok 0 · skip 9) → active 에만 excl-ratio 5, idle 에는 안 뜬다", () => {
+    const runs = [
+      { collector: "excl-ratio", status: "success", ok_count: 5, skip_count: 0 },
+      { collector: "excl-ratio", status: "success", ok_count: 0, skip_count: 9 },
+    ];
+    const { active, idle, totalOk } = splitRuns(runs, IDEM);
+    expect(active).toEqual([{ collector: "excl-ratio", ok: 5 }]);
+    expect(idle).toEqual([]);
+    expect(totalOk).toBe(5);
+    // 순서가 거꾸로여도 같다 (ok 0 실행이 먼저)
+    expect(splitRuns([runs[1], runs[0]], IDEM).idle).toEqual([]);
+  });
+
+  it("멱등 수집기가 두 번 ok 0 → idle 에 이름 한 번", () => {
+    const runs = [
+      { collector: "childcare-detail", status: "success", ok_count: 0 },
+      { collector: "childcare-detail", status: "success", ok_count: 0 },
+    ];
+    const { active, idle, totalOk } = splitRuns(runs, IDEM);
+    expect(active).toEqual([]);
+    expect(idle).toEqual(["childcare-detail"]);
+    expect(totalOk).toBe(0);
+  });
 });
 
 describe("buildBriefing — 매일 아침 현황 브리핑 (정상이어도 발송)", () => {

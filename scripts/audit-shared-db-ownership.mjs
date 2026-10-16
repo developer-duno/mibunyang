@@ -28,7 +28,7 @@
  *
  * 그 파일 머리(앞 40줄)에 `// ownership-guard: allow <표> <사유>`(py 는 `#`) 한 줄 — 그 표의 **① 판정만**
  * 🟡 로 내려가고 출력에 남는다(읽기만 하는 파일용). 그 표에 쓰기 사슬(`from("표")….update|upsert|insert|delete(`·
- * `ub("표"`·`upsertBatch("표"`·`SB.update|upsert("표"`)이 있으면 ① 도 🔴 그대로 · ②③ 은 allow 와 무관하게 🔴(fix2).
+ * `ub("표"`·`upsertBatch("표"`·`SB.update|upsert|insert|delete("표"`)이 있으면 ① 도 🔴 그대로 · ②③ 은 allow 와 무관하게 🔴(fix2).
  * 전체 끄기는 없다(CI 단계를 지우는 PR 이 곧 끄기 — 리뷰에서 보인다).
  *
  * 실행: node scripts/audit-shared-db-ownership.mjs            (전체 판정)
@@ -102,7 +102,7 @@ export function hasWriteTrace(text) {
 
 /**
  * 그 표에 직접 닿는 쓰기 사슬이 있나 — `from("t")…​.update|upsert|insert|delete(` 같은 문장 ·
- * 헬퍼 `ub("t"`·`upsertBatch("t"`·`SB.update|upsert("t"`(fix2 — allow 파일의 ① 강등을 막는다).
+ * 헬퍼 `ub("t"`·`upsertBatch("t"`·`SB.update|upsert|insert|delete("t"`(fix2 — allow 파일의 ① 강등을 막는다).
  * @param {string} text 주석 벗긴 본문
  * @param {string} t
  */
@@ -110,7 +110,7 @@ export function hasWriteChain(text, t) {
   const q = `["'\`]${escapeRe(t)}["'\`]`;
   return (
     new RegExp(`\\bfrom\\s*\\(\\s*${q}\\s*\\)[^;]*?\\.(?:update|upsert|insert|delete)\\s*\\(`).test(text) ||
-    new RegExp(`(?:\\bub|\\bupsertBatch|\\bSB\\.(?:update|upsert))\\s*\\(\\s*${q}`).test(text)
+    new RegExp(`(?:\\bub|\\bupsertBatch|\\bSB\\.(?:update|upsert|insert|delete))\\s*\\(\\s*${q}`).test(text)
   );
 }
 

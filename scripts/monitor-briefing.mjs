@@ -23,22 +23,32 @@ import { toKst } from "./notify-telegram.mjs";
  * @returns {{ active: Array<{ collector: string, ok: number }>, idle: string[], totalOk: number }}
  */
 export function splitRuns(runs24h, idempotentCollectors) {
-  /** @type {Array<{ collector: string, ok: number }>} */
-  const active = [];
-  /** @type {string[]} */
-  const idle = [];
+  // 세션643: 같은 수집기가 24h 에 여러 번 돌면 이름별로 합친다 — ok 는 더하고, 합이 0 일 때만 idle 에 한 번.
+  //   (옛 판은 실행마다 한 줄이라 같은 이름이 두 줄로 뜨거나 "수집"과 "갱신 없음" 양쪽에 같이 떴다.)
+  /** @type {Map<string, { ok: number, idle: boolean }>} */
+  const byName = new Map();
   let totalOk = 0;
   for (const r of runs24h) {
     if (r.status !== "success") continue; // 실패는 ① 가 잡음 — 브리핑 수집건수엔 안 셈
     const name = r.collector ?? "(이름 없음)";
     const ok = r.ok_count ?? 0;
+    const acc = byName.get(name) ?? { ok: 0, idle: false };
     if (ok > 0) {
-      active.push({ collector: name, ok });
+      acc.ok += ok;
       totalOk += ok;
     } else if (idempotentCollectors.has(name) || (r.skip_count ?? 0) > 0) {
-      idle.push(name); // ok=0 이지만 멱등/삭제형이거나, 전부 확인했는데 안 바뀜(skip>0)이라 정상
+      acc.idle = true; // ok=0 이지만 멱등/삭제형이거나, 전부 확인했는데 안 바뀜(skip>0)이라 정상
     }
     // 그 외 ok=0 · skip=0 (멱등 목록 밖) 은 표시 안 함 — 진짜 이상은 별도 점검이 처리
+    byName.set(name, acc);
+  }
+  /** @type {Array<{ collector: string, ok: number }>} */
+  const active = [];
+  /** @type {string[]} */
+  const idle = [];
+  for (const [collector, v] of byName) {
+    if (v.ok > 0) active.push({ collector, ok: v.ok });
+    else if (v.idle) idle.push(collector);
   }
   active.sort((a, b) => b.ok - a.ok); // 많이 수집한 순
   return { active, idle, totalOk };
