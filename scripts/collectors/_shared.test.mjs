@@ -412,6 +412,20 @@ describe("getLawdCd", () => {
   it("미등록 군 → prefix 폴백", () => {
     expect(getLawdCd("경북", "미래군")).toBe("47000");
   });
+  // 세션644: 경기 세 군이 표에 없어 시도 전체 41000 으로 폴백 → 국토부 매매 API 0건이었다
+  it("경기 연천군·가평군·양평군 → 41800·41820·41830 (41000 폴백 아님)", () => {
+    expect(getLawdCd("경기", "연천군")).toBe("41800");
+    expect(getLawdCd("경기", "가평군")).toBe("41820");
+    expect(getLawdCd("경기", "양평군")).toBe("41830");
+  });
+  it("세 군 이름은 경기 밖 어느 시도에도 없다 (전 지역 폴백이 남의 코드를 주지 않게)", () => {
+    for (const [region, guMap] of Object.entries(GU_LAWD_MAP)) {
+      if (region === "경기") continue;
+      for (const gu of ["연천군", "가평군", "양평군"]) {
+        expect(Object.prototype.hasOwnProperty.call(guMap, gu)).toBe(false);
+      }
+    }
+  });
 });
 
 // 세션589: 실거래 수집기만 화성 4코드를 돈다. GU_LAWD_MAP 값(41591)은 다른 소비처 때문에 불변.
