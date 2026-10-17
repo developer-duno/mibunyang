@@ -25,10 +25,10 @@ import { existsSync, writeFileSync } from "node:fs";
 import { calcLTV, zoneOf } from "../../src/constants/regulations.ts";
 
 // ── 세션590 새 칸 배선 도우미(보완 F3·F4·F11 — 시험이 직접 부른다) ──────────────
-/** 새 칸 13개(trade_stats `cmp_*`·`complex_*`·`dong_fact`). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
+/** 새 칸 14개(trade_stats `cmp_*`·`complex_*`·`dong_fact` · 세션650 complex_area 추가). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
 export const SCOPE_COLS = Object.freeze([
   "cmp_scope", "cmp_fair_price", "cmp_n", "cmp_months", "cmp_area_mode", "cmp_src",
-  "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
+  "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_area", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
 ]);
 /** "모든 값 null 이면 건너뜀"이 보는 옛 칸 여섯(결과 행 이름). */
 export const OLD_STAT_KEYS = Object.freeze(["nearby_median", "jeonse_rate", "pir", "psr", "recent_trades_6m", "cancel_ratio_6m"]);
@@ -83,7 +83,7 @@ export function skipStatRow(oldVals, scopeCols) {
 
 /**
  * 결과 행을 두 줄기로 가른다(보완 F3) — 옛 칸이 하나라도 있는 행은 지금처럼 전부 · 옛 칸이 전부 null 인데 새 칸이 있는 행은
- * `{apartment_id, 새 칸 13, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
+ * `{apartment_id, 새 칸 14, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
  * PostgREST 일괄 upsert 는 한 배치 안 키가 같아야 하므로 두 줄기를 한 배열에 섞지 않는다.
  * @param {Array<Record<string, any>>} results
  * @returns {{ full: Array<Record<string, any>>, scopeOnly: Array<Record<string, any>> }}
@@ -817,7 +817,7 @@ async function main() {
     const jr = sc.filter((r) => r.complex_jeonse_rate != null);
     const jrOver = jr.filter((r) => r.complex_jeonse_rate > 100);
     const df = sc.filter((r) => r.dong_fact != null).length;
-    const movedInPresale = [...scopeDiagById.entries()].filter(([id, d]) => {
+    const movedInPresale = [...scopeDiagById.values()].filter((d) => {
       // 같은 평수 매매 수는 진단의 10㎡ 값(sale_same_n) — complex_sale_n 은 전세가율 폭(3㎡)이라 분양권(10㎡)과 맞대면 부푼다(세션650)
       return d.moved_in && (d.sale_same_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
     }).length;

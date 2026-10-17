@@ -80,7 +80,7 @@ function medianRaw(arr) {
  *   age_gap_years: number | null; peer_n: number; peer_median: number | null }} DongFact
  * @typedef {{ cmp_scope: "complex" | "dong_peer" | "none"; cmp_fair_price: number | null; cmp_n: number; cmp_months: number;
  *   cmp_area_mode: "same_area" | "per_m2" | null; cmp_src: "sale" | "presale" | null;
- *   complex_jeonse_rate: number | null; complex_jeonse_n: number | null; complex_sale_n: number | null;
+ *   complex_jeonse_rate: number | null; complex_jeonse_n: number | null; complex_sale_n: number | null; complex_area: number | null;
  *   complex_table: AreaRow[]; complex_jeonse_table: AreaRow[]; complex_src: "sale" | "presale" | null; dong_fact: DongFact | null }} ScopeCols
  */
 
@@ -156,6 +156,9 @@ export function computeScopeStats(apt, ctx) {
   const cols = {
     cmp_scope: "none", cmp_fair_price: null, cmp_n: 0, cmp_months: CMP_MONTHS, cmp_area_mode: null, cmp_src: null,
     complex_jeonse_rate: null, complex_jeonse_n: null, complex_sale_n: null,
+    // complex_area = 모든 범위 계산의 기준인 대표 면적 A(소수 넷째 반올림 — 84/85 표기는 읽는 쪽이 정함) — 전세가율 값 유무와 무관
+    // (세션650 · 2u 라벨 평수). 칸이 NUMERIC(8,4)(상한 9999.9999)라 10000 이상은 null(넘치면 upsert 전체가 실패한다)
+    complex_area: A != null && A < 10000 ? Math.round(A * 10000) / 10000 : null,
     // complex_table 은 T1 이 안 돼도 연결만 있으면 채운다(사실 표시용 · 판정은 cmp_scope) — 그 표의 종류를 complex_src 에 적는다
     // (보완 F8 · 계획서 B6: 입주 전 T2 면 cmp_src 는 sale(동네 매매)인데 표는 분양권이라 cmp_src 로는 표 종류를 알 수 없다)
     complex_table: areaTable(src), complex_jeonse_table: areaTable(jeonse), complex_src: ctx.links.length ? srcKind : null, dong_fact: null,
@@ -212,6 +215,7 @@ export function computeScopeStats(apt, ctx) {
 
 /**
  * 새 칸이 전부 비었는가 — trade-stats 의 "모든 값 null 이면 건너뜀" 에 AND 로 덧붙인다(계획서 허용 ③).
+ * complex_area 는 보지 않는다 — 면적만 있고 다른 칸이 다 비면 빈 것으로 본다(행을 새로 만들지 않게 · 세션650).
  * @param {ScopeCols | null | undefined} cols
  * @returns {boolean}
  */

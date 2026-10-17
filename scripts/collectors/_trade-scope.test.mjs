@@ -198,6 +198,27 @@ describe("경계값", () => {
     expect(scopeColsEmpty(run({ dong: [D({})] }).cols)).toBe(false);
     expect(scopeColsEmpty(null)).toBe(true);
   });
+
+  it("complex_area(세션650) — 대표 면적 A 를 소수 넷째 반올림 · A 없으면 null · 전세가율이 없어도 실림", () => {
+    expect(run({}, { area: 84.9967 }).cols.complex_area).toBe(84.9967); // 넷째까지는 그대로 — 84/85 표기는 읽는 쪽 몫
+    expect(run({}, { area: 59.99449 }).cols.complex_area).toBe(59.9945);
+    // 경계: 다섯째가 5 — Math.round(A*1e4)/1e4 는 올리고, Number(A.toFixed(4)) 는 이진 표현 탓에 84.0003 으로 내린다
+    expect(run({}, { area: 84.00035 }).cols.complex_area).toBe(84.0004);
+    // 칸 NUMERIC(8,4) 상한 9999.9999 — 넘치면 upsert 전체가 실패하므로 null
+    expect(run({}, { area: 9999.99994 }).cols.complex_area).toBe(9999.9999);
+    expect(run({}, { area: 10000 }).cols.complex_area).toBe(null);
+    expect(run({}, { area: null }).cols.complex_area).toBe(null);
+    expect(run({}, { area: 0 }).cols.complex_area).toBe(null);
+    // 전세가율 문턱 미달(매매 2건)이어도 면적은 실린다 — 대표 면적은 모든 범위 계산의 기준
+    const fewS = run({ seq: [...many(2, { price: 100000 }), ...many(3, { trade_type: "jeonse", price: 60000 })] }, { area: 84.9967 });
+    expect([fewS.cols.complex_jeonse_rate, fewS.cols.complex_area]).toEqual([null, 84.9967]);
+  });
+
+  it("scopeColsEmpty — complex_area 는 보지 않는다(면적만 있고 다른 칸이 다 비면 빈 것 · 행을 새로 만들지 않게)", () => {
+    const c = run({}, { area: 84.9967 }).cols;
+    expect(c.complex_area).toBe(84.9967);
+    expect(scopeColsEmpty(c)).toBe(true);
+  });
 });
 
 describe("대조군 픽스처 표본 값 고정(T1 매매 · T1 ㎡당 · T2 · T3)", () => {
