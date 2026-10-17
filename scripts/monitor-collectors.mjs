@@ -4,6 +4,7 @@
 // ownership-guard: allow officetel_unit_supply 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
 // ownership-guard: allow rental_schedule_official 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
 // ownership-guard: allow rental_unit_supply 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
+// ownership-guard: allow complex_price_history 읽기만(㉒ 바닥 점검 count head 조회 2회 — 쓰기 없음 · 세션648)
 /**
  * 수집기 감시 스크립트 (수집기 실패 텔레그램 알림 시스템).
  *
@@ -18,6 +19,7 @@
  *   (⑧~⑲ 는 각 점검 머리 주석)
  *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(모든 묶음이 판정 파일 active 일 때만 제외 · KST 월요일 · 세션630)
  *   ㉑ 청약홈 공고 정리 경고 표식 — applyhome-detail 최신 실행의 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING(매일 · dedup · 세션632)
+ *   ㉒ 시세 이력 바닥 — complex_price_history 의 2u 삭제 조건 밖 조각(A 8글자 옛 줄 · B 6글자 A1 area_no 있음)이 바닥 밑으로(매일 · 세션648)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -277,7 +279,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1162,6 +1164,87 @@ export function checkNoticeMarkers(runs) {
     ],
     at: `${fp}@${streakStart}`,
   }];
+}
+
+// ── ㉒ complex_price_history 지우면 안 되는 줄 바닥 (세션648) ─────────────────────
+/** ㉒ 대상 표 — 공유 표(2u 소유 · 미분양은 naver-collect.py upsert 로 더하기만). */
+export const PRICE_HISTORY_TABLE = "complex_price_history";
+
+/**
+ * ㉒ id 상한 — 세션648 10/17 21:4x 의 max(id). 조각을 `id <= 이 값` 으로 묶으면 그때 이미 있던 줄만 센다 →
+ * 새 줄로는 **늘 수 없고 지워질 때만 준다**(늘어난 새 줄이 오삭제를 덮어 가리지 못한다 — 세션648 맹점 검사관).
+ * 네이버 수집의 upsert 는 기존 줄의 id 를 유지한다(최근 갱신 줄의 id 가 4,322,043 처럼 작은 값으로 실측).
+ */
+export const PRICE_HISTORY_FLOOR_MAX_ID = 5205876;
+
+/**
+ * ㉒ 바닥 — 2u 정부 줄 정리(#741, 정본 `supabase/ownership.json` delete_allowed)는 `trade_type='A1' AND area_no=''
+ * AND base_month 6글자` 줄만 지운다. 그 조건 밖 줄은 미분양 쪽이 더하기만 하므로 **줄어들 일이 없다** — 줄면 오삭제.
+ * 값 = 세션648 10/17 실측(20:5x 상한 없이 · 21:4x id 상한 아래 — 둘 다 같은 값 · 기준선 파일
+ * `.omc/artifacts/session647/baseline-before-2u-delete.json` counts.len8 163,140). 바닥은 손으로만 바꾼다(자동 갱신 없음).
+ * @type {ReadonlyArray<{ key: "A" | "B", label: string, where: string, floor: number }>}
+ */
+export const PRICE_HISTORY_FLOORS = Object.freeze([
+  Object.freeze({ key: /** @type {const} */ ("A"), label: "A 네이버 옛 줄", where: `base_month 8글자 AND id <= ${PRICE_HISTORY_FLOOR_MAX_ID}`, floor: 163140 }),
+  Object.freeze({ key: /** @type {const} */ ("B"), label: "B 6글자 중 삭제 조건 밖", where: `base_month 6글자 AND trade_type='A1' AND area_no<>'' AND id <= ${PRICE_HISTORY_FLOOR_MAX_ID}`, floor: 129 }),
+]);
+
+/**
+ * ㉒ 조각 조건을 쿼리에 붙인다. 글자 수 = LIKE 밑줄(한 글자) 개수. 두 조각 다 id 상한으로 묶는다.
+ * @template {{ like: Function, lte: Function, eq: Function, neq: Function }} Q
+ * @param {Q} q
+ * @param {"A" | "B"} key
+ * @returns {Q}
+ */
+export function applyPriceHistorySlice(q, key) {
+  if (key === "A") return q.like("base_month", "________").lte("id", PRICE_HISTORY_FLOOR_MAX_ID);
+  return q.like("base_month", "______").eq("trade_type", "A1").neq("area_no", "").lte("id", PRICE_HISTORY_FLOOR_MAX_ID);
+}
+
+/**
+ * ㉒ 판정 — 조각별 count 가 바닥보다 작으면 경보 1건. count 가 null 이거나 조회 오류면 "조회 실패"(fail-close —
+ * 못 셌는데 침묵하면 오삭제가 묻힌다). 같거나 많으면 0.
+ * @param {Partial<Record<"A" | "B", { count: number | null | undefined, error?: unknown }>>} results
+ * @param {ReadonlyArray<{ key: "A" | "B", label: string, where: string, floor: number }>} [floors]
+ * @returns {Issue[]}
+ */
+export function checkPriceHistoryFloors(results, floors = PRICE_HISTORY_FLOORS) {
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const f of floors) {
+    const r = results[f.key];
+    if (!r || r.error || typeof r.count !== "number") {
+      const why = r?.error ? (/** @type {any} */ (r.error).message ?? JSON.stringify(r.error)) : "count 없음(null)";
+      issues.push(checkFailedIssue(`㉒ 시세 이력 바닥 점검(${f.label} 조회)`, why));
+      continue;
+    }
+    if (r.count >= f.floor) continue;
+    issues.push({
+      kind: "price-history-floor",
+      collector: PRICE_HISTORY_TABLE,
+      detail: `${f.label} ${r.count.toLocaleString("en-US")} < 바닥 ${f.floor.toLocaleString("en-US")} (−${(f.floor - r.count).toLocaleString("en-US")})`,
+      lines: [
+        `조건: ${f.where}`,
+        `바닥 = 2026-10-17 실측(세션648) · id 상한 아래 = 그때 이미 있던 줄만이라 늘 수 없고 지워질 때만 줍니다.`,
+      ],
+    });
+  }
+  return issues;
+}
+
+/**
+ * ㉒ 재료 — 조각마다 `count:"exact", head:true` 1회(모두 2회). 오류는 던지지 않고 결과에 담아 판정이 "조회 실패"로 알린다.
+ * @param {any} [sb] 시험 주입용 — 생략하면 운영 클라이언트
+ * @returns {Promise<Record<"A" | "B", { count: number | null, error: unknown }>>}
+ */
+export async function fetchPriceHistorySliceCounts(sb = getSupabase()) {
+  /** @type {Record<string, { count: number | null, error: unknown }>} */
+  const out = {};
+  for (const f of PRICE_HISTORY_FLOORS) {
+    const { count, error } = await applyPriceHistorySlice(sb.from(PRICE_HISTORY_TABLE).select("*", { count: "exact", head: true }), f.key);
+    out[f.key] = { count: count ?? null, error: error ?? null };
+  }
+  return /** @type {Record<"A" | "B", { count: number | null, error: unknown }>} */ (out);
 }
 
 /**
@@ -3380,7 +3463,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648)을 돌려 이슈를 합친다.
  * ⑲(소유권 정본 대조, 세션617)는 KST 월요일에만 돌아 이 열 밖 `runOwnershipCheck` 로 main 이 바로 뒤에 부른다
  * (이 열에 넣으면 요일에 따라 이 열의 시험 결과가 달라진다).
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
@@ -3397,6 +3480,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchTradeLinks?: () => ReturnType<typeof fetchTradeLinksHealth>,
  *   fetchSgisMapRun?: () => ReturnType<typeof fetchSgisMapLatestRun>,
  *   fetchNoticeRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
+ *   fetchPriceHistoryCounts?: () => Promise<Partial<Record<"A" | "B", { count: number | null | undefined, error?: unknown }>>>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -3416,6 +3500,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchSgisMapRun = deps.fetchSgisMapRun ?? (() => fetchSgisMapLatestRun());
   // ㉑ 도 ⑪ 과 같은 조회(수집기 이름별 최근 REGION_UNRESOLVED_RUN_WINDOW 행) — 이름만 다르다(세션632).
   const fetchNoticeRuns = deps.fetchNoticeRuns ?? fetchRegionUnresolvedRuns;
+  const fetchPriceHistoryCounts = deps.fetchPriceHistoryCounts ?? fetchPriceHistorySliceCounts;
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -3550,6 +3635,16 @@ export async function runDailyGuardedChecks(deps = {}) {
     const names = runs.length ? parseNoticeMarkers(runs[0].error_message).map((m) => m.name).join(",") || "표식 없음" : "실행 없음";
     console.log(`[monitor] ㉑ 청약홈 공고 정리 표식 점검: 최근 행 ${names} → 이상 ${noticeIssues.length}건`);
     return noticeIssues;
+  }));
+
+  // ㉒ 시세 이력 바닥 — 2u 정부 줄 정리(#741, 10/18~ 매주·매일)가 조건 밖 줄을 지우면 줄어든다(세션648).
+  //    조회 오류·null 은 판정 함수가 "조회 실패"로, 예외는 fail-open 이 check-failed 로 알린다.
+  issues = issues.concat(await runFailOpenCheck("㉒ 시세 이력 바닥 점검", async () => {
+    const counts = await fetchPriceHistoryCounts();
+    const floorIssues = checkPriceHistoryFloors(counts);
+    const shown = PRICE_HISTORY_FLOORS.map((f) => `${f.key} ${counts[f.key]?.count ?? "?"}/${f.floor}`).join(" · ");
+    console.log(`[monitor] ㉒ 시세 이력 바닥 점검: ${shown} → 이상 ${floorIssues.length}건`);
+    return floorIssues;
   }));
 
   return issues;
@@ -4255,7 +4350,7 @@ async function main() {
       return scopeIssues;
     }));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ㉒ 시세 이력 바닥 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
