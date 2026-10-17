@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   computeScopeStats, median, areaTable, scopeColsEmpty, indexDeals, isValidDeal, isMarketJeonse,
-  SAME_AREA_TOL_M2, PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS,
+  SAME_AREA_TOL_M2, PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS, JEONSE_SAME_AREA_TOL_M2,
 } from "./_trade-scope.mjs";
 import { median as tradeStatsMedian } from "./trade-stats.mjs";
 import { buildKeyDictionary, planLinks } from "./_trade-links.mjs";
@@ -41,6 +41,9 @@ const run = (r, a = {}) => {
 describe("상수 = 설계서 §5-2 값", () => {
   it("10㎡ 미만 · 20㎡ 이하 · 10년 이하 · 3건 · 12개월", () => {
     expect([SAME_AREA_TOL_M2, PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS]).toEqual([10, 20, 10, 3, 12]);
+  });
+  it("전세가율 같은 평수 = 3㎡ 미만(사장님 결정 2026-10-18, 적정가 10㎡ 보다 좁게)", () => {
+    expect(JEONSE_SAME_AREA_TOL_M2).toBe(3);
   });
 });
 
@@ -114,7 +117,7 @@ describe("경계값", () => {
     expect([before.cols.cmp_scope, before.cols.cmp_src]).toEqual(["complex", "presale"]);
     const after = run({ seq: sale2, pre }, { completion: "202001" });
     expect(after.cols.cmp_scope).toBe("none");
-    expect(after.diag).toEqual({ presale_n_if_moved_in: 3, moved_in: true });
+    expect(after.diag).toEqual({ presale_n_if_moved_in: 3, sale_same_n: 2, moved_in: true });
     const unknownBoth = run({ seq: many(3, {}), pre }, { completion: null });
     expect(unknownBoth.cols.cmp_src).toBe("sale");
     const unknownPre = run({ pre }, { completion: null });
@@ -141,6 +144,22 @@ describe("경계값", () => {
     expect([fewS.cols.complex_jeonse_rate, fewS.cols.complex_sale_n]).toEqual([null, 2]);
     const renew = run({ seq: [...sale3, ...many(3, { trade_type: "jeonse", price: 60000, contract_type: "갱신" })] });
     expect(renew.cols.complex_jeonse_rate).toBe(null);
+  });
+
+  it("전세가율 — 3㎡ 넘게 다른 평형은 빼고(올림픽파크 포레온 40㎡ 에 30㎡ 섞임 꼴), 적정가는 10㎡ 그대로", () => {
+    // 대표 40㎡ · 매매 40㎡ 3건(10억대) + 30㎡ 3건(7억대) · 전세 40㎡ 3건(4억) — 10㎡ 로 묶으면 매매 중앙이 내려가 비율이 틀어진다
+    const s40 = many(3, { area: 39.95, price: 100000 });
+    const s30 = many(3, { area: 30.5, price: 70000 }); // 차 9.45㎡ — 적정가 묶음엔 들고 전세가율엔 빠짐
+    const j40 = many(3, { area: 39.95, trade_type: "jeonse", price: 40000 });
+    const j30 = many(3, { area: 30.5, trade_type: "jeonse", price: 20000 }); // 전세 쪽도 3㎡ 밖은 빠져야(검사관 🟠1 — jSame 만 10㎡ 로 되돌리는 변이를 잡는다)
+    const r = run({ seq: [...s40, ...s30, ...j40, ...j30] }, { area: 39.95 });
+    expect([r.cols.complex_jeonse_rate, r.cols.complex_jeonse_n, r.cols.complex_sale_n]).toEqual([40, 3, 3]); // 40000 ÷ 100000 (10㎡ 로 묶였다면 매매 중앙 85000 → 47.1)
+    expect([r.cols.cmp_scope, r.cols.cmp_area_mode, r.cols.cmp_n]).toEqual(["complex", "same_area", 6]);
+    expect(r.diag.sale_same_n).toBe(6); // 진단은 적정가 폭(10㎡)으로 센다
+    // 경계: 차 2.99㎡ 는 같은 평수, 3.00㎡ 는 아니다(미만)
+    const edge = (/** @type {number} */ da) => run({ seq: [...many(3, { area: 40 + da, price: 100000 }), ...many(3, { area: 40, trade_type: "jeonse", price: 40000 })] }, { area: 40 }).cols;
+    expect(edge(2.99).complex_jeonse_rate).toBe(40);
+    expect([edge(3).complex_jeonse_rate, edge(3).complex_sale_n]).toEqual([null, 0]);
   });
 
   it("동네 사실 — 나이 제한 없음 · age_gap 부호(우리 2024 · 그 집들 중앙 2002 → +22) · 또래 수 따로", () => {
