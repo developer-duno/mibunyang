@@ -8,16 +8,16 @@
  */
 import { describe, it, expect } from "vitest";
 import {
-  checkPriceHistoryFloors, applyPriceHistorySlice, PRICE_HISTORY_FLOORS, PRICE_HISTORY_FLOOR_FROZEN, PRICE_HISTORY_TABLE, isAlwaysDedup,
+  checkPriceHistoryFloors, applyPriceHistorySlice, fetchPriceHistorySliceCounts, PRICE_HISTORY_FLOORS, PRICE_HISTORY_FLOOR_MAX_ID, PRICE_HISTORY_TABLE, isAlwaysDedup,
 } from "./monitor-collectors.mjs";
 import { formatIssue } from "./notify-telegram.mjs";
 
 const B_OK = { count: 129 };
 
 describe("㉒ 바닥 상수", () => {
-  it("A ≥ 163,140 · B ≥ 129 · 동결일 20261017(세션648 실측)", () => {
+  it("A ≥ 163,140 · B ≥ 129 · id 상한 5,205,876(세션648 실측)", () => {
     expect(PRICE_HISTORY_FLOORS.map((f) => [f.key, f.floor])).toEqual([["A", 163140], ["B", 129]]);
-    expect(PRICE_HISTORY_FLOOR_FROZEN).toBe("20261017");
+    expect(PRICE_HISTORY_FLOOR_MAX_ID).toBe(5205876);
     expect(PRICE_HISTORY_TABLE).toBe("complex_price_history");
   });
 });
@@ -78,25 +78,96 @@ describe("㉒ 경보 글 · dedup", () => {
 describe("㉒ 조각 조건(쿼리)", () => {
   /** 호출을 적어 두는 가짜 쿼리 */
   function fakeQuery() {
-    /** @type {Array<[string, string, string]>} */
+    /** @type {Array<[string, string, string | number]>} */
     const calls = [];
     const q = {
       calls,
       /** @param {string} c @param {string} v */ like(c, v) { calls.push(["like", c, v]); return q; },
-      /** @param {string} c @param {string} v */ lte(c, v) { calls.push(["lte", c, v]); return q; },
+      /** @param {string} c @param {string | number} v */ lte(c, v) { calls.push(["lte", c, v]); return q; },
       /** @param {string} c @param {string} v */ eq(c, v) { calls.push(["eq", c, v]); return q; },
       /** @param {string} c @param {string} v */ neq(c, v) { calls.push(["neq", c, v]); return q; },
     };
     return q;
   }
-  it("A = 8글자 AND base_month <= 동결일", () => {
+  it("A = 8글자 AND id <= 상한", () => {
     const q = fakeQuery();
     applyPriceHistorySlice(q, "A");
-    expect(q.calls).toEqual([["like", "base_month", "________"], ["lte", "base_month", "20261017"]]);
+    expect(q.calls).toEqual([["like", "base_month", "________"], ["lte", "id", 5205876]]);
   });
-  it("B = 6글자 AND trade_type='A1' AND area_no<>''", () => {
+  it("B = 6글자 AND trade_type='A1' AND area_no<>'' AND id <= 상한", () => {
     const q = fakeQuery();
     applyPriceHistorySlice(q, "B");
-    expect(q.calls).toEqual([["like", "base_month", "______"], ["eq", "trade_type", "A1"], ["neq", "area_no", ""]]);
+    expect(q.calls).toEqual([["like", "base_month", "______"], ["eq", "trade_type", "A1"], ["neq", "area_no", ""], ["lte", "id", 5205876]]);
+  });
+});
+
+describe("㉒ 진짜 조회 함수(fetchPriceHistorySliceCounts)를 지나 판정까지", () => {
+  /**
+   * 가짜 Supabase — from(표).select(칸, 옵션) → like/lte/eq/neq 사슬 → await 하면 그 조각의 응답.
+   * 조각은 like 밑줄 수(8 → A, 6 → B)로 가른다.
+   * @param {Record<"A" | "B", { count: number | null, error: unknown }>} replies
+   */
+  function fakeSb(replies) {
+    /** @type {Array<{ table: string, cols: string, opts: unknown, calls: Array<[string, string, unknown]> }>} */
+    const seen = [];
+    return {
+      seen,
+      /** @param {string} table */
+      from(table) {
+        return {
+          /** @param {string} cols @param {unknown} opts */
+          select(cols, opts) {
+            /** @type {Array<[string, string, unknown]>} */
+            const calls = [];
+            seen.push({ table, cols, opts, calls });
+            /** @type {any} */
+            const q = {
+              /** @param {string} c @param {unknown} v */ like(c, v) { calls.push(["like", c, v]); return q; },
+              /** @param {string} c @param {unknown} v */ lte(c, v) { calls.push(["lte", c, v]); return q; },
+              /** @param {string} c @param {unknown} v */ eq(c, v) { calls.push(["eq", c, v]); return q; },
+              /** @param {string} c @param {unknown} v */ neq(c, v) { calls.push(["neq", c, v]); return q; },
+              /** @param {(v: unknown) => unknown} ok */
+              then(ok) {
+                const like = calls.find((x) => x[0] === "like");
+                const key = String(like?.[2]).length === 8 ? "A" : "B";
+                return Promise.resolve(replies[key]).then(ok);
+              },
+            };
+            return q;
+          },
+        };
+      },
+    };
+  }
+
+  it("정상 응답 → 2회 조회(count exact head) · 바닥 그대로면 경보 0", async () => {
+    const sb = fakeSb({ A: { count: 163140, error: null }, B: { count: 129, error: null } });
+    const counts = await fetchPriceHistorySliceCounts(sb);
+    expect(sb.seen.map((s) => [s.table, s.cols, s.opts])).toEqual([
+      ["complex_price_history", "*", { count: "exact", head: true }],
+      ["complex_price_history", "*", { count: "exact", head: true }],
+    ]);
+    expect(sb.seen[0].calls).toContainEqual(["lte", "id", 5205876]);
+    expect(sb.seen[1].calls).toContainEqual(["lte", "id", 5205876]);
+    expect(checkPriceHistoryFloors(counts)).toEqual([]);
+  });
+  it("조회 error(count null) → 최종 판정 = 조회 실패 경보", async () => {
+    const sb = fakeSb({ A: { count: null, error: { message: "permission denied" } }, B: { count: 129, error: null } });
+    const issues = checkPriceHistoryFloors(await fetchPriceHistorySliceCounts(sb));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("check-failed");
+    expect(issues[0].detail).toBe("㉒ 시세 이력 바닥 점검(A 네이버 옛 줄 조회) 실행 실패 — permission denied");
+  });
+  it("count null · error null → 최종 판정 = 조회 실패 경보", async () => {
+    const sb = fakeSb({ A: { count: 163140, error: null }, B: { count: null, error: null } });
+    const issues = checkPriceHistoryFloors(await fetchPriceHistorySliceCounts(sb));
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("check-failed");
+    expect(issues[0].detail).toBe("㉒ 시세 이력 바닥 점검(B 6글자 중 삭제 조건 밖 조회) 실행 실패 — count 없음(null)");
+  });
+  it("조회가 준 숫자가 바닥 밑이면 경보 — 값이 판정까지 그대로 간다", async () => {
+    const sb = fakeSb({ A: { count: 163100, error: null }, B: { count: 129, error: null } });
+    const issues = checkPriceHistoryFloors(await fetchPriceHistorySliceCounts(sb));
+    expect(issues.map((i) => i.detail)).toEqual(["A 네이버 옛 줄 163,100 < 바닥 163,140 (−40)"]);
   });
 });

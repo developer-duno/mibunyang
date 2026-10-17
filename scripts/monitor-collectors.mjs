@@ -1170,31 +1170,35 @@ export function checkNoticeMarkers(runs) {
 /** ㉒ 대상 표 — 공유 표(2u 소유 · 미분양은 naver-collect.py upsert 로 더하기만). */
 export const PRICE_HISTORY_TABLE = "complex_price_history";
 
-/** ㉒ 바닥 동결일 — 조각 A 의 base_month 상한(8글자 YYYYMMDD). 이날 뒤에 생긴 8글자 줄은 바닥에 안 든다. */
-export const PRICE_HISTORY_FLOOR_FROZEN = "20261017";
+/**
+ * ㉒ id 상한 — 세션648 10/17 21:4x 의 max(id). 조각을 `id <= 이 값` 으로 묶으면 그때 이미 있던 줄만 센다 →
+ * 새 줄로는 **늘 수 없고 지워질 때만 준다**(늘어난 새 줄이 오삭제를 덮어 가리지 못한다 — 세션648 맹점 검사관).
+ * 네이버 수집의 upsert 는 기존 줄의 id 를 유지한다(최근 갱신 줄의 id 가 4,322,043 처럼 작은 값으로 실측).
+ */
+export const PRICE_HISTORY_FLOOR_MAX_ID = 5205876;
 
 /**
  * ㉒ 바닥 — 2u 정부 줄 정리(#741, 정본 `supabase/ownership.json` delete_allowed)는 `trade_type='A1' AND area_no=''
  * AND base_month 6글자` 줄만 지운다. 그 조건 밖 줄은 미분양 쪽이 더하기만 하므로 **줄어들 일이 없다** — 줄면 오삭제.
- * 값 = 세션648 10/17 20:5x 실측(메인·작업반 두 번 같은 값 · 기준선 파일 `.omc/artifacts/session647/baseline-before-2u-delete.json`
- * counts.len8 163,140). 바닥은 손으로만 바꾼다(자동 갱신 없음).
+ * 값 = 세션648 10/17 실측(20:5x 상한 없이 · 21:4x id 상한 아래 — 둘 다 같은 값 · 기준선 파일
+ * `.omc/artifacts/session647/baseline-before-2u-delete.json` counts.len8 163,140). 바닥은 손으로만 바꾼다(자동 갱신 없음).
  * @type {ReadonlyArray<{ key: "A" | "B", label: string, where: string, floor: number }>}
  */
 export const PRICE_HISTORY_FLOORS = Object.freeze([
-  Object.freeze({ key: /** @type {const} */ ("A"), label: "A 네이버 옛 줄", where: `base_month 8글자 AND base_month <= '${PRICE_HISTORY_FLOOR_FROZEN}'`, floor: 163140 }),
-  Object.freeze({ key: /** @type {const} */ ("B"), label: "B 6글자 중 삭제 조건 밖", where: "base_month 6글자 AND trade_type='A1' AND area_no<>''", floor: 129 }),
+  Object.freeze({ key: /** @type {const} */ ("A"), label: "A 네이버 옛 줄", where: `base_month 8글자 AND id <= ${PRICE_HISTORY_FLOOR_MAX_ID}`, floor: 163140 }),
+  Object.freeze({ key: /** @type {const} */ ("B"), label: "B 6글자 중 삭제 조건 밖", where: `base_month 6글자 AND trade_type='A1' AND area_no<>'' AND id <= ${PRICE_HISTORY_FLOOR_MAX_ID}`, floor: 129 }),
 ]);
 
 /**
- * ㉒ 조각 조건을 쿼리에 붙인다. 글자 수 = LIKE 밑줄(한 글자) 개수.
+ * ㉒ 조각 조건을 쿼리에 붙인다. 글자 수 = LIKE 밑줄(한 글자) 개수. 두 조각 다 id 상한으로 묶는다.
  * @template {{ like: Function, lte: Function, eq: Function, neq: Function }} Q
  * @param {Q} q
  * @param {"A" | "B"} key
  * @returns {Q}
  */
 export function applyPriceHistorySlice(q, key) {
-  if (key === "A") return q.like("base_month", "________").lte("base_month", PRICE_HISTORY_FLOOR_FROZEN);
-  return q.like("base_month", "______").eq("trade_type", "A1").neq("area_no", "");
+  if (key === "A") return q.like("base_month", "________").lte("id", PRICE_HISTORY_FLOOR_MAX_ID);
+  return q.like("base_month", "______").eq("trade_type", "A1").neq("area_no", "").lte("id", PRICE_HISTORY_FLOOR_MAX_ID);
 }
 
 /**
@@ -1221,7 +1225,7 @@ export function checkPriceHistoryFloors(results, floors = PRICE_HISTORY_FLOORS) 
       detail: `${f.label} ${r.count.toLocaleString("en-US")} < 바닥 ${f.floor.toLocaleString("en-US")} (−${(f.floor - r.count).toLocaleString("en-US")})`,
       lines: [
         `조건: ${f.where}`,
-        `바닥 = ${PRICE_HISTORY_FLOOR_FROZEN} 실측(세션648) — 미분양 쪽 수집은 이 줄을 더하기만 하므로 줄면 오삭제입니다.`,
+        `바닥 = 2026-10-17 실측(세션648) · id 상한 아래 = 그때 이미 있던 줄만이라 늘 수 없고 지워질 때만 줍니다.`,
       ],
     });
   }
@@ -1230,10 +1234,10 @@ export function checkPriceHistoryFloors(results, floors = PRICE_HISTORY_FLOORS) 
 
 /**
  * ㉒ 재료 — 조각마다 `count:"exact", head:true` 1회(모두 2회). 오류는 던지지 않고 결과에 담아 판정이 "조회 실패"로 알린다.
+ * @param {any} [sb] 시험 주입용 — 생략하면 운영 클라이언트
  * @returns {Promise<Record<"A" | "B", { count: number | null, error: unknown }>>}
  */
-export async function fetchPriceHistorySliceCounts() {
-  const sb = getSupabase();
+export async function fetchPriceHistorySliceCounts(sb = getSupabase()) {
   /** @type {Record<string, { count: number | null, error: unknown }>} */
   const out = {};
   for (const f of PRICE_HISTORY_FLOORS) {
