@@ -5,5 +5,7 @@
 chcp 65001 >nul
 cd /d "%~dp0.."
 echo [%date% %time%] KOSIS 로컬 러너 시작 >> kosis-local.log
+REM Session 648: warn (never block) if installed node_modules drift from package-lock.json. Always exits 0.
+call node scripts\check-node-modules-drift.mjs >> kosis-local.log 2>&1
 node scripts\kosis-local-runner.mjs >> kosis-local.log 2>&1
 if errorlevel 1 echo [%date% %time%] ERROR: kosis-local-runner 실패 (exit %errorlevel%) >> kosis-local.log

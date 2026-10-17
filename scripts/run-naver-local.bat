@@ -13,6 +13,17 @@ REM only by the daily-deploy workflow at 03:00 KST, so this runner no longer tou
 call node scripts\record-pipeline-run.mjs start >> "%LOG%" 2>&1
 set WARN=0
 set "WARN_NAMES="
+REM Session 648: warn (never block) if installed node_modules drift from package-lock.json. Always exits 0.
+REM Its line is copied into the log; an ASCII marker (DEPS_DRIFT / DEPS_CHECK_FAILED) adds
+REM node-modules-drift to WARN_NAMES so the morning briefing shows it via WARN_STEPS.
+REM WARN is NOT raised: OK_STEPS=5-WARN counts real steps only. Temp file is *.log (gitignored).
+set "DEPS_OUT=%~dp0..\naver-deps-check.log"
+call node scripts\check-node-modules-drift.mjs > "%DEPS_OUT%" 2>&1
+type "%DEPS_OUT%" >> "%LOG%"
+findstr /c:"DEPS_DRIFT" /c:"DEPS_CHECK_FAILED" "%DEPS_OUT%" >nul && set "WARN_NAMES=!WARN_NAMES!,node-modules-drift"
+del "%DEPS_OUT%" >nul 2>&1
+REM reset errorlevel (findstr returns 1 when nothing matched)
+verify >nul
 
 REM env is loaded by each step itself (naver-collect.py has its own .env.local parser;
 REM every .mjs calls _shared.mjs loadEnv). No batch env pre-load needed.
