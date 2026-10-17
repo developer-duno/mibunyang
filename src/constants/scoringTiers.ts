@@ -858,6 +858,7 @@ export const PRICE_SUB_WEIGHTS = { dev: 0.55, jr: 0.2, pir: 0.15, rel: 0.07, lan
  * 적정가 비교 범위 규칙의 숫자 — **정본은 `scripts/collectors/_trade-scope.mjs`**(`PER_M2_TOL_M2`·`PEER_YEARS`).
  * 화면·점수 문구가 숫자를 손으로 적지 않게 여기 짝을 둔다(세션565 관습) —
  * `_trade-scope.test.mjs` 가 두 값이 같은지 잠근다(한쪽만 바뀌면 문구가 거짓이 된다).
+ * 같은 평수는 폭 숫자가 없다 — 전용면적 소수 둘째 반올림이 정확히 같을 때만(부동산원 정의, `sameAreaExact` · 세션651).
  */
 export const TRADE_SCOPE_PER_M2_TOL_M2 = 20;
 export const TRADE_SCOPE_PEER_YEARS = 10;

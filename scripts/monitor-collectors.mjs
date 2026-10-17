@@ -2347,12 +2347,14 @@ export function checkViewRegionStale(viewFields, regionStats, targets = VIEW_REG
  *
  * - `TRADE_SCOPE_FILL_MIN` = VIEW cmpScope 채움**률** ÷ trade_stats cmp_scope 채움**률** 하한.
  *   개수끼리 나누지 않는다 — trade_stats(3,068행)와 VIEW(2,656행)는 모수가 달라 꽉 차도 0.87 이 된다.
- * - `TRADE_SCOPE_JUDGED_MIN` = (complex + dong_peer) ÷ VIEW cmpScope 채움 하한. 근거 = 세션606 dry-run
- *   (3,271곳: complex 1,030 · dong_peer 883 · none 1,358 → 판정 범위 약 58%). 'none' 이 급증하면 묶기·통계 회귀.
- * ⚠️ 둘 다 잠정값 — 2026-10-07 기준 cmp_scope 채움 0(첫 실제 쓰기 10/08 01:00). **10/08 회차 뒤 재측정.**
+ * - `TRADE_SCOPE_JUDGED_MIN` = (complex + dong_peer) ÷ VIEW cmpScope 채움 하한. 'none' 이 급증하면 묶기·통계 회귀.
+ *   근거(세션651 재측정 2026-10-18 05:4x KST, 운영 DB 읽기 전용 탐침 — 이 감시와 같은 분모·분자):
+ *   VIEW cmpScope 채움 2,669곳 중 판정 범위 = 옛 판정(같은 평수 10㎡ 폭) 1,465곳 54.9%(DB 값과 옛 판정 재계산 2,669/2,669 일치)
+ *   → 새 판정(같은 면적 = 소수 둘째 정확히 같음, 부동산원 정의) 948곳 **35.5%**(같은 단지 471 · ㎡당 328 · 동네 또래 149).
+ *   하한 = 35.5% × 0.8 ≈ 0.28. 옛 하한 0.4(세션606 dry-run 판정 범위 약 58% 기준)는 새 판정에서 매일 헛경보가 된다.
  */
 export const TRADE_SCOPE_FILL_MIN = 0.9;
-export const TRADE_SCOPE_JUDGED_MIN = 0.4;
+export const TRADE_SCOPE_JUDGED_MIN = 0.28;
 
 /**
  * ⑥-b 점수 입력 채움 판정(순수 함수). 경보 3종: VIEW 에 cmpScope 칸 없음 · 원본 대비 VIEW 채움 부족 · 판정 범위 비율 부족.
@@ -2398,10 +2400,10 @@ export function checkTradeScopeFill({ statsTotal, statsScoped, viewTotal, viewSc
     issues.push({
       kind: "nulls",
       collector: "점수 판정 범위 (complex+dong_peer)",
-      detail: `가격 판정 범위(같은 단지·같은 동 또래) ${(judgedRate * 100).toFixed(1)}% < 하한 ${TRADE_SCOPE_JUDGED_MIN * 100}% — '비교할 실거래 없음' 급증`,
+      detail: `가격 판정 범위(같은 단지·같은 동 또래) ${(judgedRate * 100).toFixed(1)}% < 하한 ${Math.round(TRADE_SCOPE_JUDGED_MIN * 100)}% — '비교할 실거래 없음' 급증`,
       lines: [
         `apartments_flat.cmpScope 채움 ${viewScoped}곳 중 complex+dong_peer ${viewJudged}곳 — 나머지는 괴리도 중립·판정 칩 없음.`,
-        "평소 약 58%(세션606 dry-run). 묶기(apartment_trade_links)·trade_deals 수집 회귀를 먼저 의심한다.",
+        "평소 약 36%(세션651 같은 면적 = 정확히 같음 뒤 재측정). 묶기(apartment_trade_links)·trade_deals 수집 회귀를 먼저 의심한다.",
         "[조치] ⑯ trade_deals·⑰ 연결 표 경보 확인 → trade-stats 회차 로그의 범위별 건수 확인",
       ],
     });
