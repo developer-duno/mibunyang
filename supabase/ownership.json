@@ -1381,6 +1381,9 @@
           "area_no",
           "base_month",
           "complex_no",
+          "price_avg",
+          "price_lower",
+          "price_upper",
           "recorded_at",
           "trade_type"
         ],
