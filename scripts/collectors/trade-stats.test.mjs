@@ -536,7 +536,10 @@ describe("새 칸 배선 — 옛 칸이 전부 빈 행은 옛 칸 키 없이 따
     expect("_medianSource" in full[0]).toBe(false);
     expect(Object.keys(scopeOnly[0]).sort()).toEqual(["apartment_id", "cmp_fair_price", "cmp_scope", "dong_fact", "updated_at"]);
     for (const k of OLD_STAT_KEYS) expect(k in scopeOnly[0]).toBe(false);
-    expect(SCOPE_COLS.length).toBe(13);
+    expect(SCOPE_COLS.length).toBe(14);
+    expect(SCOPE_COLS).toContain("complex_area"); // 세션650 — 2u 전세율 라벨의 평수
+    const areaOnly = splitUpsertRows([{ ...scopeOnlyRow, complex_area: 84.9967 }]).scopeOnly[0];
+    expect(areaOnly.complex_area).toBe(84.9967); // 새 칸만 줄기에도 실린다
   });
   it("G5 OLD_STAT_KEYS = 건너뜀 판정(skipStatRow 에 넘기는 옛 여섯 값)의 결과 칸과 같은 집합 — 여섯 중 하나만 값이 있어도 옛 줄기(full)로 간다", () => {
     const SIX = ["nearby_median", "jeonse_rate", "pir", "psr", "recent_trades_6m", "cancel_ratio_6m"];

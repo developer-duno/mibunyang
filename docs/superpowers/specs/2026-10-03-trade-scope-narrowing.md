@@ -130,6 +130,7 @@ VIEW apartments_flat 새 칸 → scorePrice (괴리도 0.55 · PSR 폐지 · 중
 | `complex_table` jsonb | 같은 단지 면적별 행 `[{area, n, min, median, max, last_month}]`(매매 또는 분양권) · 전세 행 따로 `complex_jeonse_table` |
 | `dong_fact` jsonb | 같은 동·같은 평수 **나이 제한 없음** 사실: `{n, min, median, max, build_year_min, build_year_max, age_gap_years, peer_n, peer_median}` |
 | `cmp_src` text | 판정에 쓴 거래 종류 `sale` / `presale` |
+| `complex_area` numeric(8,4) | (세션650 추가) 위 계산 전부의 기준인 대표 전용면적 ㎡(소수 넷째 반올림 · 10000 이상·모르면 null · 84/85 표기는 읽는 쪽이 정함) — 2u 가 "전세율(이 단지 84㎡)" 라벨에 읽는다 · 마이그 `20261018000000_trade_stats_complex_area.sql` |
 
 `psr` 는 다) 에서 계산을 멈추고 null(칸은 정리 PR 에서 삭제). `nearby_median`·`jeonse_rate`(구) 도 같은 길. `regions.jeonse_rate`(지역, `trade-stats-regions.mjs`) 는 그대로.
 
