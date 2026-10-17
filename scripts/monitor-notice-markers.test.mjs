@@ -161,6 +161,7 @@ describe("㉑ 배선", () => {
     fetchTradeDeals: async () => ({ empty: true, rows: /** @type {Array<Record<string, any>>} */ ([]), tradesCounts: {}, latest: "202609", prev: "202608" }),
     fetchTradeLinks: async () => ({ links: /** @type {Array<Record<string, any>>} */ ([]), apts: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: null }),
     fetchSgisMapRun: async () => [],
+    fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }), // ㉒(세션648) — 운영 조회로 새지 않게
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
 
