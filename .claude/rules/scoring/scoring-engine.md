@@ -93,6 +93,8 @@ src/scoring/                (⚠️ 전부 .ts — 옛 문서가 .js 로 적어 
 - **입력 = `cmpFairPrice`**(VIEW `apartments_flat` ← `trade_stats.cmp_fair_price`, 만원 총액). `cmpScope` 가
   `complex`(같은 단지 — 입주 전은 분양권 거래, R2) 또는 `dong_peer`(같은 동·같은 평수·준공 ±10년 또래 매매, R5)이고
   값 > 0 일 때만 적정가로 쓴다. 범위·건수·기간·면적 방식은 `trade-stats.mjs`·`_trade-scope.mjs` 가 정한다.
+- **같은 평수 = 정확히 같음**(세션651 개정 — 부동산원 실거래가격지수 정의): 전용면적 소수 둘째 반올림 일치(`_trade-scope.mjs sameAreaExact`).
+  적정가·전세가율이 같은 판정을 쓴다. ㎡당 환산(20㎡ 이내)·또래(±10년)는 우리 보조 범위로 그대로.
 - **계수 없음**: `getAgeCoeff`(연식·신축)·`getAreaAdj`(면적)·브랜드 `adj` 를 곱하지 않는다(D8·R5 — 자기 단지·또래 값).
 - **폴백 없음**: 옛 `priceByArea` 버킷(`matchAreaPrice`)·`nearbyMedian`(구 중위)·`avgPriceSqm`(시도 평균)·`presalePp`
   는 점수에서 읽지 않는다. 그래서 `PRICE_FALLBACK_RELIABILITY_PENALTY`(신뢰도 −15) 경로도 없다(상수는 정리 PR 에서 삭제).

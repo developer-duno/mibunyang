@@ -7,9 +7,10 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import * as scopeMod from "./_trade-scope.mjs";
 import {
-  computeScopeStats, median, areaTable, scopeColsEmpty, indexDeals, isValidDeal, isMarketJeonse,
-  SAME_AREA_TOL_M2, PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS, JEONSE_SAME_AREA_TOL_M2,
+  computeScopeStats, median, areaTable, scopeColsEmpty, indexDeals, isValidDeal, isMarketJeonse, sameAreaExact,
+  PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS,
 } from "./_trade-scope.mjs";
 import { median as tradeStatsMedian } from "./trade-stats.mjs";
 import { buildKeyDictionary, planLinks } from "./_trade-links.mjs";
@@ -38,12 +39,57 @@ const run = (r, a = {}) => {
   );
 };
 
-describe("상수 = 설계서 §5-2 값", () => {
-  it("10㎡ 미만 · 20㎡ 이하 · 10년 이하 · 3건 · 12개월", () => {
-    expect([SAME_AREA_TOL_M2, PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS]).toEqual([10, 20, 10, 3, 12]);
+describe("상수 = 설계서 §5-2 값(보조 범위는 그대로 — 세션651 결정)", () => {
+  it("20㎡ 이하 · 10년 이하 · 3건 · 12개월", () => {
+    expect([PER_M2_TOL_M2, PEER_YEARS, MIN_DEALS, CMP_MONTHS]).toEqual([20, 10, 3, 12]);
   });
-  it("전세가율 같은 평수 = 3㎡ 미만(사장님 결정 2026-10-18, 적정가 10㎡ 보다 좁게)", () => {
-    expect(JEONSE_SAME_AREA_TOL_M2).toBe(3);
+  it("옛 같은 평수 폭 상수(10㎡·3㎡)는 없어졌다 — 같은 면적은 sameAreaExact 하나(세션651)", () => {
+    expect(/** @type {any} */ (scopeMod).SAME_AREA_TOL_M2).toBeUndefined();
+    expect(/** @type {any} */ (scopeMod).JEONSE_SAME_AREA_TOL_M2).toBeUndefined();
+  });
+});
+
+// 세션651: 같은 면적 = 부동산원 실거래가격지수 정의("단지, 면적, 동, 층그룹이 같은 아파트를 동일 주택으로 가정") —
+//   소수 둘째 반올림해 정확히 같을 때만. 국토부 면적은 소수 둘째, 우리 대표 면적은 셋째·넷째까지 있어 반올림해 맞댄다.
+describe("sameAreaExact — 소수 둘째 반올림 정확히 같음(설계서 2026-10-18 §2 A1·A3)", () => {
+  it.each([
+    [84.92, 84.99, false], // 같은 평형의 소수 차이도 다른 면적(옛 10㎡·3㎡ 폭이면 같음)
+    [84.985, 84.99, true], // 셋째 자리 5 는 올림
+    [84.9871, 84.99, true], // 우리 대표 면적(넷째) vs 국토부(둘째)
+    [84.98, 84.99, false], // 0.01 차이도 다름
+    [59.99, 60.0, false],
+  ])("%f vs %f → %s", (a, b, want) => {
+    expect(sameAreaExact(a, b)).toBe(want);
+    expect(sameAreaExact(b, a)).toBe(want); // 순서 무관
+  });
+
+  it("적정가 T1 — 84.9871 대표 면적에 84.99 거래 3건 = 같은 면적 · 84.98 거래 3건 = 아님(㎡당으로 넘어감)", () => {
+    const hit = run({ seq: many(3, { area: 84.99 }) }, { area: 84.9871 });
+    expect([hit.cols.cmp_scope, hit.cols.cmp_area_mode, hit.cols.cmp_n]).toEqual(["complex", "same_area", 3]);
+    const miss = run({ seq: many(3, { area: 84.98 }) }, { area: 84.9871 });
+    expect([miss.cols.cmp_scope, miss.cols.cmp_area_mode]).toEqual(["complex", "per_m2"]);
+  });
+
+  it("적정가 T2(동네 또래) · 동네 사실도 같은 판정 — 84.92 동네 거래는 84.99 단지의 같은 면적이 아니다", () => {
+    expect(run({ dong: many(3, { area: 84.99, build_year: 2020 }) }, { area: 84.99 }).cols.cmp_scope).toBe("dong_peer");
+    const r = run({ dong: many(3, { area: 84.92, build_year: 2020 }) }, { area: 84.99 });
+    expect([r.cols.cmp_scope, r.cols.dong_fact]).toEqual(["none", null]);
+  });
+
+  it("전세가율 — 적정가와 같은 판정: 전세·매매 둘 다 84.92 는 84.99 단지에서 빠진다", () => {
+    const s99 = many(3, { area: 84.99, price: 100000 });
+    const j99 = many(3, { area: 84.99, trade_type: "jeonse", price: 60000 });
+    const s92 = many(3, { area: 84.92, price: 70000 }); // 매매 쪽 섞임(sSame 만 폭으로 되돌리는 변이를 잡는다)
+    const j92 = many(3, { area: 84.92, trade_type: "jeonse", price: 20000 }); // 전세 쪽 섞임(jSame 만 되돌리는 변이를 잡는다)
+    const r = run({ seq: [...s99, ...j99, ...s92, ...j92] }, { area: 84.9871 });
+    expect([r.cols.complex_jeonse_rate, r.cols.complex_jeonse_n, r.cols.complex_sale_n]).toEqual([60, 3, 3]);
+    expect([r.cols.cmp_scope, r.cols.cmp_area_mode, r.cols.cmp_n, r.cols.cmp_fair_price]).toEqual(["complex", "same_area", 3, 100000]);
+    expect(r.diag.sale_same_n).toBe(3); // 진단도 같은 판정 — complex_sale_n 과 같다
+  });
+
+  it("분양권 진단(presale_n_if_moved_in)도 같은 판정", () => {
+    const r = run({ pre: [...many(2, { trade_type: "presale", area: 84.99 }), D({ trade_type: "presale", area: 84.92 })] }, { area: 84.99, completion: "202001" });
+    expect(r.diag.presale_n_if_moved_in).toBe(2);
   });
 });
 
@@ -67,11 +113,11 @@ describe("median — trade-stats.mjs 와 같은 정의(순환 import 를 피해 
 });
 
 describe("경계값", () => {
-  it("같은 평수 — 차 9.99 포함 · 10.00 제외(3건 문턱)", () => {
+  it("같은 면적 — 소수 둘째 반올림이 같으면 포함(84.904) · 0.01 달라도 제외(84.91)(3건 문턱, 세션651)", () => {
     const base = [D({ area: 84.9 }), D({ area: 84.9 })];
-    expect(run({ seq: [...base, D({ area: 84.9 + 9.99 })] }).cols.cmp_area_mode).toBe("same_area");
-    const r = run({ seq: [...base, D({ area: 84.9 + 10 })] });
-    expect(r.cols.cmp_area_mode).toBe("per_m2"); // 같은 평수 2건 → ㎡당(20㎡ 이하 3건)
+    expect(run({ seq: [...base, D({ area: 84.904 })] }).cols.cmp_area_mode).toBe("same_area");
+    const r = run({ seq: [...base, D({ area: 84.91 })] });
+    expect(r.cols.cmp_area_mode).toBe("per_m2"); // 같은 면적 2건 → ㎡당(20㎡ 이하 3건)
   });
 
   it("㎡당 — 면적 차 20.00 포함 · 20.01 제외", () => {
@@ -146,20 +192,20 @@ describe("경계값", () => {
     expect(renew.cols.complex_jeonse_rate).toBe(null);
   });
 
-  it("전세가율 — 3㎡ 넘게 다른 평형은 빼고(올림픽파크 포레온 40㎡ 에 30㎡ 섞임 꼴), 적정가는 10㎡ 그대로", () => {
-    // 대표 40㎡ · 매매 40㎡ 3건(10억대) + 30㎡ 3건(7억대) · 전세 40㎡ 3건(4억) — 10㎡ 로 묶으면 매매 중앙이 내려가 비율이 틀어진다
+  it("전세가율 · 적정가 — 다른 평형(올림픽파크 포레온 40㎡ 에 30㎡ 섞임 꼴)은 둘 다 빠진다(세션651 같은 판정)", () => {
+    // 대표 40㎡ · 매매 40㎡ 3건(10억대) + 30㎡ 3건(7억대) · 전세 40㎡ 3건(4억) — 폭으로 묶으면 매매 중앙이 내려가 비율이 틀어진다
     const s40 = many(3, { area: 39.95, price: 100000 });
-    const s30 = many(3, { area: 30.5, price: 70000 }); // 차 9.45㎡ — 적정가 묶음엔 들고 전세가율엔 빠짐
+    const s30 = many(3, { area: 30.5, price: 70000 });
     const j40 = many(3, { area: 39.95, trade_type: "jeonse", price: 40000 });
-    const j30 = many(3, { area: 30.5, trade_type: "jeonse", price: 20000 }); // 전세 쪽도 3㎡ 밖은 빠져야(검사관 🟠1 — jSame 만 10㎡ 로 되돌리는 변이를 잡는다)
+    const j30 = many(3, { area: 30.5, trade_type: "jeonse", price: 20000 });
     const r = run({ seq: [...s40, ...s30, ...j40, ...j30] }, { area: 39.95 });
     expect([r.cols.complex_jeonse_rate, r.cols.complex_jeonse_n, r.cols.complex_sale_n]).toEqual([40, 3, 3]); // 40000 ÷ 100000 (10㎡ 로 묶였다면 매매 중앙 85000 → 47.1)
-    expect([r.cols.cmp_scope, r.cols.cmp_area_mode, r.cols.cmp_n]).toEqual(["complex", "same_area", 6]);
-    expect(r.diag.sale_same_n).toBe(6); // 진단은 적정가 폭(10㎡)으로 센다
-    // 경계: 차 2.99㎡ 는 같은 평수, 3.00㎡ 는 아니다(미만)
-    const edge = (/** @type {number} */ da) => run({ seq: [...many(3, { area: 40 + da, price: 100000 }), ...many(3, { area: 40, trade_type: "jeonse", price: 40000 })] }, { area: 40 }).cols;
-    expect(edge(2.99).complex_jeonse_rate).toBe(40);
-    expect([edge(3).complex_jeonse_rate, edge(3).complex_sale_n]).toEqual([null, 0]);
+    expect([r.cols.cmp_scope, r.cols.cmp_area_mode, r.cols.cmp_n]).toEqual(["complex", "same_area", 3]); // 옛 10㎡ 폭이면 6
+    expect(r.diag.sale_same_n).toBe(3);
+    // 경계: 소수 둘째 반올림이 같으면(40.004 → 40.00) 같은 면적, 0.01 다르면 아니다
+    const edge = (/** @type {number} */ a) => run({ seq: [...many(3, { area: a, price: 100000 }), ...many(3, { area: 40, trade_type: "jeonse", price: 40000 })] }, { area: 40 }).cols;
+    expect(edge(40.004).complex_jeonse_rate).toBe(40);
+    expect([edge(40.01).complex_jeonse_rate, edge(40.01).complex_sale_n]).toEqual([null, 0]);
   });
 
   it("동네 사실 — 나이 제한 없음 · age_gap 부호(우리 2024 · 그 집들 중앙 2002 → +22) · 또래 수 따로", () => {
@@ -234,17 +280,21 @@ describe("대조군 픽스처 표본 값 고정(T1 매매 · T1 ㎡당 · T2 · 
     return computeScopeStats({ id, area, completion: a.completion, bjd_code: a.bjd_code }, { links, ...idx, now: NOW }).cols;
   };
 
-  it("T1 매매 — 반정 아이파크 캐슬 5단지 84.9㎡", () => {
-    const c = scope("ah-2025910141", 84.9);
+  // 세션651: 같은 면적이 "정확히 같음"이 되면서 대표 면적을 픽스처 거래의 실제 면적으로 준다(옛 84.9 는 10㎡ 폭 시절 근사값).
+  it("T1 매매 — 반정 아이파크 캐슬 5단지 84.73㎡", () => {
+    const c = scope("ah-2025910141", 84.73);
     expect([c.cmp_scope, c.cmp_src, c.cmp_area_mode, c.cmp_n, c.cmp_fair_price]).toEqual(["complex", "sale", "same_area", 3, 99800]);
+    expect(scope("ah-2025910141", 84.9).cmp_area_mode).toBe("per_m2"); // 옛 근사 면적 84.9 는 84.73 거래와 같은 면적이 아니다(㎡당 환산으로)
   });
-  it("T1 ㎡당 — 화성비봉 호반써밋 84.9㎡(같은 평수 2건 + 72.92㎡ 1건)", () => {
-    const c = scope("ah-2024910080", 84.9);
-    expect([c.cmp_scope, c.cmp_area_mode, c.cmp_n, c.cmp_fair_price]).toEqual(["complex", "per_m2", 3, 47977]);
+  it("T1 ㎡당 — 화성비봉 호반써밋 84.94㎡(같은 면적 2건 + 72.92㎡ 1건)", () => {
+    const c = scope("ah-2024910080", 84.94);
+    expect([c.cmp_scope, c.cmp_area_mode, c.cmp_n, c.cmp_fair_price]).toEqual(["complex", "per_m2", 3, 48000]);
   });
-  it("T2 — 화성시청역 서희스타힐스 4차 84.9㎡(같은 단지 84㎡ 매매 없음 → 신남리 또래)", () => {
-    const c = scope("ah-2021910001", 84.9);
-    expect([c.cmp_scope, c.cmp_src, c.cmp_n, c.cmp_fair_price]).toEqual(["dong_peer", "sale", 7, 40000]);
+  it("T2 — 화성시청역 서희스타힐스 4차 75.8㎡(같은 단지 매매는 75.89·59.99 와 해제 1건뿐 → 신남리 75.8㎡ 또래)", () => {
+    const c = scope("ah-2021910001", 75.8);
+    expect([c.cmp_scope, c.cmp_src, c.cmp_n, c.cmp_fair_price]).toEqual(["dong_peer", "sale", 4, 41250]);
+    // 옛 닻(84.9㎡ 에 75㎡대 동네 거래 7건이 "같은 평수"로 묶였던 것)은 새 판정에서 성립하지 않는다
+    expect(scope("ah-2021910001", 84.9).cmp_scope).toBe("none");
   });
   it("T3 — 금강펜테리움 6차 84.9㎡(같은 단지 전세만 · 신동 84㎡ 매매 없음)", () => {
     const c = scope("ah-2023910032", 84.9);

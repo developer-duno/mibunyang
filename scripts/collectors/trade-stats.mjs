@@ -756,7 +756,7 @@ async function main() {
     const jrOver = jr.filter((r) => r.complex_jeonse_rate > 100);
     const df = sc.filter((r) => r.dong_fact != null).length;
     const movedInPresale = [...scopeDiagById.values()].filter((d) => {
-      // 같은 평수 매매 수는 진단의 10㎡ 값(sale_same_n) — complex_sale_n 은 전세가율 폭(3㎡)이라 분양권(10㎡)과 맞대면 부푼다(세션650)
+      // 같은 면적(소수 둘째, 세션651 — 부동산원 정의) 매매 수 = 진단의 sale_same_n · 분양권 수와 같은 판정으로 센다
       return d.moved_in && (d.sale_same_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
     }).length;
     log("summary", `새 칸 범위: T1 매매 ${t1s} · T1 분양권 ${t1p} · T2 동네 또래 ${t2} · T3 없음 ${t3} (㎡당 환산 ${perM2})`);

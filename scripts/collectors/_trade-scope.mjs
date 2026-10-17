@@ -10,16 +10,22 @@
  * - 거래 거름(공통): 해제 거래(cancel_date 가 null·"" 아님) 제외 · 금액·면적 > 0 · 기간 12개월(재료가 이미 12개월)
  * - 판정 종류: 입주 후 → 매매(sale) / 입주 전 → 분양권(presale, R2) / 완공월 모름 → 거래가 있는 쪽(둘 다면 매매).
  *   입주 후 단지가 매매 3건 미만이어도 분양권으로 넘어가지 않는다(T2 로 — R2 그대로, 메인 확인 2026-10-03)
- * - T1 같은 단지: 연결 표 active 열쇠의 그 종류 거래 중 같은 평수(전용 차 < SAME_AREA_TOL_M2) ≥ MIN_DEALS → 중앙값(same_area).
- *   아니면 면적 차 ≤ PER_M2_TOL_M2 거래 ≥ MIN_DEALS 의 ㎡당 중앙값 × 우리 면적(per_m2). 아니면 T2.
- * - T2 같은 동 또래: 같은 법정동(bjd_code 10자리 ↔ sgg_cd+umd_cd, 매매만) · 같은 평수 · 또래(준공 차 ≤ PEER_YEARS, 둘 다 있을 때만) ≥ MIN_DEALS
+ * - 같은 면적(세션651 개정 — 부동산원 정의) = `sameAreaExact`: 전용면적을 **소수 둘째에서 반올림해 정확히 같을 때만**. 허용 폭 없음.
+ *   근거 원문: 한국부동산원 공동주택 실거래가격지수 조사개요 "단지, 면적, 동, 층그룹(1,2층/최상층/중간층)이 같은 아파트를
+ *   동일 주택(아파트)으로 가정" (https://www.reb.or.kr/reb/cm/cntnts/cntntsView.do?mi=9811&cntntsId=1193).
+ *   자릿수 근거(세션651 측정): 국토부 `trade_deals.area` 는 소수 둘째까지(거래 창 1,057,870행 중 셋째 자리 이상 0건)인데
+ *   우리 대표 면적(`apt.area` = prices 최근 값)은 43% 가 셋째·넷째 자리 → 양쪽을 소수 둘째로 반올림해 맞댄다.
+ *   적정가 T1·T2·`sale_same_n`·분양권 진단·전세가율이 **모두 이 한 판정**을 쓴다(옛 10㎡·3㎡ 폭은 폐지).
+ * - T1 같은 단지: 연결 표 active 열쇠의 그 종류 거래 중 같은 면적 ≥ MIN_DEALS → 중앙값(same_area).
+ *   아니면 면적 차 ≤ PER_M2_TOL_M2 거래 ≥ MIN_DEALS 의 ㎡당 중앙값 × 우리 면적(per_m2 — 부동산원 정의에 없는 우리 보조 범위). 아니면 T2.
+ * - T2 같은 동 또래: 같은 법정동(bjd_code 10자리 ↔ sgg_cd+umd_cd, 매매만) · 같은 면적 · 또래(준공 차 ≤ PEER_YEARS, 둘 다 있을 때만) ≥ MIN_DEALS
  *   → 중앙값(dong_peer, same_area). 계수 없음(R5)
  * - T3: none · 적정가 null · 건수 0. 우리 면적을 모르면 T1·T2 를 건너뛰어 none(면적별 표는 채운다)
- * - 같은 단지 전세가율(R3·D11): apt_seq 열쇠의 같은 평수(전용 차 < JEONSE_SAME_AREA_TOL_M2 — 적정가보다 좁게, 세션650) 전세(갱신 제외) ≥ 3
- *   그리고 같은 평수 매매 ≥ 3 → 전세 중앙 ÷ 매매 중앙 × 100
+ * - 같은 단지 전세가율(R3·D11): apt_seq 열쇠의 같은 면적 전세(갱신 제외) ≥ 3
+ *   그리고 같은 면적 매매 ≥ 3 → 전세 중앙 ÷ 매매 중앙 × 100
  * - 면적별 표: 연결 열쇠의 그 종류 거래 · 전세(갱신 제외)를 면적(소수 둘째 반올림)별로 — T1 이 안 돼도 연결이 있으면 채우고(사실 표시용),
  *   표의 종류는 `complex_src`(입주 후 sale · 입주 전 presale · 모름이면 있는 쪽, 연결 없으면 null — 계획서 B6)
- * - 동네 사실: 같은 법정동·같은 평수 매매(나이 제한 없음) ≥ 1 이면 저장 · age_gap_years = 우리 연도 − 그 집들 건축년도 중앙값(양수 = 그 집들이 오래됨)
+ * - 동네 사실: 같은 법정동·같은 면적 매매(나이 제한 없음) ≥ 1 이면 저장 · age_gap_years = 우리 연도 − 그 집들 건축년도 중앙값(양수 = 그 집들이 오래됨)
  * - 우리 단지 거래를 동네 표본에서 빼지 않는다(사실대로)
  *
  * ⚠️ `_` 접두 = 라이브러리(DB 접근 0). 시각은 인자(`now`)로 받는다.
@@ -27,14 +33,6 @@
 import { isMovedIn, completionMonthIndex } from "./_match-gates.mjs";
 import { presaleKeyOf } from "./_trade-links.mjs";
 
-/** 같은 평수 = 전용면적 차 이 값 **미만**(㎡). */
-export const SAME_AREA_TOL_M2 = 10;
-/**
- * 같은 단지 전세가율의 같은 평수 = 전용면적 차 이 값 **미만**(㎡). 적정가(SAME_AREA_TOL_M2)보다 좁다 — 10㎡ 로는
- * 30·40㎡ 처럼 다른 평형이 한 묶음이 돼 비율이 틀어졌다(세션650 실측: 값 있는 527곳 중 165곳에 3㎡ 넘게 다른 평형이 섞임 ·
- * 사장님 결정 2026-10-18 "3㎡ 미만"). 84.92·84.99 같은 같은 평형의 소수 차이는 그대로 묶인다.
- */
-export const JEONSE_SAME_AREA_TOL_M2 = 3;
 /** ㎡당 환산에 쓰는 같은 단지 거래 = 면적 차 이 값 **이하**(㎡, D9). */
 export const PER_M2_TOL_M2 = 20;
 /** 또래 = 준공연도 차 이 값 **이하**(년, R5). */
@@ -95,8 +93,15 @@ export function isMarketJeonse(d) {
   return d.trade_type === "jeonse" && String(d.contract_type ?? "").trim() !== "갱신";
 }
 
-/** @param {number} a @param {number} b */
-const sameArea = (a, b) => Math.abs(a - b) < SAME_AREA_TOL_M2;
+/** 소수 둘째 반올림(국토부 면적 자릿수). @param {number} x */
+const round2 = (x) => Math.round(x * 100) / 100;
+
+/**
+ * 같은 면적인가 — 부동산원 "면적이 같은" 정의(머리 주석 근거). 소수 둘째 반올림해 **정확히 같을 때만** 참.
+ * 예: 84.9871(우리 넷째) vs 84.99(국토부) → 같음 · 84.98 vs 84.99 → 다름. 되돌리기 = 이 함수 하나.
+ * @param {number} a @param {number} b
+ */
+export const sameAreaExact = (a, b) => round2(a) === round2(b);
 
 /**
  * 면적(소수 둘째 반올림)별 표, 면적 오름차순.
@@ -107,7 +112,7 @@ export function areaTable(deals) {
   /** @type {Map<number, ScopeDeal[]>} */
   const g = new Map();
   for (const d of deals) {
-    const a = Math.round(Number(d.area) * 100) / 100;
+    const a = round2(Number(d.area)); // 같은 면적 판정(sameAreaExact)과 같은 반올림
     let list = g.get(a);
     if (!list) { list = []; g.set(a, list); }
     list.push(d);
@@ -166,7 +171,7 @@ export function computeScopeStats(apt, ctx) {
 
   if (A != null) {
     // T1 — 같은 단지
-    const same = src.filter((d) => sameArea(Number(d.area), A));
+    const same = src.filter((d) => sameAreaExact(Number(d.area), A));
     const near = src.filter((d) => Math.abs(Number(d.area) - A) <= PER_M2_TOL_M2);
     if (same.length >= MIN_DEALS) {
       Object.assign(cols, { cmp_scope: "complex", cmp_fair_price: median(same.map((d) => Number(d.price))), cmp_n: same.length, cmp_area_mode: "same_area", cmp_src: srcKind });
@@ -174,10 +179,10 @@ export function computeScopeStats(apt, ctx) {
       const perM2 = medianRaw(near.map((d) => Number(d.price) / Number(d.area)));
       Object.assign(cols, { cmp_scope: "complex", cmp_fair_price: perM2 == null ? null : Math.round(perM2 * A), cmp_n: near.length, cmp_area_mode: "per_m2", cmp_src: srcKind });
     }
-    // 동네 재료(T2 · 동네 사실) — 같은 법정동 매매 · 같은 평수
+    // 동네 재료(T2 · 동네 사실) — 같은 법정동 매매 · 같은 면적
     const bjd = String(apt.bjd_code ?? "");
     const dongSame = /^\d{10}$/.test(bjd)
-      ? (ctx.saleByUmd.get(bjd) ?? []).filter((d) => d.trade_type === "sale" && isValidDeal(d) && sameArea(Number(d.area), A))
+      ? (ctx.saleByUmd.get(bjd) ?? []).filter((d) => d.trade_type === "sale" && isValidDeal(d) && sameAreaExact(Number(d.area), A))
       : [];
     const peer = dongSame.filter((d) => ourYear != null && d.build_year != null && Math.abs(Number(d.build_year) - ourYear) <= PEER_YEARS);
     if (cols.cmp_scope === "none" && peer.length >= MIN_DEALS) {
@@ -194,10 +199,9 @@ export function computeScopeStats(apt, ctx) {
         peer_n: peer.length, peer_median: median(peer.map((d) => Number(d.price))),
       };
     }
-    // 같은 단지 전세가율 — 같은 평수(JEONSE_SAME_AREA_TOL_M2, 적정가보다 좁게) 전세(갱신 제외) ≥ 3 그리고 매매 ≥ 3
-    const jeonseSameArea = (/** @type {number} */ a) => Math.abs(a - A) < JEONSE_SAME_AREA_TOL_M2;
-    const jSame = jeonse.filter((d) => jeonseSameArea(Number(d.area)));
-    const sSame = sale.filter((d) => jeonseSameArea(Number(d.area)));
+    // 같은 단지 전세가율 — 적정가와 같은 판정(sameAreaExact)의 같은 면적 전세(갱신 제외) ≥ 3 그리고 매매 ≥ 3
+    const jSame = jeonse.filter((d) => sameAreaExact(Number(d.area), A));
+    const sSame = sale.filter((d) => sameAreaExact(Number(d.area), A));
     cols.complex_jeonse_n = jSame.length;
     cols.complex_sale_n = sSame.length;
     if (jSame.length >= MIN_DEALS && sSame.length >= MIN_DEALS) {
@@ -207,9 +211,9 @@ export function computeScopeStats(apt, ctx) {
     }
   }
 
-  const presaleSame = A != null ? presale.filter((d) => sameArea(Number(d.area), A)).length : null;
-  // sale_same_n = 적정가와 같은 폭(10㎡)의 같은 평수 매매 수 — 진단 요약이 complex_sale_n(전세가율 폭 3㎡)과 섞이지 않게(세션650)
-  const saleSame = A != null ? sale.filter((d) => sameArea(Number(d.area), A)).length : null;
+  const presaleSame = A != null ? presale.filter((d) => sameAreaExact(Number(d.area), A)).length : null;
+  // sale_same_n = 같은 면적(sameAreaExact) 매매 수 — 세션651 부터 전세가율과 같은 판정이라 complex_sale_n 과 같은 값(유효 매매 기준)
+  const saleSame = A != null ? sale.filter((d) => sameAreaExact(Number(d.area), A)).length : null;
   return { cols, diag: { presale_n_if_moved_in: movedIn ? presaleSame : null, sale_same_n: saleSame, moved_in: movedIn } };
 }
 
