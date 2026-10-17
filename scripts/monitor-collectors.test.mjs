@@ -1588,7 +1588,12 @@ describe("checkTradeScopeFill — ⑥-b 점수 입력 채움 (세션607)", () =>
     // trade_stats 3,068행 vs VIEW 2,656행 — 개수끼리 나누면 0.87 로 헛경보가 난다
     expect(checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 2656, viewJudged: 1540 })).toHaveLength(0);
     expect(TRADE_SCOPE_FILL_MIN).toBe(0.9);
-    expect(TRADE_SCOPE_JUDGED_MIN).toBe(0.4);
+    expect(TRADE_SCOPE_JUDGED_MIN).toBe(0.28);
+  });
+
+  it("정상 — 같은 면적 = 정확히 같음 뒤 평소 값(세션651 측정 948/2,669 = 35.5%)은 경보 없음", () => {
+    // 옛 하한 0.4 였다면 이 값이 매일 헛경보였다
+    expect(checkTradeScopeFill({ statsTotal: 3291, statsScoped: 3291, viewTotal: 2669, viewScoped: 2669, viewJudged: 948 })).toHaveLength(0);
   });
 
   it("VIEW 에 cmpScope 칸 없음(viewScoped=null) — 마이그 미적용·롤백 경보 1건만", () => {
@@ -1612,13 +1617,15 @@ describe("checkTradeScopeFill — ⑥-b 점수 입력 채움 (세션607)", () =>
     expect(checkTradeScopeFill({ statsTotal: 3068, statsScoped: 0, viewTotal: 2656, viewScoped: 0, viewJudged: 0 })).toHaveLength(0);
   });
 
-  it("판정 범위(complex+dong_peer) 비율이 하한 40% 미만 — '비교할 실거래 없음' 급증 경보", () => {
-    // 2,656곳 중 30% 만 판정
-    const issues = checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 2656, viewJudged: 797 });
+  it("판정 범위(complex+dong_peer) 비율이 하한 28% 미만 — '비교할 실거래 없음' 급증 경보", () => {
+    // 2,656곳 중 20% 만 판정
+    const issues = checkTradeScopeFill({ statsTotal: 3068, statsScoped: 3068, viewTotal: 2656, viewScoped: 2656, viewJudged: 531 });
     expect(issues.map((i) => i.collector)).toEqual(["점수 판정 범위 (complex+dong_peer)"]);
-    expect(issues[0].detail).toContain("30.0%");
-    // 경계 — 정확히 40% 면 통과
-    expect(checkTradeScopeFill({ statsTotal: 100, statsScoped: 100, viewTotal: 100, viewScoped: 100, viewJudged: 40 })).toHaveLength(0);
+    expect(issues[0].detail).toContain("20.0%");
+    expect(issues[0].detail).toContain("하한 28%"); // 0.28 * 100 = 28.000000000000004 가 문구에 새지 않게
+    // 경계 — 정확히 28% 면 통과 · 27% 면 경보
+    expect(checkTradeScopeFill({ statsTotal: 100, statsScoped: 100, viewTotal: 100, viewScoped: 100, viewJudged: 28 })).toHaveLength(0);
+    expect(checkTradeScopeFill({ statsTotal: 100, statsScoped: 100, viewTotal: 100, viewScoped: 100, viewJudged: 27 })).toHaveLength(1);
   });
 
   it("fetchTradeScopeFillCounts — VIEW 칸 없음(42703)은 viewScoped=null, 그 밖의 오류는 던진다", async () => {

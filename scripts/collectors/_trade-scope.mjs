@@ -13,8 +13,10 @@
  * - 같은 면적(세션651 개정 — 부동산원 정의) = `sameAreaExact`: 전용면적을 **소수 둘째에서 반올림해 정확히 같을 때만**. 허용 폭 없음.
  *   근거 원문: 한국부동산원 공동주택 실거래가격지수 조사개요 "단지, 면적, 동, 층그룹(1,2층/최상층/중간층)이 같은 아파트를
  *   동일 주택(아파트)으로 가정" (https://www.reb.or.kr/reb/cm/cntnts/cntntsView.do?mi=9811&cntntsId=1193).
- *   자릿수 근거(세션651 측정): 국토부 `trade_deals.area` 는 소수 둘째까지(거래 창 1,057,870행 중 셋째 자리 이상 0건)인데
- *   우리 대표 면적(`apt.area` = prices 최근 값)은 43% 가 셋째·넷째 자리 → 양쪽을 소수 둘째로 반올림해 맞댄다.
+ *   자릿수 근거: 거래 면적은 **우리 수집기가 저장할 때** 소수 둘째로 반올림한다(`_trade-deals.mjs` buildDealRow 의
+ *   `area` — 그래서 세션651 측정에서 `trade_deals.area` 거래 창 1,057,870행 중 셋째 자리 이상 0건). 우리 대표 면적
+ *   (`apt.area` = prices 최근 값)은 43% 가 셋째·넷째 자리 → 대표 면적도 **같은 자릿수**로 반올림해 맞댄다
+ *   (두 반올림이 같은 자릿수인지는 `_trade-scope.test.mjs` 가 잠근다).
  *   적정가 T1·T2·`sale_same_n`·분양권 진단·전세가율이 **모두 이 한 판정**을 쓴다(옛 10㎡·3㎡ 폭은 폐지).
  * - T1 같은 단지: 연결 표 active 열쇠의 그 종류 거래 중 같은 면적 ≥ MIN_DEALS → 중앙값(same_area).
  *   아니면 면적 차 ≤ PER_M2_TOL_M2 거래 ≥ MIN_DEALS 의 ㎡당 중앙값 × 우리 면적(per_m2 — 부동산원 정의에 없는 우리 보조 범위). 아니면 T2.
@@ -93,7 +95,12 @@ export function isMarketJeonse(d) {
   return d.trade_type === "jeonse" && String(d.contract_type ?? "").trim() !== "갱신";
 }
 
-/** 소수 둘째 반올림(국토부 면적 자릿수). @param {number} x */
+/**
+ * 소수 둘째 반올림 — 거래 저장(`_trade-deals.mjs` buildDealRow `area: Math.round(area * 100) / 100`)과 **같은 식**.
+ * 저장·판정이 같은 반올림이라 원문 면적과 저장된 면적이 늘 같은 면적으로 맞는다 — 한쪽만 바꾸면(예: 여기에만 보정을 넣으면
+ * 셋째 자리가 5 인 원문 20.115 가 저장 20.11 · 판정 20.12 로 갈라져) 에러 없이 조용히 깨진다. `_trade-scope.test.mjs` 가 잠근다.
+ * @param {number} x
+ */
 const round2 = (x) => Math.round(x * 100) / 100;
 
 /**

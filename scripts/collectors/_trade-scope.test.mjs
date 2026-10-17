@@ -14,6 +14,7 @@ import {
 } from "./_trade-scope.mjs";
 import { median as tradeStatsMedian } from "./trade-stats.mjs";
 import { buildKeyDictionary, planLinks } from "./_trade-links.mjs";
+import { buildDealRow } from "./_trade-deals.mjs";
 
 const NOW = new Date("2026-10-03T03:00:00Z");
 /** 합성 거래 @param {Partial<import("./_trade-scope.mjs").ScopeDeal>} o */
@@ -85,6 +86,19 @@ describe("sameAreaExact — 소수 둘째 반올림 정확히 같음(설계서 2
     expect([r.cols.complex_jeonse_rate, r.cols.complex_jeonse_n, r.cols.complex_sale_n]).toEqual([60, 3, 3]);
     expect([r.cols.cmp_scope, r.cols.cmp_area_mode, r.cols.cmp_n, r.cols.cmp_fair_price]).toEqual(["complex", "same_area", 3, 100000]);
     expect(r.diag.sale_same_n).toBe(3); // 진단도 같은 판정 — complex_sale_n 과 같다
+  });
+
+  it("저장 반올림(_trade-deals buildDealRow 의 area)과 판정 반올림이 같은 식 — 원문 면적과 저장된 면적이 늘 같은 면적", () => {
+    // 한쪽만 바꾸면(예: 판정에만 +1e-9 보정) 셋째 자리가 5 인 원문(20.115 → 저장 20.11)에서 같은 집이 다른 면적이 된다(세션651 보완)
+    /** @param {any} it @param {string} tag */
+    const getTag = (it, tag) => it[tag] ?? "";
+    for (const raw of ["84.9871", "84.985", "20.115", "59.995", "84.995", "1.005", "84.92", "59.9", "135.6745"]) {
+      const row = buildDealRow({ excluUseAr: raw, dealAmount: "50,000" }, { type: "sale", region: "경기", gu: "화성시", sggCd: "41590", month: "202608", getTag });
+      expect(row, raw).not.toBeNull();
+      const stored = /** @type {any} */ (row).area;
+      expect(sameAreaExact(Number(raw), stored), `${raw} → 저장 ${stored}`).toBe(true);
+      expect(sameAreaExact(stored, stored)).toBe(true);
+    }
   });
 
   it("분양권 진단(presale_n_if_moved_in)도 같은 판정", () => {
