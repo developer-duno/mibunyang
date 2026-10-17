@@ -13,6 +13,8 @@ REM only by the daily-deploy workflow at 03:00 KST, so this runner no longer tou
 call node scripts\record-pipeline-run.mjs start >> "%LOG%" 2>&1
 set WARN=0
 set "WARN_NAMES="
+REM Session 648: warn (never block) if installed node_modules drift from package-lock.json. Always exits 0.
+call node scripts\check-node-modules-drift.mjs >> "%LOG%" 2>&1
 
 REM env is loaded by each step itself (naver-collect.py has its own .env.local parser;
 REM every .mjs calls _shared.mjs loadEnv). No batch env pre-load needed.
