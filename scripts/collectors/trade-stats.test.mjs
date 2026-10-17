@@ -460,10 +460,9 @@ describe("buildLatestPriceMap — VIEW latest_prices 규칙 미러 (A4)", () => 
 describe("Promise.all 조회 실패 로깅 — articles 뿐 아니라 5곳 전부 (세션539 B-2)", () => {
   const src = readFileSync(new URL("./trade-stats.mjs", import.meta.url), "utf8");
 
-  it("겨누는 fetchAll 호출 6개가 실제로 소스에 있다 (판별 전 존재 확인)", () => {
+  it("겨누는 조회 5개가 실제로 소스에 있다 (판별 전 존재 확인 · articles 는 세션648 에 뺐다)", () => {
     expect(src.includes('fetchAll("trades",')).toBe(true);
     expect(src.includes('fetchAll("regions",')).toBe(true);
-    expect(src.includes('fetchAll("articles",')).toBe(true);
     expect(src.includes('fetchAll("complexes",')).toBe(true);
     expect(src.includes('fetchAll("complex_price_history",')).toBe(true);
     expect(src.includes("fetchCancelledTrades(")).toBe(true);
@@ -487,6 +486,52 @@ describe("Promise.all 조회 실패 로깅 — articles 뿐 아니라 5곳 전�
 
   it("cancelledTrades 조회 실패 시 logError 를 호출한다 (없으면 red)", () => {
     expect(src).toMatch(/fetchCancelledTrades\(sbMibunyang, cutoff6mYM\)[\s\S]{0,150}?\.catch\([\s\S]{0,200}?logError\("load", `cancelledTrades 조회 실패/);
+  });
+});
+
+const { splitUpsertRows: splitUpsertRows_648, OLD_STAT_KEYS: OLD_STAT_KEYS_648 } = await import("./trade-stats.mjs");
+
+// 세션648 사장님 결정 "나) 매물 폴백 없애기" — 매물(articles) 전수 조회가 정기 회차마다 statement timeout 이라
+// 폴백이 늘 0건이었다. 같은 날 "구 전세가율은 그만 만들기" — 구 안 모든 집의 전세 중위 ÷ 매매 중위는 다른 집끼리
+// 나눈 값이라 뜻이 없다(화면·점수는 complex_jeonse_rate 만). 칸은 명시적 null 로 쓴다(빼면 지난 값이 굳는다).
+describe("매물 폴백 폐지 · 구 전세가율 폐지 (세션648)", () => {
+  const code = readFileSync(new URL("./trade-stats.mjs", import.meta.url), "utf8")
+    .split(/\r?\n/)
+    .map((l) => l.replace(/\/\/.*$/, ""))
+    .join("\n");
+
+  it("articles 조회·매물 묶음·매물 출처가 코드에 없다", () => {
+    expect(code).not.toMatch(/fetchAll\("articles"/);
+    expect(code).not.toMatch(/naverByGu|naverArticles|fromArticles/);
+    expect(code).not.toMatch(/medianSource\s*=\s*"articles"/);
+    expect(code).toMatch(/medianSource\s*=\s*"history"/); // 양성 앵커 — 시세이력 단계는 남는다
+  });
+
+  it("jeonseRate 는 null 상수 하나뿐이고 결과 행에 그 null 을 싣는다(계산·대체값이 되살아나면 red)", () => {
+    expect(code).toMatch(/const jeonseRate = null;/);
+    expect(code.match(/\bjeonseRate\s*=(?!=)/g) ?? []).toEqual(["jeonseRate ="]); // 다른 대입 0
+    expect(code).not.toMatch(/naver_jeonse_rate|jeonseMedian|jeonse12m/); // 계산 재료·대체값 0
+    expect(code).toMatch(/^\s+jeonse_rate: jeonseRate,\s*$/m); // 칸은 upsert 에서 빼지 않는다 — 명시적 null
+  });
+
+  it("jeonse_rate 는 옛 칸 목록에 남는다 — 옛 칸이 하나라도 있는 행은 jeonse_rate:null 을 실어 지난 값을 지운다", () => {
+    expect(OLD_STAT_KEYS_648).toContain("jeonse_rate");
+    const { full, scopeOnly } = splitUpsertRows_648([
+      { apartment_id: "a", _medianSource: "trades", nearby_median: 50000, jeonse_rate: null, pir: 7, psr: null, recent_trades_6m: 3, cancel_ratio_6m: null, updated_at: "t" },
+    ]);
+    expect(scopeOnly).toEqual([]);
+    expect(full[0]).toHaveProperty("jeonse_rate", null);
+  });
+
+  // 검사관 적대 m4a — 구 값을 지우며 같은 단지 값(complex_jeonse_rate)까지 결과 행에서 null 로 덮으면 화면·점수의
+  // 전세가율이 통째로 빈다. 결과 행은 scope.cols 펼침으로만 그 칸을 받는다.
+  it("결과 행은 complex_jeonse_rate 를 직접 대입하지 않고 scope.cols 펼침으로만 받는다", () => {
+    const m = code.match(/results\.push\(\{([\s\S]*?)\n\s*\}\);/);
+    expect(m, "results.push({ … }) 블록을 못 찾음").not.toBeNull();
+    const body = /** @type {RegExpMatchArray} */ (m)[1];
+    expect(body).toMatch(/^\s+jeonse_rate: jeonseRate,\s*$/m); // 양성 앵커 — 같은 블록을 잡았다
+    expect(body).toMatch(/^\s+\.\.\.\(scope \? scope\.cols : \{\}\),\s*$/m);
+    expect(body).not.toMatch(/\bcomplex_jeonse_rate\s*:/);
   });
 });
 
