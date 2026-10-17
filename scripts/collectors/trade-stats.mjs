@@ -548,7 +548,7 @@ async function main() {
   /** @type {Array<Record<string, any>>} DSR 전이 명단(요약·--out 에만 — 쓰기와 무관) */
   const dsrRows = [];
   let processed = 0;
-  /** @type {Map<string, { presale_n_if_moved_in: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
+  /** @type {Map<string, { presale_n_if_moved_in: number | null, sale_same_n: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
   const scopeDiagById = new Map();
 
   for (const apt of apartments) {
@@ -818,8 +818,8 @@ async function main() {
     const jrOver = jr.filter((r) => r.complex_jeonse_rate > 100);
     const df = sc.filter((r) => r.dong_fact != null).length;
     const movedInPresale = [...scopeDiagById.entries()].filter(([id, d]) => {
-      const row = sc.find((r) => r.apartment_id === id);
-      return d.moved_in && (row?.complex_sale_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
+      // 같은 평수 매매 수는 진단의 10㎡ 값(sale_same_n) — complex_sale_n 은 전세가율 폭(3㎡)이라 분양권(10㎡)과 맞대면 부푼다(세션650)
+      return d.moved_in && (d.sale_same_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
     }).length;
     log("summary", `새 칸 범위: T1 매매 ${t1s} · T1 분양권 ${t1p} · T2 동네 또래 ${t2} · T3 없음 ${t3} (㎡당 환산 ${perM2})`);
     log("summary", `같은 단지 전세가율 ${jr.length}곳 · 100% 초과 ${jrOver.length}곳 · 동네 사실 ${df}곳`);
