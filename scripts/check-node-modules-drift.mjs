@@ -20,6 +20,12 @@ import { fileURLToPath } from "node:url";
 
 /** 출력에 이름을 늘어놓는 최대 개수 */
 export const MAX_LISTED = 10;
+/**
+ * 줄 끝 ASCII 표식 — run-naver-local.bat 이 `findstr` 로 찾아 WARN_NAMES 에 `node-modules-drift` 를 덧붙인다
+ * (→ collector_runs.error_message "WARN_STEPS: …" → 아침 브리핑 경고 줄). 일치 줄에는 붙지 않는다.
+ */
+export const DRIFT_MARK = "DEPS_DRIFT";
+export const CHECK_FAILED_MARK = "DEPS_CHECK_FAILED";
 
 /**
  * @typedef {{ name: string, lock: string, installed: string | null }} DriftItem
@@ -55,7 +61,9 @@ export function findDrift(root) {
   let total = 0;
   for (const name of names) {
     const lockVer = lock.packages[`node_modules/${name}`]?.version;
-    // lock 에 설치 항목이 없는 직접 의존성(예: 다른 OS 전용 optional)은 비교 대상이 아니다.
+    // lock 에 `node_modules/<이름>` 항목이 없으면(lock 자체가 package.json 과 어긋난 비정상 상태) 기준 버전이 없어 건너뛴다.
+    // npm 7+ 는 다른 OS 전용 optional 도 lock 에 적는다 — 루트 optionalDependencies 에 그런 것이 생기면 이 PC 에선
+    // 설치되지 않아 "설치 없음"으로 경고된다(지금 루트 optional 0개).
     if (typeof lockVer !== "string") continue;
     total++;
     const pkgPath = join(root, "node_modules", name, "package.json");
@@ -79,7 +87,7 @@ export function findDrift(root) {
  * @returns {string}
  */
 export function formatDrift(result) {
-  if (!result.ok) return `[꾸러미 경고] 확인 실패: ${result.reason}`;
+  if (!result.ok) return checkFailedLine(result.reason);
   if (result.drift.length === 0) return `[꾸러미] lock 과 일치 (${result.total}개)`;
   const listed = result.drift
     .slice(0, MAX_LISTED)
@@ -88,8 +96,14 @@ export function formatDrift(result) {
   const rest = result.drift.length - MAX_LISTED;
   return (
     `[꾸러미 경고] ${result.drift.length}개 어긋남 — 본 폴더에서 npm install 필요(ci 아님): ${listed}` +
-    (rest > 0 ? ` 외 ${rest}개` : "")
+    (rest > 0 ? ` 외 ${rest}개` : "") +
+    ` ${DRIFT_MARK}`
   );
+}
+
+/** @param {string} reason */
+function checkFailedLine(reason) {
+  return `[꾸러미 경고] 확인 실패: ${reason} ${CHECK_FAILED_MARK}`;
 }
 
 /**
@@ -108,7 +122,7 @@ if (isCLI) {
   try {
     console.log(formatDrift(findDrift(parseRoot(process.argv.slice(2)))));
   } catch (err) {
-    console.log(`[꾸러미 경고] 확인 실패: ${err instanceof Error ? err.message : String(err)}`);
+    console.log(checkFailedLine(err instanceof Error ? err.message : String(err)));
   }
   process.exitCode = 0;
 }
