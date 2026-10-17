@@ -1377,6 +1377,13 @@
         ]
       },
       "backend/crawler/service_public.py": {
+        "complex_price_history": [
+          "area_no",
+          "base_month",
+          "complex_no",
+          "recorded_at",
+          "trade_type"
+        ],
         "complexes": [
           "public_data_attempted_at"
         ]
@@ -1462,6 +1469,15 @@
           "*"
         ]
       },
+      "backend/scripts/cleanup_public_trade_rows.py": {
+        "complex_price_history": [
+          "area_no",
+          "base_month",
+          "complex_no",
+          "id",
+          "trade_type"
+        ]
+      },
       "backend/scripts/import_subway_stations.py": {
         "subway_stations": [
           "*"
@@ -1542,6 +1558,12 @@
       ]
     },
     "2u": {
+      "backend/crawler/service_public.py": [
+        "complex_price_history"
+      ],
+      "backend/scripts/cleanup_public_trade_rows.py": [
+        "complex_price_history"
+      ],
       "backend/services/upsert.py": [
         "articles"
       ]
