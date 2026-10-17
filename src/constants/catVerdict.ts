@@ -1,5 +1,4 @@
 import type { Category } from "@/constants/profiles";
-import { DEV_NEUTRAL_BAND_PCT } from "./scoringTiers";
 import type { Res } from "@/types/scoring";
 
 // 카테고리 total → 상세 모달 종합 탭 미니카드의 "결론 1줄" 단일 출처 (세션 409 D2b).
@@ -32,18 +31,19 @@ export function catVerdict(k: string, cat: Res): string {
     const hasPriceData = (Number(cat.fairPrice) || 0) > 0;
     const d = cat.deviation != null ? Number(cat.deviation) : NaN;
     if (hasPriceData && Number.isFinite(d)) {
-      // 경계는 0 이 아니라 `DEV_NEUTRAL_BAND_PCT` — 우리 적정가 추정의 흔들림(중앙 ±11.5%p)보다
-      // 작은 차이로 방향을 단정하지 않는다. `subContext`·`cardChips` 와 **같은 상수**를 쓴다(세션531).
-      if (d > DEV_NEUTRAL_BAND_PCT) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 저렴`;
-      if (d < -DEV_NEUTRAL_BAND_PCT) return `적정가 대비 ${Math.abs(d).toFixed(0)}% 비쌈`;
-      return "적정가 수준";
+      // 세션651(사장님 결정 — 공공기관 준거): ±10% 판정("저렴/비쌈/적정가 수준")을 빼고 **산술 차이**만.
+      //   부호 = deviation 그대로(+면 분양가가 낮음). 반올림해 0 이면 "같은".
+      const pct = Math.abs(d).toFixed(0);
+      if (pct === "0") return "실거래와 같은 분양가";
+      return `실거래보다 ${pct}% ${d > 0 ? "낮은" : "높은"} 분양가`;
     }
     // ⚠️ 여기 오면 **적정가를 만들지 못한 단지**다 — 분양가가 없거나(임대·정비사업·후분양 등)
     //    주변 시세가 없어 fairPrice 를 못 세운 경우. 옛 코드는 총점 폴백으로 내려가
     //    74곳에게 "주변 대비 부담"이라 단정했다. 분양가도 모르고 주변과 비교한 적도 없는데
     //    나쁘다고 말한 것이다(낮은 총점은 PRICE_NO_DATA_DEFAULTS 기본값이 만든 값이지 관측이 아니다).
     //    같은 파일 benefit 이 noData 를 정직하게 빠지는 선례를 따른다.
-    return "적정가 산출 불가";
+    // 세션651: 옛 "적정가 산출 불가" → 점수 탭 판정표(`subContext`)와 같은 어휘.
+    return "비교할 실거래 없음";
   }
   const fn = VERDICT[k as Exclude<Category, "price">];
   return fn ? fn(cat.total) : "—";

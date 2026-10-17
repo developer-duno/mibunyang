@@ -9,6 +9,17 @@ export const fmtPrice = (v: number | null | undefined): string => {
 };
 
 /**
+ * 분양가와 실거래 중앙값의 **산술 차이**를 적는 말 (세션651 — 판정어 "저렴/비쌈/적정가 수준" 대신).
+ * 부호는 점수의 `deviation` 그대로다: (중앙값 − 분양가) ÷ 중앙값 × 100 이라 **+면 분양가가 낮음**.
+ * 시세 탭 표·점수 탭 판정·서브 detail 이 이 하나를 써서 같은 숫자를 같은 말로 적는다.
+ */
+export const fmtPriceGap = (dev: number): string => {
+  const abs = Math.abs(dev);
+  if (abs < 0.05) return "분양가가 같음";
+  return `분양가가 ${abs.toFixed(1)}% ${dev > 0 ? "낮음" : "높음"}`;
+};
+
+/**
  * 미분양률 표시 — 100% 초과는 데이터 신뢰 불가(전체 세대수에 청약홈 잔여공급분이
  * 들어가 분모가 작아진 경우)라 "100%+" 로 캡한다. 미분양은 본질적으로 전체 세대수를
  * 넘을 수 없으므로 2900% 같은 값은 표시 오류. collector(molit-units)가 진짜 세대수로

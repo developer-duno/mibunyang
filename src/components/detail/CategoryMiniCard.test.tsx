@@ -30,15 +30,16 @@ describe("CategoryMiniCard", () => {
     expect(screen.getByText("입지 우수")).toBeInTheDocument();
   });
 
-  it("price 카테고리는 deviation 실측 결론", () => {
-    render(
+  it("price 카테고리는 실거래 중앙값과의 산술 차이 (세션651 — 판정어 없음)", () => {
+    const { container } = render(
       <CategoryMiniCard
         k="price"
         cat={mk({ label: "가격 매력도", total: 40, fairPrice: 50000, deviation: "12.3" })}
         onJump={vi.fn()}
       />
     );
-    expect(screen.getByText("적정가 대비 12% 저렴")).toBeInTheDocument();
+    expect(screen.getByText("실거래보다 12% 낮은 분양가")).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/적정가|저렴|비쌈/);
   });
 
   it("클릭 시 onJump 호출", () => {
