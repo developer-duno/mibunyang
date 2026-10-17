@@ -49,10 +49,12 @@ function fmtNumber(n: number): string {
  * 부동산을 모르는 사람에게 "왜 마이너스인데 좋은 거지?"를 만든다.
  */
 export function deviationText(spec: DeviationFieldSpec, value: number, median: number, good: boolean): string {
-  const word = good ? spec.goodWord : spec.badWord;
+  // 세션651: `neutral` 줄은 유불리 말 대신 **값의 산술 방향**(한가운데 값보다 높음/낮음)만 — 판정 없음.
+  const word = spec.neutral ? (value > median ? "높음" : "낮음") : good ? spec.goodWord : spec.badWord;
+  const same = spec.neutral ? "같음" : "평균 수준";
   if (spec.unit === "percentPoint") {
     const diff = Math.abs(value - median);
-    if (Math.round(diff * 10) === 0) return "평균 수준";
+    if (Math.round(diff * 10) === 0) return same;
     const shown = diff < 1 ? diff.toFixed(1) : fmtNumber(diff);
     return `${shown}%p ${word}`;
   }
@@ -62,13 +64,13 @@ export function deviationText(spec: DeviationFieldSpec, value: number, median: n
     }
     if (median <= 0) return word;
     const pct = Math.abs(1 - value / median) * 100;
-    if (Math.round(pct) === 0) return "평균 수준";
+    if (Math.round(pct) === 0) return same;
     return `${fmtNumber(pct)}% ${word}`;
   }
   // percent
   if (median === 0) return word;
   const pct = Math.abs((value - median) / median) * 100;
-  if (Math.round(pct) === 0) return "평균 수준";
+  if (Math.round(pct) === 0) return same;
   return `${fmtNumber(pct)}% ${word}`;
 }
 
@@ -121,6 +123,18 @@ export function computeDeviation(
 
   const pct = percentileOf(stat, value);
   if (pct == null) return missing;
+
+  // 세션651: `neutral` 줄은 좋고 나쁨을 말하지 않는다 — 막대 = 백분위 그대로(오른쪽 = 값이 높음), 색 중립,
+  //   "평균 수준" 밴드 없이 한가운데 값과의 산술 차이를 그대로 적는다(재는 값 그대로).
+  if (spec.neutral) {
+    return {
+      state: "ok",
+      fav: pct,
+      text: deviationText(spec, value, stat.median, false),
+      tone: "neutral",
+      nationalFallback,
+    };
+  }
 
   // 낮을수록 좋은 지표는 뒤집어, 항상 "클수록 유리"로 만든다.
   const fav = spec.better === "low" ? 100 - pct : pct;

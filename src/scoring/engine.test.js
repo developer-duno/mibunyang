@@ -1787,32 +1787,35 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
   const sub = (/** @type {any} */ r, /** @type {string} */ name) =>
     r.subs.find((/** @type {any} */ s) => s.name === name);
 
-  it("ⓐ complex+sale 3건 — 적정가 = cmpFairPrice 그대로, 문구 '이 단지 실거래 3건(최근 12개월) 대비'", () => {
+  // 세션651(W6): detail = "{산술 차이} — {비교 기준} 중앙값 대비" (판정 밴드 안내 DEV_BAND_LABEL 삭제)
+  it("ⓐ complex+sale 3건 — 적정가 = cmpFairPrice 그대로, 문구 '분양가가 X% 낮음 — 이 단지 같은 평수 실거래 3건(최근 12개월) 중앙값 대비'", () => {
     const r = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 60000, cmpN: 3 }));
     expect(r.fairPrice).toBe(60000);
     expect(r.deviation).toBe((((60000 - 50000) / 60000) * 100).toFixed(1));
     expect(r.fairPriceScope).toBe("complex");
     expect(r.fairPriceSrc).toBe("sale");
     expect(r.fairPriceN).toBe(3);
-    expect(sub(r, "적정가 괴리도").detail).toContain("이 단지 실거래 3건(최근 12개월) 대비");
-    expect(sub(r, "적정가 괴리도").detail).not.toContain("분양권");
+    expect(sub(r, "실거래 대비 분양가").detail).toBe(
+      "분양가가 16.7% 낮음 — 이 단지 같은 평수 실거래 3건(최근 12개월) 중앙값 대비"
+    );
+    expect(sub(r, "실거래 대비 분양가").detail).not.toContain("분양권");
   });
 
-  it("ⓑ complex+presale — 문구 '이 단지 분양권 거래 N건(최근 M개월) 대비'", () => {
+  it("ⓑ complex+presale — 문구 '이 단지 같은 평수 분양권 거래 N건(최근 M개월) 중앙값 대비'", () => {
     const r = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpSrc: "presale", cmpFairPrice: 52000, cmpN: 7 }));
     expect(r.fairPrice).toBe(52000);
     expect(r.fairPriceSrc).toBe("presale");
-    expect(sub(r, "적정가 괴리도").detail).toContain("이 단지 분양권 거래 7건(최근 12개월) 대비");
-    expect(sub(r, "적정가 괴리도").detail).not.toContain("이 단지 실거래");
+    expect(sub(r, "실거래 대비 분양가").detail).toContain("이 단지 같은 평수 분양권 거래 7건(최근 12개월) 중앙값 대비");
+    expect(sub(r, "실거래 대비 분양가").detail).not.toContain("이 단지 같은 평수 실거래");
   });
 
-  it("ⓒ dong_peer — 문구 '같은 동 비슷한 연식(±10년)·같은 평수 실거래 N건 대비', 종류는 늘 매매", () => {
+  it("ⓒ dong_peer — 문구 '같은 동 비슷한 연식(±10년)·같은 평수 실거래 N건 중앙값 대비', 종류는 늘 매매", () => {
     const r = scorePrice(makeApt({ ...base, cmpScope: "dong_peer", cmpSrc: "sale", cmpFairPrice: 48000, cmpN: 4 }));
     expect(r.fairPrice).toBe(48000);
     expect(r.fairPriceScope).toBe("dong_peer");
     expect(r.fairPriceSrc).toBe("sale");
-    expect(sub(r, "적정가 괴리도").detail).toContain(
-      `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·같은 평수 실거래 4건 대비`
+    expect(sub(r, "실거래 대비 분양가").detail).toBe(
+      `분양가가 4.2% 높음 — 같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·같은 평수 실거래 4건 중앙값 대비`
     );
   });
 
@@ -1820,7 +1823,7 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
     const r = scorePrice(makeApt({ ...base, cmpScope: "dong_peer", cmpSrc: "presale", cmpFairPrice: 48000, cmpN: 4 }));
     expect(r.fairPriceScope).toBe("dong_peer");
     expect(r.fairPriceSrc).toBe("sale");
-    expect(sub(r, "적정가 괴리도").detail).not.toContain("분양권");
+    expect(sub(r, "실거래 대비 분양가").detail).not.toContain("분양권");
   });
 
   it("ⓓ none — 괴리도만 중립, 전세가율·PIR 은 값대로 판정(D10 — 옛 코드는 넷 다 중립)", () => {
@@ -1833,8 +1836,8 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
     expect(none.fairPriceScope).toBe("none");
     expect(none.fairPriceSrc).toBeNull();
     expect(none.fairPriceN).toBe(0);
-    expect(sub(none, "적정가 괴리도").score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
-    expect(sub(none, "적정가 괴리도").detail).toBe(
+    expect(sub(none, "실거래 대비 분양가").score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
+    expect(sub(none, "실거래 대비 분양가").detail).toBe(
       `비교할 실거래가 아직 없어요 (중립 ${PRICE_NO_DATA_DEFAULTS.dev}점)`
     );
     // 전세가율 75%·PIR 15배 는 중립(50)이 아니라 값대로
@@ -1853,7 +1856,7 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
       makeApt({ ...base, price: 0, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 60000, cmpN: 3 })
     );
     expect(r.fairPrice).toBe(0);
-    expect(sub(r, "적정가 괴리도").score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
+    expect(sub(r, "실거래 대비 분양가").score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
     expect(sub(r, "PIR").score).not.toBe(PRICE_NO_DATA_DEFAULTS.pir);
   });
 
@@ -1861,9 +1864,12 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
     const r = scorePrice(
       makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 61000, cmpN: 5, cmpAreaMode: "per_m2" })
     );
-    expect(sub(r, "적정가 괴리도").detail).toContain(`(면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산)`);
+    expect(sub(r, "실거래 대비 분양가").detail).toContain(`(면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산)`);
+    // ㎡당 환산은 같은 평수가 아니다 — "비슷한 평수"라 적는다(세션651)
+    expect(sub(r, "실거래 대비 분양가").detail).toContain("이 단지 비슷한 평수 실거래 5건");
     const same = scorePrice(makeApt({ ...base, cmpScope: "complex", cmpSrc: "sale", cmpFairPrice: 61000, cmpN: 5 }));
-    expect(sub(same, "적정가 괴리도").detail).not.toContain("㎡당 환산");
+    expect(sub(same, "실거래 대비 분양가").detail).not.toContain("㎡당 환산");
+    expect(sub(same, "실거래 대비 분양가").detail).toContain("이 단지 같은 평수 실거래 5건");
   });
 
   it("ⓕ complexJeonseRate null + 옛 jeonseRate 있음 → 전세가율 중립(구 값으로 대신하지 않는다, R3)", () => {
@@ -1872,7 +1878,9 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
     expect(sub(r, "전세가율").info).toBe("데이터 부재");
     expect(sub(r, "전세가율").detail).toBe(`같은 단지 전세·매매 거래 부족 (중립 ${PRICE_NO_DATA_DEFAULTS.jr}점)`);
     const has = scorePrice(makeApt({ ...base, complexJeonseRate: 75, jeonseRate: null }));
-    expect(sub(has, "전세가율").detail).toContain("이 단지 전세 4건 ÷ 매매 6건");
+    expect(sub(has, "전세가율").detail).toContain("같은 단지 같은 평수 전세 4건 ÷ 매매 6건 중앙값");
+    // 세션651: 판정 토막 "(적정 70~80%, 위험 40%↓, 과열 90%↑)" 이 돌아오면 red
+    expect(sub(has, "전세가율").detail).not.toMatch(/적정|위험|과열/);
   });
 
   it("ⓖ nearbyMedian·priceByArea·avgPriceSqm·presalePp 가 있어도 scope none 이면 적정가 0 (폴백 삭제)", () => {
@@ -1889,7 +1897,7 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
     );
     expect(r.fairPrice).toBe(0);
     expect(r.fairPriceScope).toBe("none");
-    expect(sub(r, "적정가 괴리도").info).toBe("데이터 부재");
+    expect(sub(r, "실거래 대비 분양가").info).toBe("데이터 부재");
   });
 
   it("ⓖ' 범위가 complex 여도 cmpFairPrice 가 0·null 이면 none — 다른 칸으로 메우지 않는다", () => {
@@ -2010,7 +2018,7 @@ describe("scorePrice — 시도 평균·분양 평당가 폴백 삭제 (세션60
     ]) {
       const r = scorePrice(makeApt({ ...over, nearbyMedian: null, cmpScope: "none", cmpFairPrice: null }));
       expect(r.fairPrice).toBe(0);
-      const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
+      const dev = /** @type {any} */ (r.subs.find((s) => s.name === "실거래 대비 분양가"));
       expect(dev.score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
       expect(dev.detail).not.toContain("광역 시도 평균");
       const rel = /** @type {any} */ (r.subs.find((s) => s.name === "데이터 신뢰도"));
@@ -2275,7 +2283,7 @@ describe("scorePrice — 내부 가중치 (세션66 · 세션607 D12)", () => {
     expect(s["PIR"]).toBe(60);
     const W = PRICE_SUB_WEIGHTS;
     const expected =
-      s["적정가 괴리도"] * W.dev +
+      s["실거래 대비 분양가"] * W.dev +
       s["전세가율"] * W.jr +
       s["PIR"] * W.pir +
       s["데이터 신뢰도"] * W.rel +
@@ -2286,7 +2294,7 @@ describe("scorePrice — 내부 가중치 (세션66 · 세션607 D12)", () => {
     expect(r.total).toBe(89);
     // 옛 가중치(괴리도 0.30 + PSR 0.25 중립 50)였다면 값이 달라야 이 가드가 의미 있다
     const old =
-      s["적정가 괴리도"] * 0.3 +
+      s["실거래 대비 분양가"] * 0.3 +
       50 * 0.25 +
       s["전세가율"] * 0.2 +
       s["PIR"] * 0.15 +
@@ -2405,7 +2413,7 @@ describe("클램핑 일관성 — 음수 방어", () => {
 describe("scorePrice — price=0 devSc=97 오인 버그 (세션99)", () => {
   it("price=0 + nearbyMedian>0 → 데이터 부재 분기 (devSc=PRICE_NO_DATA_DEFAULTS.dev)", () => {
     const r = scorePrice(makeApt({ price: 0, nearbyMedian: 202000 }));
-    const dev = /** @type {any} */ (r.subs.find((s) => s.name === "적정가 괴리도"));
+    const dev = /** @type {any} */ (r.subs.find((s) => s.name === "실거래 대비 분양가"));
     expect(dev.score).toBe(PRICE_NO_DATA_DEFAULTS.dev);
     expect(dev.info).toBe("데이터 부재");
     expect(r.fairPrice).toBe(0);
@@ -2958,7 +2966,7 @@ describe("matchAreaPrice — 평형별 실거래 버킷 매칭", () => {
  * 남는 뜻 — **실전 경로(calcCats → sanitize → scorePrice)** 에서 새 규칙이 그대로 걸리는지 — 를 여기서 잠근다.
  */
 describe("scorePrice — 실전 경로(calcCats)에서 새 비교 범위 (세션607)", () => {
-  const dev = (/** @type {any} */ r) => r.subs.find((/** @type {any} */ s) => s.name === "적정가 괴리도");
+  const dev = (/** @type {any} */ r) => r.subs.find((/** @type {any} */ s) => s.name === "실거래 대비 분양가");
 
   it("미준공 단지(분양권 거래 기준)도 적정가에 신축 프리미엄을 곱하지 않는다 — cmpFairPrice 그대로", () => {
     const r = calcCats(

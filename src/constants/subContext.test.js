@@ -83,11 +83,11 @@ describe("SUB_CONTEXT", () => {
   });
 
   // interpret 3단계 검증 — 점수가 아니라 **값(info)** 으로 가른다 (세션512, 아래 블록 참조)
-  it("price.적정가 괴리도: +12%→저렴, +1%→적정, -12%→비쌈", () => {
-    const fn = /** @type {(v: number, i?: string) => string} */ (SUB_CONTEXT.price["적정가 괴리도"].interpret);
-    expect(fn(70, "+12.0%")).toContain("저렴");
-    expect(fn(40, "+1.0%")).toContain("적정");
-    expect(fn(30, "-12.0%")).toContain("비쌈");
+  it("price.실거래 대비 분양가: +12%→낮음, +1%→낮음(판정 없이), -12%→높음 (세션651)", () => {
+    const fn = /** @type {(v: number, i?: string) => string} */ (SUB_CONTEXT.price["실거래 대비 분양가"].interpret);
+    expect(fn(70, "+12.0%")).toBe("분양가가 12.0% 낮음");
+    expect(fn(40, "+1.0%")).toBe("분양가가 1.0% 낮음");
+    expect(fn(30, "-12.0%")).toBe("분양가가 12.0% 높음");
   });
 });
 
@@ -226,50 +226,38 @@ describe("PRODUCT_MAX", () => {
     const say = (cat, sub, sc, info) =>
       /** @type {(s: number, i?: string) => string} */ (/** @type {any} */ (SUB_CONTEXT)[cat][sub].interpret)(sc, info);
 
-    it("적정가 괴리도: '주변 대비'라 하지 않는다 — 적정가와의 괴리다", () => {
-      // deviation = 적정가(주변 중앙가 × 연식·면적·브랜드 계수) 대비. 주변 단지 직접 비교가 아니다.
-      for (const sc of [90, 50, 10]) expect(say("price", "적정가 괴리도", sc, "-12.0%")).not.toMatch(/주변/);
-      expect(say("price", "적정가 괴리도", 10, "-12.0%")).toBe("적정가보다 비쌈");
+    // 세션651(사장님 결정 — 공공기관 준거): 키 = 엔진 서브 이름 "실거래 대비 분양가"(옛 "적정가 괴리도").
+    //   ±10% 판정("적정가보다 저렴/비쌈"·"적정가 수준")을 빼고 **값(info)의 산술 차이**만 적는다.
+    //   점수로 역산하지 않는다(세션512 — 점수로 가르면 값과 어긋난다). 옛 문구로 되돌리면 red.
+    it("실거래 대비 분양가: '주변 대비'라 하지 않는다", () => {
+      for (const sc of [90, 50, 10]) expect(say("price", "실거래 대비 분양가", sc, "-12.0%")).not.toMatch(/주변/);
+      expect(say("price", "실거래 대비 분양가", 10, "-12.0%")).toBe("분양가가 12.0% 높음");
     });
 
-    // ⚠️ 점수로 가르면 값과 어긋난다 — 전세가율(위)과 **같은 종류의 결함**이 옆 항목에 남아 있었다.
-    //    실측: 괴리도 양수인데 "비쌈" 10곳 · "적정가 수준" 91곳 중 45곳이 ±5% 밖.
-    //    옛 점수 기반 산식으로 되돌리면 red.
-    it("적정가 괴리도: 값(info)으로 가른다 — 양수인데 '비쌈'이라 하지 않는다", () => {
-      // 옛 산식이면 sc=10 → "적정가보다 비쌈". 값은 +0.9% 라 거짓이었다.
-      expect(say("price", "적정가 괴리도", 10, "+0.9%")).toBe("적정가 수준");
-      expect(say("price", "적정가 괴리도", 10, "+0.9%")).not.toMatch(/비쌈/);
-      expect(say("price", "적정가 괴리도", 100, "+18.8%")).toBe("적정가보다 저렴");
-      expect(say("price", "적정가 괴리도", 100, "-12.0%")).toBe("적정가보다 비쌈");
-      // 옛 산식이면 sc=90 → "저렴". 값이 ±5% 안이면 "적정가 수준"이다.
-      expect(say("price", "적정가 괴리도", 90, "-3.2%")).toBe("적정가 수준");
-    });
-
-    it("적정가 괴리도: 밴드 경계는 benchmark 문구와 한 쌍이다 (경계 포함)", () => {
-      // 값은 `DEV_NEUTRAL_BAND_PCT` 하나에서 온다 — 세션531 이전에는 이 파일 두 곳과
-      // `scorePrice.ts` detail 에 각각 손으로 적혀 있었다. 여기서 검사하는 것은 **경계 동작**
-      // (경계값 포함, 한 눈금 밖은 방향 판정)이지 값 자체가 아니다.
-      // 값의 정당성은 `scoringTiers.test.ts` 의 **관측값 앵커**가 따로 잠근다 —
-      // 파생 가드만 두면 상수를 아무 값으로 바꿔도 전부 초록이 된다(세션514).
+    it("실거래 대비 분양가: 값(info)으로 적는다 — 점수와 무관, 판정어 없음", () => {
+      expect(say("price", "실거래 대비 분양가", 10, "+0.9%")).toBe("분양가가 0.9% 낮음");
+      expect(say("price", "실거래 대비 분양가", 100, "+18.8%")).toBe("분양가가 18.8% 낮음");
+      expect(say("price", "실거래 대비 분양가", 100, "-12.0%")).toBe("분양가가 12.0% 높음");
+      expect(say("price", "실거래 대비 분양가", 90, "-3.2%")).toBe("분양가가 3.2% 높음");
+      expect(say("price", "실거래 대비 분양가", 50, "0.0%")).toBe("분양가가 같음");
+      // 옛 밴드 경계 근처도 판정어 없이 — `DEV_NEUTRAL_BAND_PCT` 를 다시 쓰면 red
       const B = DEV_NEUTRAL_BAND_PCT;
-      expect(say("price", "적정가 괴리도", 50, `+${B.toFixed(1)}%`)).toBe("적정가 수준");
-      expect(say("price", "적정가 괴리도", 50, `+${(B + 0.1).toFixed(1)}%`)).toBe("적정가보다 저렴");
-      expect(say("price", "적정가 괴리도", 50, `-${B.toFixed(1)}%`)).toBe("적정가 수준");
-      expect(say("price", "적정가 괴리도", 50, `-${(B + 0.1).toFixed(1)}%`)).toBe("적정가보다 비쌈");
-      expect(SUB_CONTEXT.price["적정가 괴리도"].benchmark).toContain(`±${B}%`);
-      // 옛 폭(±5)이 되돌아오면 red — 그 폭은 우리 추정 흔들림(중앙 ±11.5%p)보다 훨씬 좁아
-      // 표본의 94%에게 "오차보다 작은 차이"로 저렴/비쌈을 단정했다.
-      expect(say("price", "적정가 괴리도", 50, "+7.0%")).toBe("적정가 수준");
-      expect(say("price", "적정가 괴리도", 50, "-7.0%")).toBe("적정가 수준");
+      for (const info of [`+${B.toFixed(1)}%`, `+${(B + 0.1).toFixed(1)}%`, `-${B.toFixed(1)}%`, "+7.0%", "-7.0%"]) {
+        expect(say("price", "실거래 대비 분양가", 50, info), info).not.toMatch(/적정가|저렴|비쌈|수준/);
+      }
     });
 
-    it("적정가 괴리도: 적정가를 못 만들면 판정하지 않는다 (catVerdict 와 같은 어휘)", () => {
+    it("실거래 대비 분양가: benchmark = 비교 기준과 출처 (판정 밴드 없음)", () => {
+      const b = SUB_CONTEXT.price["실거래 대비 분양가"].benchmark;
+      expect(b).toBe("같은 단지 같은 평수 실거래 중앙값 대비 · 국토부 실거래가");
+      expect(b).not.toMatch(/적정|±/);
+      expect(/** @type {any} */ (SUB_CONTEXT.price)["적정가 괴리도"]).toBeUndefined(); // 옛 키가 돌아오면 red
+    });
+
+    it("실거래 대비 분양가: 비교 대상을 못 만들면 차이를 지어내지 않는다", () => {
       // scorePrice 무데이터 분기가 내는 info. 점수(devSc 기본값)로 역산하면 거짓 판정이 된다.
-      expect(say("price", "적정가 괴리도", 50, "데이터 부재")).toBe("적정가 산출 불가");
-      expect(say("price", "적정가 괴리도", 50)).toBe("적정가 산출 불가");
-      for (const info of ["데이터 부재", undefined]) {
-        expect(say("price", "적정가 괴리도", 50, info)).not.toMatch(/저렴|비쌈|수준/);
-      }
+      expect(say("price", "실거래 대비 분양가", 50, "데이터 부재")).toBe("비교할 실거래 없음");
+      expect(say("price", "실거래 대비 분양가", 50)).toBe("비교할 실거래 없음");
     });
 
     // ⚠️ 도시·산업축은 "반경 5km 내 …없음" 인데 교통만 반경이 없어, 936곳(56.9%)이 읽는 문구가
@@ -282,13 +270,22 @@ describe("PRODUCT_MAX", () => {
       }
     });
 
-    it("전세가율: 높아서 낮은 점수를 '낮다'고 하지 않는다 (∩ 곡선)", () => {
-      expect(say("price", "전세가율", 5, "151.1%")).toMatch(/높음/);
-      expect(say("price", "전세가율", 5, "151.1%")).not.toMatch(/낮/);
-      expect(say("price", "전세가율", 20, "85.0%")).toMatch(/높음/);
-      expect(say("price", "전세가율", 30, "55.0%")).toMatch(/낮음/);
-      // 점수로 가르면 아래쪽(jr 66% → sc 72)이 "적정"에 섞여 새 거짓이 생긴다
-      expect(say("price", "전세가율", 72, "66.1%")).not.toMatch(/적정/);
+    // 세션651(사장님 결정): 전세가율이 몇 %면 좋은지 공공기관 기준이 없다 — 판정어("적정·높음·낮음")를 빼고 산식만.
+    //   (세션512 의 ∩ 곡선 거짓 — 높아서 낮은 점수를 '낮다'고 부르던 것 — 은 판정어가 없어져 원천 소멸.)
+    it("전세가율: 판정어 없이 산식 — 값이 어디에 있든", () => {
+      for (const [sc, info] of [
+        [5, "151.1%"],
+        [20, "85.0%"],
+        [30, "55.0%"],
+        [72, "66.1%"],
+        [100, "75.0%"],
+      ]) {
+        const v = say("price", "전세가율", /** @type {number} */ (sc), /** @type {string} */ (info));
+        expect(v).toBe(`전세 중앙값 ÷ 매매 중앙값 = ${parseFloat(/** @type {string} */ (info))}%`);
+        expect(v).not.toMatch(/적정|높음|낮음|주의|보통/);
+      }
+      expect(say("price", "전세가율", 50, "데이터 부재")).toBe("같은 단지 전세·매매 거래 부족");
+      expect(SUB_CONTEXT.price["전세가율"].benchmark).toBe("같은 단지 같은 평수 전세·매매 각 3건 이상일 때 계산");
     });
 
     it("시공사 재무 기준선은 BUILDER_DEBT_TIERS 에서 만든다 — 등급 글자(AA)는 없다 (세션592)", () => {

@@ -236,76 +236,47 @@ describe("AptCard", () => {
   });
 
   // 세션 510 PR-4: 회색 "적정가 {info}" 중복 칩은 폐지됐다 — subs[0].info 와 deviation 이
-  // 운영 실측(1,525곳)에서 같은 숫자였다. 이제 문장형 "적정가보다 N%" 하나만 남는다.
-  // (뒤집은 가드: 옛 표기가 다시 뜨면 잡히고, 새 문장형이 안 뜨면 잡힌다 — 정보가 사라진 게 아님을 확인)
-  it('price.subs[0].info=정상값이어도 회색 "적정가 {info}" 칩은 안 뜬다 — 문장형만 남는다 (세션 510 PR-4)', () => {
+  // 운영 실측(1,525곳)에서 같은 숫자였다.
+  // 세션651(사장님 결정 — 공공기관 준거): 판정 칩 3종("적정가보다 N% 저렴/비쌈"·"적정가 수준")이 비교 사실 칩 하나
+  //   (`이 단지 실거래 중앙 X (N건·M개월)`)로 바뀌었다 — 판정어·초록/빨강·차이 % 없음. 옛 문구로 되돌리면 red.
+  const CMP_CHIP = "이 단지 실거래 중앙 5억 5,000만 (5건·12개월)"; // makeApt 기본 cmpFairPrice 55000·cmpN 5·cmpMonths 12
+
+  it('price.subs[0].info=정상값이어도 회색 "적정가 {info}" 칩은 안 뜬다 — 비교 칩 하나만 (세션 510 · 651)', () => {
     const res = makeRes();
-    res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트(가격 데이터 보유 판별자)
-    // ⚠️ 세션531: 판정 경계가 0 → ±DEV_NEUTRAL_BAND_PCT(10) 로 넓어졌다. -3.5 는 이제 "적정가 수준"
-    //    이라 이 가드(문장형이 뜬다)의 대상이 아니다 — 밴드 밖 값으로 옮긴다.
+    res.cats.price.fairPrice = 90000; // fairPrice>0 게이트(가격 데이터 보유 판별자)
     res.cats.price.deviation = "-13.5";
     render(<AptCard {...makeProps({ res })} />);
     expect(screen.queryByText("적정가 -13.5%")).toBeNull();
-    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale
-    // → priceBasisLabel("이 단지 실거래 기준") (옛 기대 "(인근 실거래 기준)" — nearbyMedian 경로는 폐지).
-    expect(screen.getByText("적정가보다 13% 비쌈 (이 단지 실거래 기준)")).toBeInTheDocument(); // Math.abs(Math.round(-13.5))=13 (JS는 -13.5를 -13으로 반올림)
+    expect(screen.getByText(CMP_CHIP)).toBeInTheDocument();
   });
 
-  // 세션411: 적정가 괴리(deviation) 부호 — 양수(+)=적정가보다 저렴(좋음). scorePrice.ts:127
-  // dev=((fairPrice-price)/fairPrice)*100. 역부호 회귀 가드 (세션409 적대검증 발굴).
-  it("deviation 양수(저렴)면 녹색 '+N% 저렴' 배지 표시", () => {
-    const res = makeRes();
-    res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트 추가 — 옛 픽스처엔 없어 칩이 안 떴다
-    res.cats.price.deviation = "18.4";
-    render(<AptCard {...makeProps({ res })} />);
-    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
-    expect(screen.getByText("적정가보다 18% 저렴 (이 단지 실거래 기준)")).toBeInTheDocument(); // Math.round("18.4")=18
-  });
+  // 세션411: 괴리(deviation) 부호 — 양수(+)=분양가가 낮음. scorePrice.ts dev=((fairPrice-price)/fairPrice)*100.
+  // 세션651: 칩에는 차이·판정을 적지 않으므로 부호와 무관하게 같은 칩 — 판정어·색이 돌아오면 red.
+  it.each(["18.4", "-18.4", "3.5", "-3.5", "9.9", "-9.9", "40"])(
+    "deviation %s%% 여도 판정어·차이 % 없이 같은 비교 칩 (세션651)",
+    (d) => {
+      const res = makeRes();
+      res.cats.price.fairPrice = 90000;
+      res.cats.price.deviation = d;
+      const { container } = render(<AptCard {...makeProps({ res })} />);
+      expect(screen.getByText(CMP_CHIP)).toBeInTheDocument();
+      expect(container.textContent).not.toMatch(/적정가|저렴|비쌈/);
+    }
+  );
 
-  it("deviation 음수(비쌈)면 빨강 '비쌈' 배지 표시 + '저렴' 미표시 (세션420 A)", () => {
-    const res = makeRes();
-    res.cats.price.fairPrice = 90000; // 세션 510 PR-4: fairPrice>0 게이트
-    res.cats.price.deviation = "-18.4";
-    render(<AptCard {...makeProps({ res })} />);
-    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
-    expect(screen.getByText("적정가보다 18% 비쌈 (이 단지 실거래 기준)")).toBeInTheDocument(); // Math.abs(Math.round("-18.4"))=18
-    expect(screen.queryByText(/저렴/)).toBeNull(); // 음수는 저렴 배지 안 뜸 (상호배타)
-  });
-
-  it("deviation 양수(저렴)면 '비쌈' 배지 미표시 (세션420 A 상호배타)", () => {
-    const res = makeRes();
-    res.cats.price.deviation = "18.4";
-    render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/비쌈/)).toBeNull();
-  });
-
-  // 세션531: 판정 경계가 0 → ±10 으로 넓어졌다. 그 폭은 우리 적정가 추정 자체의 흔들림
-  //   (중앙 ±11.5%p)에서 왔다 — 그보다 작은 차이로 초록/빨강 굵은 칩을 달면 알 수 없는 것을
-  //   강점·약점이라 말하는 셈이고, 같은 단지를 점수 탭은 "적정가 수준"이라 불러 어긋났다.
-  //   옛 경계(0)로 되돌리면 아래 두 건이 red.
-  it.each(["3.5", "-3.5", "9.9", "-9.9"])("deviation %s%% 는 밴드 안이라 '적정가 수준' (세션531)", (d) => {
-    const res = makeRes();
-    res.cats.price.fairPrice = 90000;
-    res.cats.price.deviation = d;
-    render(<AptCard {...makeProps({ res })} />);
-    // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
-    expect(screen.getByText("적정가 수준 (이 단지 실거래 기준)")).toBeInTheDocument();
-    expect(screen.queryByText(/적정가보다/)).toBeNull();
-  });
-
-  it("deviation null 이면 배지 미표시", () => {
+  it("deviation null 이면 비교 칩 미표시", () => {
     const res = makeRes();
     res.cats.price.deviation = null;
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/적정가보다/)).toBeNull();
+    expect(screen.queryByText(/실거래 중앙/)).toBeNull();
   });
 
-  it('deviation "0.0"(데이터 부재 분기) 이면 배지 미표시 (저렴·비쌈 둘 다)', () => {
-    // scorePrice.ts:116 데이터 부재 분기가 fairPrice=0 + deviation="0.0" 산출 → 0>0 false, 0<0 false
+  it('deviation "0.0"(데이터 부재 분기 — fairPrice 없음) 이면 비교 칩 미표시', () => {
+    // scorePrice.ts 데이터 부재 분기가 fairPrice=0 + deviation="0.0" 산출 → fairPrice>0 게이트에서 빠진다
     const res = makeRes();
     res.cats.price.deviation = "0.0";
     render(<AptCard {...makeProps({ res })} />);
-    expect(screen.queryByText(/적정가보다/)).toBeNull();
+    expect(screen.queryByText(/실거래 중앙/)).toBeNull();
   });
 
   // 세션422: 청약 경쟁률 배지 — 분양중/청약중/분양계획 + competitionRate>0 일 때만 (미분양 제외)
@@ -508,7 +479,36 @@ describe("AptCard", () => {
       const { rerender } = render(<AptCard {...makeProps({ apt: aptInitial })} />);
       expect(screen.queryByText(/전세가율 44%/)).toBeNull();
       rerender(<AptCard {...makeProps({ apt: aptUpdated })} />);
+      // 세션651: 전세가율 칩은 회색 사실 칩(neutral)이라 "지표 N개 더" 안에 접힌다 — 펼쳐서 본다
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
       expect(screen.getByText(/전세가율 44%/)).toBeInTheDocument();
+    });
+
+    // 세션651 — 칩 문구가 새 재료(전세·매매 건수, 비교 중앙값·건수·기간·㎡당 환산)를 적는다.
+    // ⚠️ 뮤테이션 대상: AptCard.tsx comparator 에서 그 칸 비교를 지우면 옛 숫자가 카드에 남아 red.
+    it("전세 건수(complexJeonseN)만 바뀌어도 카드 리렌더 — 산식 숫자가 바뀐다 (세션651)", () => {
+      const a0 = makeApt({ id: "naver-100", complexJeonseRate: 72, complexJeonseN: 4, complexSaleN: 8 });
+      const a1 = makeApt({ id: "naver-100", complexJeonseRate: 72, complexJeonseN: 6, complexSaleN: 8 });
+      const { rerender } = render(<AptCard {...makeProps({ apt: a0 })} />);
+      rerender(<AptCard {...makeProps({ apt: a1 })} />);
+      fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
+      expect(screen.getByText("전세가율 72% (전세 6건 ÷ 매매 8건)")).toBeInTheDocument();
+    });
+
+    it.each([
+      ["cmpN", 9, "이 단지 실거래 중앙 5억 5,000만 (9건·12개월)"],
+      ["cmpMonths", 6, "이 단지 실거래 중앙 5억 5,000만 (5건·6개월)"],
+      ["cmpAreaMode", "per_m2", "이 단지 실거래 중앙 5억 5,000만 (5건·12개월·㎡당 환산)"],
+      ["cmpFairPrice", 61000, "이 단지 실거래 중앙 6억 1,000만 (5건·12개월)"],
+    ])("비교 칩 재료 %s 만 바뀌어도 카드 리렌더 (세션651)", (field, to, want) => {
+      const res = makeRes();
+      res.cats.price.fairPrice = 55000;
+      res.cats.price.deviation = "5.0";
+      const a0 = makeApt({ id: "naver-100" });
+      const a1 = makeApt({ id: "naver-100", [field]: to });
+      const { rerender } = render(<AptCard {...makeProps({ apt: a0, res })} />);
+      rerender(<AptCard {...makeProps({ apt: a1, res })} />);
+      expect(screen.getByText(want)).toBeInTheDocument();
     });
   });
 
@@ -559,13 +559,12 @@ describe("AptCard", () => {
       expect(screen.queryByText(/입지 우수/)).toBeNull();
     });
 
-    it("투자(가격 최우선) + 가격 매력이어도 옛 '적정가 대비 N% 저렴' 문구는 안 뜨고, core 층 '적정가보다 N% 저렴'가 뜬다", () => {
+    it("투자(가격 최우선) + 가격 매력이어도 옛 판정 문구는 안 뜨고, core 층 비교 칩이 뜬다 (세션651)", () => {
       const cats = makeRes().cats;
       cats.price = { ...cats.price, total: 75, fairPrice: 50000, deviation: 12 };
-      render(<AptCard {...makeProps({ profileWeights: INVEST_W, res: makeRes({ cats }) })} />);
-      expect(screen.queryByText(/적정가 대비 12% 저렴/)).toBeNull();
-      // (이 단지 실거래 기준) = 비교 근거 표기(세션536) — 세션607 부터 makeScoredItem 기본 fairPriceScope "complex"·sale (옛 기대 "(인근 실거래 기준)")
-      expect(screen.getByText("적정가보다 12% 저렴 (이 단지 실거래 기준)")).toBeInTheDocument();
+      const { container } = render(<AptCard {...makeProps({ profileWeights: INVEST_W, res: makeRes({ cats }) })} />);
+      expect(container.textContent).not.toMatch(/적정가|저렴|비쌈/);
+      expect(screen.getByText("이 단지 실거래 중앙 5억 5,000만 (5건·12개월)")).toBeInTheDocument();
     });
   });
 
