@@ -112,7 +112,7 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
    * 세 필드 각각이 실제로 리렌더를 유발하는지 확인한다.
    */
   const cases = [
-    ["pp", 1200, 4000, /비싸요|평균 수준/],
+    ["pp", 1200, 4000, /% 높음|같음/], // 세션651: 평당가 줄은 neutral — "비싸요" 대신 산술 방향
     ["unsoldRate", 4, 19, /많아요|평균 수준/],
     ["subwayDist", 300, 1400, /멀어요|평균 수준/],
   ];
@@ -161,7 +161,7 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
     const { rerender, container } = render(<AptCard {...props} />);
     const first = container.textContent ?? "";
 
-    // 훨씬 비싼 지역 분포로 교체 → 같은 단지가 '싸다' 쪽으로 이동해야 한다
+    // 훨씬 비싼 지역 분포로 교체 → 같은 단지가 '낮음' 쪽으로 이동해야 한다(세션651: 평당가 줄은 neutral)
     const pricier = computeRegionalStats(
       Array.from(
         { length: 21 },
@@ -170,7 +170,8 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
     );
     rerender(<AptCard {...props} regionStats={pricier} />);
     expect(container.textContent).not.toBe(first);
-    expect(container.textContent).toMatch(/싸요/);
+    expect(container.textContent).toMatch(/% 낮음/);
+    expect(container.textContent).not.toMatch(/싸요|비싸요/);
   });
 
   it("카테고리 총점만 바뀌어도 다시 그린다 (총점 합이 같은 경우 방어)", () => {

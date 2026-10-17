@@ -5,6 +5,7 @@ import { HelpHint } from "./HelpHint";
 import { SUB_CONTEXT, PRODUCT_MAX } from "@/constants/subContext";
 import { catHelp } from "@/constants/catHelp";
 import type { Res } from "@/types/scoring";
+import { fmtPriceGap } from "@/lib/format";
 
 type SubScoreItem = { name: string; score: number; info?: string };
 
@@ -84,6 +85,18 @@ function isNoDataInfo(info?: string): boolean {
     info.includes("미확인") ||
     info.includes("자료 없음")
   );
+}
+
+/**
+ * 화면에 그릴 서브 값 (세션651 검사관 보완). 가격 서브 "실거래 대비 분양가" 의 info 는 `+11.5%`
+ * (= deviation, **+면 분양가가 낮음**)라 숫자 그대로 그리면 "+" 가 "분양가가 높다"로 거꾸로 읽힌다 —
+ * **표시만** 말로(`fmtPriceGap`) 바꾼다. info 값 자체는 숫자 그대로 둔다(`subContext` interpret 이 parseFloat 한다).
+ * 그 서브의 해석 줄(interpret)은 같은 말이 되므로 아래에서 한 번만 그린다.
+ */
+export function displaySubInfo(name: string, info?: string): string | undefined {
+  if (name !== "실거래 대비 분양가") return info;
+  const v = info ? parseFloat(info) : NaN;
+  return Number.isFinite(v) ? fmtPriceGap(v) : info;
 }
 
 // export: 세션508 PR-3b B4 — 입지 탭 한 줄 요약(DetailModal)이 이 함수를 재사용한다.
@@ -186,12 +199,14 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
             const sc = ctx[s.name];
             // `s.info` 를 함께 넘긴다 — 점수만 보면 "값이 있는데 낮은 점수"와 "값이 아예 없음"을
             // 구분하지 못해 미래가치 3축에서 거짓 문구가 났다(세션512, 704곳/42.8%).
-            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score, s.info);
+            const shown = displaySubInfo(s.name, s.info);
+            const interpRaw = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score, s.info);
+            const interp = interpRaw === shown ? null : interpRaw; // 같은 말을 두 번 쓰지 않는다(세션651)
             return (
               <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 4, padding: "3px 0" }}>
                 <span style={{ fontSize: F.xs, color: C.muted, flexShrink: 0 }}>·</span>
                 <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}:</span>
-                <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
+                <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{shown}</span>
                 {interp &&
                   (() => {
                     const sign = scoreSign(s.score, k);
@@ -219,7 +234,9 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
             const dots = getDots(s.score, k, s.name);
             // `s.info` 를 함께 넘긴다 — 점수만 보면 "값이 있는데 낮은 점수"와 "값이 아예 없음"을
             // 구분하지 못해 미래가치 3축에서 거짓 문구가 났다(세션512, 704곳/42.8%).
-            const interp = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score, s.info);
+            const shown = displaySubInfo(s.name, s.info);
+            const interpRaw = isNoDataInfo(s.info) ? null : sc?.interpret?.(s.score, s.info);
+            const interp = interpRaw === shown ? null : interpRaw; // 같은 말을 두 번 쓰지 않는다(세션651)
             const sc2 = scoreColor(s.score, k, s.name);
             return (
               <div
@@ -228,7 +245,7 @@ export const CatPanel = memo(function CatPanel({ cat, k, emphasized, defaultExpa
               >
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                   <span style={{ fontSize: F.base, fontWeight: 600, color: C.text }}>{s.name}</span>
-                  <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{s.info}</span>
+                  <span style={{ fontSize: F.base, fontWeight: 700, color: col }}>{shown}</span>
                 </div>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 2 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>

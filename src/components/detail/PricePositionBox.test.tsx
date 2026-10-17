@@ -8,6 +8,8 @@ import {
   complexJeonseText,
   effectiveScope,
   PRICE_SOURCE_TEXT,
+  SAME_HOME_BASIS_TEXT,
+  priceSourceText,
 } from "./PricePositionBox";
 import type { Apt } from "@/types/scoring";
 
@@ -175,8 +177,33 @@ describe("상자 — 머리 줄 · 표 · 출처, 판정어·눈금 없음 (세�
     expect(src.textContent).toBe(
       "출처: 국토교통부 아파트 실거래가(공공데이터포털) · 같은 집 기준 = 한국부동산원 실거래가격지수 정의(단지·면적 같음)"
     );
-    expect(src.textContent).toBe(PRICE_SOURCE_TEXT);
+    expect(src.textContent).toBe(priceSourceText(apt(T1_SALE)));
     expect(container.textContent).toContain("분양가가 12.5% 낮음");
+  });
+
+  // 세션651 검사관 보완: "같은 집 기준 = 부동산원 정의(단지·면적 같음)" 는 같은 단지 · 같은 면적일 때만 참이다.
+  //   ㎡당 환산(가까운 면적)·같은 동 또래(다른 단지)에 붙이면 거짓 — 국토부 출처만. 범위 조건을 빼면 red.
+  it.each([
+    ["T1 매매 · 같은 면적", { ...T1_SALE }, true],
+    // 세션651 재검사: 분양권 거래 비교엔 붙이지 않는다 — 부동산원 실거래가격지수는 매매 거래 기준
+    ["T1 분양권 · 같은 면적 (분양권이면 국토부 출처만)", { ...T1_PRESALE }, false],
+    ["T1 · ㎡당 환산", { ...T1_SALE, cmpAreaMode: "per_m2" }, false],
+    ["T2 같은 동 또래 · 같은 면적", { ...T2 }, false],
+    ["T2 같은 동 또래 · ㎡당 환산", { ...T2, cmpAreaMode: "per_m2" }, false],
+  ] as const)("출처 줄 — %s → 부동산원 '같은 집' 토막 %s", (_n, over, sameHome) => {
+    const a = apt(over);
+    const scope = over.cmpScope as "complex" | "dong_peer";
+    render(<PricePositionBox priceCat={cat(scope, "5.0", over.cmpFairPrice)} apt={a} />);
+    const src = screen.getByTestId("price-source").textContent;
+    expect(src).toBe(sameHome ? `${PRICE_SOURCE_TEXT} · ${SAME_HOME_BASIS_TEXT}` : PRICE_SOURCE_TEXT);
+    expect(src?.includes("한국부동산원")).toBe(sameHome);
+    expect(src).toContain("국토교통부 아파트 실거래가"); // 거래 자료 출처는 늘 있다
+  });
+
+  it("전세가율 줄만 있을 때(범위 없음)도 국토부 출처만", () => {
+    const a = apt({ complexJeonseRate: 72, complexJeonseN: 5, complexSaleN: 8 });
+    render(<PricePositionBox priceCat={undefined} apt={a} />);
+    expect(screen.getByTestId("price-source").textContent).toBe(PRICE_SOURCE_TEXT);
   });
 
   it("판정어·눈금이 돌아오지 않는다 — 큰 괴리여도", () => {

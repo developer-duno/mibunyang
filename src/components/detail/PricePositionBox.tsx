@@ -55,9 +55,21 @@ type PriceCatLike =
 
 type Scope = "complex" | "dong_peer" | "none";
 
-/** 출처 줄 — 표가 있을 때 상자 맨 아래에 그대로 찍힌다. */
-export const PRICE_SOURCE_TEXT =
-  "출처: 국토교통부 아파트 실거래가(공공데이터포털) · 같은 집 기준 = 한국부동산원 실거래가격지수 정의(단지·면적 같음)";
+/** 출처 줄 — 표가 있을 때 상자 맨 아래에 찍힌다. 거래 자료 출처는 늘 같다. */
+export const PRICE_SOURCE_TEXT = "출처: 국토교통부 아파트 실거래가(공공데이터포털)";
+/** "같은 집" 기준 토막 — 부동산원 정의(단지·면적 같음)에 실제로 맞는 비교에만 붙인다. */
+export const SAME_HOME_BASIS_TEXT = "같은 집 기준 = 한국부동산원 실거래가격지수 정의(단지·면적 같음)";
+
+/**
+ * 출처 줄 (세션651 검사관 보완) — "같은 집 기준 = 부동산원 정의" 는 **같은 단지 · 같은 면적**(범위 complex +
+ * `cmpAreaMode === "same_area"`)일 때만 참이다. ㎡당 환산(가까운 면적)·같은 동 또래(다른 단지)는 부동산원
+ * 정의에 없는 우리 보조 범위라 그 토막을 붙이면 거짓이 된다 — 국토부 출처만 적는다(범위의 폭은 머리 줄이 밝힌다).
+ * 분양권 거래와 견준 경우(`cmpSrc === "presale"`)도 뺀다 — 부동산원 실거래가격지수는 매매 거래 기준이다.
+ */
+export function priceSourceText(apt: Apt): string {
+  const sameHome = effectiveScope(apt) === "complex" && apt.cmpAreaMode === "same_area" && apt.cmpSrc !== "presale";
+  return sameHome ? `${PRICE_SOURCE_TEXT} · ${SAME_HOME_BASIS_TEXT}` : PRICE_SOURCE_TEXT;
+}
 
 /**
  * 지금 칸이 말하는 범위 — `scorePrice.ts` 와 같은 판정(범위가 complex·dong_peer 여도 비교 중앙값이 0 이하면 비교 없음).
@@ -221,7 +233,7 @@ export const PricePositionBox = memo(function PricePositionBox({
       )}
       {rows.length > 0 && (
         <div data-testid="price-source" style={S.source}>
-          {PRICE_SOURCE_TEXT}
+          {priceSourceText(apt)}
         </div>
       )}
     </div>

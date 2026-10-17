@@ -14,7 +14,11 @@ import { SCHOOL_GRADE_TIERS, schoolGradeLegend, DEV_BAND_LABEL } from "@/constan
 import { SUB_CONTEXT } from "@/constants/subContext";
 import { catVerdict } from "@/constants/catVerdict";
 import { buildCardChips } from "@/constants/cardChips";
-import { scopeHeadText, compareRows, PRICE_SOURCE_TEXT } from "@/components/detail/PricePositionBox";
+import { fmtPriceGap } from "@/lib/format";
+import { scopeHeadText, compareRows, priceSourceText } from "@/components/detail/PricePositionBox";
+import { computeDeviation, deviationAriaLabel } from "@/lib/deviation";
+import { deviationSpec, formatDeviationValue } from "@/constants/deviationFields";
+import { computeRegionalStats } from "@/scoring/regionalStats";
 
 /** @param {Record<string, unknown>} o */
 const apt = (o) => /** @type {any} */ (o);
@@ -318,7 +322,7 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
     for (const c of chips) if (c.layer === "core" || c.id.startsWith("jeonse")) out.push(c.text);
     out.push(scopeHeadText(a) ?? "");
     for (const r of compareRows(a, cats.price)) out.push(`${r.label} ${r.value}`);
-    out.push(PRICE_SOURCE_TEXT);
+    out.push(priceSourceText(a));
     return { out, cats, chips };
   };
 
@@ -336,6 +340,42 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
   });
 
   // 비교 대상이 없는 단지(범위 none · 분양가 없음 · 칸 없음)도 판정어 없이 빠진다 — catVerdict·subContext 가 같은 어휘
+  // 세션651 보완 ④(사장님 결정): 종합 탭·카드 편차 줄의 평당가·전세가율도 가격 축 손님 문자열이다 —
+  //   끝말·값 문구·스크린리더 문장 어디에도 유불리 판정어("싸요/비싸요"·"높아요/낮아요"·"유리")가 없고 색은 중립.
+  it("편차 줄 평당가·전세가율 — 판정어 0건 · 색 중립 (끝말·값 문구·스크린리더)", () => {
+    const DEV_JUDGE = /싸|비싸|유리|좋|높아요|낮아요|평균 수준/;
+    const stats = computeRegionalStats(
+      Array.from(
+        { length: 41 },
+        (_, i) => /** @type {any} */ ({ region: "경기", pp: 1000 + i * 50, complexJeonseRate: 40 + i * 1.5 })
+      )
+    );
+    let checked = 0;
+    for (const [field, values] of /** @type {const} */ ([
+      ["pp", [900, 1000, 1500, 2000, 2010, 2500, 3000, 3500]],
+      ["complexJeonseRate", [35, 40, 55, 70, 70.2, 85, 100, 130]],
+    ])) {
+      const spec = /** @type {any} */ (deviationSpec(field));
+      expect(spec.neutral, field).toBe(true);
+      for (const v of values) {
+        const d = computeDeviation(spec, v, "경기", stats);
+        const texts = [
+          spec.lowWord,
+          spec.highWord,
+          d.text,
+          deviationAriaLabel(spec, d, "경기", formatDeviationValue(spec, v)),
+        ];
+        for (const t of texts) {
+          expect(t, `${field}=${v}: ${t}`).not.toMatch(DEV_JUDGE);
+          expect(t, `${field}=${v}: ${t}`).not.toMatch(JUDGE);
+          checked++;
+        }
+        expect(d.tone, `${field}=${v}`).toBe("neutral");
+      }
+    }
+    expect(checked).toBe(64); // 양성 앵커 — 2필드 × 8값 × 4문자열
+  });
+
   it("비교 대상이 없는 단지도 판정어 0건 — '비교할 실거래 없음'", () => {
     for (const over of [
       { cmpScope: "none", cmpFairPrice: null, cmpN: 0 },
@@ -367,9 +407,28 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
     }
   });
 
+  // 세션651 검사관 보완: "같음" 문턱이 자리마다 달랐다(종합 탭 0.05% · 카테고리 한 줄 0.5%) — 같은 단지를
+  //   한 화면은 "같음", 다른 화면은 "0.3% 낮음"이라 불렀다. 이제 `priceGapParts` 하나가 판정한다.
+  //   W4 점수 탭 판정 · W7 카테고리 한 줄 · W8 종합 탭 핵심지표(`fmtPriceGap` 그대로)가 같은 숫자·같은 판정이어야 한다.
+  it.each([
+    [0.3, "분양가가 0.3% 낮음", "실거래보다 0.3% 낮은 분양가"],
+    [-0.3, "분양가가 0.3% 높음", "실거래보다 0.3% 높은 분양가"],
+    [0.04, "분양가가 같음", "실거래와 같은 분양가"],
+    [-0.04, "분양가가 같음", "실거래와 같은 분양가"],
+    [12.34, "분양가가 12.3% 낮음", "실거래보다 12.3% 낮은 분양가"],
+  ])("괴리 %s%% — 점수 탭·카테고리 한 줄·종합 탭이 같은 말 (세션651)", (dev, gap, verdict) => {
+    const info = `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`; // scorePrice info 꼴
+    const w4 = /** @type {any} */ (SUB_CONTEXT.price)["실거래 대비 분양가"].interpret(50, info);
+    const w7 = catVerdict("price", /** @type {any} */ ({ total: 50, fairPrice: 60000, deviation: dev.toFixed(1) }));
+    const w8 = fmtPriceGap(Number(dev.toFixed(1))); // DetailModal 핵심지표: fmtPriceGap(Number(deviation))
+    expect(w4).toBe(gap);
+    expect(w8).toBe(gap);
+    expect(w7).toBe(verdict);
+  });
+
   it("양성 앵커 — 가드가 실제 문구를 지난다 (빈 문자열 통과 방지)", () => {
     const { out, chips } = customerStrings(mk(SCOPES[0], 18.8));
-    expect(out).toContain("실거래보다 19% 낮은 분양가"); // catVerdict
+    expect(out).toContain("실거래보다 18.8% 낮은 분양가"); // catVerdict
     expect(out).toContain("분양가가 18.8% 낮음"); // 점수 탭 판정
     expect(out).toContain("차이 분양가가 18.8% 낮음"); // 시세 탭 표
     expect(chips.find((c) => c.id === "priceCompare")?.text).toBe("이 단지 실거래 중앙 6억 (12건·12개월)");

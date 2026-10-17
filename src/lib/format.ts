@@ -9,14 +9,24 @@ export const fmtPrice = (v: number | null | undefined): string => {
 };
 
 /**
- * 분양가와 실거래 중앙값의 **산술 차이**를 적는 말 (세션651 — 판정어 "저렴/비쌈/적정가 수준" 대신).
+ * 분양가와 실거래 중앙값의 **산술 차이** 판정 단일 출처 (세션651 — 판정어 "저렴/비쌈/적정가 수준" 대신).
  * 부호는 점수의 `deviation` 그대로다: (중앙값 − 분양가) ÷ 중앙값 × 100 이라 **+면 분양가가 낮음**.
- * 시세 탭 표·점수 탭 판정·서브 detail 이 이 하나를 써서 같은 숫자를 같은 말로 적는다.
+ * "같음" = 표시 자릿수(소수 첫째)로 반올림해 0.0 일 때 — 자리마다 문턱을 따로 두면 같은 단지를
+ * 한 화면은 "같음", 다른 화면은 "0.3% 낮음"이라 부른다(세션651 검사관 지적: 0.05% vs 0.5%).
+ */
+export const priceGapParts = (dev: number): { same: boolean; pct: string; lower: boolean } => {
+  const pct = Math.abs(dev).toFixed(1);
+  return { same: pct === "0.0", pct, lower: dev > 0 };
+};
+
+/**
+ * 그 차이를 적는 말 — 시세 탭 표·점수 탭 판정·서브 detail·종합 탭 핵심지표가 이 하나를 쓴다.
+ * 카테고리 한 줄(`catVerdict`)은 어순만 다르고 `priceGapParts` 를 같이 쓴다.
  */
 export const fmtPriceGap = (dev: number): string => {
-  const abs = Math.abs(dev);
-  if (abs < 0.05) return "분양가가 같음";
-  return `분양가가 ${abs.toFixed(1)}% ${dev > 0 ? "낮음" : "높음"}`;
+  const g = priceGapParts(dev);
+  if (g.same) return "분양가가 같음";
+  return `분양가가 ${g.pct}% ${g.lower ? "낮음" : "높음"}`;
 };
 
 /**

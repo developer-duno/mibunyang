@@ -55,19 +55,19 @@ describe("catVerdict — price 는 실거래 중앙값과의 산술 차이 (세�
   //   두 숫자의 차이만 적는다. 부호 = deviation 그대로(+면 분양가가 낮음). 옛 문구로 되돌리면 아래가 red.
   it("fairPrice>0 + deviation 양수 → '실거래보다 N% 낮은 분양가'", () => {
     expect(catVerdict("price", mk({ total: 40, fairPrice: 50000, deviation: "12.3" }))).toBe(
-      "실거래보다 12% 낮은 분양가"
+      "실거래보다 12.3% 낮은 분양가"
     );
   });
   it("fairPrice>0 + deviation 음수 → '… 높은 분양가' (절댓값 표기)", () => {
     expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-18.7" }))).toBe(
-      "실거래보다 19% 높은 분양가"
+      "실거래보다 18.7% 높은 분양가"
     );
   });
   it.each([
-    ["-9.9", "실거래보다 10% 높은 분양가"],
-    ["9.9", "실거래보다 10% 낮은 분양가"],
-    ["-3.2", "실거래보다 3% 높은 분양가"],
-    ["3.2", "실거래보다 3% 낮은 분양가"],
+    ["-9.9", "실거래보다 9.9% 높은 분양가"],
+    ["9.9", "실거래보다 9.9% 낮은 분양가"],
+    ["-3.2", "실거래보다 3.2% 높은 분양가"],
+    ["3.2", "실거래보다 3.2% 낮은 분양가"],
   ])("옛 밴드 안(%s%%)이어도 판정 없이 숫자 그대로", (d, want) => {
     const v = catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: d }));
     expect(v).toBe(want);
@@ -75,7 +75,11 @@ describe("catVerdict — price 는 실거래 중앙값과의 산술 차이 (세�
   });
   it("fairPrice>0 + deviation 0 → '실거래와 같은 분양가'", () => {
     expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe("실거래와 같은 분양가");
-    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.4" }))).toBe("실거래와 같은 분양가");
+    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.04" }))).toBe("실거래와 같은 분양가");
+    // 세션651 검사관 보완: "같음" 문턱 = 표시 자릿수(소수 첫째) 반올림 0.0 — 0.3% 는 같다고 하지 않는다
+    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.3" }))).toBe(
+      "실거래보다 0.3% 낮은 분양가"
+    );
   });
   it("fairPrice=0 (적정가 산출 실패) → 점수 폴백 대신 '비교할 실거래 없음' (세션512 · 651)", () => {
     // scorePrice.ts:116 데이터 부재 분기 = fairPrice:0, deviation:"0.0". 부호 분기로 가면 거짓 표시.

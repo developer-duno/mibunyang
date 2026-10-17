@@ -47,8 +47,34 @@ describe("DeviationStrip — 블록 골격", () => {
   });
 
   it("팝업용 8줄도 같은 컴포넌트로 그린다 (카드에서 배운 읽는 법이 그대로 통해야 한다)", () => {
-    render(<DeviationStrip apt={apt()} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    // 세션651: 전세가율 줄은 값이 없으면 안 그린다(hideWhenMissing) — 8줄을 보려면 값을 준다
+    render(
+      <DeviationStrip
+        apt={apt({ complexJeonseRate: 72 })}
+        fields={OVERVIEW_DEVIATION_FIELDS}
+        regionStats={gyeonggiStats()}
+      />
+    );
     expect(screen.getAllByRole("img")).toHaveLength(8);
+  });
+
+  // 세션651(사장님 결정): 같은 단지 전세가율은 값이 없는 이유가 미수집이 아니라 "같은 평수 전세·매매 각 3건 미만"
+  //   — "미수집" 대신 줄을 안 그린다(카드 칩 W2 와 같은 규칙). 옛 동작(미수집 줄)으로 되돌리면 red.
+  it("팝업: 전세가율 값이 없으면 그 줄을 안 그린다 — '미수집'이라 하지 않는다 (세션651)", () => {
+    const { container } = render(
+      <DeviationStrip
+        apt={apt({ complexJeonseRate: null })}
+        fields={OVERVIEW_DEVIATION_FIELDS}
+        regionStats={gyeonggiStats()}
+      />
+    );
+    expect(screen.getAllByRole("img")).toHaveLength(7);
+    expect(screen.queryByRole("img", { name: /^전세가율/ })).toBeNull();
+    expect(container.textContent).not.toContain("전세가율");
+  });
+
+  it("카드 필드에는 줄을 숨기는 필드가 없다 — 카드마다 줄 수가 달라지면 무한스크롤이 튄다", () => {
+    expect(CARD_DEVIATION_FIELDS.filter((f) => f.hideWhenMissing)).toEqual([]);
   });
 
   it("헤더에 지역 이름을 쓰고 '중위값' 같은 전문어는 쓰지 않는다", () => {
@@ -209,5 +235,47 @@ describe("DeviationStrip — 주차 추정 폴백 (세션576 D5-b)", () => {
     );
     expect(screen.getByText(`1.49대/세대 · ${d.text}`)).toBeInTheDocument();
     expect(container.textContent).not.toContain("추정");
+  });
+});
+
+// 세션651(사장님 결정 — 공공기관 준거): 평당가·전세가율 줄은 좋고 나쁨을 말하지 않는다 — 색 중립 하나,
+//   "싸요/비싸요"·"높아요/낮아요" 대신 한가운데 값과의 산술 차이. 도움말도 "오른쪽 = 유리"가 이 줄엔 아니라고 밝힌다.
+describe("DeviationStrip — 평당가·전세가율 줄은 판정 없이 (세션651)", () => {
+  /** 경기 21단지 — 평당가 1000~3000, 같은 단지 전세가율 50~90 */
+  function ppJeonseStats() {
+    return computeRegionalStats(
+      Array.from(
+        { length: 21 },
+        (_, i) => ({ region: "경기", pp: 1000 + i * 100, complexJeonseRate: 50 + i * 2 }) as unknown as Apt
+      )
+    );
+  }
+
+  it.each([[{ pp: 1200, complexJeonseRate: 88 }], [{ pp: 2900, complexJeonseRate: 52 }]])(
+    "값 글자는 판정어 없이, 색은 중립 회색 %o",
+    (over) => {
+      render(
+        <DeviationStrip
+          apt={apt(over)}
+          fields={OVERVIEW_DEVIATION_FIELDS}
+          regionStats={ppJeonseStats()}
+          compact={false}
+        />
+      );
+      for (const name of [/^평당가/, /^전세가율/]) {
+        const row = screen.getByRole("img", { name });
+        expect(row.textContent).toMatch(/%p? (높음|낮음)|같음/);
+        expect(row.textContent).not.toMatch(/싸|비싸|높아요|낮아요|유리/);
+        const value = row.lastElementChild as HTMLElement;
+        expect(value.style.color).toBe("rgb(107, 114, 128)"); // C.muted — 옛 파랑/주황이면 red
+      }
+    }
+  );
+
+  it("도움말이 평당가 줄은 '좋고 나쁨을 따지지 않는다'고 밝힌다", () => {
+    render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    fireEvent.click(screen.getByRole("button", { name: /지역 비교 풀이 보기/ }));
+    expect(screen.getByRole("tooltip").textContent).toContain("평당가 줄은 좋고 나쁨을 따지지 않아요");
+    expect(screen.getByRole("tooltip").textContent).toContain("몇 %(전세가율은 %p) 높은지·낮은지");
   });
 });

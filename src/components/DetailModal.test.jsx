@@ -654,8 +654,8 @@ describe("DetailModal StickyJumpNav", () => {
     expect(cards.length).toBe(5);
     // 결론 문구 샘플: location 80점 → '입지 우수'
     expect(overview.textContent).toContain("입지 우수");
-    // 세션651: 가격 미니카드 결론 = 산술 차이(판정어 없음). 픽스처 deviation '-3.2' → "실거래보다 3% 높은 분양가".
-    expect(overview.textContent).toContain("실거래보다 3% 높은 분양가");
+    // 세션651: 가격 미니카드 결론 = 산술 차이(판정어 없음). 픽스처 deviation '-3.2' → "실거래보다 3.2% 높은 분양가".
+    expect(overview.textContent).toContain("실거래보다 3.2% 높은 분양가");
     expect(overview.textContent).not.toMatch(/적정가|저렴|비쌈/);
   });
 
@@ -983,7 +983,7 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     }
     expect(overview.textContent).toContain("입지");
     expect(overview.textContent).not.toContain("입지 우수");
-    expect(overview.textContent).not.toContain("실거래보다 3% 높은 분양가");
+    expect(overview.textContent).not.toContain("실거래보다 3.2% 높은 분양가");
   });
 
   it("isLoggedIn=false 면 profile 을 줘도 가중치 막대를 안 그린다", () => {

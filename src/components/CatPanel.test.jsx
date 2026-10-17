@@ -370,3 +370,38 @@ describe("CatPanel", () => {
     expect(screen.queryByText(/세부 \d+개/)).toBeNull();
   });
 });
+
+// 세션651 검사관 보완 — 서브 "실거래 대비 분양가" 의 info `+11.5%`(= deviation, +면 분양가가 낮음)를 숫자 그대로
+//   그리면 "+" 가 "분양가가 높다"로 거꾸로 읽힌다. 표시만 말로(fmtPriceGap), info 값 자체는 숫자 그대로.
+//   ⚠️ 뮤테이션 대상: CatPanel 이 `displaySubInfo` 대신 `s.info` 를 그리면 아래가 red.
+describe("CatPanel — 실거래 대비 분양가 값은 말로 그린다 (세션651)", () => {
+  /** @param {string} info */
+  const priceCat = (info) =>
+    makeCat({
+      subs: [
+        { name: "실거래 대비 분양가", score: 90, info },
+        { name: "전세가율", score: 65, info: "68%" },
+      ],
+    });
+
+  it("요약 줄: '+11.5%' 대신 '분양가가 11.5% 낮음' — 같은 말을 두 번 쓰지 않는다", () => {
+    const { container } = render(<CatPanel cat={priceCat("+11.5%")} k="price" />);
+    expect(container.textContent).toContain("분양가가 11.5% 낮음");
+    expect(container.textContent).not.toContain("+11.5%");
+    expect(container.textContent.split("분양가가 11.5% 낮음").length - 1).toBe(1);
+    // 다른 서브는 그대로 숫자
+    expect(container.textContent).toContain("68%");
+  });
+
+  it("펼친 목록도 말로 — 음수는 '높음'", () => {
+    const { container } = render(<CatPanel cat={priceCat("-7.0%")} k="price" />);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(container.textContent).toContain("분양가가 7.0% 높음");
+    expect(container.textContent).not.toContain("-7.0%");
+  });
+
+  it("비교 대상이 없으면(데이터 부재) 지어내지 않는다", () => {
+    const { container } = render(<CatPanel cat={priceCat("데이터 부재")} k="price" />);
+    expect(container.textContent).not.toMatch(/분양가가 .*(낮음|높음|같음)/);
+  });
+});

@@ -38,7 +38,7 @@ describe("CategoryMiniCard", () => {
         onJump={vi.fn()}
       />
     );
-    expect(screen.getByText("실거래보다 12% 낮은 분양가")).toBeInTheDocument();
+    expect(screen.getByText("실거래보다 12.3% 낮은 분양가")).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/적정가|저렴|비쌈/);
   });
 
