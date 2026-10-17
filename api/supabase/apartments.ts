@@ -113,12 +113,11 @@ export default withHandler({ method: "GET", rateLimit: "proxy", handler: async (
   }
 }});
 
-/** 추정값 추적 플래그 11개 (ExpertDataCompleteness에서 사용) */
+/** 추정값 추적 플래그 10개 (ExpertDataCompleteness에서 사용) — 구 전세가율은 세션648 폐지라 플래그도 뺐다 */
 function sanitizeFallbackFlags(row: any) {
   return {
     _fallbackPir: row.pir == null,
     _fallbackPsr: row.psr == null,
-    _fallbackJeonseRate: row.jeonseRate == null,
     _fallbackSupplyRatio: row.supplyRatio == null,
     _fallbackUnsoldRate: row.unsoldRate == null,
     _fallbackBuilderDebt: row.builderDebtRatio == null,
@@ -312,7 +311,8 @@ function sanitizeTransaction(row: any) {
     nearbyBuildYear: row.nearbyBuildYear ?? row.naverBuildYear ?? null,
     avgFloor: row.avgFloor ?? row.naverAvgFloor ?? null,
     floorRange: row.floorRange ?? null,
-    jeonseRate: row.jeonseRate ?? 40,
+    // 구 전세가율(trade_stats.jeonse_rate)은 세션648 폐지 — 늘 null. 옛 `?? 40` 은 가짜 40% 를 만들었다.
+    jeonseRate: row.jeonseRate ?? null,
     pir: row.pir ?? 10,
     psr: row.psr ?? 1.5,
     cancelRatio6m: row.cancelRatio6m ?? null,

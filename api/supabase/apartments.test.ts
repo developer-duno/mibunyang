@@ -188,7 +188,7 @@ describe('sanitize (null → 기본값)', () => {
     expect(responseData.supplyRatio).toBe(150);
     expect(responseData.pir).toBe(10);
     expect(responseData.psr).toBe(1.5);
-    expect(responseData.jeonseRate).toBe(40);
+    expect(responseData.jeonseRate).toBeNull(); // 구 전세가율 폐지(세션648) — 가짜 40 기본값 없음
     expect(responseData.subwayDist).toBe(9999);
     expect(responseData.icDist).toBe(99);
     expect(responseData.ktxDist).toBe(99);
@@ -473,8 +473,8 @@ describe('sanitize (null → 기본값)', () => {
     const d = res.json.mock.calls[0][0].data[0];
 
     const expectedKeys = [
-      // _fallback 11개
-      '_fallbackPir', '_fallbackPsr', '_fallbackJeonseRate', '_fallbackSupplyRatio',
+      // _fallback 10개(구 전세가율 플래그는 세션648 폐지)
+      '_fallbackPir', '_fallbackPsr', '_fallbackSupplyRatio',
       '_fallbackUnsoldRate', '_fallbackBuilderDebt', '_fallbackDataReliability',
       '_fallbackNearbyMedian', '_fallbackNearbyBuildYear', '_fallbackAvgFloor',
       '_fallbackCancelRatio6m',
@@ -540,6 +540,7 @@ describe('sanitize (null → 기본값)', () => {
     for (const key of expectedKeys) {
       expect(d).toHaveProperty(key);
     }
+    expect(d).not.toHaveProperty('_fallbackJeonseRate'); // 구 전세가율 폐지(세션648)
   });
 });
 
