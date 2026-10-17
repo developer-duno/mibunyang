@@ -76,6 +76,11 @@ describe("머리 줄 — cmpScope 와 일치하는 문장 (§5-4 · 세션651 W3
     expect(scopeHeadText(apt(T1_PRESALE))).toBe("이 단지 같은 평수(전용 84.97㎡) 분양권 거래와 견주면");
   });
 
+  it("면적은 소수 둘째까지만 — 저장값이 넷째 자리여도 84.7684 → 84.77 (사장님 결정 10/18)", () => {
+    expect(scopeHeadText(apt({ ...T1_SALE, area: 84.7684 }))).toBe("이 단지 같은 평수(전용 84.77㎡) 실거래와 견주면");
+    expect(scopeHeadText(apt({ ...T1_SALE, area: 59.9 }))).toBe("이 단지 같은 평수(전용 59.9㎡) 실거래와 견주면");
+  });
+
   it("T2: 같은 동 비슷한 연식(±10년)·같은 평수 … 실거래와 견주면 (보조 범위의 폭을 밝힌다)", () => {
     expect(scopeHeadText(apt(T2))).toBe("같은 동 비슷한 연식(±10년)·같은 평수(전용 59.9㎡) 실거래와 견주면");
   });

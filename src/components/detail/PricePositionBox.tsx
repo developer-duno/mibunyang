@@ -106,7 +106,9 @@ export function scopeHeadText(apt: Apt): string | null {
   if (scope == null) return null;
   if (scope === "none") return "비교할 실거래가 아직 없어요";
   const perM2 = apt.cmpAreaMode === "per_m2";
-  const area = `${perM2 ? "비슷한" : "같은"} 평수${hasKnownArea(apt.area) ? `(전용 ${apt.area}㎡)` : ""}`;
+  // 면적은 소수 둘째까지(사장님 결정 10/18) — 국토부 실거래 표기·"정확히 같음" 판정(둘째 반올림)과 같은 자릿수. 저장값은 넷째까지일 수 있다
+  const areaText = hasKnownArea(apt.area) ? `(전용 ${Math.round(Number(apt.area) * 100) / 100}㎡)` : "";
+  const area = `${perM2 ? "비슷한" : "같은"} 평수${areaText}`;
   const who =
     scope === "dong_peer"
       ? `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·${area} 실거래`
