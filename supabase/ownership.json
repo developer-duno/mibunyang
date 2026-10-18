@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-10",
+  "updated": "2026-10-18",
   "note": "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
   "repos": {
     "mibunyang": "developer-duno/mibunyang",
@@ -330,9 +330,6 @@
           "childcare_nearest_dist",
           "childcare_nearest_name",
           "childcare_nearest_capacity",
-          "crime_score",
-          "crime_grade",
-          "crime_updated_at",
           "childcare_nearest_type",
           "childcare_nearest_teachers",
           "childcare_updated_at",
@@ -345,13 +342,16 @@
           "air_o3",
           "air_grade",
           "air_updated_at",
-          "air_attempted_at"
+          "air_attempted_at",
+          "crime_score",
+          "crime_grade",
+          "crime_updated_at"
         ],
         "clock": [
           "updated_at"
         ]
       },
-      "note": "칸은 대체로 나뉘었지만 ① updated_at 공유 시계(트리거가 모든 UPDATE 에 now) ② 행 생성은 양쪽(미분양 upsert · 2u Infra(apartment_id) db.add) ③ fix-sosa-coordinates.mjs 의 infra 행 통째 삭제(C4)는 세션617 에 고침(미분양 카카오 칸만 null) ④ apartments 삭제 시 ON DELETE CASCADE. air_pm10/pm25/o3/grade/air_updated_at/air_attempted_at·nearby_facilities 는 쓰는 곳 0. — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3). fix-sosa·fix-placeholder 의 infra 비우기 = 카카오 17칸만(INFRA_KAKAO_COLUMNS) — 좌표 파생 미분양 칸 10개(air_station_*·childcare*·emergency*·police*)는 그대로 남음(후속 BACKLOG · purge-to-recollect-timing 본 뒤 결정).",
+      "note": "칸은 대체로 나뉘었지만 ① updated_at 공유 시계(트리거가 모든 UPDATE 에 now) ② 행 생성은 양쪽(미분양 upsert · 2u Infra(apartment_id) db.add) ③ fix-sosa-coordinates.mjs 의 infra 행 통째 삭제(C4)는 세션617 에 고침(미분양 카카오 칸만 null) ④ apartments 삭제 시 ON DELETE CASCADE. air_pm10/pm25/o3/grade/air_updated_at/air_attempted_at·nearby_facilities 는 쓰는 곳 0. — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3). fix-sosa·fix-placeholder 의 infra 비우기 = 카카오 17칸만(INFRA_KAKAO_COLUMNS) — 좌표 파생 미분양 칸 10개(air_station_*·childcare*·emergency*·police*)는 그대로 남음(후속 BACKLOG · purge-to-recollect-timing 본 뒤 결정). — crime_score/crime_grade/crime_updated_at 은 2u 가 세션473(2026-10-18 사장님 결정)에 잡을 내리고 값을 비움(보는 곳 0 · 중앙값 채움 결함). env_crime.py writers 등록은 2u 쪽 코드 삭제 PR 이 합쳐진 뒤 지운다.",
       "row_create": [
         "mibunyang",
         "2u"
@@ -414,6 +414,10 @@
     },
     "rate_limit_counters": {
       "owner": "2u"
+    },
+    "region_stats": {
+      "owner": "2u",
+      "note": "2u 소유(V072, 2026-10 세션473) · crawler/service_region_stats.py 가 한국부동산원 R-ONE 통계(시군구 아파트 전세가율 A_2024_00073 · 시도 전월세전환율 A_2024_00155)를 매월 16일 적재. 긴 모양(region_code 5자리·period YYYYMM·stat_code·value). 미분양은 읽지 않음. RLS 켬·정책 0·service_role 만."
     },
     "regions": {
       "owner": "mibunyang",
@@ -1390,6 +1394,11 @@
         ],
         "complexes": [
           "public_data_attempted_at"
+        ]
+      },
+      "backend/crawler/service_region_stats.py": {
+        "region_stats": [
+          "*"
         ]
       },
       "backend/crawler/utils.py": {
