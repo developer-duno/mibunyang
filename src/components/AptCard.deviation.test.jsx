@@ -113,8 +113,8 @@ describe("memo comparator — 스트립이 읽는 값이 바뀌면 반드시 다
    */
   const cases = [
     ["pp", 1200, 4000, /% 높음|같음/], // 세션651: 평당가 줄은 neutral — "비싸요" 대신 산술 방향
-    ["unsoldRate", 4, 19, /많아요|평균 수준/],
-    ["subwayDist", 300, 1400, /멀어요|평균 수준/],
+    ["unsoldRate", 4, 19, /%p 높음|같음/], // 세션652: 미분양·역세권 줄도 neutral — "많아요/멀어요" 대신 값의 방향
+    ["subwayDist", 300, 1400, /(%|배) 멂|같음/],
   ];
 
   for (const [field, before, after, expected] of cases) {

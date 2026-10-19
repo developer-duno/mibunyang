@@ -9,8 +9,8 @@ import { estimateParkingRatio } from "@/constants/parkingEstimate";
  *   ③ 회귀 테스트. 손으로 세 곳에 적으면 반드시 어긋난다(세션 430·461·479 에 세 번 당했다).
  *
  * **화면에 "중위값"·"백분위" 같은 전문어를 쓰지 않는다.** 오른쪽 값 슬롯은 숫자가 아니라
- * `12% 싸요` 같은 문장 조각이다. `−12%` 는 "왜 마이너스인데 막대는 오른쪽이지?"를 만들지만
- * `12% 싸요` 는 막대 방향과 어긋나지 않는다.
+ * `12% 낮음` 같은 문장 조각이다. `−12%` 는 "왜 마이너스인데 막대는 오른쪽이지?"를 만들지만
+ * `12% 낮음` 은 막대 방향과 어긋나지 않는다(세션652: 판정어 줄은 주차·전용률만 남음).
  */
 
 /** 값 차이를 어떤 말로 읽을지 */
@@ -19,7 +19,7 @@ export type DeviationUnit =
   | "percent"
   /** 이미 % 인 지표라 차이를 %p 로: 미분양률·전세가율·전용률 */
   | "percentPoint"
-  /** 거리처럼 배수가 자연스러운 것: 2배 넘게 멀면 "N배 멀어요" */
+  /** 거리처럼 배수가 자연스러운 것: 2배 넘게 멀면 "N배 멂" */
   | "ratio";
 
 export type DeviationFieldSpec = {
@@ -27,7 +27,7 @@ export type DeviationFieldSpec = {
   field: string;
   /** 왼쪽 라벨 (한글 2~4자) */
   label: string;
-  /** 어느 쪽이 유리한가 — 막대가 항상 오른쪽으로 길수록 유리하게 만드는 근거 */
+  /** 어느 쪽이 유리한가 — `neutral` 이 아닌 판정 줄의 맺음말·색(파랑/주황)을 정하는 근거 */
   better: "low" | "high";
   /** 트랙 왼쪽 끝말 */
   lowWord: string;
@@ -35,17 +35,24 @@ export type DeviationFieldSpec = {
   highWord: string;
   /** 값 슬롯 문장의 단위 표현 */
   unit: DeviationUnit;
-  /** 유리할 때 맺음말 — `12% 싸요` 의 "싸요" */
+  /** 유리할 때 맺음말 — `25% 여유로워요` 의 "여유로워요"(`neutral` 줄은 안 씀) */
   goodWord: string;
-  /** 불리할 때 맺음말 — `8% 비싸요` 의 "비싸요" */
+  /** 불리할 때 맺음말 — `4% 빠듯해요` 의 "빠듯해요"(`neutral` 줄은 안 씀) */
   badWord: string;
   /**
    * 좋고 나쁨을 말하지 않는 줄 (세션651 사장님 결정 — 공공기관 준거: 평당가·전세가율이 몇이면 좋은지
    * 공인 기준이 없다). 켜면 `lib/deviation.ts` 가 ① 막대를 뒤집지 않고(오른쪽 = 값이 높음, `better` 무시)
    * ② 색을 중립 하나로 ③ 값 문구를 산술 방향 말(`12% 낮음`·`3%p 높음`·`같음`)로 적는다.
    * `goodWord`/`badWord` 는 이 줄에서 쓰지 않는다. 끝말도 `낮다`/`높다` 로 둔다.
+   * 세션652(사장님 결정 ② 값 그대로): 미분양·역세권·소득부담·관리비도 켰다 — 낮을수록 좋은 줄을 뒤집으면
+   *   끝말(왼쪽 = 값이 낮음)과 막대(오른쪽 = 유리)가 어긋나 "0.2%p 적어요" 막대가 "많다" 쪽으로 뻗었다.
    */
   neutral?: boolean;
+  /**
+   * `neutral` 줄의 값 문구 끝말 — 없으면 `높음`/`낮음`(세션652). 거리처럼 "높다/낮다"가 어색한 줄만 쓴다
+   * (역세권 `멂`/`가까움` — 판정 없이 거리 사실만). 막대 방향(오른쪽 = 값이 큼)과 같은 쪽 말이어야 한다.
+   */
+  neutralWords?: { high: string; low: string };
   /**
    * 이 단지 값이 없으면 줄 자체를 그리지 않는다(세션651 — "미수집" 회색 빗금 대신). 같은 단지 전세가율은
    * 값이 없는 이유가 미수집이 아니라 "같은 평수 전세·매매 각 3건 미만"이라, "미수집"은 거짓이다.
@@ -114,17 +121,22 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     neutral: true,
   },
   {
+    // 세션652(사장님 결정 ② 값 그대로): 재는 것 = 같은 지역 분양 단지 미분양률 분포 안의 백분위와 한가운데 값과의
+    //   차이 %p. "적어요/많아요"·파랑/주황을 빼고 `neutral` — 막대는 미분양률이 높을수록 오른쪽, 끝말도 낮다/높다.
     field: "unsoldRate",
     valueUnit: "%",
     label: "미분양",
     better: "low",
-    lowWord: "적다",
-    highWord: "많다",
+    lowWord: "낮다",
+    highWord: "높다",
     unit: "percentPoint",
-    goodWord: "적어요",
-    badWord: "많아요",
+    goodWord: "낮음",
+    badWord: "높음",
+    neutral: true,
   },
   {
+    // 세션652(사장님 결정 ② 값 그대로): 재는 것 = 가장 가까운 역까지 거리의 백분위와 한가운데 값과의 차이.
+    //   `neutral` — 막대는 역에서 멀수록 오른쪽. 거리라 끝말은 가깝다/멀다(사실), 값 문구는 `41% 가까움`·`3배 멂`.
     field: "subwayDist",
     valueUnit: "m",
     label: "역세권",
@@ -132,8 +144,10 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     lowWord: "가깝다",
     highWord: "멀다",
     unit: "ratio",
-    goodWord: "가까워요",
-    badWord: "멀어요",
+    goodWord: "가까움",
+    badWord: "멂",
+    neutral: true,
+    neutralWords: { high: "멂", low: "가까움" },
   },
 ];
 
@@ -166,15 +180,18 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     hideWhenMissing: true,
   },
   {
+    // 세션652(사장님 결정 ② 값 그대로): 재는 것 = 분양가 ÷ 지역 소득(배)의 백분위와 한가운데 값과의 차이 %.
+    //   "가벼워요/무거워요"·파랑/주황을 빼고 `neutral` — 끝말도 판정 없는 낮다/높다.
     field: "pir",
     valueUnit: "배",
     label: "소득부담",
     better: "low",
-    lowWord: "가볍다",
-    highWord: "무겁다",
+    lowWord: "낮다",
+    highWord: "높다",
     unit: "percent",
-    goodWord: "가벼워요",
-    badWord: "무거워요",
+    goodWord: "낮음",
+    badWord: "높음",
+    neutral: true,
   },
   {
     field: "parkingRatio",
@@ -201,15 +218,18 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     },
   },
   {
+    // 세션652(사장님 결정 ② 값 그대로): 재는 것 = 평균 관리비의 백분위와 한가운데 값과의 차이 %.
+    //   "싸요/비싸요"·파랑/주황을 빼고 `neutral` — 끝말도 낮다/높다.
     field: "avgMaintenanceCost",
     valueUnit: "만원",
     label: "관리비",
     better: "low",
-    lowWord: "싸다",
-    highWord: "비싸다",
+    lowWord: "낮다",
+    highWord: "높다",
     unit: "percent",
-    goodWord: "싸요",
-    badWord: "비싸요",
+    goodWord: "낮음",
+    badWord: "높음",
+    neutral: true,
   },
   {
     field: "exclusiveRatio",

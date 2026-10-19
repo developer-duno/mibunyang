@@ -2,7 +2,9 @@ import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
 import { DeviationRow, ROW_HEIGHT } from "./DeviationRow";
 import { CARD_DEVIATION_FIELDS, deviationSpec } from "@/constants/deviationFields";
-import { estimatedDeviation, type Deviation } from "@/lib/deviation";
+import { computeDeviation, estimatedDeviation, type Deviation } from "@/lib/deviation";
+import { computeRegionalStats } from "@/scoring/regionalStats";
+import type { Apt } from "@/types/scoring";
 
 const priceSpec = deviationSpec("pp")!;
 const subwaySpec = deviationSpec("subwayDist")!;
@@ -52,6 +54,47 @@ describe("DeviationRow — 막대 방향", () => {
       }
       unmount();
     }
+  });
+});
+
+// 세션652(사장님 결정 ② 값 그대로) 회귀 가드 — 운영 재현 버그: 미분양 "0.2%p 적어요" 막대가 오른쪽 끝말 "많다" 쪽으로
+//   뻗었다(낮을수록 좋은 줄을 뒤집은 막대 + 그대로인 끝말). 이제 막대는 늘 **값이 낮은 쪽 = 왼쪽 끝말** 쪽으로 뻗는다.
+describe("DeviationRow — 막대와 끝말이 같은 쪽을 가리킨다 (세션652)", () => {
+  /** 경기 21단지 — 각 필드 값 1..21 (중앙값 11) */
+  const stats = computeRegionalStats(
+    Array.from(
+      { length: 21 },
+      (_, i) => ({ region: "경기", unsoldRate: i + 1, subwayDist: (i + 1) * 100, pir: i + 1 }) as unknown as Apt
+    ),
+    ["unsoldRate", "subwayDist", "pir"]
+  );
+
+  it.each([
+    ["unsoldRate", 3, "낮다", /%p 낮음$/],
+    ["pir", 3, "낮다", /% 낮음$/],
+    ["subwayDist", 300, "가깝다", /% 가까움$/],
+  ] as const)("%s=%s: 한가운데보다 낮으면 막대가 왼쪽 — 왼쪽 끝말 %s", (field, value, leftWord, textRe) => {
+    const spec = deviationSpec(field)!;
+    const d = computeDeviation(spec, value, "경기", stats);
+    const { container } = render(<DeviationRow spec={spec} dev={d} value={value} regionLabel="경기" />);
+    const { kids } = rowOf(container);
+    expect(kids[1].textContent).toBe(leftWord); // 왼쪽 끝말
+    expect(container.querySelector('[style*="right: 50%"][style*="border-radius: 99px"]')).toBeTruthy(); // 막대 왼쪽
+    expect(container.querySelector('[style*="left: 50%"][style*="border-radius: 99px"]')).toBeNull();
+    expect(kids[4].textContent).toMatch(textRe);
+    expect(kids[4].style.color).toBe("rgb(107, 114, 128)"); // C.muted — 파랑/주황 판정 색 없음
+  });
+
+  it("역세권이 멀면 막대가 오른쪽(멀다 쪽) + `N배 멂`/`N% 멂` · 스크린리더도 같은 말", () => {
+    const d = computeDeviation(subwaySpec, 2100, "경기", stats); // 중앙값 1100
+    const { container } = render(<DeviationRow spec={subwaySpec} dev={d} value={2100} regionLabel="경기" />);
+    const { kids } = rowOf(container);
+    expect(kids[3].textContent).toBe("멀다"); // 오른쪽 끝말
+    expect(container.querySelector('[style*="left: 50%"][style*="border-radius: 99px"]')).toBeTruthy();
+    expect(kids[4].textContent).toBe("91% 멂");
+    expect(screen.getByRole("img").getAttribute("aria-label")).toBe(
+      "역세권 2100m. 경기 분양 단지 한가운데 값과 견주면 91% 멂."
+    );
   });
 });
 

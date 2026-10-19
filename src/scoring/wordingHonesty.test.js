@@ -342,18 +342,33 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
   // 비교 대상이 없는 단지(범위 none · 분양가 없음 · 칸 없음)도 판정어 없이 빠진다 — catVerdict·subContext 가 같은 어휘
   // 세션651 보완 ④(사장님 결정): 종합 탭·카드 편차 줄의 평당가·전세가율도 가격 축 손님 문자열이다 —
   //   끝말·값 문구·스크린리더 문장 어디에도 유불리 판정어("싸요/비싸요"·"높아요/낮아요"·"유리")가 없고 색은 중립.
-  it("편차 줄 평당가·전세가율 — 판정어 0건 · 색 중립 (끝말·값 문구·스크린리더)", () => {
-    const DEV_JUDGE = /싸|비싸|유리|좋|높아요|낮아요|평균 수준/;
+  // 세션652(사장님 결정 ② 값 그대로): 미분양·역세권·소득부담·관리비 4줄도 같은 규칙 — 6필드 전부.
+  it("편차 줄 평당가·전세가율·미분양·역세권·소득부담·관리비 — 판정어 0건 · 색 중립 (끝말·값 문구·스크린리더)", () => {
+    const DEV_JUDGE =
+      /싸|비싸|유리|좋|높아요|낮아요|평균 수준|가벼워요|무거워요|가볍|무겁|적어요|많아요|적다|많다|가까워요|멀어요/;
     const stats = computeRegionalStats(
       Array.from(
         { length: 41 },
-        (_, i) => /** @type {any} */ ({ region: "경기", pp: 1000 + i * 50, complexJeonseRate: 40 + i * 1.5 })
+        (_, i) =>
+          /** @type {any} */ ({
+            region: "경기",
+            pp: 1000 + i * 50,
+            complexJeonseRate: 40 + i * 1.5,
+            unsoldRate: i, // 중앙값 20
+            subwayDist: 100 + i * 50, // 중앙값 1100
+            pir: 3 + i * 0.5, // 중앙값 13
+            avgMaintenanceCost: 10 + i * 0.5, // 중앙값 20
+          })
       )
     );
     let checked = 0;
     for (const [field, values] of /** @type {const} */ ([
       ["pp", [900, 1000, 1500, 2000, 2010, 2500, 3000, 3500]],
       ["complexJeonseRate", [35, 40, 55, 70, 70.2, 85, 100, 130]],
+      ["unsoldRate", [0, 1, 10, 20, 20.2, 30, 40, 60]],
+      ["subwayDist", [50, 100, 600, 1100, 1105, 2000, 2500, 5000]],
+      ["pir", [2, 3, 8, 13, 13.1, 18, 23, 40]],
+      ["avgMaintenanceCost", [5, 10, 15, 20, 20.05, 25, 30, 60]],
     ])) {
       const spec = /** @type {any} */ (deviationSpec(field));
       expect(spec.neutral, field).toBe(true);
@@ -373,7 +388,7 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
         expect(d.tone, `${field}=${v}`).toBe("neutral");
       }
     }
-    expect(checked).toBe(64); // 양성 앵커 — 2필드 × 8값 × 4문자열
+    expect(checked).toBe(192); // 양성 앵커 — 6필드 × 8값 × 4문자열
   });
 
   it("비교 대상이 없는 단지도 판정어 0건 — '비교할 실거래 없음'", () => {

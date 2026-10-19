@@ -21,24 +21,23 @@ export function stripHeight(rowCount: number): number {
 // 대조군(`regionalStats.ts:90`)은 `region` 하나로만 묶어 오피스텔·재건축이 섞여 있으므로
 // "아파트"는 그 모집단을 잘못 부르는 이름이다. 나중에 버킷을 유형별로 가르기로 결정하면
 // 이 세 자리를 **함께** 고쳐야 한다(모집단 서술을 하드코딩한 자리가 여기까지 셋).
+// 세션652(사장님 결정 ② 값 그대로): 옛 첫 문장 "오른쪽으로 길수록 이 단지가 유리해요"를 버렸다 — 지금 8줄은
+//   모두 "오른쪽일수록 값이 큼"이다(`neutral` 줄은 백분위 그대로, 남은 판정 줄 주차·전용률은 높을수록 좋은 줄).
 const HELP_TEXT =
-  "막대가 오른쪽으로 길수록 이 단지가 유리해요. " +
+  "막대가 가운데 세로선에서 오른쪽으로 길수록 이 단지 값이 크고, 왼쪽으로 길수록 작아요. " +
+  "오른쪽 글자는 한가운데 값보다 몇 %(이미 %인 값은 %p) 높은지·낮은지예요 — 역세권은 역까지 거리가 먼지·가까운지예요. " +
   "가운데 세로선은 같은 지역 분양 단지들의 한가운데 값입니다. " +
   "그 지역 단지를 값 순서대로 줄 세웠을 때 정확히 가운데 있는 곳이 기준이에요. " +
   "평균과 달리, 아주 비싼 곳 몇 개 때문에 기준이 흔들리지 않습니다.";
 
 /**
- * 도움말 — 세션651: `neutral` 줄(평당가·전세가율)은 "오른쪽 = 유리"가 아니다(좋고 나쁨을 말하지 않는다).
- * 그 줄이 섞여 있으면 이름을 들어 따로 알린다 — 같은 위젯 안에서 도움말이 그 줄을 거짓으로 설명하지 않게.
+ * 도움말 — 세션652: 좋고 나쁨을 말하는 줄(`neutral` 아님 — 지금은 주차·전용률)이 섞여 있으면 그 줄만
+ * 이름을 들어 따로 알린다 — 같은 위젯 안에서 도움말이 그 줄의 색·말을 빠뜨리지 않게.
  */
 export function deviationHelpText(fields: readonly DeviationFieldSpec[]): string {
-  const neutral = fields.filter((f) => f.neutral).map((f) => f.label);
-  if (neutral.length === 0) return HELP_TEXT;
-  return (
-    HELP_TEXT +
-    ` 단, ${neutral.join("·")} 줄은 좋고 나쁨을 따지지 않아요 — 값이 높을수록 막대가 오른쪽이고, ` +
-    "오른쪽 글자는 한가운데 값보다 몇 %(전세가율은 %p) 높은지·낮은지예요."
-  );
+  const judged = fields.filter((f) => !f.neutral).map((f) => f.label);
+  if (judged.length === 0) return HELP_TEXT;
+  return HELP_TEXT + ` 단, ${judged.join("·")} 줄은 좋고 나쁨도 함께 적어요(파랑 = 유리 · 주황 = 불리).`;
 }
 
 const S = {
