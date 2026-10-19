@@ -168,6 +168,10 @@
     "complex_official_prices": {
       "owner": "2u"
     },
+    "complex_area_trade_stats": {
+      "owner": "2u",
+      "note": "2u 소유(V073, 2026-10 세션474 PR 5 면적별 시세) · 정부 실거래를 단지·달·면적 묶음(전용 ㎡ 정수 내림)별로 거래 수·중위·최저·최고·가격 목록(JSONB)으로 저장. crawler/service_public.py(주간·소급)가 쓰고 service_common._upsert_area_stats 가 upsert. complex_price_history 의 정부 '' 줄은 그대로 둔다(모양 변경 없음). 미분양은 읽지 않음. RLS 켬·정책 0·service_role 만. complexes.rep_area_m2(대표 면적 묶음)는 service_metrics 가 쓴다."
+    },
     "complex_price_history": {
       "owner": "shared",
       "readers": [
@@ -238,6 +242,7 @@
           "nearby_median_price",
           "jeonse_rate",
           "recent_trades_6m",
+          "rep_area_m2",
           "updated_at",
           "public_data_attempted_at",
           "articles_crawled_at",
@@ -1327,6 +1332,9 @@
         ]
       },
       "backend/crawler/service_common.py": {
+        "complex_area_trade_stats": [
+          "*"
+        ],
         "complex_price_history": [
           "area_no",
           "base_month",
@@ -1366,6 +1374,7 @@
           "jeonse_rate",
           "nearby_median_price",
           "recent_trades_6m",
+          "rep_area_m2",
           "updated_at"
         ]
       },
@@ -1375,6 +1384,9 @@
         ]
       },
       "backend/crawler/service_public.py": {
+        "complex_area_trade_stats": [
+          "*"
+        ],
         "complex_price_history": [
           "area_no",
           "base_month",
@@ -1565,6 +1577,7 @@
     },
     "2u": {
       "backend/crawler/service_public.py": [
+        "complex_area_trade_stats",
         "complex_price_history"
       ],
       "backend/scripts/cleanup_public_trade_rows.py": [
