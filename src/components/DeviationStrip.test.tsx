@@ -272,10 +272,20 @@ describe("DeviationStrip — 평당가·전세가율 줄은 판정 없이 (세�
     }
   );
 
-  it("도움말이 평당가 줄은 '좋고 나쁨을 따지지 않는다'고 밝힌다", () => {
+  // 세션652(사장님 결정 ② 값 그대로): 카드 3줄은 모두 neutral — 도움말은 "오른쪽 = 값이 큼" 한 규칙, "유리" 없음.
+  it("카드 도움말: '오른쪽으로 길수록 값이 크다' 한 규칙 — '유리'·판정 줄 안내 없음", () => {
     render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
     fireEvent.click(screen.getByRole("button", { name: /지역 비교 풀이 보기/ }));
-    expect(screen.getByRole("tooltip").textContent).toContain("평당가 줄은 좋고 나쁨을 따지지 않아요");
-    expect(screen.getByRole("tooltip").textContent).toContain("몇 %(전세가율은 %p) 높은지·낮은지");
+    const tip = screen.getByRole("tooltip").textContent ?? "";
+    expect(tip).toContain("오른쪽으로 길수록 이 단지 값이 크고");
+    expect(tip).toContain("역세권은 역까지 거리가 먼지·가까운지");
+    expect(tip).not.toContain("유리");
+  });
+
+  it("팝업 도움말: 판정이 남은 줄(주차·전용률)만 이름을 들어 따로 알린다", () => {
+    render(<DeviationStrip apt={apt()} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    fireEvent.click(screen.getByRole("button", { name: /지역 비교 풀이 보기/ }));
+    const tip = screen.getByRole("tooltip").textContent ?? "";
+    expect(tip).toContain("단, 주차·전용률 줄은 좋고 나쁨도 함께 적어요");
   });
 });

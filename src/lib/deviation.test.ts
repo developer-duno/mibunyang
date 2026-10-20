@@ -59,7 +59,7 @@ describe("G3 본인값 게이트 — 미수집", () => {
     expect(computeDeviation(priceSpec, 100, "서울", null).state).toBe("missing");
   });
 
-  it("값 0 은 미수집이 아니다 — 미분양 0%% 는 오히려 좋은 값", () => {
+  it("값 0 은 미수집이 아니다 — 미분양 0%% 도 진짜 값", () => {
     const s = computeRegionalStats(
       rows(
         "서울",
@@ -70,7 +70,10 @@ describe("G3 본인값 게이트 — 미수집", () => {
     );
     const d = computeDeviation(unsoldSpec, 0, "서울", s);
     expect(d.state).toBe("ok");
-    expect(d.tone).toBe("good"); // 낮을수록 좋은 지표라 0 은 유리 쪽
+    // 세션652: 미분양 줄은 neutral — 0 은 막대 왼쪽 끝(값이 낮음), 색은 중립, 문구는 "낮음"
+    expect(d.tone).toBe("neutral");
+    expect(d.fav!).toBeLessThan(50);
+    expect(d.text).toMatch(/%p 낮음$/);
   });
 });
 
@@ -160,14 +163,24 @@ describe("G2 변별력 게이트 — 이 설계의 구조적 방어선", () => {
   });
 });
 
-describe("fav — 막대는 항상 오른쪽이 유리 (판정하는 줄)", () => {
-  it("낮을수록 좋은 지표는 작은 쪽이 fav 높음 (미분양)", () => {
+describe("fav — 판정하는 줄은 오른쪽이 유리", () => {
+  // 세션652: 지금 목록에 낮을수록 좋은 판정 줄은 없다(미분양 등은 neutral) — 뒤집기 경로는 합성 스펙으로 지킨다.
+  it("낮을수록 좋은 판정 지표는 작은 쪽이 fav 높음 (합성 스펙)", () => {
+    const judgedLow = { ...unsoldSpec, neutral: false, goodWord: "적어요", badWord: "많아요" };
     const stats = seoul("unsoldRate", 100); // 1..100
-    const few = computeDeviation(unsoldSpec, 5, "서울", stats);
-    const many = computeDeviation(unsoldSpec, 95, "서울", stats);
+    const few = computeDeviation(judgedLow, 5, "서울", stats);
+    const many = computeDeviation(judgedLow, 95, "서울", stats);
     expect(few.fav!).toBeGreaterThan(many.fav!);
     expect(few.tone).toBe("good");
     expect(many.tone).toBe("bad");
+  });
+
+  // 도움말 한 문장("오른쪽으로 길수록 이 단지 값이 크다")이 8줄 모두에 참인 근거 — 판정 줄이 뒤집히지 않는다.
+  //   낮을수록 좋은 판정 줄을 새로 넣으면 그 줄은 끝말·막대가 어긋난다(세션652 사고) → red.
+  it("8줄 모두 neutral 이거나 높을수록 좋은 줄이다 — '오른쪽 = 값이 큼'이 늘 참", () => {
+    for (const f of OVERVIEW_DEVIATION_FIELDS) {
+      expect(f.neutral === true || f.better === "high", f.field).toBe(true);
+    }
   });
 });
 
@@ -180,6 +193,41 @@ describe("neutral 줄 — 평당가·전세가율은 판정 없이 값 그대로
       expect(spec.neutral, spec.field).toBe(true);
       expect([spec.lowWord, spec.highWord], spec.field).toEqual(["낮다", "높다"]);
     }
+  });
+
+  // 세션652(사장님 결정 ② 값 그대로): 미분양·역세권·소득부담·관리비도 neutral. 옛 버그 = 낮을수록 좋은 줄을
+  //   뒤집어 "0.2%p 적어요" 막대가 "많다" 끝말 쪽으로 뻗었다 — 끝말 왼쪽이 늘 "값이 낮은" 쪽이어야 한다.
+  it("미분양·소득부담·관리비는 neutral + 끝말 낮다/높다, 역세권은 neutral + 가깝다/멀다", () => {
+    for (const field of ["unsoldRate", "pir", "avgMaintenanceCost"]) {
+      const spec = deviationSpec(field)!;
+      expect(spec.neutral, field).toBe(true);
+      expect([spec.lowWord, spec.highWord], field).toEqual(["낮다", "높다"]);
+    }
+    expect(subwaySpec.neutral).toBe(true);
+    expect([subwaySpec.lowWord, subwaySpec.highWord]).toEqual(["가깝다", "멀다"]);
+  });
+
+  it.each([["unsoldRate"], ["subwayDist"], ["pir"], ["avgMaintenanceCost"]] as const)(
+    "%s: 값이 높을수록 막대가 오른쪽(뒤집지 않음), 색은 늘 중립",
+    (field) => {
+      const spec = deviationSpec(field)!;
+      const stats = seoul(field, 100); // 1..100
+      const low = computeDeviation(spec, 5, "서울", stats);
+      const high = computeDeviation(spec, 95, "서울", stats);
+      expect(low.fav!).toBeLessThan(50);
+      expect(high.fav!).toBeGreaterThan(50);
+      expect(low.tone).toBe("neutral");
+      expect(high.tone).toBe("neutral");
+    }
+  );
+
+  it("역세권 문구는 거리 사실 — `N% 가까움`·`N배 멂`·`같음` (높음/낮음·판정어 아님)", () => {
+    const stats = seoul("subwayDist", 101); // 중앙값 51
+    expect(computeDeviation(subwaySpec, 30, "서울", stats).text).toBe("41% 가까움");
+    expect(computeDeviation(subwaySpec, 66, "서울", stats).text).toBe("29% 멂");
+    expect(computeDeviation(subwaySpec, 51, "서울", stats).text).toBe("같음");
+    expect(computeDeviation(subwaySpec, 101, "서울", stats).text).toBe("98% 멂");
+    expect(computeDeviation(subwaySpec, 5, "서울", stats).text).toBe("90% 가까움");
   });
 
   it.each([
@@ -230,9 +278,10 @@ describe("neutral 줄 — 평당가·전세가율은 판정 없이 값 그대로
     }
   });
 
-  it("한가운데면 '평균 수준' + 중립 (판정하는 줄)", () => {
-    const stats = seoul("unsoldRate", 101); // 중앙값 51
-    const d = computeDeviation(unsoldSpec, 51, "서울", stats);
+  it("한가운데면 '평균 수준' + 중립 (판정하는 줄 — 주차)", () => {
+    const parkingSpec = deviationSpec("parkingRatio")!;
+    const stats = seoul("parkingRatio", 101); // 중앙값 51
+    const d = computeDeviation(parkingSpec, 51, "서울", stats);
     expect(d.text).toBe("평균 수준");
     expect(d.tone).toBe("neutral");
     expect(d.state).toBe("ok");
@@ -252,32 +301,34 @@ describe("deviationText — 값 슬롯 문장", () => {
     }
   });
 
+  // 세션652: 미분양·역세권은 neutral — good 인자와 무관하게 값의 방향만 말한다.
   it("이미 % 인 지표는 %p 로 말한다", () => {
-    expect(deviationText(unsoldSpec, 18, 15, false)).toBe("3%p 많아요");
-    expect(deviationText(unsoldSpec, 12, 15, true)).toBe("3%p 적어요");
+    expect(deviationText(unsoldSpec, 18, 15, false)).toBe("3%p 높음");
+    expect(deviationText(unsoldSpec, 12, 15, true)).toBe("3%p 낮음");
   });
 
   it("%p 가 1 미만이면 소수 한 자리", () => {
-    expect(deviationText(unsoldSpec, 15.4, 15, false)).toBe("0.4%p 많아요");
+    expect(deviationText(unsoldSpec, 15.4, 15, false)).toBe("0.4%p 높음");
   });
 
   it("거리는 2배 넘게 멀면 배수로 말한다", () => {
-    expect(deviationText(subwaySpec, 1200, 400, false)).toBe("3배 멀어요");
-    expect(deviationText(subwaySpec, 1000, 400, false)).toBe("2.5배 멀어요");
+    expect(deviationText(subwaySpec, 1200, 400, false)).toBe("3배 멂");
+    expect(deviationText(subwaySpec, 1000, 400, false)).toBe("2.5배 멂");
   });
 
   it("거리가 2배 이내면 퍼센트", () => {
-    expect(deviationText(subwaySpec, 236, 400, true)).toBe("41% 가까워요");
+    expect(deviationText(subwaySpec, 236, 400, true)).toBe("41% 가까움");
   });
 
   it("차이가 반올림해서 0 이면 '평균 수준' — neutral 줄은 '같음'", () => {
     expect(deviationText(priceSpec, 100.2, 100, true)).toBe("같음");
-    expect(deviationText(unsoldSpec, 15, 15, true)).toBe("평균 수준");
+    expect(deviationText(unsoldSpec, 15, 15, true)).toBe("같음");
+    expect(deviationText(deviationSpec("parkingRatio")!, 1.2, 1.2, true)).toBe("평균 수준");
   });
 
   it("중위값이 0 이어도 나눗셈이 터지지 않는다", () => {
     expect(deviationText(priceSpec, 10, 0, false)).toBe("높음");
-    expect(deviationText(subwaySpec, 10, 0, false)).toBe("멀어요");
+    expect(deviationText(subwaySpec, 10, 0, false)).toBe("멂");
   });
 });
 
