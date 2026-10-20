@@ -27,6 +27,20 @@ const HELP_TEXT =
   "그 지역 단지를 값 순서대로 줄 세웠을 때 정확히 가운데 있는 곳이 기준이에요. " +
   "평균과 달리, 아주 비싼 곳 몇 개 때문에 기준이 흔들리지 않습니다.";
 
+/**
+ * 도움말 — 세션651: `neutral` 줄(평당가·전세가율)은 "오른쪽 = 유리"가 아니다(좋고 나쁨을 말하지 않는다).
+ * 그 줄이 섞여 있으면 이름을 들어 따로 알린다 — 같은 위젯 안에서 도움말이 그 줄을 거짓으로 설명하지 않게.
+ */
+export function deviationHelpText(fields: readonly DeviationFieldSpec[]): string {
+  const neutral = fields.filter((f) => f.neutral).map((f) => f.label);
+  if (neutral.length === 0) return HELP_TEXT;
+  return (
+    HELP_TEXT +
+    ` 단, ${neutral.join("·")} 줄은 좋고 나쁨을 따지지 않아요 — 값이 높을수록 막대가 오른쪽이고, ` +
+    "오른쪽 글자는 한가운데 값보다 몇 %(전세가율은 %p) 높은지·낮은지예요."
+  );
+}
+
 const S = {
   wrap: { marginTop: 10 },
   header: {
@@ -75,16 +89,19 @@ export const DeviationStrip = memo(function DeviationStrip({
 
   const rows = useMemo(
     () =>
-      fields.map((spec) => {
-        // 세션576 D5-b: 값이 비었으면 spec.fallback 의 추정치를 쓴다(점수 탭과 같은 숫자).
-        //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
-        //   추정치는 지역 분포와 견주지 않는다 — 추정 오차가 분포 폭보다 커서 막대 위치가 소음이다.
-        const input = resolveDeviationInput(spec, raw);
-        const dev = input.estimated
-          ? estimatedDeviation(spec, input.value)
-          : computeDeviation(spec, input.value, region, regionStats);
-        return { spec, input, dev };
-      }),
+      fields
+        .map((spec) => {
+          // 세션576 D5-b: 값이 비었으면 spec.fallback 의 추정치를 쓴다(점수 탭과 같은 숫자).
+          //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
+          //   추정치는 지역 분포와 견주지 않는다 — 추정 오차가 분포 폭보다 커서 막대 위치가 소음이다.
+          const input = resolveDeviationInput(spec, raw);
+          const dev = input.estimated
+            ? estimatedDeviation(spec, input.value)
+            : computeDeviation(spec, input.value, region, regionStats);
+          return { spec, input, dev };
+        })
+        // 세션651: 값이 없으면 줄을 안 그리는 필드(`hideWhenMissing` — 같은 단지 전세가율)는 "미수집" 대신 뺀다.
+        .filter(({ spec, dev }) => !(spec.hideWhenMissing && dev.state === "missing")),
     [fields, raw, region, regionStats]
   );
 
@@ -100,7 +117,7 @@ export const DeviationStrip = memo(function DeviationStrip({
             않는 중립어로만 고친다 — "분양 단지"는 규모·유형에 상관없이 항상 참이다. */}
         <span>{regionLabel} 분양 단지 한가운데 값과 비교</span>
         {usedNational && <span style={S.badge}>일부 전국 기준</span>}
-        <HelpHint text={HELP_TEXT} label="지역 비교" />
+        <HelpHint text={deviationHelpText(fields)} label="지역 비교" />
       </div>
       <div style={S.rows}>
         {rows.map(({ spec, input, dev }) => (

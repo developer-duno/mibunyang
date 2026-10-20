@@ -40,6 +40,19 @@ export type DeviationFieldSpec = {
   /** 불리할 때 맺음말 — `8% 비싸요` 의 "비싸요" */
   badWord: string;
   /**
+   * 좋고 나쁨을 말하지 않는 줄 (세션651 사장님 결정 — 공공기관 준거: 평당가·전세가율이 몇이면 좋은지
+   * 공인 기준이 없다). 켜면 `lib/deviation.ts` 가 ① 막대를 뒤집지 않고(오른쪽 = 값이 높음, `better` 무시)
+   * ② 색을 중립 하나로 ③ 값 문구를 산술 방향 말(`12% 낮음`·`3%p 높음`·`같음`)로 적는다.
+   * `goodWord`/`badWord` 는 이 줄에서 쓰지 않는다. 끝말도 `낮다`/`높다` 로 둔다.
+   */
+  neutral?: boolean;
+  /**
+   * 이 단지 값이 없으면 줄 자체를 그리지 않는다(세션651 — "미수집" 회색 빗금 대신). 같은 단지 전세가율은
+   * 값이 없는 이유가 미수집이 아니라 "같은 평수 전세·매매 각 3건 미만"이라, "미수집"은 거짓이다.
+   * ⚠️ 카드(`CARD_DEVIATION_FIELDS`)에는 쓰지 않는다 — 카드마다 줄 수가 달라지면 무한스크롤이 튄다.
+   */
+  hideWhenMissing?: boolean;
+  /**
    * 스크린리더 문구에 붙일 단위 (`FIELD_META[].unit` 과 같은 값).
    *
    * ⚠️ `FIELD_META` 를 import 하지 않는 이유 — 그 파일(149엔트리)이 lazy `DetailModal`
@@ -85,15 +98,20 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     // 평당가로 바꾸면 상관계수 −0.024 로 편향이 사라지고, **채움률은 94.8% 로 동일**하다
     // (`pp` 는 `price` 와 같은 비율로 채워져 있다 — 직접 계산할 필요가 없고,
     //  직접 계산값과 저장값이 911행 전부 오차 5% 이내로 일치함을 확인했다).
+    //
+    // 세션651(사장님 결정): 이 줄이 재는 것 = 같은 지역 분양 단지 평당가 분포 안의 **백분위**(막대 위치)와
+    //   그 **한가운데 값과의 차이 %**(값 문구). "싸요/비싸요"·파랑/주황(판정)을 빼고 `neutral` 로 —
+    //   막대는 값이 높을수록 오른쪽, 문구는 `12% 낮음`·`8% 높음`.
     field: "pp",
     valueUnit: "만원",
     label: "평당가",
     better: "low",
-    lowWord: "싸다",
-    highWord: "비싸다",
+    lowWord: "낮다",
+    highWord: "높다",
     unit: "percent",
-    goodWord: "싸요",
-    badWord: "비싸요",
+    goodWord: "낮음",
+    badWord: "높음",
+    neutral: true,
   },
   {
     field: "unsoldRate",
@@ -132,6 +150,9 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
 export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
   ...CARD_DEVIATION_FIELDS,
   {
+    // 세션651(사장님 결정): 재는 것 = 같은 지역 분양 단지들의 같은 단지 전세가율 분포 안의 백분위(막대)와
+    //   그 한가운데 값과의 차이 %p(문구). 파랑/주황·"높아요/낮아요"(유불리 판정)를 빼고 `neutral` 로.
+    //   값이 없으면(같은 평수 전세·매매 각 3건 미만) "미수집" 대신 줄을 안 그린다 — 카드 칩(W2)과 같은 규칙.
     field: "complexJeonseRate",
     valueUnit: "%",
     label: "전세가율",
@@ -139,8 +160,10 @@ export const OVERVIEW_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     lowWord: "낮다",
     highWord: "높다",
     unit: "percentPoint",
-    goodWord: "높아요",
-    badWord: "낮아요",
+    goodWord: "높음",
+    badWord: "낮음",
+    neutral: true,
+    hideWhenMissing: true,
   },
   {
     field: "pir",

@@ -5,7 +5,6 @@ import { DetailModal } from "./DetailModal";
 import { trackEvent } from "@/lib/analytics";
 import { makeScoredItem } from "@/__tests__/factories";
 import { computeRegionalStats } from "@/scoring/regionalStats";
-import { DEV_FULL_MIN_PCT, DEV_ZERO_AT_PCT } from "@/constants/scoringTiers";
 
 // analytics mock — DetailModal 의 detail_tab_view 발화 카운트 단언용. 이 mock 은 PresaleInfo 의
 // presale_view(분양 탭 방문 시 발화)도 no-op 시키나, presale_view 커버리지는 PresaleInfo.test.jsx 소유.
@@ -158,8 +157,8 @@ describe("DetailModal", () => {
   it("핵심 지표는 2행이고, 규제현황·LTV한도는 금융 탭이 이미 갖고 있다 (세션508 PR-3a A2)", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
     expect(screen.getByText("핵심 지표")).toBeInTheDocument();
-    // 남는 2행 — 적정가 괴리·입주.
-    for (const label of ["적정가 괴리", "입주"]) {
+    // 남는 2행 — 실거래 대비 분양가(세션651 옛 "적정가 괴리")·입주.
+    for (const label of ["실거래 대비 분양가", "입주"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
     // 규제현황·LTV한도(금융 탭 A3 로 이관)·지역·분양가·전세가율·미분양률 행은 뺐다.
@@ -426,8 +425,8 @@ describe("DetailModal StickyJumpNav", () => {
     expect(price.textContent).not.toContain("구 실거래가");
     expect(price.textContent).not.toContain("PSR");
     expect(price.querySelector('[data-testid="psr-gauge"]')).toBeNull();
-    // 적정가 줄은 그대로다(양성 앵커 — 이 픽스처는 새 칸이 없는 옛 JSON 경로)
-    expect(price.textContent).toContain("적정가 대비 위치");
+    // 비교 표는 그대로다(양성 앵커 — 세션651 부터 옛 "적정가 대비 위치" 눈금 대신 표)
+    expect(price.querySelector('[data-testid="price-compare-table"]')).not.toBeNull();
   });
 
   // 세션609 라) §5-4 — 새 칸(cmpScope 등)이 오면 맨 위 상자가 비교 범위를 문장으로 말한다(문장 자체는
@@ -453,7 +452,7 @@ describe("DetailModal StickyJumpNav", () => {
       },
     });
     const head = price.querySelector('[data-testid="price-scope-head"]');
-    expect(head?.textContent).toContain("같은 동 비슷한 연식(±10년)·같은 평수 실거래 5건 기준");
+    expect(head?.textContent).toContain("같은 동 비슷한 연식(±10년)·같은 평수(전용 84㎡) 실거래와 견주면");
     expect(price.querySelector('[data-testid="dong-fact-line"]')?.textContent).toContain("1996~2004년에 지은 집");
   });
 
@@ -465,7 +464,10 @@ describe("DetailModal StickyJumpNav", () => {
     expect(price.textContent).not.toContain("네이버 교차검증");
     // 대조표의 '주변 시세'·'전세가율' 줄과 열 머리가 되살아나면 red
     expect(price.textContent).not.toContain("주변 시세");
-    expect(price.textContent).not.toContain("공공데이터");
+    // 세션651: 시세 상자 출처 줄("국토교통부 아파트 실거래가(공공데이터포털)")은 옛 대조표 머리가 아니다 — 빼고 본다
+    const src = price.querySelector('[data-testid="price-source"]')?.textContent ?? "";
+    expect(src).toContain("공공데이터포털"); // 양성 앵커 — 출처 줄이 있는 것을 확인하고 뺀다
+    expect(price.textContent.replace(src, "")).not.toContain("공공데이터");
     expect(price.querySelector("table")).toBeNull();
   });
 
@@ -558,88 +560,38 @@ describe("DetailModal StickyJumpNav", () => {
   });
 
   // 세션 409 D2b — 종합 탭 카테고리 미니카드. benefit 제외 6→5개 (2026-08-11, 가중치 0)
-  // ── 적정가 대비 위치 게이지 (세션531) ──────────────────────────────────────
+  // ── 시세 탭 비교 표 (세션651 — 옛 "적정가 대비 위치" 눈금 삭제) ──────────────────────
   //
-  // 옛 코드는 눈금 끝을 손으로 ±30 에 박아 뒀는데, 그건 **점수가 이미 만점·최하가 되는 지점과
-  // 어긋난 값**이었다. 이제 양 끝 = 점수가 더는 안 움직이는 지점이라, 게이지가 꽉 찼다는 건
-  // "이 축에서 더 좋아질 게 없다"는 뜻이 된다. 옛 ±30 하드코딩으로 되돌리면 아래가 red.
-  describe("적정가 대비 위치 게이지", () => {
+  // 세션531~650 의 눈금(양 끝 = 점수 만점·최하 지점, 색 = ±10% 중립대 3분기)은 사장님 결정(공공기관 준거)으로
+  // 지웠다 — 판정어·초록/빨강 대신 분양가·실거래 중앙값·산술 차이·출처를 표로 적는다(문장은
+  // `detail/PricePositionBox.test.tsx` 가 잠근다). 여기는 모달 배선과 "눈금·판정어가 돌아오지 않는다"를 본다.
+  describe("시세 탭 비교 표 — 눈금·판정어 없음 (세션651)", () => {
     /** @param {string} dev */
     const openPrice = (dev) => {
       const item = makeItem();
-      // 픽스처의 price 는 `{ total, subs }` 로만 추론돼 deviation 이 없다 — 실제 엔진 반환에는 있다
       /** @type {any} */ (item.res.cats.price).deviation = dev;
       const { container } = render(<DetailModal {...makeProps({ item })} />);
       fireEvent.click(screen.getByRole("tab", { name: "시세" }));
       return /** @type {any} */ (container.querySelector("#sec-price"));
     };
 
-    it("눈금 양 끝이 점수 경계(만점·최하 지점)를 그대로 말한다", () => {
-      const sec = openPrice("5.0");
-      expect(sec.textContent).toContain(`${DEV_ZERO_AT_PCT}% 비쌈`);
-      expect(sec.textContent).toContain(`${DEV_FULL_MIN_PCT}% 저렴`);
-      // 옛 하드코딩이 돌아오면 red (상수가 30 이 아닌 한)
-      if (DEV_FULL_MIN_PCT !== 30) expect(sec.textContent).not.toContain("30% 저렴");
-      if (DEV_ZERO_AT_PCT !== 30) expect(sec.textContent).not.toContain("30% 비쌈");
+    it.each(["35.0", "15.0", "3.0", "0.0", "-3.0", "-15.0", "-35.0"])(
+      "괴리 %s%% 여도 눈금·판정어 없이 표와 출처만",
+      (dev) => {
+        const sec = openPrice(dev);
+        expect(sec.textContent).not.toContain("적정가 대비 위치");
+        expect(sec.textContent).not.toMatch(/적정가|저렴|비쌈/);
+        expect(sec.querySelector('[style*="width: 14px"][style*="border-radius: 50%"]')).toBeNull(); // 눈금 마커
+        expect(sec.querySelector('[data-testid="price-compare-table"]')).not.toBeNull();
+        expect(sec.querySelector('[data-testid="price-source"]')?.textContent).toContain("국토교통부 아파트 실거래가");
+      }
+    );
+
+    it("차이 줄 = 점수 캐시 괴리율의 산술 차이 (부호 +면 분양가가 낮음)", () => {
+      expect(openPrice("15.0").textContent).toContain("분양가가 15.0% 낮음");
     });
 
-    it("만점 경계에서 눈금이 오른쪽 끝까지 찬다", () => {
-      const sec = openPrice(String(DEV_FULL_MIN_PCT));
-      const marker = sec.querySelector('[style*="left: 100%"]');
-      expect(marker).not.toBeNull();
-    });
-
-    it("최하 지점에서 눈금이 왼쪽 끝까지 간다", () => {
-      const sec = openPrice(String(-DEV_ZERO_AT_PCT));
-      const marker = sec.querySelector('[style*="left: 0%"]');
-      expect(marker).not.toBeNull();
-    });
-
-    // ⚠️ 아래 두 건이 이 가드의 **핵심**이다. 위 세 건(만점 경계·최하 지점·한가운데)은
-    //    옛 ±30 고정 클램프로 되돌려도 **똑같이 통과한다** — 35 도 30 도 그 지점에서는 둘 다
-    //    포화하기 때문이다. 실제로 뮤테이션 검증에서 그 되돌림이 green 이었다(세션531 자책).
-    //    두 클램프가 **서로 다른 값을 내는 안쪽 지점**을 넣어야 잡힌다.
-    it("경계 안쪽(90% 지점)은 끝까지 안 간다 — 옛 ±30 고정 클램프면 red", () => {
-      const sec = openPrice(String(DEV_FULL_MIN_PCT * 0.9));
-      expect(sec.querySelector('[style*="left: 100%"]')).toBeNull();
-      expect(sec.querySelector('[style*="left: 95%"]')).not.toBeNull();
-    });
-
-    it("반대쪽 경계 안쪽(90% 지점)도 끝까지 안 간다", () => {
-      const sec = openPrice(String(-DEV_ZERO_AT_PCT * 0.9));
-      expect(sec.querySelector('[style*="left: 0%"]')).toBeNull();
-      expect(sec.querySelector('[style*="left: 5%"]')).not.toBeNull();
-    });
-
-    it("적정가와 같으면 한가운데", () => {
-      const sec = openPrice("0.0");
-      expect(sec.querySelector('[style*="left: 50%"]')).not.toBeNull();
-    });
-
-    // ── SC0: 마커 색이 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 ──────────
-    // 마커(14px 원)의 background 로 색을 본다. jsdom 은 hex → rgb 로 정규화한다.
-    // ⚠️ 핵심 뮤테이션: 색을 `dev > 0` 부호 단독으로 되돌리면 밴드 안(+3%)이 초록이 되어 red.
-    /** @param {string} dev */
-    const dotBg = (dev) =>
-      openPrice(dev).querySelector('[style*="width: 14px"][style*="border-radius: 50%"]').style.background;
-
-    it("밴드 안(+3%)은 초록이 아니라 중립 회색 — 부호 단독이면 red", () => {
-      expect(dotBg("3.0")).toBe("rgb(107, 114, 128)"); // C.muted
-    });
-    it("밴드 안(-3%)도 빨강이 아니라 중립 회색", () => {
-      expect(dotBg("-3.0")).toBe("rgb(107, 114, 128)"); // C.muted
-    });
-    it("밴드 위(+15%)는 초록", () => {
-      expect(dotBg("15.0")).toBe("rgb(22, 163, 74)"); // C.green
-    });
-    it("밴드 아래(-15%)는 빨강", () => {
-      expect(dotBg("-15.0")).toBe("rgb(220, 38, 38)"); // C.red
-    });
-
-    // ── SC1: 데이터 부재(fairPrice<=0)면 게이지를 아예 안 그린다 ──────────────────────
-    // scorePrice 는 부재 시 fairPrice=0 + deviation="0.0" 을 내므로 deviation 게이트만으로는
-    // 부재가 "적정가와 비슷"(한가운데 마커)으로 둔갑한다.
-    it("데이터 부재(fairPrice=0)면 게이지를 안 그린다 (SC1)", () => {
+    it("데이터 부재(fairPrice=0)면 차이 줄이 없다 (SC1 — '같음'으로 둔갑 안 함)", () => {
       const item = makeItem();
       const price = /** @type {any} */ (item.res.cats.price);
       price.fairPrice = 0;
@@ -647,20 +599,19 @@ describe("DetailModal StickyJumpNav", () => {
       const { container } = render(<DetailModal {...makeProps({ item })} />);
       fireEvent.click(screen.getByRole("tab", { name: "시세" }));
       const sec = /** @type {any} */ (container.querySelector("#sec-price"));
-      expect(sec.textContent).not.toContain("적정가 대비 위치");
-    });
-    it("데이터 보유(fairPrice>0)면 게이지를 그린다 (게이트 정상 통과)", () => {
-      // openPrice 는 makeItem 의 fairPrice=48000 을 유지한다
-      expect(openPrice("3.0").textContent).toContain("적정가 대비 위치");
+      expect(sec.querySelector('[data-row="gap"]')).toBeNull();
+      expect(sec.textContent).not.toContain("분양가가 같음");
     });
   });
 
-  // ── 핵심 지표 '적정가 괴리' 행 — 부재 게이트(SC1) + 중립대 색(SC0) ─────────────────
+  // ── 핵심 지표 '실거래 대비 분양가' 행 — 부재 게이트(SC1) + 중립 색 하나(세션651) ─────────
   // 종합 탭(기본 활성)이라 클릭 없이 보인다. 값 span = 라벨 span 의 형제(행의 마지막 자식).
-  describe("핵심 지표 적정가 괴리 — 부재 '—' + 중립대 색", () => {
-    const valueEl = () => /** @type {any} */ (screen.getByText("적정가 괴리").parentElement).lastElementChild;
+  // 세션651: 옛 라벨 "적정가 괴리" · 값 "+15.0%" · 색 3분기(초록/빨강/회색) → 라벨 "실거래 대비 분양가" ·
+  //   값은 말로("분양가가 15.0% 낮음" — "+"를 "분양가가 높다"로 거꾸로 읽지 않게) · 색은 늘 같은 중립 하나.
+  describe("핵심 지표 실거래 대비 분양가 — 부재 '—' + 중립 색 하나", () => {
+    const valueEl = () => /** @type {any} */ (screen.getByText("실거래 대비 분양가").parentElement).lastElementChild;
 
-    it("데이터 부재(fairPrice=0)면 '—' — '0.0%' 로 둔갑 안 함 (SC1)", () => {
+    it("데이터 부재(fairPrice=0)면 '—' — '0.0%'·'같음' 으로 둔갑 안 함 (SC1)", () => {
       const item = makeItem();
       const price = /** @type {any} */ (item.res.cats.price);
       price.fairPrice = 0;
@@ -669,23 +620,29 @@ describe("DetailModal StickyJumpNav", () => {
       const v = valueEl();
       expect(v.textContent).toBe("—");
       expect(v.textContent).not.toContain("0.0%");
-      expect(v.style.color).toBe("rgb(107, 114, 128)"); // C.muted
     });
 
-    it("데이터 보유 + 밴드 안(-3.2%)이면 값은 보이되 색은 중립 (SC0) — 부호 단독이면 red(빨강)", () => {
+    it("값은 산술 차이를 말로 — 음수면 '높음'", () => {
       render(<DetailModal {...makeProps()} />); // 기본 fairPrice 48000, deviation -3.2
-      const v = valueEl();
-      expect(v.textContent).toBe("-3.2%");
-      expect(v.style.color).toBe("rgb(107, 114, 128)"); // C.muted (부호 단독이면 rgb(220,38,38))
+      expect(valueEl().textContent).toBe("분양가가 3.2% 높음");
     });
 
-    it("밴드 밖(+15%)이면 초록 (SC0)", () => {
-      const item = makeItem();
-      /** @type {any} */ (item.res.cats.price).deviation = "15.0";
-      render(<DetailModal {...makeProps({ item })} />);
-      const v = valueEl();
-      expect(v.textContent).toBe("+15.0%");
-      expect(v.style.color).toBe("rgb(22, 163, 74)"); // C.green
+    it.each(["15.0", "-15.0", "3.0", "-3.0"])(
+      "괴리 %s%% — 색은 늘 같은 중립 하나 (옛 초록/빨강 3분기면 red)",
+      (dev) => {
+        const item = makeItem();
+        /** @type {any} */ (item.res.cats.price).deviation = dev;
+        render(<DetailModal {...makeProps({ item })} />);
+        const v = valueEl();
+        expect(v.style.color).toBe("rgb(27, 31, 43)"); // C.text
+        expect(v.style.color).not.toBe("rgb(22, 163, 74)"); // C.green
+        expect(v.style.color).not.toBe("rgb(220, 38, 38)"); // C.red
+      }
+    );
+
+    it("옛 라벨 '적정가 괴리' 는 없다", () => {
+      render(<DetailModal {...makeProps()} />);
+      expect(screen.queryByText("적정가 괴리")).toBeNull();
     });
   });
 
@@ -697,10 +654,9 @@ describe("DetailModal StickyJumpNav", () => {
     expect(cards.length).toBe(5);
     // 결론 문구 샘플: location 80점 → '입지 우수'
     expect(overview.textContent).toContain("입지 우수");
-    // ⚠️ 세션531: 판정 경계가 0 → ±10 으로 넓어져 픽스처의 deviation '-3.2' 는 이제 "적정가 수준"이다.
-    //    (그 폭은 우리 적정가 추정 자체의 흔들림 중앙 ±11.5%p 에서 왔다 — scoringTiers.ts 주석)
-    expect(overview.textContent).toContain("적정가 수준");
-    expect(overview.textContent).not.toContain("적정가 대비 3% 비쌈");
+    // 세션651: 가격 미니카드 결론 = 산술 차이(판정어 없음). 픽스처 deviation '-3.2' → "실거래보다 3.2% 높은 분양가".
+    expect(overview.textContent).toContain("실거래보다 3.2% 높은 분양가");
+    expect(overview.textContent).not.toMatch(/적정가|저렴|비쌈/);
   });
 
   it("점수 탭에도 benefit CatPanel(혜택·할인)이 더 이상 없다 (5개, 2026-08-11)", () => {
@@ -1027,7 +983,7 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     }
     expect(overview.textContent).toContain("입지");
     expect(overview.textContent).not.toContain("입지 우수");
-    expect(overview.textContent).not.toContain("적정가 대비 3% 비쌈");
+    expect(overview.textContent).not.toContain("실거래보다 3.2% 높은 분양가");
   });
 
   it("isLoggedIn=false 면 profile 을 줘도 가중치 막대를 안 그린다", () => {
@@ -1103,7 +1059,7 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     fireEvent.click(screen.getByRole("tab", { name: "시세" }));
     // 시세 탭 맨 위 상자는 점수가 아니라 값이라 비로그인에게도 그대로 보인다(세션589 · 세션609 — PSR 줄은 지웠다).
     const price = container.querySelector("#sec-price");
-    expect(price?.textContent).toContain("적정가 대비 위치");
+    expect(price?.querySelector('[data-testid="price-compare-table"]')).not.toBeNull();
     expect(price?.textContent).not.toContain("구 실거래가");
     fireEvent.click(screen.getByRole("tab", { name: "입지" }));
     // 세션591: 옛 "교통 상세" 접힘 대신 거리 점 그림·치안·환경 칩이 공개 본문이다

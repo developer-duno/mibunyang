@@ -464,6 +464,11 @@ export const AptCard = memo(
     if (pa.subwayName !== na.subwayName) return false;
     // 세션609 라: 전세가율 칩 재료가 같은 단지 값(complexJeonseRate)으로 바뀌었다 — 비교도 그 칸을 본다.
     if (pa.complexJeonseRate !== na.complexJeonseRate) return false;
+    // 세션651: 전세가율 칩이 산식(전세 N건 ÷ 매매 M건)을, 가격 비교 칩이 중앙값·건수·기간·㎡당 환산을
+    //   적는다 — 그 재료가 바뀌면 다시 그린다(빠지면 옛 숫자가 카드에 남는다).
+    if (pa.complexJeonseN !== na.complexJeonseN || pa.complexSaleN !== na.complexSaleN) return false;
+    if (pa.cmpFairPrice !== na.cmpFairPrice || pa.cmpN !== na.cmpN) return false;
+    if (pa.cmpMonths !== na.cmpMonths || pa.cmpAreaMode !== na.cmpAreaMode) return false;
     if (pa.parkingRatio !== na.parkingRatio) return false;
     if (pa.noxiousDist !== na.noxiousDist) return false;
     if (pa.corridorType !== na.corridorType) return false;

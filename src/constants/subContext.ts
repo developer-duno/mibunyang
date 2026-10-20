@@ -5,7 +5,6 @@ import {
   LIQUIDITY_TIERS,
   LIQUIDITY_LABELS,
   LIQUIDITY_AREA_UNIT,
-  DEV_NEUTRAL_BAND_PCT,
   EXCL_RATIO_TIERS,
   NOISE_TIERS,
   CANCEL_RATIO_TIERS,
@@ -15,6 +14,7 @@ import {
   schoolGradeLegend,
 } from "@/constants/scoringTiers";
 import { NOXIOUS_PENALTY } from "@/constants/brands";
+import { fmtPriceGap } from "@/lib/format";
 
 // 소비자용 서브지표 해석 매핑 테이블
 // 엔진(engine.js) 수정 없이 표현 계층에서만 활용
@@ -101,23 +101,19 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     // ⚠️ 점수로 가르면 값과 어긋난다 — 바로 아래 전세가율과 같은 자리다. 실측(운영 n=1,646):
     //    괴리도가 **양수(+0.9% 등)인데 "적정가보다 비쌈"** 10곳, "적정가 수준" 91곳 중 45곳이 ±5% 밖.
     //    `deviation` 은 이미 부호 있는 퍼센트로 `info` 에 담겨 오므로(scorePrice.ts `+18.8%`/`-3.2%`)
-    //    **값으로 전 구간을 가른다.** 경계는 `DEV_NEUTRAL_BAND_PCT`(세션531에 5 → 10) 하나에서 오고,
-    //    아래 benchmark·`cardChips`·`catVerdict`·엔진 detail 이 **같은 상수**를 쓴다 — 넷이 제각각이던
-    //    시절엔 같은 단지를 카드는 "1% 저렴", 점수 탭은 "적정가 수준"이라 불렀다.
-    "적정가 괴리도": {
+    //    **값으로 적는다.** (세션531~650 의 ±`DEV_NEUTRAL_BAND_PCT` 판정은 세션651 에 손님 문구에서 뺐다.)
+    // 세션651(사장님 결정 — 공공기관 준거): 키 = 엔진 서브 이름(옛 "적정가 괴리도" → "실거래 대비 분양가").
+    //   ±10% 판정("저렴/비쌈/수준")을 빼고 **산술 차이**만 적는다(`fmtPriceGap` — 시세 탭 표·엔진 detail 과 같은 말).
+    //   부호는 info(`+11.5%` = deviation) 그대로 — +면 분양가가 낮음. 점수 곡선은 그대로다.
+    "실거래 대비 분양가": {
       interpret: (_sc, info) => {
         const dev = info ? parseFloat(info) : NaN;
-        // 적정가를 못 만든 단지는 info 가 "데이터 부재" 다(scorePrice 무데이터 분기) — 점수로
-        // 역산하면 그 단지에 "비쌈/저렴"을 단정하게 된다. catVerdict.ts 와 같은 어휘로 빠진다.
-        if (!Number.isFinite(dev)) return "적정가 산출 불가";
-        if (dev > DEV_NEUTRAL_BAND_PCT) return "적정가보다 저렴";
-        if (dev < -DEV_NEUTRAL_BAND_PCT) return "적정가보다 비쌈";
-        return "적정가 수준";
+        // 비교 대상을 못 만든 단지는 info 가 "데이터 부재" 다(scorePrice 무데이터 분기) — 점수로
+        // 역산하면 그 단지의 차이를 지어내게 된다. 사실대로 빠진다.
+        if (!Number.isFinite(dev)) return "비교할 실거래 없음";
+        return fmtPriceGap(dev);
       },
-      // 밴드 폭은 `scoringTiers.ts` 한 곳에서 온다 — 세션531 이전에는 이 파일 두 곳과
-      // `scorePrice.ts` 의 detail 에 각각 손으로 적혀 있어 셋이 갈릴 수 있었다(실제로 detail 이
-      // 음수 쪽 산식과 어긋나 있었다).
-      benchmark: `적정가 ±${DEV_NEUTRAL_BAND_PCT}% 이내`,
+      benchmark: "같은 단지 같은 평수 실거래 중앙값 대비 · 국토부 실거래가",
     },
     // ⚠️ 점수 곡선이 ∩ 모양이다(`scorePrice.ts` — 70~80% 가 정점, 80% 초과는 급락).
     //    그래서 **점수만 보면 "너무 낮아서"와 "너무 높아서"를 구분할 수 없다.** 옛 문구는 낮은 점수를
@@ -125,17 +121,15 @@ export const SUB_CONTEXT: Record<Category, Record<string, SubInterpret>> = {
     //    (96곳은 100% 이상, 최대 270.6%). 세션510이 같은 이유로 카드 칩 '색'은 고쳤는데 문구는 남았다.
     //    ⚠️ 점수로 구간을 가르면 아래쪽(jr 65~70 → sc 70~80)도 "적정"에 섞여 새 거짓이 238곳 생긴다 —
     //    반드시 **값(jr)으로 전 구간을 가른다.**
+    // 세션651(사장님 결정): 전세가율이 몇 %면 좋은지 공공기관이 정한 기준이 없다 — 판정어("적정·높음·낮음")를
+    //   빼고 **산식**만 적는다. 점수 곡선(70~80 정점)은 그대로 — 문구만 바뀐다.
     전세가율: {
-      interpret: (sc, info) => {
+      interpret: (_sc, info) => {
         const jr = info ? parseFloat(info) : NaN;
-        if (!Number.isFinite(jr)) return sc >= 70 ? "전세가율 적정권" : sc >= 40 ? "보통 수준" : "전세가율 주의";
-        if (jr > 90) return "전세가율 매우 높음 — 매매가에 근접";
-        if (jr > 80) return "전세가율 높음";
-        if (jr >= 70) return "전세가율 적정 (70~80%)";
-        if (jr >= 60) return "전세가율 보통";
-        return "전세가율 낮음";
+        if (!Number.isFinite(jr)) return "같은 단지 전세·매매 거래 부족";
+        return `전세 중앙값 ÷ 매매 중앙값 = ${jr}%`;
       },
-      benchmark: "70~80% 적정 (높아도 낮아도 감점)",
+      benchmark: "같은 단지 같은 평수 전세·매매 각 3건 이상일 때 계산",
     },
     // ⚠️ benchmark 숫자는 `PIR_SCORE_TIERS` 에서 만든다 — 손으로 적으면 어긋난다.
     //    세션108이 기준을 '가구소득 ≤3배' 에서 'KOSIS 1인당 개인소득 ≤10배' 로 재설계했는데

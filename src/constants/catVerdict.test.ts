@@ -50,29 +50,43 @@ describe("catVerdict — 임계 70/50 이 gr() 등급 경계와 정합", () => {
   });
 });
 
-describe("catVerdict — price 는 적정가 괴리(deviation) 실측 우선", () => {
-  it("fairPrice>0 + deviation 양수 → 저렴", () => {
-    expect(catVerdict("price", mk({ total: 40, fairPrice: 50000, deviation: "12.3" }))).toBe("적정가 대비 12% 저렴");
+describe("catVerdict — price 는 실거래 중앙값과의 산술 차이 (세션651 W7)", () => {
+  // 세션651(사장님 결정 — 공공기관 준거): ±10% 판정("적정가 대비 N% 저렴/비쌈"·"적정가 수준")을 빼고
+  //   두 숫자의 차이만 적는다. 부호 = deviation 그대로(+면 분양가가 낮음). 옛 문구로 되돌리면 아래가 red.
+  it("fairPrice>0 + deviation 양수 → '실거래보다 N% 낮은 분양가'", () => {
+    expect(catVerdict("price", mk({ total: 40, fairPrice: 50000, deviation: "12.3" }))).toBe(
+      "실거래보다 12.3% 낮은 분양가"
+    );
   });
-  it("fairPrice>0 + deviation 음수 → 비쌈 (절댓값 표기)", () => {
-    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-18.7" }))).toBe("적정가 대비 19% 비쌈");
+  it("fairPrice>0 + deviation 음수 → '… 높은 분양가' (절댓값 표기)", () => {
+    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: "-18.7" }))).toBe(
+      "실거래보다 18.7% 높은 분양가"
+    );
   });
-  // 세션531: 경계가 0 → ±DEV_NEUTRAL_BAND_PCT(10). 그 폭은 우리 적정가 추정 자체의 흔들림
-  //   (중앙 ±11.5%p)에서 왔다 — 그보다 작은 차이로 방향을 단정하지 않는다.
-  //   `subContext`·`cardChips` 와 같은 상수를 써야 한 단지가 화면마다 다른 말을 안 듣는다.
-  //   옛 경계(0)로 되돌리면 아래가 red.
-  it.each(["-9.9", "9.9", "-3.2", "3.2"])("밴드 안(%s%%)이면 방향을 단정하지 않는다 (세션531)", (d) => {
-    expect(catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: d }))).toBe("적정가 수준");
+  it.each([
+    ["-9.9", "실거래보다 9.9% 높은 분양가"],
+    ["9.9", "실거래보다 9.9% 낮은 분양가"],
+    ["-3.2", "실거래보다 3.2% 높은 분양가"],
+    ["3.2", "실거래보다 3.2% 낮은 분양가"],
+  ])("옛 밴드 안(%s%%)이어도 판정 없이 숫자 그대로", (d, want) => {
+    const v = catVerdict("price", mk({ total: 80, fairPrice: 50000, deviation: d }));
+    expect(v).toBe(want);
+    expect(v).not.toMatch(/적정가|저렴|비쌈|수준/);
   });
-  it("fairPrice>0 + deviation 0 → '적정가 수준' (진짜 0% 괴리 정직 표기)", () => {
-    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe("적정가 수준");
+  it("fairPrice>0 + deviation 0 → '실거래와 같은 분양가'", () => {
+    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.0" }))).toBe("실거래와 같은 분양가");
+    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.04" }))).toBe("실거래와 같은 분양가");
+    // 세션651 검사관 보완: "같음" 문턱 = 표시 자릿수(소수 첫째) 반올림 0.0 — 0.3% 는 같다고 하지 않는다
+    expect(catVerdict("price", mk({ total: 60, fairPrice: 50000, deviation: "0.3" }))).toBe(
+      "실거래보다 0.3% 낮은 분양가"
+    );
   });
-  it("fairPrice=0 (적정가 산출 실패) → 점수 폴백 대신 '적정가 산출 불가' (세션512)", () => {
+  it("fairPrice=0 (적정가 산출 실패) → 점수 폴백 대신 '비교할 실거래 없음' (세션512 · 651)", () => {
     // scorePrice.ts:116 데이터 부재 분기 = fairPrice:0, deviation:"0.0". 부호 분기로 가면 거짓 표시.
-    expect(catVerdict("price", mk({ total: 72, fairPrice: 0, deviation: "0.0" }))).toBe("적정가 산출 불가");
+    expect(catVerdict("price", mk({ total: 72, fairPrice: 0, deviation: "0.0" }))).toBe("비교할 실거래 없음");
   });
   it("deviation/fairPrice undefined (factory 기본값) → 점수 문구 폴백, 무크래시", () => {
-    expect(catVerdict("price", mk({ total: 45 }))).toBe("적정가 산출 불가");
+    expect(catVerdict("price", mk({ total: 45 }))).toBe("비교할 실거래 없음");
   });
 
   // ⚠️ 세션512 — 적정가를 못 만든 74곳에게 "주변 대비 부담"이라 단정하고 있었다. 분양가도 모르고
@@ -85,9 +99,9 @@ describe("catVerdict — price 는 적정가 괴리(deviation) 실측 우선", (
     // 총점 폴백 문구 자체에서도 '주변 대비'를 뺐다 — 이 축은 주변 단지를 직접 비교하지 않는다
     expect(catVerdict("location", mk({ total: 20 }))).not.toMatch(/주변/);
   });
-  it("deviation number 0 + fairPrice number 0 (engine 폴백) → '적정가 산출 불가' (세션512)", () => {
+  it("deviation number 0 + fairPrice number 0 (engine 폴백) → '비교할 실거래 없음' (세션512 · 651)", () => {
     // fairPrice=0 은 적정가를 못 만들었다는 뜻이라, deviation 이 숫자 0 이어도 "적정"이라 말할 수 없다.
-    expect(catVerdict("price", mk({ total: 55, fairPrice: 0, deviation: 0 }))).toBe("적정가 산출 불가");
+    expect(catVerdict("price", mk({ total: 55, fairPrice: 0, deviation: 0 }))).toBe("비교할 실거래 없음");
   });
 });
 

@@ -79,6 +79,7 @@ export interface Apt {
    * - `cmpFairPrice`: 적정가(만원 총액, 계수 없음) · `cmpN`·`cmpMonths`: 건수·기간 · `cmpAreaMode`: same_area / per_m2
    * - `cmpSrc`: 적정가에 쓴 거래 종류 sale(매매) / presale(분양권)
    * - `complexJeonseRate`: 같은 단지 전세 중앙 ÷ 매매 중앙(%) · `complexJeonseN`·`complexSaleN`: 그 건수
+   * ⚠️ 세션651: "적정가"는 코드 안 이름일 뿐 — 손님 화면에서는 "실거래 중앙값"이라 부른다(판정어 삭제).
    */
   cmpScope?: "complex" | "dong_peer" | "none" | null;
   cmpFairPrice?: number | null;
