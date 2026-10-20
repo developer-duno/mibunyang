@@ -146,7 +146,8 @@ export function formatIssue(issue) {
   const guide = issue.kind === "fail"
     ? (conclusionKey ? /** @type {any} */ (ACTION_GUIDE.fail)[conclusionKey] : undefined) ?? ACTION_GUIDE.fail.failure
     : ACTION_GUIDE[issue.kind];
-  out.push(guide);
+  // 조치 문구도 escape — `<절대경로>` 같은 자리표시가 HTML 태그로 읽혀 메시지 전체가 400 으로 거절됐다(세션652, 10/20 ⑱).
+  out.push(typeof guide === "string" ? escapeHtml(guide) : guide);
 
   return out.join("\n");
 }
