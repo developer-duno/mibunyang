@@ -16,7 +16,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 
 const {
   planRow, parseArgs, runMapping, runOutcome, runAndRecord, countSameCoordGroups, sggMatches,
-  CONTROL, MAX_CONSECUTIVE_FAIL, DEFAULT_BUDGET_MIN, FIRST_RUN_PENDING,
+  CONTROL, MAX_CONSECUTIVE_FAIL, DEFAULT_BUDGET_MIN, FIRST_RUN_PENDING, SIDO_MISMATCH_ALLOWLIST,
 } = await import("./sgis-map-emd.mjs");
 const { resetTokenCache } = await import("./_sgis-api.mjs");
 
@@ -152,6 +152,26 @@ describe("planRow — 판정 4갈래(ok · 시도 불일치 · none · fail 은 
   it("none → skip none", () => {
     expect(planRow({ region: "서울" }, { kind: "none" })).toEqual({ action: "skip", reason: "none" });
   });
+  it("예외 명단 id + 시도 불일치(31) → skip sido-mismatch-allowlisted — 여전히 쓰지 않는다", () => {
+    const plan = planRow({ id: "ap-6023092", region: "서울" }, ok("31", "31014620"));
+    expect(plan).toMatchObject({ action: "skip", reason: "sido-mismatch-allowlisted", expected: ["11"], sidoCd: "31" });
+    expect(plan).not.toHaveProperty("admCd");
+  });
+  it("예외 명단 id 인데 시도가 맞으면(11) → 평소처럼 write", () => {
+    expect(planRow({ id: "ap-6023092", region: "서울" }, ok("11", "11230640"))).toEqual({ action: "write", admCd: "11230640" });
+  });
+  it("명단 밖 id·id 없는 호출 + 31 → 지금처럼 sido-mismatch", () => {
+    expect(planRow({ id: "ap-1", region: "서울" }, ok("31", "31014620"))).toMatchObject({ action: "skip", reason: "sido-mismatch" });
+    expect(planRow({ region: "서울" }, ok("31", "31014620"))).toMatchObject({ action: "skip", reason: "sido-mismatch" });
+    expect(planRow({ id: "toString", region: "서울" }, ok("31", "31014620"))).toMatchObject({ action: "skip", reason: "sido-mismatch" });
+  });
+  it("예외 명단 id 라도 명단에 적힌 시도(31)가 아닌 다른 시도(26)로 오면 → 평소 sido-mismatch(경보에 센다)", () => {
+    expect(planRow({ id: "ap-6023092", region: "서울" }, ok("26", "26110101"))).toMatchObject({ action: "skip", reason: "sido-mismatch" });
+  });
+  it("명단은 정확히 2곳(강동리엔파크 13·14단지) · 둘 다 시도 31", () => {
+    expect(Object.keys(SIDO_MISMATCH_ALLOWLIST).sort()).toEqual(["ap-6023092", "ap-6024718"]);
+    expect(Object.values(SIDO_MISMATCH_ALLOWLIST).map((e) => e.sidoCd)).toEqual(["31", "31"]);
+  });
 });
 
 // ── parseArgs ─────────────────────────────────────────────────
@@ -262,7 +282,7 @@ describe("runMapping — 대조군 · 판정 · 쓰기", () => {
       "aborted", "byRegion", "byRegionSido", "bySido", "dryRun", "planned", "ranAt", "sameCoordGroups", "sample",
       "sggMismatch", "sidoMismatch", "stopped", "total",
     ]);
-    expect(im.planned).toEqual({ ok: 1, skipNone: 1, skipSidoMismatch: 1, skipCoordShared: 0, fail: 1 });
+    expect(im.planned).toEqual({ ok: 1, skipNone: 1, skipSidoMismatch: 1, skipAllowlisted: 0, skipCoordShared: 0, fail: 1 });
     expect(im.byRegionSido).toEqual({ 서울: { 11: 1, 31: 1 } });
     expect(im.stopped).toBeNull();
     expect(im.bySido).toEqual({ 11: 1, 31: 1 });
@@ -527,6 +547,31 @@ describe("W4 시도 불일치를 기록에 남긴다", () => {
     expect(runOutcome(r)).toEqual({ record: { ok: 1, fail: 0, skip: 1, status: "success", errorMessage: "SGIS_SIDO_MISMATCH=1" }, exitCode: 0 });
     const withAbort = { ...r, aborted: "승인 3 ≠ 계획 1 — 아무것도 쓰지 않았습니다", fail: 1 };
     expect(runOutcome(withAbort).record.errorMessage).toBe("승인 3 ≠ 계획 1 — 아무것도 쓰지 않았습니다 | SGIS_SIDO_MISMATCH=1");
+  });
+});
+
+describe("예외 명단 — 집계·표식", () => {
+  it("명단 2곳만 불일치 → 쓰지 않음(빈칸) · skipAllowlisted 2 · skipSidoMismatch 0 · SGIS_SIDO_MISMATCH 표식 없음", async () => {
+    const db = makeDb([
+      apt("ap-6023092", "서울", 37.51, 127.01),
+      apt("ap-6024718", "서울", 37.52, 127.02),
+      apt("a3", "서울", 37.53, 127.03),
+    ]);
+    const bad = () => rg("31", "014", "620", "미사3동");
+    const r = await runMapping({ sb: db.sb, fetchImpl: fakeFetch({ "37.51,127.01": bad, "37.52,127.02": bad, "37.53,127.03": YEOKSAM }).fetchImpl, dryRun: false, sleepFn: noSleep });
+    expect(r.impact.planned).toMatchObject({ ok: 1, skipSidoMismatch: 0, skipAllowlisted: 2 });
+    expect(r.impact.sidoMismatch).toEqual([]);
+    expect(r.skip).toBe(2);
+    for (const id of ["ap-6023092", "ap-6024718"]) expect(db.table.find((x) => x.id === id)?.sgis_emd_cd).toBeNull();
+    expect(db.table.find((x) => x.id === "a3")?.sgis_emd_cd).toBe("11230640");
+    expect(runOutcome(r)).toEqual({ record: { ok: 1, fail: 0, skip: 2, status: "success", errorMessage: null }, exitCode: 0 });
+  });
+  it("명단 2곳 + 명단 밖 1곳 불일치 → 표식은 명단 밖 1곳만 센다(SGIS_SIDO_MISMATCH=1)", async () => {
+    const db = makeDb([apt("ap-6023092", "서울", 37.51, 127.01), apt("a2", "서울", 37.52, 127.02)]);
+    const bad = () => rg("31", "014", "620", "미사3동");
+    const r = await runMapping({ sb: db.sb, fetchImpl: fakeFetch({ "37.51,127.01": bad, "37.52,127.02": bad }).fetchImpl, dryRun: false, sleepFn: noSleep });
+    expect(r.impact.planned).toMatchObject({ skipSidoMismatch: 1, skipAllowlisted: 1 });
+    expect(runOutcome(r).record.errorMessage).toBe("SGIS_SIDO_MISMATCH=1");
   });
 });
 
