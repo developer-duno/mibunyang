@@ -21,11 +21,24 @@ export function stripHeight(rowCount: number): number {
 // 대조군(`regionalStats.ts:90`)은 `region` 하나로만 묶어 오피스텔·재건축이 섞여 있으므로
 // "아파트"는 그 모집단을 잘못 부르는 이름이다. 나중에 버킷을 유형별로 가르기로 결정하면
 // 이 세 자리를 **함께** 고쳐야 한다(모집단 서술을 하드코딩한 자리가 여기까지 셋).
+// 세션652(사장님 결정 ② 값 그대로): 옛 첫 문장 "오른쪽으로 길수록 이 단지가 유리해요"를 버렸다 — 지금 8줄은
+//   모두 "오른쪽일수록 값이 큼"이다(`neutral` 줄은 백분위 그대로, 남은 판정 줄 주차·전용률은 높을수록 좋은 줄).
 const HELP_TEXT =
-  "막대가 오른쪽으로 길수록 이 단지가 유리해요. " +
+  "막대가 가운데 세로선에서 오른쪽으로 길수록 이 단지 값이 크고, 왼쪽으로 길수록 작아요. " +
+  "오른쪽 글자는 한가운데 값보다 몇 %(이미 %인 값은 %p) 높은지·낮은지예요 — 역세권은 역까지 거리가 먼지·가까운지예요. " +
   "가운데 세로선은 같은 지역 분양 단지들의 한가운데 값입니다. " +
   "그 지역 단지를 값 순서대로 줄 세웠을 때 정확히 가운데 있는 곳이 기준이에요. " +
   "평균과 달리, 아주 비싼 곳 몇 개 때문에 기준이 흔들리지 않습니다.";
+
+/**
+ * 도움말 — 세션652: 좋고 나쁨을 말하는 줄(`neutral` 아님 — 지금은 주차·전용률)이 섞여 있으면 그 줄만
+ * 이름을 들어 따로 알린다 — 같은 위젯 안에서 도움말이 그 줄의 색·말을 빠뜨리지 않게.
+ */
+export function deviationHelpText(fields: readonly DeviationFieldSpec[]): string {
+  const judged = fields.filter((f) => !f.neutral).map((f) => f.label);
+  if (judged.length === 0) return HELP_TEXT;
+  return HELP_TEXT + ` 단, ${judged.join("·")} 줄은 좋고 나쁨도 함께 적어요(파랑 = 유리 · 주황 = 불리).`;
+}
 
 const S = {
   wrap: { marginTop: 10 },
@@ -75,16 +88,19 @@ export const DeviationStrip = memo(function DeviationStrip({
 
   const rows = useMemo(
     () =>
-      fields.map((spec) => {
-        // 세션576 D5-b: 값이 비었으면 spec.fallback 의 추정치를 쓴다(점수 탭과 같은 숫자).
-        //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
-        //   추정치는 지역 분포와 견주지 않는다 — 추정 오차가 분포 폭보다 커서 막대 위치가 소음이다.
-        const input = resolveDeviationInput(spec, raw);
-        const dev = input.estimated
-          ? estimatedDeviation(spec, input.value)
-          : computeDeviation(spec, input.value, region, regionStats);
-        return { spec, input, dev };
-      }),
+      fields
+        .map((spec) => {
+          // 세션576 D5-b: 값이 비었으면 spec.fallback 의 추정치를 쓴다(점수 탭과 같은 숫자).
+          //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
+          //   추정치는 지역 분포와 견주지 않는다 — 추정 오차가 분포 폭보다 커서 막대 위치가 소음이다.
+          const input = resolveDeviationInput(spec, raw);
+          const dev = input.estimated
+            ? estimatedDeviation(spec, input.value)
+            : computeDeviation(spec, input.value, region, regionStats);
+          return { spec, input, dev };
+        })
+        // 세션651: 값이 없으면 줄을 안 그리는 필드(`hideWhenMissing` — 같은 단지 전세가율)는 "미수집" 대신 뺀다.
+        .filter(({ spec, dev }) => !(spec.hideWhenMissing && dev.state === "missing")),
     [fields, raw, region, regionStats]
   );
 
@@ -100,7 +116,7 @@ export const DeviationStrip = memo(function DeviationStrip({
             않는 중립어로만 고친다 — "분양 단지"는 규모·유형에 상관없이 항상 참이다. */}
         <span>{regionLabel} 분양 단지 한가운데 값과 비교</span>
         {usedNational && <span style={S.badge}>일부 전국 기준</span>}
-        <HelpHint text={HELP_TEXT} label="지역 비교" />
+        <HelpHint text={deviationHelpText(fields)} label="지역 비교" />
       </div>
       <div style={S.rows}>
         {rows.map(({ spec, input, dev }) => (

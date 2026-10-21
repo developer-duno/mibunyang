@@ -22,7 +22,11 @@ export type Deviation = {
    * `estimated` 실측 없이 추정치만 있음 — 값만 보이고 막대 위치·비교 문구는 없다(세션576 D5-b)
    */
   state: "ok" | "sparse" | "uniform" | "missing" | "estimated";
-  /** 0~100. **항상 클수록 유리** — 막대가 오른쪽으로 길수록 좋다는 규칙 하나로 통일된다. */
+  /**
+   * 0~100. 판정하는 줄은 **클수록 유리**(낮을수록 좋은 지표는 뒤집는다), `neutral` 줄은 백분위 그대로
+   * (클수록 값이 큼). 지금 8줄은 둘 다 "막대가 오른쪽일수록 값이 큼"이다 — 남은 판정 줄(주차·전용률)이
+   * 모두 높을수록 좋은 줄이라 뒤집히지 않는다(세션652).
+   */
   fav: number | null;
   /** 값 슬롯에 그대로 넣는 문장 조각 */
   text: string;
@@ -43,16 +47,25 @@ function fmtNumber(n: number): string {
 }
 
 /**
- * 값 슬롯 문장 조각 — `12% 싸요` / `3%p 많아요` / `2배 멀어요`.
+ * 값 슬롯 문장 조각 — `12% 낮음` / `3%p 높음` / `2배 멂` (판정하는 줄은 `8% 여유로워요`).
  *
  * 숫자에 부호를 붙이지 않는 것이 핵심이다. 부호는 막대 방향과 충돌하고,
  * 부동산을 모르는 사람에게 "왜 마이너스인데 좋은 거지?"를 만든다.
  */
 export function deviationText(spec: DeviationFieldSpec, value: number, median: number, good: boolean): string {
-  const word = good ? spec.goodWord : spec.badWord;
+  // 세션651: `neutral` 줄은 유불리 말 대신 **값의 산술 방향**(한가운데 값보다 높음/낮음)만 — 판정 없음.
+  //   세션652: 거리처럼 "높음/낮음"이 어색한 줄은 spec.neutralWords(역세권 `멂`/`가까움`).
+  const word = spec.neutral
+    ? value > median
+      ? (spec.neutralWords?.high ?? "높음")
+      : (spec.neutralWords?.low ?? "낮음")
+    : good
+      ? spec.goodWord
+      : spec.badWord;
+  const same = spec.neutral ? "같음" : "평균 수준";
   if (spec.unit === "percentPoint") {
     const diff = Math.abs(value - median);
-    if (Math.round(diff * 10) === 0) return "평균 수준";
+    if (Math.round(diff * 10) === 0) return same;
     const shown = diff < 1 ? diff.toFixed(1) : fmtNumber(diff);
     return `${shown}%p ${word}`;
   }
@@ -62,13 +75,13 @@ export function deviationText(spec: DeviationFieldSpec, value: number, median: n
     }
     if (median <= 0) return word;
     const pct = Math.abs(1 - value / median) * 100;
-    if (Math.round(pct) === 0) return "평균 수준";
+    if (Math.round(pct) === 0) return same;
     return `${fmtNumber(pct)}% ${word}`;
   }
   // percent
   if (median === 0) return word;
   const pct = Math.abs((value - median) / median) * 100;
-  if (Math.round(pct) === 0) return "평균 수준";
+  if (Math.round(pct) === 0) return same;
   return `${fmtNumber(pct)}% ${word}`;
 }
 
@@ -121,6 +134,18 @@ export function computeDeviation(
 
   const pct = percentileOf(stat, value);
   if (pct == null) return missing;
+
+  // 세션651: `neutral` 줄은 좋고 나쁨을 말하지 않는다 — 막대 = 백분위 그대로(오른쪽 = 값이 높음), 색 중립,
+  //   "평균 수준" 밴드 없이 한가운데 값과의 산술 차이를 그대로 적는다(재는 값 그대로).
+  if (spec.neutral) {
+    return {
+      state: "ok",
+      fav: pct,
+      text: deviationText(spec, value, stat.median, false),
+      tone: "neutral",
+      nationalFallback,
+    };
+  }
 
   // 낮을수록 좋은 지표는 뒤집어, 항상 "클수록 유리"로 만든다.
   const fav = spec.better === "low" ? 100 - pct : pct;

@@ -1,4 +1,5 @@
 -- ROLLBACK: 20261004000000_trade_links_and_scope_stats.sql
+-- ⚠️ 이 파일 전에 20261018000001_rollback_trade_stats_complex_area.sql(complex_area) 을 먼저 — 아니면 그 칸만 남는다(세션650).
 --
 -- 되돌리는 순서 — 정책 → 인덱스 → 표 → trade_stats 새 칸(IF EXISTS 라 어느 순서로 돌려도 에러가 나지 않는다).
 --

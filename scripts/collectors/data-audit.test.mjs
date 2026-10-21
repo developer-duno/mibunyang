@@ -200,6 +200,12 @@ describe("AUDIT_FIELDS", () => {
       "crimeSafetyGrade", "emergency", "emergencyDist", "emergencyName", "emergencyType",
     ]);
   });
+
+  // 세션648 — 구 전세가율(trade_stats.jeonse_rate)은 늘 null 이라 감사에 남으면 채움률 0%·NULL 급증 경보만 낸다.
+  it("trade_stats 묶음에 jeonseRate(구 전세가율)가 없다 (세션648 폐지)", () => {
+    expect(AUDIT_FIELDS.trade_stats.fields).toContain("nearbyMedian"); // 양성 앵커 — 묶음 자체는 남는다
+    expect(AUDIT_FIELDS.trade_stats.fields).not.toContain("jeonseRate");
+  });
 });
 
 // ── fetchAllFromView regions merge (세션 351 — fetch/merge 5컬럼 누락 회귀 가드) ──

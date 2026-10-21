@@ -1,6 +1,6 @@
 import { gr } from "@/theme";
-import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate } from "@/lib/format";
-import { BUILDER_DEBT_TIERS, DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
+import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate, fmtPrice } from "@/lib/format";
+import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
 // 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
 // 번들 비용 0: `scoreLocation` 이 이미 이 파일을 쓰고, 카드는 그 스코어링을 이미 로드한다.
@@ -29,7 +29,7 @@ import type { ScoringResult } from "@/types/components";
 export type ChipLayer =
   /** 이 단지가 지금 어떤 상태인가 — 분양 단계·입주 상태. 상한 밖, 항상 보인다 */
   | "status"
-  /** 손님이 늘 확인하는 값 — 적정가·입지·안전 등급. 상한 밖, 항상 보인다 */
+  /** 손님이 늘 확인하는 값 — 실거래 비교·입지·안전 등급. 상한 밖, 항상 보인다 */
   | "core"
   /** 강점 (초록·파랑 계열) — 상한 적용 */
   | "good"
@@ -73,8 +73,9 @@ export interface CardChip {
  * 이득 대비 복잡도가 커서 뒤로 미룬다(BACKLOG).
  */
 export const CHIP_ORDER: Readonly<Record<string, number>> = {
-  // 가격 판정(저렴/비쌈)과 입주 상태는 여기 없다 — core·status 층이라 상한을 안 받는다.
-  // 감점이 가장 큰 "적정가보다 비쌈"(−5.26)이 core 로 빠진 덕에, 이 표는 그 다음부터 다룬다.
+  // 가격 비교(실거래 중앙값)와 입주 상태는 여기 없다 — core·status 층이라 상한을 안 받는다.
+  // 옛 감점 1위 가격 판정 칩(−5.26)이 core 로 빠진 덕에, 이 표는 그 다음부터 다룬다.
+  // 세션651: 전세가율 칩은 색·강약 없이 회색 사실 칩(neutral) 하나라 이 표에 없다(옛 jeonseHigh·jeonseTooHigh·jeonseLow 삭제).
 
   // ── 약점: 계급 0 (감점 1.5점 이상) ──
   schoolLow: 10, // 학군 D — 감점 2위(−3.43)인데 흔하지도 않다(9.6%).
@@ -86,7 +87,6 @@ export const CHIP_ORDER: Readonly<Record<string, number>> = {
   parkingLow: 11, // 주차 1대/세대 미만 (−0.96 / 9.2%)
   unsoldHigh: 12, // 미분양 30%↑ (−0.84 / 14.3%)
   builderCredit: 13, // 시공사 부채비율 150% 초과 — 옛 "시공사 신용"(세션592 글자만 바꿈, id 유지) (−0.72 / 15.3%)
-  jeonseLow: 14, // 전세가율 50% 미만 (−0.68 / 17.3%)
   // ── 약점: 계급 2 (0 초과) ──
   crimeDanger: 15, // 치안위험 5등급 (−0.19 / 5.5%)
   crimeCaution: 16, // 치안주의 4등급 (−0.10 / 26.0%)
@@ -98,7 +98,6 @@ export const CHIP_ORDER: Readonly<Record<string, number>> = {
   corridor: 19, // 복도식 (0 / 3.9%)
   heatLpg: 20, // LPG난방 (0 / 18.1%)
   unsoldEvent: 21, // 추가 모집 (0 / 47.0%)
-  jeonseTooHigh: 22, // 전세가율 80% 초과 — 점수 곡선이 급락하는 구간(아래 주석 참조)
 
   // ── 강점 ── 돈으로 환산되는 것 → 입지 → 상품
   discount: 40, // 할인 — ⚠️ 2026-08-10 운영 1,646곳 중 **0곳**. 값이 안 들어와 렌더가 도달하지 않는다.
@@ -112,7 +111,6 @@ export const CHIP_ORDER: Readonly<Record<string, number>> = {
   noxiousSafe: 47, // 혐오시설 1km 밖 (11.3%)
   crimeGood: 48, // 치안우수 (17.3%)
   parkingHigh: 49, // 주차 1.5대/세대 이상
-  jeonseHigh: 50, // 전세가율 70~80% (점수 곡선의 정점 구간. 80 초과는 강점이 아니라 약점이다)
   exclusiveHigh: 51, // 전용률 80% 이상
 };
 
@@ -123,23 +121,24 @@ function rankOf(id: string): number {
 }
 
 /**
- * 적정가가 무엇과 비교됐는지 — 카드만 보고는 알 수 없던 것을 칩 문구에 한 마디로 드러낸다
- * (사장님 결정, 세션 536 — "적정가보다 61% 저렴"이 무엇과 비교한 값인지 손님이 알 수 없던 문제).
+ * 분양가를 무엇과 비교했는지 — 카드만 보고는 알 수 없던 것을 칩 문구에 한 마디로 드러낸다
+ * (사장님 결정, 세션 536 — 무엇과 비교한 값인지 손님이 알 수 없던 문제).
  *
- * 세션607(시세 비교 범위 좁히기 다): 적정가가 **같은 단지 → 같은 동 또래** 실거래로 좁혀지고 옛 폴백
+ * 세션607(시세 비교 범위 좁히기 다): 비교 대상이 **같은 단지 → 같은 동 또래** 실거래로 좁혀지고 옛 폴백
  * (평형별 버킷·인근(구) 실거래 중위가·광역 시도 평균)이 없어져, 근거도 엔진이 준 범위(`fairPriceScope`)·
- * 종류(`fairPriceSrc`)에서 읽는다 — `scorePrice.ts` 괴리도 detail(`fairBasisText`)과 같은 판단이라
+ * 종류(`fairPriceSrc`)에서 읽는다 — `scorePrice.ts` 서브 detail(`fairBasisText`)과 같은 판단이라
  * 한 축을 두 자리가 다르게 말하지 않는다(.claude/rules/meta/score-meaning-and-wording-are-a-pair.md).
- * 범위가 none 이면 판정 칩 자체를 안 그리므로(설계서 §5-4) 빈 글자를 돌려준다.
+ * 세션651: 칩이 `{이 말} 중앙 {값}` 꼴이 되어 끝의 "기준"을 뗐다.
+ * 범위가 none 이면 비교 칩 자체를 안 그리므로(설계서 §5-4) 빈 글자를 돌려준다.
  */
 export function priceBasisLabel(price: { fairPriceScope?: unknown; fairPriceSrc?: unknown }): string {
   if (price.fairPriceScope === "complex")
-    return price.fairPriceSrc === "presale" ? "이 단지 분양권 거래 기준" : "이 단지 실거래 기준";
-  if (price.fairPriceScope === "dong_peer") return "같은 동 또래 실거래 기준";
+    return price.fairPriceSrc === "presale" ? "이 단지 분양권 거래" : "이 단지 실거래";
+  if (price.fairPriceScope === "dong_peer") return "같은 동 또래 실거래";
   return "";
 }
 
-/** '저렴/수준/비쌈' 판정 칩을 그려도 되는 범위 — 같은 단지·같은 동 또래만(설계서 §5-4·R1) */
+/** 비교 칩을 그려도 되는 범위 — 같은 단지·같은 동 또래만(설계서 §5-4·R1) */
 function isJudgedScope(scope: unknown): boolean {
   return scope === "complex" || scope === "dong_peer";
 }
@@ -240,33 +239,24 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   //    (scorePrice.ts:116, catVerdict.ts 와 같은 규약).
   const fairPrice = Number(price?.fairPrice ?? 0);
   const dev = price?.deviation != null ? Number(price.deviation) : NaN;
-  // 세션607: 판정 칩은 비교 범위가 같은 단지·같은 동 또래일 때만(범위 none = 비교할 실거래 없음 → 판정하지 않는다)
+  // 세션607: 비교 칩은 비교 범위가 같은 단지·같은 동 또래일 때만(범위 none = 비교할 실거래 없음 → 칩 없음)
   if (fairPrice > 0 && Number.isFinite(dev) && isJudgedScope(price?.fairPriceScope)) {
-    // ⚠️ 경계는 **0 이 아니라 `DEV_NEUTRAL_BAND_PCT`** 다(세션531). 0 으로 가르면 +1% 짜리 차이에도
-    //    초록 굵은 `core` 칩이 붙는데, 그 폭은 **우리 적정가 추정 자체의 흔들림(중앙 ±11.5%p)보다
-    //    한참 작다** — 알 수 없는 것을 강점이라 말하는 셈이다. 같은 단지를 점수 탭은 "적정가 수준"
-    //    이라 부르는데 카드만 "저렴"이라 부르던 어긋남도 여기서 없어진다
-    //    (.claude/rules/meta/score-meaning-and-wording-are-a-pair.md — 같은 축을 말하는 자리는 한 쌍).
-    const basis = priceBasisLabel(price ?? {});
-    if (dev > DEV_NEUTRAL_BAND_PCT) {
-      out.push({
-        id: "priceCheap",
-        text: `적정가보다 ${Math.round(dev)}% 저렴 (${basis})`,
-        tone: "green",
-        layer: "core",
-        bold: true,
-      });
-    } else if (dev < -DEV_NEUTRAL_BAND_PCT) {
-      out.push({
-        id: "priceExpensive",
-        text: `적정가보다 ${Math.abs(Math.round(dev))}% 비쌈 (${basis})`,
-        tone: "red",
-        layer: "core",
-        bold: true,
-      });
-    } else {
-      out.push({ id: "priceFair", text: `적정가 수준 (${basis})`, tone: "plain", layer: "core" });
-    }
+    // 세션651(사장님 결정 — 공공기관 준거): 판정어("저렴/비쌈/수준")·초록/빨강 색을 빼고 **비교 대상의
+    //   사실**(무엇과 · 중앙값 · 건수 · 기간)만 적는다. 차이 %는 카드에 적지 않는다(시세 탭·점수 탭에만).
+    //   숫자는 엔진 점수와 같은 출처(`apt.cmp*`)에서 읽는다 — 굽힌 점수 캐시의 fairPrice 와 같은 값.
+    const cmpFair = Number(a.cmpFairPrice);
+    const cmpN = Number(a.cmpN);
+    const cmpMonths = Number(a.cmpMonths);
+    const counts =
+      Number.isFinite(cmpN) && cmpN > 0 && Number.isFinite(cmpMonths) && cmpMonths > 0
+        ? ` (${cmpN}건·${cmpMonths}개월${a.cmpAreaMode === "per_m2" ? "·㎡당 환산" : ""})`
+        : "";
+    out.push({
+      id: "priceCompare",
+      text: `${priceBasisLabel(price ?? {})} 중앙 ${fmtPrice(cmpFair > 0 ? cmpFair : fairPrice)}${counts}`,
+      tone: "plain",
+      layer: "core",
+    });
   } else if (price?.fairPriceScope !== undefined && priceSub0?.detail) {
     // 가격 데이터가 없을 때만 안내 문구를 그 자리에 둔다 — 빈칸으로 두면 왜 없는지 알 수 없다
     // 세션607 보완(검사관 B1): `fairPriceScope` 칸이 **아예 없으면** 옛 점수 캐시(전환 전 03:00 굽기)다.
@@ -354,16 +344,13 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   //   값이 없으면 칩도 없다(동·구 값으로 대신하지 않는다 — 빈자리 처리는 라) 그림으로 사장님께 보인다).
   const jeonseRate = a.complexJeonseRate as number | null | undefined;
   if (jeonseRate != null) {
-    const v = Number(jeonseRate);
-    const text = `전세가율 ${jeonseRate}%`;
-    // ⚠️ 옛 카드는 `>= 70` 을 전부 초록으로 칠했다. 그런데 점수 곡선(scorePrice.ts:196~199)은
-    //    70~80 이 정점이고 80 을 넘으면 `max(0, 80-(jr-80)*5)` 로 급락한다 — 90%↑ 구간의
-    //    서브점수 평균은 5.5점이다. 실측(2026-08-10): 초록 칩 677곳 중 **310곳(45.8%)이 80 초과**라
-    //    화면은 강점이라 말하는데 점수는 깎고 있었다. 색과 점수가 서로 다른 말을 하던 자리.
-    if (v > 80) out.push({ id: "jeonseTooHigh", text, tone: "amber", layer: "bad" });
-    else if (v >= 70) out.push({ id: "jeonseHigh", text, tone: "green", layer: "good" });
-    else if (v < 50) out.push({ id: "jeonseLow", text, tone: "amber", layer: "bad" });
-    else out.push({ id: "jeonseRate", text, tone: "plain", layer: "neutral" });
+    // 세션651(사장님 결정): 칩 색·좋음/나쁨(옛 jeonseHigh 초록·jeonseTooHigh/jeonseLow 주황)을 빼고
+    //   **산식**을 적는다 — 전세가율이 몇 %면 좋은지는 공공기관이 정한 기준이 없다. 점수 곡선은 그대로다.
+    const jn = Number(a.complexJeonseN);
+    const sn = Number(a.complexSaleN);
+    const formula =
+      Number.isFinite(jn) && jn > 0 && Number.isFinite(sn) && sn > 0 ? ` (전세 ${jn}건 ÷ 매매 ${sn}건)` : "";
+    out.push({ id: "jeonseRate", text: `전세가율 ${jeonseRate}%${formula}`, tone: "plain", layer: "neutral" });
   }
   const parkingRatio = a.parkingRatio as number | null | undefined;
   if (parkingRatio != null) {

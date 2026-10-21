@@ -73,6 +73,7 @@ import {
   selectOnlyIdTargets,
   APPROVE_MATCH_M,
   KAKAO_AMBIGUOUS_M,
+  applyCoordFixes,
 } from "./fix-placeholder-addresses.mjs";
 
 /**
@@ -2217,5 +2218,62 @@ describe("배선 — 추가 K 시도·사람 승인·--only-ids 가 main 에 연
     expect(SRC.indexOf('if (hasFlag("--only-ids") && hasFlag("--limit"))')).toBeLessThan(
       SRC.indexOf("const sb = getSupabase();")
     );
+  });
+});
+
+describe("applyCoordFixes — 좌표를 옮기면 SGIS 행정동 코드를 비운다 (세션635, BACKLOG A-16)", () => {
+  // sgis-map-emd 는 **빈칸만** 채운다 — 좌표만 바꾸고 옛 코드를 남기면 영영 옛 동으로 남는다.
+  // 가짜 sb 가 받은 UPDATE 페이로드를 그대로 본다(소스 grep 이 아니라 실제 경로).
+  /** @param {string|null} failId */
+  const fakeSb = (failId = null) => {
+    /** @type {{ payload: any, id: string }[]} */
+    const calls = [];
+    const sb = {
+      from: (/** @type {string} */ table) => {
+        expect(table).toBe("apartments");
+        return {
+          update: (/** @type {any} */ payload) => ({
+            eq: async (/** @type {string} */ _col, /** @type {string} */ id) => {
+              calls.push({ payload, id });
+              return { error: id === failId ? { message: "boom" } : null };
+            },
+          }),
+        };
+      },
+    };
+    return { sb, calls };
+  };
+
+  it("★ UPDATE 에 sgis_emd_cd·sgis_mapped_at 이 null 로 들어간다 (키가 있고 값이 null)", async () => {
+    const { sb, calls } = fakeSb();
+    const res = await applyCoordFixes(sb, [
+      { id: "ah-1", newAddress: "경기 파주시 A", oldAddress: "경기 파주시 옛", newLat: 37.7, newLng: 126.7 },
+    ]);
+    expect(res.okIds).toEqual(["ah-1"]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].id).toBe("ah-1");
+    expect(Object.prototype.hasOwnProperty.call(calls[0].payload, "sgis_emd_cd")).toBe(true);
+    expect(Object.prototype.hasOwnProperty.call(calls[0].payload, "sgis_mapped_at")).toBe(true);
+    expect(calls[0].payload.sgis_emd_cd).toBeNull();
+    expect(calls[0].payload.sgis_mapped_at).toBeNull();
+    // 좌표·주소 칸은 그대로 들어간다(두 칸을 더하다 기존 칸을 잃지 않았다)
+    expect(calls[0].payload.lat).toBe(37.7);
+    expect(calls[0].payload.lng).toBe(126.7);
+    expect(calls[0].payload.address).toBe("경기 파주시 A");
+    expect(calls[0].payload.road_address).toBeNull();
+  });
+
+  it("행마다 같은 두 칸이 들어간다 (여러 행 · 실패 행은 okIds 에서 빠진다)", async () => {
+    const { sb, calls } = fakeSb("ah-2");
+    const res = await applyCoordFixes(sb, [
+      { id: "ah-1", newAddress: null, oldAddress: "a", newLat: 1, newLng: 2 },
+      { id: "ah-2", newAddress: null, oldAddress: "b", newLat: 3, newLng: 4 },
+    ]);
+    expect(calls.map((c) => c.id)).toEqual(["ah-1", "ah-2"]);
+    for (const c of calls) {
+      expect(c.payload.sgis_emd_cd).toBeNull();
+      expect(c.payload.sgis_mapped_at).toBeNull();
+    }
+    expect(res).toMatchObject({ ok: 1, fail: 1, okIds: ["ah-1"] });
   });
 });

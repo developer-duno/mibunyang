@@ -109,6 +109,7 @@ describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 �
     fetchTradeLinks: async () => ({ links: [], apts: [], latestSuccess: null }), // ⑰(세션590) — 같은 이유
     fetchSgisMapRun: async () => [], // ⑱(세션614) — 같은 이유: 없으면 운영 조회로 새어 check-failed 가 하나 더 생긴다
     fetchNoticeRuns: async () => ({}), // ㉑(세션632) — 같은 이유
+    fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }), // ㉒(세션648) — 같은 이유
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
   /** @param {any[]} issues */

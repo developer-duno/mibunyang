@@ -5,5 +5,7 @@
 chcp 65001 >nul
 cd /d "%~dp0.."
 echo [%date% %time%] childcare 로컬 러너 시작 >> childcare-local.log
+REM Session 648: warn (never block) if installed node_modules drift from package-lock.json. Always exits 0.
+call node scripts\check-node-modules-drift.mjs >> childcare-local.log 2>&1
 node scripts\childcare-local-runner.mjs >> childcare-local.log 2>&1
 if errorlevel 1 echo [%date% %time%] ERROR: childcare-local-runner 실패 (exit %errorlevel%) >> childcare-local.log

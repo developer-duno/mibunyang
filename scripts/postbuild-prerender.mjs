@@ -29,7 +29,52 @@ const ORIGIN = "https://www.xn--hg3bi2ac4o1ig57cnoa.com";
 
 // 봇이 읽을 홈 화면 정적 골격. 사용자 화면엔 React 가 교체하므로 미노출.
 // aria-hidden 불필요(React 가 즉시 비움). 화면에 실제 노출되는 정보만 담아 cloaking 회피.
-const SKELETON = `<div id="root" class="notranslate"><main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif"><h1>전국 미분양 비교 엔진</h1><p>전국 미분양·분양 예정 아파트를 6개 카테고리 41개 지표로 AHP 점수화하고, 실거주·투자·신혼·교육·은퇴 5가지 사용자 프로필 가중치를 적용해 개인 맞춤 추천을 제공하는 다기준 의사결정 엔진입니다.</p><h2>주요 기능</h2><ul><li>전국 미분양 아파트 비교 분석</li><li>분양 예정 단지 정보</li><li>실거주·투자·신혼·교육·은퇴 프로필별 맞춤 점수</li><li>입지·가격·안전도·미래가치·환경 등 다기준 평가</li></ul><p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p></main></div>`;
+const SKELETON_HEAD = `<div id="root" class="notranslate"><main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif"><h1>전국 미분양 비교 엔진</h1><p>전국 미분양·분양 예정 아파트를 6개 카테고리 41개 지표로 AHP 점수화하고, 실거주·투자·신혼·교육·은퇴 5가지 사용자 프로필 가중치를 적용해 개인 맞춤 추천을 제공하는 다기준 의사결정 엔진입니다.</p><h2>주요 기능</h2><ul><li>전국 미분양 아파트 비교 분석</li><li>분양 예정 단지 정보</li><li>실거주·투자·신혼·교육·은퇴 프로필별 맞춤 점수</li><li>입지·가격·안전도·미래가치·환경 등 다기준 평가</li></ul>`;
+const SKELETON_TAIL = `<p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p></main></div>`;
+
+/** 홈 골격에서 지역마다 보여 줄 단지 링크 수 (홈 화면 목록에 실제 보이는 단지 앞쪽) */
+const HOME_LINKS_PER_REGION = 8;
+
+/**
+ * 홈 골격 HTML (#root 통째). 기존 소개 + 분양 예정 링크 + 지역별 단지 링크.
+ * 링크 단지는 홈 화면 목록에 실제로 보이는 단지(목록 순서 앞쪽)라 cloaking 이 아니다 —
+ * JS 안 도는 봇이 홈에서 /apt/{id} 로 건너갈 길을 준다.
+ * 지역 순서 = 단지 수 많은 순, 같으면 이름순. region 이 비면 "기타".
+ *
+ * @param {Array<Record<string, any>>} list apartments-list.json 의 단지 배열
+ * @returns {string}
+ */
+export function buildHomeSkeleton(list) {
+  /** @type {Map<string, Array<Record<string, any>>>} */
+  const byRegion = new Map();
+  for (const a of list) {
+    if (!a || !a.id || !a.name) continue;
+    const r = (typeof a.region === "string" && a.region.trim()) || "기타";
+    const arr = byRegion.get(r);
+    if (arr) arr.push(a);
+    else byRegion.set(r, [a]);
+  }
+  const regions = [...byRegion.entries()].sort(
+    (x, y) => y[1].length - x[1].length || (x[0] < y[0] ? -1 : x[0] > y[0] ? 1 : 0),
+  );
+  const sections = regions
+    .map(([r, apts]) => {
+      const items = apts
+        .slice(0, HOME_LINKS_PER_REGION)
+        .map((a) => `<li><a href="/apt/${encodeURIComponent(a.id)}">${esc(a.name)}</a></li>`)
+        .join("");
+      const more =
+        apts.length > HOME_LINKS_PER_REGION ? `<li>외 ${apts.length - HOME_LINKS_PER_REGION}곳</li>` : "";
+      return `<h3>${esc(r)} (${apts.length}곳)</h3><ul>${items}${more}</ul>`;
+    })
+    .join("");
+  return (
+    SKELETON_HEAD +
+    `<h2>분양 예정</h2><p><a href="/upcoming">분양 예정 아파트 일정 보기</a></p>` +
+    `<h2>지역별 단지</h2>${sections}` +
+    SKELETON_TAIL
+  );
+}
 
 // #root 빈 div 를 골격으로 교체. class/속성 순서 변경에 견디게 느슨한 매칭
 // (적대검증 권고 — Vite/Rolldown 미래 버전이 속성을 바꿔도 매치되게).
@@ -66,7 +111,27 @@ export function esc(s) {
 }
 
 /**
+ * subwayDist 센티널("10km 안에 역 없음" 표시값). 정본 = src/constants/sentinels.ts `SENTINEL.subwayDist`
+ * (.ts 라 node 빌드 스크립트에서 import 하지 않고 같은 값을 둔다 — 바꾸면 양쪽을 같이).
+ * `>=` 로 본다(isSentinel 과 같음).
+ */
+const SUBWAY_SENTINEL = 9999;
+
+/**
+ * YYYYMM(6자리 숫자) → "YYYY년 MM월", 아니면 원문 그대로. 화면 `src/lib/format.ts` fmtCompletion 과 같은 규칙.
+ * @param {unknown} v
+ * @returns {string}
+ */
+function fmtCompletion(v) {
+  const s = String(v);
+  if (!/^\d{6}$/.test(s)) return s;
+  return `${s.slice(0, 4)}년 ${s.slice(4, 6)}월`;
+}
+
+/**
  * 단지 1건의 사람이 읽는 요약 문장. 화면(AptCard)에 나오는 값만 쓴다.
+ * 교통 줄은 화면 `TransportCard.tsx` transportFacts 와 같은 규칙 — 좌표 공유(coordShared)면 교통 줄 전체 생략,
+ * 지하철 거리가 센티널·비정상이면 거리는 쓰지 않는다.
  * @param {Record<string, any>} a
  * @returns {string[]}
  */
@@ -80,11 +145,16 @@ export function aptFacts(a) {
   if (a.builder) out.push(`시공사: ${a.builder}`);
   if (a.units != null) out.push(`총 세대수: ${Number(a.units).toLocaleString()}세대`);
   if (a.unsold != null) out.push(`미분양: ${Number(a.unsold).toLocaleString()}세대`);
-  if (a.subwayDist != null) {
-    out.push(`지하철: ${a.subwayName ? `${a.subwayName} ` : ""}${Math.round(a.subwayDist)}m`);
+  if (a.coordShared !== true) {
+    const name = typeof a.subwayName === "string" ? a.subwayName.trim() : "";
+    const d = Number(a.subwayDist);
+    const distOk = a.subwayDist != null && Number.isFinite(d) && d >= 0 && d < SUBWAY_SENTINEL;
+    // 화면(TransportCard transportFacts)은 역 이름이 있을 때만 지하철 줄을 만든다 — 이름 없이 거리만은 쓰지 않는다
+    if (name) out.push(`지하철: ${name}${distOk ? ` ${Math.round(d)}m` : ""}`);
+    const bus = Number(a.busRoutes);
+    if (a.busRoutes != null && Number.isFinite(bus) && bus > 0) out.push(`버스: ${Math.round(bus)}개 노선`);
   }
-  if (a.busRoutes != null) out.push(`버스 정류장: ${a.busRoutes}개`);
-  if (a.completion) out.push(`준공: ${a.completion}`);
+  if (a.completion) out.push(`준공: ${fmtCompletion(a.completion)}`);
   return out;
 }
 
@@ -119,7 +189,82 @@ export function buildAptHtml(template, a) {
   html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(url)}" />`);
   html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(url)}" />`);
   html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(desc)}" />`);
   html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(desc)}" />`);
+  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(desc)}" />`);
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
+  html = html.replace(ROOT_RE, body);
+  if (html.split("</head>").length !== 2) {
+    throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
+  }
+  const ld = `<script type="application/ld+json">${buildAptJsonLd(a, url)}</script>`;
+  html = html.replace("</head>", () => `${ld}\n</head>`);
+  return html;
+}
+
+/**
+ * 단지 페이지 구조화 데이터(JSON-LD). 화면에 보이는 값만 — 없는 값은 키째 뺀다(빈 문자열·null 금지).
+ * `<` `>` `&` U+2028 U+2029 를 유니코드 이스케이프로 바꿔 단지명에 `</script>` 가 들어 있어도 스크립트가 끊기지 않게 한다.
+ * @param {Record<string, any>} a
+ * @param {string} url
+ * @returns {string}
+ */
+export function buildAptJsonLd(a, url) {
+  /** @param {unknown} v */
+  const str = (v) => (typeof v === "string" && v.trim() ? v.trim() : null);
+  /** @type {Record<string, any>} */
+  const address = {};
+  if (str(a.region)) address.addressRegion = str(a.region);
+  if (str(a.gu)) address.addressLocality = str(a.gu);
+  if (str(a.dong)) address.streetAddress = str(a.dong);
+  /** @type {Record<string, any>} */
+  const ld = { "@context": "https://schema.org", "@type": "ApartmentComplex", name: String(a.name), url };
+  if (Object.keys(address).length > 0) {
+    ld.address = { "@type": "PostalAddress", addressCountry: "KR", ...address };
+  }
+  const units = Number(a.units);
+  if (a.units != null && Number.isFinite(units) && units > 0) ld.numberOfAccommodationUnits = units;
+  // 스크립트 블록 탈출·HTML 파싱 오해를 막는 문자는 모두 유니코드 이스케이프(결과 문자열이 백슬래시+u+4자리)로.
+  /** @type {Record<string, string>} */
+  const ESCAPES = { "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" };
+  return JSON.stringify(ld).replace(/[<>&\u2028\u2029]/g, (c) => ESCAPES[c]);
+}
+
+/**
+ * 분양 예정(/upcoming) 페이지 HTML 생성.
+ * 홈 index.html 을 틀로 삼아 head (canonical, og, twitter, title, desc) + #root 를 바꾼다.
+ *
+ * @param {string} template dist/index.html 원본 (프리렌더 주입 전)
+ * @returns {string}
+ */
+export function buildUpcomingHtml(template) {
+  const title = "분양 예정 아파트 캘린더·일정 | 전국 미분양 비교 엔진";
+  const desc = "전국 분양 예정·청약 일정 및 분양 현황을 캘린더와 단지 목록으로 확인하고 비교 분석해 보세요.";
+  const url = `${ORIGIN}/upcoming`;
+
+  const body =
+    `<div id="root" class="notranslate">` +
+    `<main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif">` +
+    `<h1>전국 분양 예정 아파트</h1>` +
+    `<p>${esc(desc)}</p>` +
+    `<h2>주요 기능</h2>` +
+    `<ul>` +
+    `<li>전국 분양 예정 단지 일정 캘린더</li>` +
+    `<li>지역별 분양 예정·청약중 단지 필터링</li>` +
+    `<li>단지별 분양가 및 상세 분석 정보</li>` +
+    `</ul>` +
+    `<p><a href="/">전국 미분양 아파트 비교 목록으로</a></p>` +
+    `<p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p>` +
+    `</main></div>`;
+
+  let html = template;
+  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(url)}" />`);
+  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(url)}" />`);
+  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(desc)}" />`);
+  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(desc)}" />`);
   html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(desc)}" />`);
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
   html = html.replace(ROOT_RE, body);
@@ -128,11 +273,11 @@ export function buildAptHtml(template, a) {
 
 /**
  * sitemap.xml 생성. 고정 경로 + 단지 전량.
+ * `<lastmod>` 는 쓰지 않는다 — 실제 변경일을 모르는데 빌드 날짜를 넣으면 매일 전 페이지가 "오늘 바뀜"이 된다(구글 지침).
  * @param {string[]} ids
- * @param {string} today YYYY-MM-DD
  * @returns {string}
  */
-export function buildSitemap(ids, today) {
+export function buildSitemap(ids) {
   const urls = [
     { loc: `${ORIGIN}/`, pri: "1.0" },
     { loc: `${ORIGIN}/upcoming`, pri: "0.8" },
@@ -144,7 +289,7 @@ export function buildSitemap(ids, today) {
     urls
       .map(
         (u) =>
-          `  <url><loc>${esc(u.loc)}</loc><lastmod>${today}</lastmod><priority>${u.pri}</priority></url>`,
+          `  <url><loc>${esc(u.loc)}</loc><priority>${u.pri}</priority></url>`,
       )
       .join("\n") +
     `\n</urlset>\n`
@@ -171,11 +316,7 @@ function main() {
   // 단지 페이지의 틀은 **주입 전 원본**이다. 주입 후 HTML 을 틀로 쓰면 홈 골격이 섞인다.
   const template = html;
 
-  const out = html.replace(ROOT_RE, SKELETON);
-  writeFileSync(DIST_INDEX, out, "utf-8");
-  console.log("[postbuild-prerender] dist/index.html #root 에 검색봇용 골격 주입 완료");
-
-  // ── 단지별 정적 페이지 + sitemap (세션 504) ──
+  // 홈 골격이 단지 링크를 담으므로 목록을 **먼저** 읽는다(없거나 비면 아무것도 쓰지 않고 중단 — 실패 동작 유지).
   if (!existsSync(DIST_LIST)) {
     // 조용히 넘어가면 "홈만 색인되는 상태" 가 그대로 굳는다. 빌드를 빨갛게.
     console.error(`[postbuild-prerender] ${DIST_LIST} 없음 — 단지 페이지를 만들 수 없습니다.`);
@@ -189,8 +330,17 @@ function main() {
     process.exit(1);
   }
 
-  // KST 고정 (러너가 UTC 라 toISOString 은 날짜가 하루 밀린다 — scripts/CLAUDE.md today() 답습)
-  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(new Date());
+  const out = html.replace(ROOT_RE, () => buildHomeSkeleton(list));
+  writeFileSync(DIST_INDEX, out, "utf-8");
+  console.log("[postbuild-prerender] dist/index.html #root 에 검색봇용 골격 주입 완료");
+
+  // ── /upcoming 정적 페이지 ──
+  const upcomingDir = join(DIST, "upcoming");
+  mkdirSync(upcomingDir, { recursive: true });
+  writeFileSync(join(upcomingDir, "index.html"), buildUpcomingHtml(template), "utf-8");
+  console.log("[postbuild-prerender] dist/upcoming/index.html 프리렌더 주입 완료");
+
+  // ── 단지별 정적 페이지 + sitemap (세션 504) ──
 
   /** @type {string[]} */
   const ids = [];
@@ -207,7 +357,7 @@ function main() {
     process.exit(1);
   }
 
-  writeFileSync(DIST_SITEMAP, buildSitemap(ids, today), "utf-8");
+  writeFileSync(DIST_SITEMAP, buildSitemap(ids), "utf-8");
   console.log(
     `[postbuild-prerender] 단지 페이지 ${ids.length}개 생성 (dist/apt/{id}/index.html) + sitemap ${ids.length + 2}개 URL`,
   );

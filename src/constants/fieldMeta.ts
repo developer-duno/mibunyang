@@ -144,8 +144,10 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     label: "전세가율",
     section: "가격",
     unit: "%",
+    // 관리자 완성도·전수 표에서 숨김(사장님 결정 10/18 — 구 값 폐지로 늘 빈칸). 세션648 에 구 전세가율과
+    // 추정 플래그(_fallbackJeonseRate)를 없앴다. 칸 자체(VIEW·타입) 삭제는 정리 PR.
+    hidden: true,
     fmt: (v) => n(v, "%"),
-    isEstimated: (v, apt) => apt?._fallbackJeonseRate,
   },
   pir: {
     label: "PIR (소득대비)",
@@ -667,7 +669,6 @@ export const FIELD_SECTIONS: { key: string; label: string; fields: string[] }[] 
     fields: [
       "nearbyMedian",
       "housingPrice",
-      "jeonseRate",
       "pir",
       "dataReliability",
       "nearbyBuildYear",

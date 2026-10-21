@@ -80,10 +80,11 @@ function toneColor(tone: Deviation["tone"]): string {
 /**
  * 편차 스트립 한 줄.
  *
- * **외울 규칙은 하나 — 막대가 오른쪽으로 길수록 유리하다.**
- * 그래서 트랙 양 끝에 한글 끝말(`싸다`/`비싸다`)을 박아 범례를 없앴고,
- * 오른쪽 값 슬롯은 숫자가 아니라 문장 조각(`12% 싸요`)이다.
- * `−12%` 는 "왜 마이너스인데 오른쪽이지?" 를 만들지만 `12% 싸요` 는 막대 방향과 어긋나지 않는다.
+ * **외울 규칙은 하나 — 막대가 오른쪽으로 길수록 이 단지 값이 크다**(세션652: 옛 "오른쪽 = 유리"는
+ * 낮을수록 좋은 줄에서 끝말과 막대가 어긋났다 — `neutral` 줄은 뒤집지 않는다, `lib/deviation.ts`).
+ * 그래서 트랙 양 끝에 한글 끝말(`낮다`/`높다`)을 박아 범례를 없앴고,
+ * 오른쪽 값 슬롯은 숫자가 아니라 문장 조각(`12% 낮음`)이다.
+ * `−12%` 는 "왜 마이너스인데 오른쪽이지?" 를 만들지만 `12% 낮음` 은 막대 방향과 어긋나지 않는다.
  */
 export const DeviationRow = memo(function DeviationRow({
   spec,
@@ -105,7 +106,7 @@ export const DeviationRow = memo(function DeviationRow({
   const shownValue = formatDeviationValue(spec, value, estimated);
   const aria = deviationAriaLabel(spec, dev, regionLabel, shownValue);
 
-  // 팝업에서는 `1,240만 · 12% 싸요` 처럼 실제 값을 앞에 붙인다. "12% 싸요"만으로는 "그래서
+  // 팝업에서는 `1,240만 · 12% 낮음` 처럼 실제 값을 앞에 붙인다. "12% 낮음"만으로는 "그래서
   // 얼마인데?"가 남는데, 그 답이 팝업 다른 자리에 흩어져 있어 손님이 눈으로 찾아야 했다.
   // 카드(compact)는 폭이 좁아 그대로 둔다 — 붙이면 두 줄로 넘쳐 행 높이 고정이 깨진다.
   // 값이 없거나(missing) 비교가 성립 안 하는 줄은 붙일 값 자체가 없다.

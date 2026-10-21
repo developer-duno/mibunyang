@@ -302,6 +302,16 @@ describe("끄는 법 · 정본 검증", () => {
     expect(r.yellow.filter((m) => m.includes("reader."))).toEqual([]);
   });
 
+  // 세션643: py 헬퍼 SB.insert/SB.delete 도 쓰기 사슬 — allow 가 ① 을 🟡 로 내리면 안 된다(옛 판은 update|upsert 만 봤다)
+  it("allow 파일 + py SB.insert(\"표\" · SB.delete(\"표\" 쓰기 사슬 → 🔴 ①", () => {
+    put("scripts/collectors/ins.py", `# ownership-guard: allow complexes 읽기만\nSB.insert("complexes",[{"complex_no":1}])\n`);
+    put("scripts/collectors/del.py", `# ownership-guard: allow complexes 읽기만\nSB.delete("complexes",["complex_no=eq.1"])\n`);
+    const r = auditOwnership({ root, registry: makeRegistry() });
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("ins.py") && m.includes('"complexes"'))).toBe(true);
+    expect(r.red.some((m) => m.includes("① 미등록") && m.includes("del.py") && m.includes('"complexes"'))).toBe(true);
+    expect(r.yellow.filter((m) => m.includes("ins.py") || m.includes("del.py"))).toEqual([]);
+  });
+
   it("⑤ version·owner·파일 실재·칸 겹침", () => {
     const reg = /** @type {any} */ (makeRegistry());
     expect(validateRegistry(reg, root)).toEqual([]);

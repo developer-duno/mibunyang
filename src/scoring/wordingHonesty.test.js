@@ -11,6 +11,14 @@
 import { describe, it, expect } from "vitest";
 import { scoreBenefit, scoreLocation, scoreProduct, scoreRisk, calcCats } from "@/scoring/engine";
 import { SCHOOL_GRADE_TIERS, schoolGradeLegend, DEV_BAND_LABEL } from "@/constants/scoringTiers";
+import { SUB_CONTEXT } from "@/constants/subContext";
+import { catVerdict } from "@/constants/catVerdict";
+import { buildCardChips } from "@/constants/cardChips";
+import { fmtPriceGap } from "@/lib/format";
+import { scopeHeadText, compareRows, priceSourceText } from "@/components/detail/PricePositionBox";
+import { computeDeviation, deviationAriaLabel } from "@/lib/deviation";
+import { deviationSpec, formatDeviationValue } from "@/constants/deviationFields";
+import { computeRegionalStats } from "@/scoring/regionalStats";
 
 /** @param {Record<string, unknown>} o */
 const apt = (o) => /** @type {any} */ (o);
@@ -200,12 +208,14 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531 · 세션607)", () =>
 
   it("같은 단지 실거래 기준이면 그 범위·건수·기간을 적는다", () => {
     const cats = calcCats(scopedApt({ area: 84 }), { regionMedians: {} });
-    expect(sub(cats.price, "적정가 괴리도")?.detail).toContain("이 단지 실거래 5건(최근 12개월) 대비");
+    expect(sub(cats.price, "실거래 대비 분양가")?.detail).toContain(
+      "이 단지 같은 평수 실거래 5건(최근 12개월) 중앙값 대비"
+    );
   });
 
   it("면적 미상이어도 옛 '면적 미상' 문구를 붙이지 않는다 (같은 평수 실거래라 면적 편향 경로가 없다)", () => {
     const cats = calcCats(scopedApt({ area: null }), { regionMedians: {} });
-    expect(sub(cats.price, "적정가 괴리도")?.detail).not.toContain("면적 미상");
+    expect(sub(cats.price, "실거래 대비 분양가")?.detail).not.toContain("면적 미상");
   });
 
   it("버킷(priceByArea)·시도 평균이 있어도 옛 출처 문구는 돌아오지 않는다", () => {
@@ -217,23 +227,26 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531 · 세션607)", () =>
       }),
       { regionMedians: {} }
     );
-    const d = sub(cats.price, "적정가 괴리도")?.detail ?? "";
+    const d = sub(cats.price, "실거래 대비 분양가")?.detail ?? "";
     expect(d).not.toContain("평수대별 실거래 기준");
     expect(d).not.toContain("광역 시도 평균");
     expect(d).not.toContain("주변 시세");
   });
 
-  it("밴드 안내는 상수에서 계산된다 — 옛 하드코딩 문구는 돌아오면 안 된다", () => {
-    const cats = calcCats(scopedApt({ area: 84 }), { regionMedians: {} });
-    const d = sub(cats.price, "적정가 괴리도")?.detail ?? "";
-    expect(d).toContain(DEV_BAND_LABEL);
-    // 옛 문구는 음수 쪽 산식과 어긋나 있었다 — dev ≤ −8.75% 면 이미 0점인데
-    // "−10~−20% 주의" 구간이 있는 것처럼 읽혔다.
+  // 세션651(사장님 결정 — 공공기관 준거): detail 은 판정 밴드 안내(`DEV_BAND_LABEL` "±10% 적정 · …")를
+  //   싣지 않는다 — 산술 차이 + 비교 기준만. 옛 하드코딩 문구(세션531 이전)도 돌아오면 안 된다.
+  it("detail 에 판정 밴드 안내가 없다 — 산술 차이 + 비교 기준만", () => {
+    const cats = calcCats(scopedApt({ area: 84, price: 45000 }), { regionMedians: {} });
+    const d = sub(cats.price, "실거래 대비 분양가")?.detail ?? "";
+    expect(d).toBe("분양가가 10.0% 낮음 — 이 단지 같은 평수 실거래 5건(최근 12개월) 중앙값 대비");
+    expect(d).not.toContain(DEV_BAND_LABEL);
+    expect(d).not.toMatch(/적정|만점|최하/);
     expect(d).not.toContain("±10~20% 주의");
     expect(d).not.toContain("20%↑ 과대");
   });
 
-  it("밴드 안내가 실제 산식과 맞는다 — 만점·바닥 경계를 그대로 말한다", () => {
+  // 아래 상수(`DEV_BAND_LABEL`)는 손님 문구에서 빠졌지만(세션651) 점수표 설명 상수로 남아 있다 — 산식과 맞는지 계속 잠근다.
+  it("밴드 안내 상수가 실제 산식과 맞는다 — 만점·바닥 경계를 그대로 말한다", () => {
     // 파생 문자열이므로 **산식 쪽에서** 두 경계를 독립 재현해 맞댄다.
     // (표에서 읽어 표와 비교하면 항등식이 된다 — [[guards-must-be-mutation-tested]])
     // 세션607: 적정가 = cmpFairPrice 그대로(계수 없음)지만, 엔진이 낸 fairPrice 에서 역산하는 꼴은 그대로 둔다
@@ -244,7 +257,7 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531 · 세션607)", () =>
     expect(fair).toBe(50000);
     /** @param {number} dev */
     const at = (dev) =>
-      /** @type {any} */ (sub(probe({ price: fair * (1 - dev / 100) }).price, "적정가 괴리도"))?.score ?? -1;
+      /** @type {any} */ (sub(probe({ price: fair * (1 - dev / 100) }).price, "실거래 대비 분양가"))?.score ?? -1;
     const full = Number(/\+(\d+(?:\.\d+)?)%↑ 만점/.exec(DEV_BAND_LABEL)?.[1]);
     const zero = Number(/−(\d+(?:\.\d+)?)%↓ 최하/.exec(DEV_BAND_LABEL)?.[1]);
     expect(Number.isFinite(full)).toBe(true);
@@ -254,6 +267,187 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531 · 세션607)", () =>
     expect(at(full - 0.5)).toBeLessThan(97);
     expect(at(-zero)).toBe(0);
     expect(at(-zero + 0.5)).toBeGreaterThan(0);
+  });
+});
+
+// ── 가격 축 손님 문자열 — 판정어 부정 가드 (세션651 · 사장님 결정 "공공기관 준거") ──────
+//
+// "적정가"라는 이름(공공기관 원문에 없는 우리 판정어)·±10% 판정("저렴/비쌈/수준")을 손님 화면에서 없앴다.
+// 이 묶음은 가격 축의 **손님 문자열이 만들어지는 자리 전부**(엔진 detail·점수 탭 판정표·카테고리 한 줄·
+// 카드 칩·시세 탭 머리 줄과 표)를 실전 입력 여러 개로 돌려 판정어가 **0건**인지 본다.
+// 어느 한 자리라도 옛 문구로 되돌리면 red 다(변이 실증은 세션651 작업 보고의 변이 표).
+// 범위 밖: 관리비(혜택 축 "지역 중앙값보다 비쌈")는 가격 판정이 아니라 다른 축의 사실 비교다.
+describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () => {
+  const JUDGE = /적정가|저렴|비쌈/;
+  const SCOPES = /** @type {const} */ ([
+    { cmpScope: "complex", cmpSrc: "sale", cmpAreaMode: "same_area" },
+    { cmpScope: "complex", cmpSrc: "presale", cmpAreaMode: "same_area" },
+    { cmpScope: "dong_peer", cmpSrc: "sale", cmpAreaMode: "per_m2" },
+  ]);
+  // 분양가 = 비교 중앙값 × (1 − dev/100) — 옛 밴드 안·밖·경계·큰 괴리를 다 지난다
+  const DEVS = [35, 18.8, 10.1, 10, 3.2, 0, -3.2, -10, -10.1, -40];
+  /** @param {Record<string, unknown>} scope @param {number} dev */
+  const mk = (scope, dev) =>
+    apt({
+      id: "ah-1",
+      region: "경기",
+      area: 84.97,
+      completion: "202001",
+      price: Math.round(60000 * (1 - dev / 100)),
+      cmpFairPrice: 60000,
+      cmpN: 12,
+      cmpMonths: 12,
+      complexJeonseRate: 72.3,
+      complexJeonseN: 5,
+      complexSaleN: 8,
+      ...scope,
+    });
+
+  /** @param {any} a */
+  const customerStrings = (a) => {
+    const cats = /** @type {any} */ (calcCats(a, { regionMedians: {} }));
+    const out = [];
+    for (const s of cats.price.subs) {
+      out.push(s.detail ?? "");
+      const ctx = /** @type {any} */ (SUB_CONTEXT.price)[s.name];
+      if (ctx?.interpret) out.push(ctx.interpret(s.score, s.info));
+      if (ctx?.benchmark) out.push(ctx.benchmark);
+    }
+    out.push(catVerdict("price", cats.price));
+    const chips = buildCardChips(a, /** @type {any} */ ({ total: 70, cats }), {
+      isLoggedIn: true,
+      showDeviation: true,
+      nowYm: "202610",
+    });
+    for (const c of chips) if (c.layer === "core" || c.id.startsWith("jeonse")) out.push(c.text);
+    out.push(scopeHeadText(a) ?? "");
+    for (const r of compareRows(a, cats.price)) out.push(`${r.label} ${r.value}`);
+    out.push(priceSourceText(a));
+    return { out, cats, chips };
+  };
+
+  it("범위 3종 × 괴리 10종 — 판정어 0건", () => {
+    let checked = 0;
+    for (const scope of SCOPES)
+      for (const dev of DEVS) {
+        const { out } = customerStrings(mk(scope, dev));
+        for (const s of out) {
+          expect(s, `${scope.cmpScope}/${scope.cmpSrc} dev=${dev}: ${s}`).not.toMatch(JUDGE);
+          checked++;
+        }
+      }
+    expect(checked).toBeGreaterThan(300); // 양성 앵커 — 빈 목록으로 초록이 되지 않게
+  });
+
+  // 비교 대상이 없는 단지(범위 none · 분양가 없음 · 칸 없음)도 판정어 없이 빠진다 — catVerdict·subContext 가 같은 어휘
+  // 세션651 보완 ④(사장님 결정): 종합 탭·카드 편차 줄의 평당가·전세가율도 가격 축 손님 문자열이다 —
+  //   끝말·값 문구·스크린리더 문장 어디에도 유불리 판정어("싸요/비싸요"·"높아요/낮아요"·"유리")가 없고 색은 중립.
+  // 세션652(사장님 결정 ② 값 그대로): 미분양·역세권·소득부담·관리비 4줄도 같은 규칙 — 6필드 전부.
+  it("편차 줄 평당가·전세가율·미분양·역세권·소득부담·관리비 — 판정어 0건 · 색 중립 (끝말·값 문구·스크린리더)", () => {
+    const DEV_JUDGE =
+      /싸|비싸|유리|좋|높아요|낮아요|평균 수준|가벼워요|무거워요|가볍|무겁|적어요|많아요|적다|많다|가까워요|멀어요/;
+    const stats = computeRegionalStats(
+      Array.from(
+        { length: 41 },
+        (_, i) =>
+          /** @type {any} */ ({
+            region: "경기",
+            pp: 1000 + i * 50,
+            complexJeonseRate: 40 + i * 1.5,
+            unsoldRate: i, // 중앙값 20
+            subwayDist: 100 + i * 50, // 중앙값 1100
+            pir: 3 + i * 0.5, // 중앙값 13
+            avgMaintenanceCost: 10 + i * 0.5, // 중앙값 20
+          })
+      )
+    );
+    let checked = 0;
+    for (const [field, values] of /** @type {const} */ ([
+      ["pp", [900, 1000, 1500, 2000, 2010, 2500, 3000, 3500]],
+      ["complexJeonseRate", [35, 40, 55, 70, 70.2, 85, 100, 130]],
+      ["unsoldRate", [0, 1, 10, 20, 20.2, 30, 40, 60]],
+      ["subwayDist", [50, 100, 600, 1100, 1105, 2000, 2500, 5000]],
+      ["pir", [2, 3, 8, 13, 13.1, 18, 23, 40]],
+      ["avgMaintenanceCost", [5, 10, 15, 20, 20.05, 25, 30, 60]],
+    ])) {
+      const spec = /** @type {any} */ (deviationSpec(field));
+      expect(spec.neutral, field).toBe(true);
+      for (const v of values) {
+        const d = computeDeviation(spec, v, "경기", stats);
+        const texts = [
+          spec.lowWord,
+          spec.highWord,
+          d.text,
+          deviationAriaLabel(spec, d, "경기", formatDeviationValue(spec, v)),
+        ];
+        for (const t of texts) {
+          expect(t, `${field}=${v}: ${t}`).not.toMatch(DEV_JUDGE);
+          expect(t, `${field}=${v}: ${t}`).not.toMatch(JUDGE);
+          checked++;
+        }
+        expect(d.tone, `${field}=${v}`).toBe("neutral");
+      }
+    }
+    expect(checked).toBe(192); // 양성 앵커 — 6필드 × 8값 × 4문자열
+  });
+
+  it("비교 대상이 없는 단지도 판정어 0건 — '비교할 실거래 없음'", () => {
+    for (const over of [
+      { cmpScope: "none", cmpFairPrice: null, cmpN: 0 },
+      { cmpScope: "complex", price: 0 },
+      { cmpScope: undefined, cmpFairPrice: undefined },
+    ]) {
+      const a = mk(SCOPES[0], 0);
+      const { out, cats } = customerStrings(apt({ ...a, ...over }));
+      for (const s of out) expect(s, `${JSON.stringify(over)}: ${s}`).not.toMatch(JUDGE);
+      expect(catVerdict("price", cats.price), JSON.stringify(over)).toBe("비교할 실거래 없음");
+    }
+  });
+
+  // 전세가율은 몇 %가 좋은지 공공기관 기준이 없다 — 점수 탭 detail·판정·카드 칩 어디에도 좋음/나쁨 말이 없다
+  it("전세가율 문자열에 판정어가 없다 — 산식만 (적정·위험·과열·높음·낮음·주의)", () => {
+    for (const jr of [35, 55, 66.1, 75, 85, 151.1]) {
+      const a = mk(SCOPES[0], 5);
+      const { cats, chips } = customerStrings(apt({ ...a, complexJeonseRate: jr }));
+      const s = /** @type {any} */ (cats.price.subs.find((/** @type {any} */ x) => x.name === "전세가율"));
+      const ctx = /** @type {any} */ (SUB_CONTEXT.price)["전세가율"];
+      const texts = [
+        s.detail,
+        ctx.interpret(s.score, s.info),
+        ctx.benchmark,
+        chips.find((c) => c.id === "jeonseRate")?.text,
+      ];
+      for (const t of texts) expect(t, `jr=${jr}: ${t}`).not.toMatch(/적정|위험|과열|높음|낮음|주의/);
+      expect(s.detail).toBe(`${jr}% — 같은 단지 같은 평수 전세 5건 ÷ 매매 8건 중앙값`);
+    }
+  });
+
+  // 세션651 검사관 보완: "같음" 문턱이 자리마다 달랐다(종합 탭 0.05% · 카테고리 한 줄 0.5%) — 같은 단지를
+  //   한 화면은 "같음", 다른 화면은 "0.3% 낮음"이라 불렀다. 이제 `priceGapParts` 하나가 판정한다.
+  //   W4 점수 탭 판정 · W7 카테고리 한 줄 · W8 종합 탭 핵심지표(`fmtPriceGap` 그대로)가 같은 숫자·같은 판정이어야 한다.
+  it.each([
+    [0.3, "분양가가 0.3% 낮음", "실거래보다 0.3% 낮은 분양가"],
+    [-0.3, "분양가가 0.3% 높음", "실거래보다 0.3% 높은 분양가"],
+    [0.04, "분양가가 같음", "실거래와 같은 분양가"],
+    [-0.04, "분양가가 같음", "실거래와 같은 분양가"],
+    [12.34, "분양가가 12.3% 낮음", "실거래보다 12.3% 낮은 분양가"],
+  ])("괴리 %s%% — 점수 탭·카테고리 한 줄·종합 탭이 같은 말 (세션651)", (dev, gap, verdict) => {
+    const info = `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%`; // scorePrice info 꼴
+    const w4 = /** @type {any} */ (SUB_CONTEXT.price)["실거래 대비 분양가"].interpret(50, info);
+    const w7 = catVerdict("price", /** @type {any} */ ({ total: 50, fairPrice: 60000, deviation: dev.toFixed(1) }));
+    const w8 = fmtPriceGap(Number(dev.toFixed(1))); // DetailModal 핵심지표: fmtPriceGap(Number(deviation))
+    expect(w4).toBe(gap);
+    expect(w8).toBe(gap);
+    expect(w7).toBe(verdict);
+  });
+
+  it("양성 앵커 — 가드가 실제 문구를 지난다 (빈 문자열 통과 방지)", () => {
+    const { out, chips } = customerStrings(mk(SCOPES[0], 18.8));
+    expect(out).toContain("실거래보다 18.8% 낮은 분양가"); // catVerdict
+    expect(out).toContain("분양가가 18.8% 낮음"); // 점수 탭 판정
+    expect(out).toContain("차이 분양가가 18.8% 낮음"); // 시세 탭 표
+    expect(chips.find((c) => c.id === "priceCompare")?.text).toBe("이 단지 실거래 중앙 6억 (12건·12개월)");
+    expect(chips.find((c) => c.id === "jeonseRate")?.text).toBe("전세가율 72.3% (전세 5건 ÷ 매매 8건)");
   });
 });
 

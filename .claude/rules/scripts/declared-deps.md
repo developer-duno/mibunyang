@@ -27,5 +27,5 @@ eslint-plugin-import 의 `no-extraneous-dependencies` 같은 규칙이 이 디�
   (첫 구현이 실제로 26종 오검출). 회귀 가드가 `audit-declared-deps.test.mjs` 에 있고
   뮤테이션 3종(괄호 허용·stripComments 우회·내장 검사 제거)으로 red 실증했다.
 - 새 패키지를 쓸 땐 `npm i -D <이름>` 으로 **명시 선언**하고, 버전은 지금 해석되는 것과
-  **같은 메이저로 고정**한다(`npm i -D js-yaml` 은 메이저 5를 끌어와 타입 정의 4와 어긋났다).
+  **같은 메이저로 고정**한다(`npm i -D js-yaml` 은 메이저 5를 끌어와 타입 정의 4와 어긋났다 — 그 뒤 #745 로 5판에 올렸고, 5판은 자체 타입을 실어 #775 에서 `@types/js-yaml` 을 뺐다 · 세션647).
 

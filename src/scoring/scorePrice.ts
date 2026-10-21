@@ -4,7 +4,6 @@ import {
   DEV_SCORE_TIERS,
   DEV_SCORE_NEGATIVE_MULT,
   DEV_SCORE_BASE,
-  DEV_BAND_LABEL,
   LAND_COST_TIERS,
   LAND_COST_LOW,
   LAND_COST_NULL,
@@ -15,6 +14,7 @@ import {
   TRADE_SCOPE_PEER_YEARS,
   AREA_BUCKET_TOLERANCE_M2,
 } from "@/constants/scoringTiers";
+import { fmtPriceGap } from "@/lib/format";
 import type { Apt, Res } from "@/types/scoring";
 
 /** 한국 시간(UTC+9, 서머타임 없음) 고정 오프셋 — 준공 판정을 러너 시간대에 맡기지 않는다. */
@@ -180,8 +180,9 @@ function classifyNoPrice(apt: Apt): string {
 }
 
 /**
- * 적정가 근거 한 마디 — 괴리도 `detail` 끝에 붙는다. 숫자(건수·기간·연식·면적 폭)는 값·상수에서 읽는다
- * (문구에 숫자를 손으로 적지 않는다 — 세션565 관습). 문구 안은 설계서 §5-4(라 그림에서 확정).
+ * 비교 근거 한 마디 — "실거래 대비 분양가" `detail` 끝에 붙는다. 숫자(건수·기간·연식·면적 폭)는 값·상수에서 읽는다
+ * (문구에 숫자를 손으로 적지 않는다 — 세션565 관습). 문구 안은 설계서 §5-4 · 세션651 §1 W6.
+ * ㎡당 환산이면 "같은 평수"가 아니라 "비슷한 평수"다(그 폭을 괄호로 밝힌다 — 부동산원 정의에 없는 우리 보조 범위).
  */
 function fairBasisText(
   scope: "complex" | "dong_peer",
@@ -191,14 +192,16 @@ function fairBasisText(
   areaMode: unknown
 ): string {
   const period = months != null && months > 0 ? `(최근 ${months}개월)` : "";
+  const perM2 = areaMode === "per_m2";
+  const area = perM2 ? "비슷한 평수" : "같은 평수";
   const base =
     scope === "dong_peer"
-      ? `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·같은 평수 실거래 ${n}건 대비`
+      ? `같은 동 비슷한 연식(±${TRADE_SCOPE_PEER_YEARS}년)·${area} 실거래 ${n}건 중앙값 대비`
       : src === "presale"
-        ? `이 단지 분양권 거래 ${n}건${period} 대비`
-        : `이 단지 실거래 ${n}건${period} 대비`;
-  const perM2 = areaMode === "per_m2" ? ` (면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산)` : "";
-  return `${base}${perM2}`;
+        ? `이 단지 ${area} 분양권 거래 ${n}건${period} 중앙값 대비`
+        : `이 단지 ${area} 실거래 ${n}건${period} 중앙값 대비`;
+  const tol = perM2 ? ` (면적 ${TRADE_SCOPE_PER_M2_TOL_M2}㎡ 이내 ㎡당 환산)` : "";
+  return `${base}${tol}`;
 }
 
 /**
@@ -254,8 +257,10 @@ export function scorePrice(apt: Apt): Res {
               : Math.max(0, DEV_SCORE_BASE + dev * DEV_SCORE_NEGATIVE_MULT);
     devSc = Math.max(0, Math.min(devSc, 100));
   }
+  // 세션651(사장님 결정 — 공공기관 준거): 판정 밴드 안내(`DEV_BAND_LABEL` "±10% 적정 …")를 빼고
+  //   **산술 차이 + 비교 기준**만 적는다. 부호 = dev 그대로(+면 분양가가 낮음).
   const devDetail = hasDev
-    ? `${dev > 0 ? "+" : ""}${dev.toFixed(1)}% (${DEV_BAND_LABEL}) — ${fairBasisText(scope as "complex" | "dong_peer", fairPriceSrc, fairPriceN, apt.cmpMonths ?? null, apt.cmpAreaMode)}`
+    ? `${fmtPriceGap(dev)} — ${fairBasisText(scope as "complex" | "dong_peer", fairPriceSrc, fairPriceN, apt.cmpMonths ?? null, apt.cmpAreaMode)}`
     : !price || price <= 0
       ? classifyNoPrice(apt)
       : `비교할 실거래가 아직 없어요 (중립 ${PRICE_NO_DATA_DEFAULTS.dev}점)`;
@@ -299,7 +304,9 @@ export function scorePrice(apt: Apt): Res {
     fairPriceN,
     subs: [
       {
-        name: "적정가 괴리도",
+        // 세션651: 옛 이름 "적정가 괴리도" — 손님 화면에서 "적정가"라는 말을 없앴다(공공기관 원문에 없는 우리 판정어).
+        //   이 이름은 `subContext` 키·시험이 그대로 찾는다 — 바꾸면 그쪽도 같이(grep "실거래 대비 분양가").
+        name: "실거래 대비 분양가",
         score: Math.round(devSc),
         info: hasDev ? `${dev > 0 ? "+" : ""}${dev.toFixed(1)}%` : "데이터 부재",
         detail: devDetail,
@@ -311,7 +318,8 @@ export function scorePrice(apt: Apt): Res {
         detail:
           jr == null
             ? `같은 단지 전세·매매 거래 부족 (중립 ${PRICE_NO_DATA_DEFAULTS.jr}점)`
-            : `${jr}% — 이 단지 전세 ${apt.complexJeonseN ?? "?"}건 ÷ 매매 ${apt.complexSaleN ?? "?"}건 (적정 70~80%, 위험 40%↓, 과열 90%↑)`,
+            : // 세션651(사장님 결정): 판정 토막 "(적정 70~80%, 위험 40%↓, 과열 90%↑)" 삭제 — 산식만. 점수 곡선은 그대로.
+              `${jr}% — 같은 단지 같은 평수 전세 ${apt.complexJeonseN ?? "?"}건 ÷ 매매 ${apt.complexSaleN ?? "?"}건 중앙값`,
       },
       {
         name: "PIR",

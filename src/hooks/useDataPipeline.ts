@@ -398,7 +398,9 @@ export function useDataPipeline({
     return { regionCounts, guCounts, moveInCounts, tierCounts };
   }, [scored, baseFilterArgs, deferredRegion, deferredGu, deferredMoveIn, deferredTier, hideNoUnsold]);
 
-  const dataFreshnessText = dataUpdatedAt ? dataUpdatedAt.slice(0, 10) + " 업데이트" : null;
+  // 굽기 시각은 UTC 로 저장된다(03:xx KST = 전날 18:xx UTC) — 앞 10자를 자르면 늘 하루 전 날짜가 보인다.
+  // 한국 날짜로 바꿔 적고, 시각으로 못 읽는 값이면 옛 방식(앞 10자) 그대로.
+  const dataFreshnessText = dataUpdatedAt ? kstDateOf(dataUpdatedAt) + " 업데이트" : null;
 
   return {
     guOptions,
@@ -422,4 +424,11 @@ export function useDataPipeline({
     deferredRegion,
     deferredGu,
   };
+}
+
+/** ISO 시각 → 한국 날짜 "YYYY-MM-DD". 시각으로 못 읽으면 앞 10자. */
+export function kstDateOf(iso: string): string {
+  const t = Date.parse(iso);
+  if (Number.isNaN(t)) return iso.slice(0, 10);
+  return new Date(t + 9 * 3600 * 1000).toISOString().slice(0, 10);
 }

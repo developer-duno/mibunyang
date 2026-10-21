@@ -15,6 +15,13 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - "dependencies"
+    # eslint 10 은 eslint-plugin-react 7.37.5 가 아직 못 받는다(peer ^9.7 · context.getFilename 오류) → major PR 만 끈다(세션644, #746 닫음).
+    # 플러그인이 eslint 10 을 지원하는 판을 내면 아래 ignore 두 항목을 지우고 다시 받는다(최신판 확인: `npm view eslint-plugin-react peerDependencies`).
+    ignore:
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
+      - dependency-name: "@eslint/js"
+        update-types: ["version-update:semver-major"]
     groups:
       minor-and-patch:
         update-types:

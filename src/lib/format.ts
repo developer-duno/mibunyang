@@ -9,6 +9,27 @@ export const fmtPrice = (v: number | null | undefined): string => {
 };
 
 /**
+ * 분양가와 실거래 중앙값의 **산술 차이** 판정 단일 출처 (세션651 — 판정어 "저렴/비쌈/적정가 수준" 대신).
+ * 부호는 점수의 `deviation` 그대로다: (중앙값 − 분양가) ÷ 중앙값 × 100 이라 **+면 분양가가 낮음**.
+ * "같음" = 표시 자릿수(소수 첫째)로 반올림해 0.0 일 때 — 자리마다 문턱을 따로 두면 같은 단지를
+ * 한 화면은 "같음", 다른 화면은 "0.3% 낮음"이라 부른다(세션651 검사관 지적: 0.05% vs 0.5%).
+ */
+export const priceGapParts = (dev: number): { same: boolean; pct: string; lower: boolean } => {
+  const pct = Math.abs(dev).toFixed(1);
+  return { same: pct === "0.0", pct, lower: dev > 0 };
+};
+
+/**
+ * 그 차이를 적는 말 — 시세 탭 표·점수 탭 판정·서브 detail·종합 탭 핵심지표가 이 하나를 쓴다.
+ * 카테고리 한 줄(`catVerdict`)은 어순만 다르고 `priceGapParts` 를 같이 쓴다.
+ */
+export const fmtPriceGap = (dev: number): string => {
+  const g = priceGapParts(dev);
+  if (g.same) return "분양가가 같음";
+  return `분양가가 ${g.pct}% ${g.lower ? "낮음" : "높음"}`;
+};
+
+/**
  * 미분양률 표시 — 100% 초과는 데이터 신뢰 불가(전체 세대수에 청약홈 잔여공급분이
  * 들어가 분모가 작아진 경우)라 "100%+" 로 캡한다. 미분양은 본질적으로 전체 세대수를
  * 넘을 수 없으므로 2900% 같은 값은 표시 오류. collector(molit-units)가 진짜 세대수로

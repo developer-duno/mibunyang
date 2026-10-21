@@ -498,7 +498,7 @@ npx tsc --noEmit -p tsconfig.scripts.json --listFiles 2>&1 | grep -E "probes/|_t
 
 ### 외부 라이브러리 TS7016 (타입 없는 모듈) — 본채는 @types 설치
 
-`import yaml from "js-yaml"` 처럼 `.d.ts` 없는 라이브러리 → TS7016. **본채 (production) 코드면 `@types/*` 설치** (§3.3 "본채는 타입 정확히, any cast 는 .test 한정"). `@ts-ignore` 는 본채 타입 안전 영구 포기라 회피. `@types/js-yaml`·`@types/unzipper` 등 DefinitelyTyped 존재 확인 후 devDependency 추가. 설치 버전이 런타임 버전보다 마이너 뒤처지면 (예: @types/unzipper 0.10 vs unzipper 0.12) §11 시뮬레이션으로 호환 1회 검증.
+`.d.ts` 없는 라이브러리 → TS7016. **본채 (production) 코드면 `@types/*` 설치** (§3.3 "본채는 타입 정확히, any cast 는 .test 한정"). `@ts-ignore` 는 본채 타입 안전 영구 포기라 회피. 먼저 그 판의 `package.json` `types`/`exports.types` 를 본다 — 자체 타입이 있으면 `@types` 는 넣지 않는다(js-yaml 5판은 `dist/js-yaml.d.ts` 를 실어 `@types/js-yaml` 을 뺐다 · #775 세션647 · 5판 ESM 은 기본 내보내기가 없어 `import * as yaml from "js-yaml"` 만 된다). 없으면 `@types/unzipper` 처럼 DefinitelyTyped 존재 확인 후 devDependency 추가. 설치 버전이 런타임 버전보다 마이너 뒤처지면 (예: @types/unzipper 0.10 vs unzipper 0.12) §11 시뮬레이션으로 호환 1회 검증.
 
 ## §16. LSP/IDE 진단 ≠ tsc -p tsconfig.scripts.json (진실의 원천, 세션 350 박제)
 

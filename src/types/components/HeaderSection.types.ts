@@ -26,6 +26,8 @@ export interface HeaderSectionProps extends HelpInfoProps {
   isLoggedIn: boolean;
   containerMaxWidth: number;
   upcomingCount?: number | null;
+  /** 단지 주소 직접 진입 중 — 제목을 h1 대신 같은 모양의 div 로(페이지의 h1 은 상세 창의 단지 이름 하나, 세션641) */
+  demoteTitle?: boolean;
 }
 
 /**

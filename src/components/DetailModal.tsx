@@ -7,7 +7,6 @@ import { catVerdict } from "@/constants/catVerdict";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
-import { DEV_NEUTRAL_BAND_PCT } from "@/constants/scoringTiers";
 import { PricePositionBox } from "./detail/PricePositionBox";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
@@ -15,7 +14,7 @@ import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
 import { transportFacts } from "./detail/TransportCard";
 import { LocationEnvBlock } from "./detail/LocationEnvBlock";
-import { fmtPrice, fmtMoveIn, fmtAddress } from "@/lib/format";
+import { fmtPrice, fmtMoveIn, fmtAddress, fmtPriceGap } from "@/lib/format";
 import { hasKnownArea } from "@/lib/area";
 import { PriceTable } from "./detail/PriceTable";
 import { SchoolInfo } from "./detail/SchoolInfo";
@@ -158,7 +157,7 @@ export const DetailModal = memo(function DetailModal({
   // 켜졌다 — 이제 비로그인·검색엔진이 여기까지 도달한다(그 전까지는 도달 자체가 불가능했다).
   const blind = !isLoggedIn;
   // 종합 탭 편차 스트립 8줄 (세션 487 PR-4) — 카드와 **같은 컴포넌트**, 트랙만 넓다.
-  // 카드에서 배운 읽는 법("오른쪽으로 길수록 유리")이 팝업에서 그대로 통해야 하기 때문.
+  // 카드에서 배운 읽는 법("오른쪽으로 길수록 값이 큼" — 세션652)이 팝업에서 그대로 통해야 하기 때문.
   // 지역 분포가 있어야만 그린다(없으면 "미수집" 8줄짜리 빈 블록). 다른 차트·서랍은 이 값을
   // 안 쓰므로 세션 505 에 게이트를 걷어냈다 — 되돌림용 플래그도 같이 졸업.
   const showDeviation = regionStats != null;
@@ -523,27 +522,20 @@ export const DetailModal = memo(function DetailModal({
                     <div style={DM_S.metricsHead}>핵심 지표</div>
                     {[
                       {
-                        l: "적정가 괴리",
+                        l: "실거래 대비 분양가",
                         // ⚠️ `fairPrice > 0` 이 "가격 데이터 보유"의 정직한 판별자다 — 데이터 부재 분기만
                         //    fairPrice=0 + deviation="0.0"(scorePrice.ts:256)을 내므로, deviation 만으로는
                         //    진짜 0% 괴리와 부재를 구분 못 해 부재가 "0.0%"로 표시됐다(catVerdict/cardChips 규약).
+                        // 세션651(사장님 결정 — 공공기관 준거): 판정 색(초록/빨강)·평가어를 빼고 중립 색 하나로
+                        //   **산술 차이**만 적는다. 값은 "+11.5%" 부호 대신 말로(`fmtPriceGap`) — 라벨이 "실거래 대비
+                        //   분양가"라 "+"를 "분양가가 높다"로 거꾸로 읽을 수 있다(점수의 +는 분양가가 낮다는 뜻).
                         v:
                           Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
-                            ? `${Number(res.cats.price.deviation) > 0 ? "+" : ""}${res.cats.price.deviation}%`
+                            ? fmtPriceGap(Number(res.cats.price.deviation))
                             : "—",
-                        // 색은 부호 단독이 아니라 ±DEV_NEUTRAL_BAND_PCT 중립대 3분기 — 추정 오차보다
-                        // 작은 차이로 방향을 단정하지 않는다(catVerdict.ts·cardChips.ts 와 같은 상수).
-                        c:
-                          Number(res.cats.price.fairPrice) > 0 && res.cats.price.deviation != null
-                            ? Number(res.cats.price.deviation) > DEV_NEUTRAL_BAND_PCT
-                              ? C.green
-                              : Number(res.cats.price.deviation) < -DEV_NEUTRAL_BAND_PCT
-                                ? C.red
-                                : C.muted
-                            : C.muted,
-                        // 세션607: 적정가 = 같은 단지 → 같은 동 또래 실거래(설계서 R1). 옛 문구 "더 넓은 지역 평균으로
-                        //   대신 계산"은 폴백 삭제로 거짓 → 없으면 비교하지 않는다고 사실대로.
-                        hint: "같은 단지의 같은 평수 실거래가(없으면 같은 동·같은 평수·비슷한 연식 집의 실거래가)로 잡은 '적정가'와 실제 분양가를 비교한 거예요. 비교할 실거래가 없으면 비교하지 않아요. +(플러스)면 적정가보다 싸게(좋은 신호), −(마이너스)면 비싸게 나온 거예요. 예: +5%면 적정가보다 5% 저렴해요.",
+                        c: C.text,
+                        // 세션607: 비교 대상 = 같은 단지 → 같은 동 또래 실거래(설계서 R1). 없으면 비교하지 않는다고 사실대로.
+                        hint: "같은 단지의 같은 평수 실거래 중앙값(없으면 같은 동·같은 평수·비슷한 연식 집의 실거래 중앙값)과 분양가의 차이예요. 비교할 실거래가 없으면 비교하지 않아요. 출처: 국토교통부 아파트 실거래가.",
                       },
                       { l: "입주", v: fmtMoveIn(apt.completion, apt.presaleMoveIn as string | null | undefined) },
                     ].map((r, i) => (
@@ -693,8 +685,8 @@ export const DetailModal = memo(function DetailModal({
                 // 첫 블록이 붙박이 탭 줄에 바로 붙지 않게 위 여백을 둔다(세션589 — 다른 탭은 각자의 PR 에서).
                 style={{ ...panelStyle("sec-price"), paddingTop: 12 }}
               >
-                {/* 비교 범위 머리 줄 + 적정가 대비 위치 + 동네 사실 줄 + 같은 단지 전세가율 (세션 430 · 531 · 589 · 609).
-                  범위(cmpScope)·게이트(`fairPrice > 0`)·경계(점수 상수)·색 3단의 근거는 `detail/PricePositionBox` 머리 주석.
+                {/* 비교 범위 머리 줄 + 비교 표(분양가·중앙값·차이·전세가율) + 동네 사실 줄 + 출처 (세션 430 · 589 · 609 · 651).
+                  범위(cmpScope)·게이트(`fairPrice > 0`)의 근거는 `detail/PricePositionBox` 머리 주석.
                   전부 점수가 아니라 값이라 비로그인에게도 공개다. 옛 PSR 줄은 PSR 축 삭제(세션607 다)와 함께 지웠다. */}
                 <PricePositionBox priceCat={res.cats.price} apt={mergedApt ?? apt} />
                 {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는

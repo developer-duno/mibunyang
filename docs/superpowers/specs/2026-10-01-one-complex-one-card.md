@@ -262,7 +262,7 @@
 3. ✅ **조합 시제품 v1**(읽기 전용 JS, 세션587): 전/후 카드 표 → 사장님 결정 D6~D9(10/01 21:24). 결과 = §4-1 "시제품 v1 결과".
 4. **구현**(v5 — 단계마다 계획서 한 편 · 가) = `docs/superpowers/plans/2026-10-02-one-card-a-complex-key.md`). 단계마다 따로 PR · 앞 단계가 라이브에서 확인된 뒤 다음 단계:
    - **가) 열쇠 깔기**(화면 변화 0): 공용 모듈 `_same-complex.mjs`(이름 정규화 · 열쇠 · 예외 명단 · 대표/재료 행 고르기 · 묶음 세대수) + 예외 파일 + 칸 `complex_key` 마이그레이션 + `assign-complex-keys.mjs` + 굽기 앞 단계 + 감시.
-   - **나) 미분양 묶음 배분**: `collect-unsold-kosis.mjs` 가 묶음을 접어 계산하고 구성원 전부에 같은 값 → 운영 반영 1회는 전이표 승인(`data-changing-run-approval`). + 네이버 총세대수 따라가기.
+   - **나) 미분양 묶음 배분**: `collect-unsold-kosis.mjs` 가 묶음을 접어 계산하고 구성원 전부에 같은 값 → 운영 반영 1회는 전이표 승인(`data-changing-run-approval`). + 네이버 총세대수 따라가기. (PR-나 — 세션635 가지 `s635/one-card-na` · 계획서 `docs/superpowers/plans/2026-10-13-one-card-na-da.md` Task 1~4 · 반영은 `--apply-from` 승인 파일로 다) VIEW 적용과 같은 창에서)
    - **다) 화면 전환**: VIEW 조합 마이그레이션(리허설·롤백·출력 무변경 대조) + `memberIds` + 화면 묶음 코드 + 옛 id 넘김 + 시계열 한 달 한 값 + 사이트맵·정적 페이지. 전환 전후 카드 수·점수 등급표. **시험 명단(세션634, 10/13)** = `docs/audits/one-card-small-rep-roster-2026-10-13.json` — 지금 VIEW 에서 작은 회차 공고가 본 단지를 가리는 31묶음(예: 경산 하양 614세대 → (2차) 3세대 카드). 전환 뒤 30곳은 `d11_rep` 가 카드가 돼야 한다(사장님 결정 10/13: 이 단계를 다음 큰 작업으로 당김).
      (PR-다 — 계획서 `docs/superpowers/plans/2026-10-13-one-card-na-da.md` Task 5~12 · 가지 `s635/one-card-da` · 코드는 VIEW 적용 전에 합쳐도 화면 그대로(`memberIds` 없으면 옛 규칙) · VIEW 적용은 운영 단계 B, 세션635·636)
    - **라) 뒤처리**: 좌표 정정 명단(D9) · 감시의 후보 명단 주간 알림.

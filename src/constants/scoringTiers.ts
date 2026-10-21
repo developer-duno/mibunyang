@@ -858,6 +858,7 @@ export const PRICE_SUB_WEIGHTS = { dev: 0.55, jr: 0.2, pir: 0.15, rel: 0.07, lan
  * 적정가 비교 범위 규칙의 숫자 — **정본은 `scripts/collectors/_trade-scope.mjs`**(`PER_M2_TOL_M2`·`PEER_YEARS`).
  * 화면·점수 문구가 숫자를 손으로 적지 않게 여기 짝을 둔다(세션565 관습) —
  * `_trade-scope.test.mjs` 가 두 값이 같은지 잠근다(한쪽만 바뀌면 문구가 거짓이 된다).
+ * 같은 평수는 폭 숫자가 없다 — 전용면적 소수 둘째 반올림이 정확히 같을 때만(부동산원 정의, `sameAreaExact` · 세션651).
  */
 export const TRADE_SCOPE_PER_M2_TOL_M2 = 20;
 export const TRADE_SCOPE_PEER_YEARS = 10;
@@ -935,6 +936,9 @@ export const DEV_SCORE_BASE = 35;
  * ⚠️ 더 넓히면(±12.5 → 수준 34.9%) "적정가 수준"이 최다가 되어 축이 말을 덜 하게 된다.
  * ⚠️ 세션607: 위 근거(계수 흔들림)의 전제가 바뀌었다 — 적정가에 계수를 곱하지 않는다(같은 단지·또래 실거래).
  *    폭은 그대로 두고 10/08 실데이터 분포로 재측정한다(등급 전이표와 함께).
+ * ⚠️ 세션651(사장님 결정 — 공공기관 준거): **손님 문구에서는 안 쓴다**(카드·시세 탭·점수 탭·종합 탭이 판정어 대신
+ *    산술 차이를 적는다). 남은 소비처 = 관리자 화면 `AdminScoreBreakdown` 의 toneLabel 하나. 아래 `DEV_FULL_MIN_PCT`·
+ *    `DEV_ZERO_AT_PCT`·`DEV_BAND_LABEL` 도 손님 화면 소비처가 없어졌다(점수 표의 설명 상수로만 남음).
  */
 export const DEV_NEUTRAL_BAND_PCT = 10;
 

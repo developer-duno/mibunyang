@@ -225,9 +225,31 @@ export const AptCard = memo(
             <div style={S.nameWrap}>
               <div style={S.nameRow}>
                 {rank > 0 && <span style={dynStyles.rank}>{rank}위</span>}
-                <span title={String(apt.name ?? "")} style={{ ...dynStyles.nameText, color: C.text }}>
-                  {String(apt.name ?? "")}
-                </span>
+                {apt.id != null && apt.id !== "" ? (
+                  // 세션640: 구글이 JS 를 돌린 화면에서 홈 → 단지 페이지로 따라갈 진짜 링크(a href).
+                  // 그냥 클릭은 지금처럼 카드(부모 div) 가 상세를 열고 주소 이동만 막는다.
+                  // Ctrl/Meta/Shift/Alt·가운데 버튼 클릭은 브라우저가 새 탭으로 열도록 부모에 안 올린다.
+                  // tabIndex -1 = 키보드 탭 순서는 지금처럼 카드 하나(Enter/Space 는 부모 div 담당).
+                  <a
+                    href={`/apt/${encodeURIComponent(String(apt.id))}`}
+                    tabIndex={-1}
+                    title={String(apt.name ?? "")}
+                    style={{ ...dynStyles.nameText, color: C.text, textDecoration: "none" }}
+                    onClick={(e) => {
+                      if (e.ctrlKey || e.metaKey || e.shiftKey || e.altKey || e.button !== 0) {
+                        e.stopPropagation();
+                      } else {
+                        e.preventDefault();
+                      }
+                    }}
+                  >
+                    {String(apt.name ?? "")}
+                  </a>
+                ) : (
+                  <span title={String(apt.name ?? "")} style={{ ...dynStyles.nameText, color: C.text }}>
+                    {String(apt.name ?? "")}
+                  </span>
+                )}
               </div>
               <div style={S.tagRow}>
                 {[
@@ -442,6 +464,11 @@ export const AptCard = memo(
     if (pa.subwayName !== na.subwayName) return false;
     // 세션609 라: 전세가율 칩 재료가 같은 단지 값(complexJeonseRate)으로 바뀌었다 — 비교도 그 칸을 본다.
     if (pa.complexJeonseRate !== na.complexJeonseRate) return false;
+    // 세션651: 전세가율 칩이 산식(전세 N건 ÷ 매매 M건)을, 가격 비교 칩이 중앙값·건수·기간·㎡당 환산을
+    //   적는다 — 그 재료가 바뀌면 다시 그린다(빠지면 옛 숫자가 카드에 남는다).
+    if (pa.complexJeonseN !== na.complexJeonseN || pa.complexSaleN !== na.complexSaleN) return false;
+    if (pa.cmpFairPrice !== na.cmpFairPrice || pa.cmpN !== na.cmpN) return false;
+    if (pa.cmpMonths !== na.cmpMonths || pa.cmpAreaMode !== na.cmpAreaMode) return false;
     if (pa.parkingRatio !== na.parkingRatio) return false;
     if (pa.noxiousDist !== na.noxiousDist) return false;
     if (pa.corridorType !== na.corridorType) return false;

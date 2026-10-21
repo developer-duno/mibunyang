@@ -1,4 +1,5 @@
 -- ROLLBACK: 20261007000000_view_add_trade_scope.sql (세션607)
+-- ⚠ 세션648 뒤 trade_stats.jeonse_rate 는 늘 null — 이 옛 신뢰도 식(ts.jeonse_rate)을 되살리면 전 단지 신뢰도가 −10. 적용 전 complex_jeonse_rate 로 바꿀 것
 --
 -- 직전 VIEW(20260922000004_view_add_coord_shared.sql) 본문 그대로 — 끝 12칸(점수 입력 9 + 화면 3 · cmpScope … complexSaleN)만 빠진다.
 -- ⚠️ 되돌리기 전에 **다) PR(점수 전환)을 먼저 되돌린다** — 다) 의 점수는 이 칸에서만 괴리도·전세가율을 읽으므로,

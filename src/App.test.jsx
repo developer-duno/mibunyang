@@ -515,27 +515,159 @@ describe("App 통합 테스트", () => {
       window.history.replaceState(null, "", "/?detail=apt1");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
-      await waitFor(() => {
-        expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
       expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
       await waitFor(() => {
         expect(window.location.pathname).toBe("/apt/apt1");
       });
       window.history.replaceState(null, "", "/");
-    });
+    }, 15000);
 
     it("경로형 /apt/{id} 직진입 (비로그인): 그 단지 상세가 열린다", async () => {
       vi.stubEnv("VITE_FEATURE_HOME", "true");
       window.history.replaceState(null, "", "/apt/apt1");
       mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
       render(<App />);
-      await waitFor(() => {
-        expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
-      });
+      await waitFor(
+        () => {
+          expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument();
+        },
+        { timeout: 5000 }
+      );
       // 복원 전에 주소가 지워지면 안 된다 (첫 렌더 prev=null 가드)
       expect(window.location.pathname).toBe("/apt/apt1");
       window.history.replaceState(null, "", "/");
+    }, 15000);
+
+    // ── 세션641: 단지 주소로 바로 들어오면 단지 상세만 (사장님 결정 「단지 페이지만」) ──
+    // 구글이 단지 주소에서 뒤에 깔린 목록까지 읽어 단지 페이지 95% 가 중복으로 묶이던 것을 막는다.
+    // 목록을 대표하는 요소 = 카드(apt-card). h1 = 상세 창의 단지 이름 하나뿐이어야 한다.
+    describe("단지 주소 직접 진입 (세션641)", () => {
+      afterEach(() => {
+        window.history.replaceState(null, "", "/");
+      });
+
+      const h1s = () => screen.queryAllByRole("heading", { level: 1 });
+
+      it("/apt/{id} 직진입: 뒤 목록을 안 그리고 h1 은 정확히 1개(단지 이름)", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        window.history.replaceState(null, "", "/apt/apt1");
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        render(<App />);
+        await waitFor(() => expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument(), {
+          timeout: 5000,
+        });
+        expect(screen.queryAllByTestId("apt-card")).toHaveLength(0);
+        expect(h1s()).toHaveLength(1);
+        expect(h1s()[0].textContent).toContain("테스트파크1차");
+      }, 15000);
+
+      it("직진입 뒤 상세를 닫으면 목록이 그려지고 h1 은 머리띠 것이 된다", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        window.history.replaceState(null, "", "/apt/apt1");
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        render(<App />);
+        await waitFor(() => expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument(), {
+          timeout: 5000,
+        });
+        expect(screen.queryAllByTestId("apt-card")).toHaveLength(0);
+        await act(async () => {
+          screen.getByRole("button", { name: "닫기" }).click();
+        });
+        await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0));
+        expect(screen.queryByRole("dialog", { name: /상세 분석/ })).not.toBeInTheDocument();
+        expect(h1s()).toHaveLength(1);
+        expect(h1s()[0].textContent).toMatch(/미분양 비교/);
+      }, 15000);
+
+      it("목록에서 카드로 연 상세는 지금 그대로 — 목록이 뒤에 남는다", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        render(<App />);
+        await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0));
+        const body = /** @type {HTMLElement} */ (screen.getAllByTestId("apt-card")[0].querySelector('[role="button"]'));
+        await act(async () => {
+          body.click();
+        });
+        await waitFor(() => expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument(), {
+          timeout: 5000,
+        });
+        expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0);
+        // 머리띠 h1 + 상세 창 h1 — 카드로 연 창은 바뀌지 않는다
+        expect(h1s()).toHaveLength(2);
+      }, 15000);
+
+      it("없는 id 직진입: 빈 화면이 아니라 평소 목록이 보인다", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        window.history.replaceState(null, "", "/apt/nope");
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        render(<App />);
+        await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0));
+        expect(screen.queryByRole("dialog", { name: /상세 분석/ })).not.toBeInTheDocument();
+        expect(h1s()).toHaveLength(1);
+      }, 15000);
+
+      it("옛 ?detail= 링크도 직진입과 같다: 뒤 목록 없음 + h1 1개", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        window.history.replaceState(null, "", "/?detail=apt1");
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        render(<App />);
+        await waitFor(() => expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument(), {
+          timeout: 5000,
+        });
+        expect(screen.queryAllByTestId("apt-card")).toHaveLength(0);
+        expect(h1s()).toHaveLength(1);
+        expect(h1s()[0].textContent).toContain("테스트파크1차");
+      }, 15000);
+
+      // 검사관 🟠: 받는 중 뼈대. 데이터를 바로 안 주고(멈춘 Promise) 직진입 → 목록 0 + 뼈대 → 다 주면 상세 창
+      it("직진입 + 받는 중: 목록 대신 상세 창 로딩 뼈대, 다 받으면 상세 창이 뜬다", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        window.history.replaceState(null, "", "/apt/apt1");
+        /** @type {(v: unknown) => void} */
+        let resolveFetch = () => {};
+        mockFetch.mockReturnValue(
+          new Promise((r) => {
+            resolveFetch = r;
+          })
+        );
+        render(<App />);
+        await waitFor(() => expect(screen.getByTestId("detail-skeleton")).toBeInTheDocument());
+        expect(screen.queryAllByTestId("apt-card")).toHaveLength(0);
+        expect(screen.queryByRole("dialog", { name: /상세 분석/ })).not.toBeInTheDocument();
+        await act(async () => {
+          resolveFetch({ data: makeTestApartments(), dataUpdatedAt: null });
+        });
+        await waitFor(() => expect(screen.getByRole("dialog", { name: /상세 분석/ })).toBeInTheDocument(), {
+          timeout: 5000,
+        });
+        expect(screen.queryAllByTestId("apt-card")).toHaveLength(0);
+      }, 15000);
+
+      // 상세 id 가 아직 없는 상태(열린 PR #758 은 상세 열기를 "데이터 받은 뒤 effect" 로 미룬다) — 그 흉내로
+      // useUrlSync 를 이 시험에서만 비운 App 을 새로 불러온다. 이때도 빈 화면이 아니라 뼈대여야 한다.
+      it("직진입 + 받는 중 + 상세 id 아직 없음: 그래도 뼈대가 보인다", async () => {
+        vi.stubEnv("VITE_FEATURE_HOME", "true");
+        window.history.replaceState(null, "", "/apt/apt1");
+        vi.resetModules();
+        vi.doMock("@/hooks/useUrlSync", () => ({ useUrlSync: () => {} }));
+        try {
+          const api = await import("@/services/staticDataApi");
+          /** @type {import('vitest').Mock} */ (api.fetchStaticApartments).mockReturnValue(new Promise(() => {}));
+          const { default: AppNoUrlSync } = await import("./App");
+          render(<AppNoUrlSync />);
+          await waitFor(() => expect(screen.getByTestId("detail-skeleton")).toBeInTheDocument());
+          expect(screen.queryAllByTestId("apt-card")).toHaveLength(0);
+        } finally {
+          vi.doUnmock("@/hooks/useUrlSync");
+          vi.resetModules();
+        }
+      }, 15000);
     });
 
     // (세션 577: "홈 추천 카드 상세 클릭" 시험 삭제 — 메뉴에서 홈이 빠져 손님이 홈 탭에 갈 길이 없다. HomePage 는 한 달 뒤 코드째 삭제)

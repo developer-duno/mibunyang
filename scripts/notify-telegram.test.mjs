@@ -66,6 +66,22 @@ describe("sendTelegram", () => {
 });
 
 describe("formatIssue", () => {
+  // 세션652: 조치 문구의 `<절대경로>` 가 텔레그램 HTML 에서 태그로 읽혀 메시지가 400 으로 통째 거절됐다(10/20 ⑱).
+  //   조치 문구가 있는 모든 kind 를 소스에서 뽑아, 만든 메시지에 우리가 넣는 <b> 말고 날것 `<` 가 없는지 본다.
+  it("모든 kind 의 조치 문구가 HTML 로 안전하다(날것 < > 없음)", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync(new URL("./notify-telegram.mjs", import.meta.url), "utf8");
+    const block = src.slice(src.indexOf("const ACTION_GUIDE = {"), src.indexOf("\n};", src.indexOf("const ACTION_GUIDE = {")));
+    const kinds = [...block.matchAll(/^\s{2}"?([a-z][a-z-]*)"?:\s/gm)].map((m) => m[1]).filter((k) => k !== "fail");
+    expect(kinds).toEqual(expect.arrayContaining(["sgis-map-pending", "sgis-map-sido-mismatch", "notice-cross-bundle"]));
+    for (const kind of kinds) {
+      const msg = formatIssue(/** @type {any} */ ({ kind, collector: "c", detail: "d" }));
+      const raw = msg.replace(/<\/?b>/g, "");
+      expect({ kind, raw: /[<>]/.test(raw) }).toEqual({ kind, raw: false });
+    }
+    expect(formatIssue(/** @type {any} */ ({ kind: "sgis-map-pending", collector: "c", detail: "d" }))).toContain("&lt;절대경로&gt;");
+  });
+
   it("수집기 실패 메시지 — 🔴 + 제목 + collector + detail + url", () => {
     const msg = formatIssue({
       kind: "fail",

@@ -4,7 +4,7 @@
  */
 import { readFileSync } from "node:fs";
 import { describe, it, expect, vi } from "vitest";
-import yaml from "js-yaml";
+import * as yaml from "js-yaml";
 
 // loadEnv + 외부 API 호출 방지
 vi.mock("./_shared.mjs", async (importOriginal) => {

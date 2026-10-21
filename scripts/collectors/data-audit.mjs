@@ -112,7 +112,8 @@ export const AUDIT_FIELDS = {
   trade_stats: {
     collector: "trade-stats",
     fields: [
-      "nearbyMedian", "recentTrades6m", "jeonseRate", "pir", "psr",
+      // jeonseRate(구 전세가율)는 세션648 폐지(늘 null) — 묶음 채움률·NULL 급증에서 뺐다
+      "nearbyMedian", "recentTrades6m", "pir", "psr",
       "avgFloor", "nearbyBuildYear", "floorRange",
       "priceByArea", "rentByArea", "jeonseByArea", "priceByFloor",
       "cancelRatio6m",
@@ -684,7 +685,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     fetchAllFromTable(sb, "transport", "apartment_id,subway_dist,bus_routes,ic_dist,ktx_dist,subway_name,subway_lines,bus_stop_names", null, null),
     fetchAllFromTable(sb, "builders", "name,debt_ratio,credit_grade,hug_guarantee", null, null),
     fetchAllFromTable(sb, "regions", "id,region,gu,recorded_at,pop_growth,supply_ratio,net_migration,housing_supply_level,price_index,avg_price_sqm,new_supply,initial_sale_rate,land_cost_ratio,housing_price", null, null),
-    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,jeonse_rate,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m,cmp_scope,complex_jeonse_rate", null, null),
+    fetchAllFromTable(sb, "trade_stats", "apartment_id,nearby_median,recent_trades_6m,pir,psr,avg_floor,nearby_build_year,floor_range,price_by_area,rent_by_area,jeonse_by_area,price_by_floor,cancel_ratio_6m,cmp_scope,complex_jeonse_rate", null, null),
   ]);
 
   // merge prices (latest per apartment — prices 테이블은 시계열, 최신 1건만)
@@ -792,7 +793,7 @@ export async function fetchAllFromView(sb, regionFilter) {
   // merge trade_stats
   mergeRelated(apts, tradeStats, "apartment_id", "id", {
     nearby_median: "nearbyMedian", recent_trades_6m: "recentTrades6m",
-    jeonse_rate: "jeonseRate", pir: "pir", psr: "psr",
+    pir: "pir", psr: "psr",
     avg_floor: "avgFloor", nearby_build_year: "nearbyBuildYear", floor_range: "floorRange",
     price_by_area: "priceByArea", rent_by_area: "rentByArea",
     jeonse_by_area: "jeonseByArea", price_by_floor: "priceByFloor",

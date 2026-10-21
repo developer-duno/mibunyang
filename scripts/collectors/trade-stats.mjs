@@ -1,12 +1,12 @@
 // @ts-check
-// ownership-guard: allow articles 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인 · 쓰기는 trade_stats)
-// ownership-guard: allow complexes 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인)
+// ownership-guard: allow complexes 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인 · 쓰기는 trade_stats)
 // ownership-guard: allow complex_price_history 읽기만(fetchAll = select · 공유 표는 select 만 — 세션617 fix1 grep 확인)
 /**
  * 거래 통계 산출 — PIR, 전세가율, 인근 시세 중위값 (PSR 은 세션609 라 부터 늘 null — PSR 축 삭제)
  *
- * 기존 Supabase 데이터(apartments, trades, regions, complexes, articles)에서
+ * 기존 Supabase 데이터(apartments, trades, regions, complexes, complex_price_history)에서
  * 파생 지표를 계산하여 trade_stats 테이블에 upsert.
+ * 매물(articles)은 읽지 않는다 — 전수 조회가 정기 회차마다 statement timeout 이라 폴백이 사실상 0건이었다(세션648 폐지).
  *
  * 사용법:
  *   node scripts/collectors/trade-stats.mjs          (trade_stats 테이블 업데이트)
@@ -25,10 +25,10 @@ import { existsSync, writeFileSync } from "node:fs";
 import { calcLTV, zoneOf } from "../../src/constants/regulations.ts";
 
 // ── 세션590 새 칸 배선 도우미(보완 F3·F4·F11 — 시험이 직접 부른다) ──────────────
-/** 새 칸 13개(trade_stats `cmp_*`·`complex_*`·`dong_fact`). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
+/** 새 칸 14개(trade_stats `cmp_*`·`complex_*`·`dong_fact` · 세션650 complex_area 추가). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
 export const SCOPE_COLS = Object.freeze([
   "cmp_scope", "cmp_fair_price", "cmp_n", "cmp_months", "cmp_area_mode", "cmp_src",
-  "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
+  "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_area", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
 ]);
 /** "모든 값 null 이면 건너뜀"이 보는 옛 칸 여섯(결과 행 이름). */
 export const OLD_STAT_KEYS = Object.freeze(["nearby_median", "jeonse_rate", "pir", "psr", "recent_trades_6m", "cancel_ratio_6m"]);
@@ -83,7 +83,7 @@ export function skipStatRow(oldVals, scopeCols) {
 
 /**
  * 결과 행을 두 줄기로 가른다(보완 F3) — 옛 칸이 하나라도 있는 행은 지금처럼 전부 · 옛 칸이 전부 null 인데 새 칸이 있는 행은
- * `{apartment_id, 새 칸 13, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
+ * `{apartment_id, 새 칸 14, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
  * PostgREST 일괄 upsert 는 한 배치 안 키가 같아야 하므로 두 줄기를 한 배열에 섞지 않는다.
  * @param {Array<Record<string, any>>} results
  * @returns {{ full: Array<Record<string, any>>, scopeOnly: Array<Record<string, any>> }}
@@ -402,14 +402,15 @@ async function main() {
   log("load", "데이터 병렬 조회...");
   const cutoff12mYM = cutoff12m.replace(/-/g, "").slice(0, 6); // YYYYMM 형식
   const cutoff6mYM = cutoff6m.replace(/-/g, "").slice(0, 6);
-  const [rawApts, rawPrices, trades, regions, naverArticles, naverComplexes, priceHistory, cancelledTrades, scopeDeals, scopeLinks] = await Promise.all([
+  const [rawApts, rawPrices, trades, regions, naverComplexes, priceHistory, cancelledTrades, scopeDeals, scopeLinks] = await Promise.all([
     // is_regulated = DSR 대출액의 구역 · dsr40pass = 지금 DB 값(미리보기 전이 비교용, 세션619 PR-E)
-    fetchAll("apartments", "id,name,region,gu,naver_jeonse_rate,completion,bjd_code,is_regulated,dsr40pass", {}, sbMibunyang),
+    fetchAll("apartments", "id,name,region,gu,completion,bjd_code,is_regulated,dsr40pass", {}, sbMibunyang),
     fetchAll("prices", "apartment_id,area,price,recorded_at,house_type", {}, sbMibunyang),
     fetchAll("trades", "region,gu,price,area,floor,deal_month:deal_month,trade_type", {}, sbMibunyang,
       [{ col: "deal_month", op: "gte", val: cutoff12mYM },
        { col: "cancel_date", op: "is", val: null }]).catch(/** @param {any} e */ (e) => {
-      // 세션539 B-2: articles(:233)만 로그가 있고 나머지 5개 조회는 조용히 []로 넘어갔다.
+      // 세션539 B-2: 그때는 매물(articles) 조회만 로그가 있고 나머지 5개 조회는 조용히 []로 넘어갔다
+      // (매물 조회는 세션648 에 뺐다 — 지금은 남은 조회마다 아래처럼 실패 로그를 남긴다).
       // 실피해는 낮다(:464 recentTrades6m = recent6m.length || null 이라 0건은 "미수집" null로
       // 가지 거짓 0건이 되지 않는다) — 그러나 워크플로는 success, ok_count 는 큰 값을 기록해
       // 조회가 죽어도 monitor outage 감지가 안 울린다. 로그만이라도 남겨 흔적을 없애지 않는다.
@@ -420,13 +421,8 @@ async function main() {
       logError("load", `regions 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
       return [];
     }),
-    // ⚠️ articles(137만행)·complexes(6.4만행)는 `id` 가 없다 — 고유키를 명시하지 않으면 조회가 죽는다.
-    fetchAll("articles", "complex_no,trade_type_name,numeric_price,area2_m2", { is_active: true }, sbMibunyang, [], "article_no", true).catch(/** @param {any} e */ (e) => {
-      // ⚠️ 조용히 [] 로 넘기면 "매물 0건"이 정상처럼 보인다 — 세션513 에 정렬 추가로 이 조회가
-      //    statement timeout 으로 죽었는데 로그가 없어 dry-run 요약의 "매물 0건"만 남았다.
-      logError("load", `articles 조회 실패 — 매물 폴백 없이 진행: ${e?.message ?? e}`);
-      return [];
-    }),
+    // ⚠️ complexes(6.4만행)는 `id` 가 없다 — 고유키를 명시하지 않으면 조회가 죽는다.
+    // (매물 articles 전수 조회는 세션648 에 뺐다 — 정기 회차마다 statement timeout 이라 폴백이 늘 0건이었다)
     fetchAll("complexes", "complex_no,sido,sigungu,use_approve_ymd", {}, sbMibunyang, [], "complex_no").catch(/** @param {any} e */ (e) => {
       logError("load", `complexes 조회 실패 — 폴백([])으로 진행: ${e?.message ?? e}`);
       return [];
@@ -470,7 +466,7 @@ async function main() {
     const lp = latestPriceMap.get(a.id);
     return { ...a, price: lp?.price ?? null, area: lp?.area ?? null };
   });
-  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 해제거래 ${cancelledTrades.length}건, 지역 ${regions.length}건, 매물 ${naverArticles.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`);
+  log("load", `아파트 ${apartments.length}건, 가격 ${rawPrices.length}건, 거래 ${trades.length}건, 해제거래 ${cancelledTrades.length}건, 지역 ${regions.length}건, 단지 ${naverComplexes.length}건, 시세이력 ${priceHistory.length}건`);
 
   // 2. 인덱스 구축
   // 지역 소득 맵: "region:gu" → avg_income
@@ -507,18 +503,6 @@ async function main() {
     if (region === "세종" || gu) complexGuMap.set(nc.complex_no, { region, gu });
   }
 
-  // 네이버 매물 그룹: statsKey → articles[]
-  /** @type {Map<string, Array<Record<string, any>>>} */
-  const naverByGu = new Map();
-  for (const a of naverArticles) {
-    const guInfo = complexGuMap.get(a.complex_no);
-    if (!guInfo) continue;
-    const key = statsKey(guInfo.region, guInfo.gu);
-    if (!key) continue;
-    if (!naverByGu.has(key)) naverByGu.set(key, []);
-    (naverByGu.get(key) ?? []).push(a);
-  }
-
   // 시세 이력 그룹: statsKey → price_avg[]
   /** @type {Map<string, number[]>} */
   const historyByGu = new Map();
@@ -548,7 +532,7 @@ async function main() {
   /** @type {Array<Record<string, any>>} DSR 전이 명단(요약·--out 에만 — 쓰기와 무관) */
   const dsrRows = [];
   let processed = 0;
-  /** @type {Map<string, { presale_n_if_moved_in: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
+  /** @type {Map<string, { presale_n_if_moved_in: number | null, sale_same_n: number | null, moved_in: boolean }>} 새 칸 진단(칸에는 안 넣음 — 요약·--out 에만) */
   const scopeDiagById = new Map();
 
   for (const apt of apartments) {
@@ -571,21 +555,9 @@ async function main() {
     if (recent12m.length >= 3) {
       nearbyMedian = median(recent12m.map((t) => t.price));
       medianSource = "trades";
-    } else {
-      // 2단계: 네이버 매물 호가 (articles)
-      const guNaver = naverByGu.get(key) || [];
-      const naverSale = guNaver.filter(
-        (a) =>
-          a.numeric_price != null &&
-          (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name)
-      );
-      if (naverSale.length >= 1) {
-        nearbyMedian = median(naverSale.map((a) => a.numeric_price));
-        medianSource = "articles";
-      }
     }
 
-    // 3단계: 네이버 시세 이력 (complex_price_history)
+    // 2단계: 네이버 시세 이력 (complex_price_history) — 옛 매물 호가 단계는 세션648 에 뺐다
     if (nearbyMedian == null) {
       const guHistory = historyByGu.get(key) || [];
       if (guHistory.length >= 1) {
@@ -594,45 +566,11 @@ async function main() {
       }
     }
 
-    // ── jeonse_rate (전세가율 %) ──────────────────────────────
-    let jeonseRate = null;
-    if (aptPrice && aptPrice > 0) {
-      // 거래 데이터에서 전세 중위 (서버사이드 12개월 필터 적용됨)
-      const jeonse12m = guTrades.filter(
-        (t) => t.trade_type === "jeonse" || t.trade_type === "전세"
-      );
-
-      if (jeonse12m.length >= 3) {
-        const jeonseMedian = median(jeonse12m.map((t) => t.price));
-        const saleMedian = nearbyMedian || aptPrice;
-        if (jeonseMedian != null && saleMedian > 0) {
-          jeonseRate = Math.round((jeonseMedian / saleMedian) * 1000) / 10;
-        }
-      } else {
-        // articles 대체
-        const guNaver = naverByGu.get(key) || [];
-        const naverJeonse = guNaver.filter(
-          (a) =>
-            a.numeric_price != null &&
-            (a.trade_type_name === "전세" || a.trade_type_name === "lease")
-        );
-        const naverSale = guNaver.filter(
-          (a) =>
-            a.numeric_price != null &&
-            (a.trade_type_name === "매매" || a.trade_type_name === "sale" || !a.trade_type_name)
-        );
-        const jMedian = naverJeonse.length >= 1 ? median(naverJeonse.map((a) => a.numeric_price)) : null;
-        const sMedian = naverSale.length >= 1 ? median(naverSale.map((a) => a.numeric_price)) : nearbyMedian;
-        if (jMedian != null && sMedian && sMedian > 0) {
-          jeonseRate = Math.round((jMedian / sMedian) * 1000) / 10;
-        }
-      }
-    }
-
-    // 네이버 전세가율 fallback
-    if (jeonseRate == null && apt.naver_jeonse_rate != null) {
-      jeonseRate = apt.naver_jeonse_rate;
-    }
+    // ── jeonse_rate (구 전세가율) — 폐지(사장님 결정 세션648) ──────────────
+    // 구 안 모든 집의 전세 중위 ÷ 매매 중위는 위치·평수·연식이 다른 집끼리 나눈 값이라 뜻이 없다.
+    // 화면·점수는 같은 단지 값(complex_jeonse_rate)만 쓴다. 칸은 upsert 에서 빼지 않고 명시적 null 로 쓴다
+    // (빼면 지난 값이 굳는다 · 칸 삭제는 정리 PR). 매물·네이버 대체값도 같은 세션에 뺐다.
+    const jeonseRate = null;
 
     // ── pir (Price to Income Ratio, 연) ──────────────────────
     let pir = null;
@@ -651,7 +589,7 @@ async function main() {
     // ── psr — 계산하지 않는다(세션609 라 · 사장님 결정 ③ · 설계서 §4-3) ──────────
     // 가격 점수의 PSR 축은 세션607 다) 에서 없앴다(R4 — 구 전체 ㎡당 중위와 견줘 1,736곳 중 81% 를 "비쌈"이라 불렀다).
     // 칸(trade_stats.psr)은 정리 PR 에서 지운다 — 그때까지 늘 null 로 써서 옛 값이 화면·감사에 남지 않게 한다.
-    // nearby_median·jeonse_rate(구)는 그대로 계산한다(결정 ③ 은 psr 만).
+    // nearby_median 은 그대로 계산한다(결정 ③ 은 psr 만 · jeonse_rate(구)는 세션648 에 폐지).
     const psr = null;
 
     // ── recent_trades_6m (최근 6개월 거래 건수) ──────────────
@@ -787,16 +725,16 @@ async function main() {
   // 4. 요약 출력
   const withMedian = results.filter((r) => r.nearby_median != null);
   const withPir = results.filter((r) => r.pir != null);
-  const withJeonse = results.filter((r) => r.jeonse_rate != null);
   const withTrades = results.filter((r) => r.recent_trades_6m != null);
   const withCancel = results.filter((r) => r.cancel_ratio_6m != null);
 
   const fromTrades = results.filter(r => r._medianSource === "trades").length;
-  const fromArticles = results.filter(r => r._medianSource === "articles").length;
   const fromHistory = results.filter(r => r._medianSource === "history").length;
-  log("summary", `nearby_median: ${withMedian.length}건 (실거래 ${fromTrades}, 매물 ${fromArticles}, 시세이력 ${fromHistory})`);
+  log("summary", `nearby_median: ${withMedian.length}건 (실거래 ${fromTrades}, 시세이력 ${fromHistory})`);
   log("summary", `pir: ${withPir.length}건 (평균 ${withPir.length ? (withPir.reduce((s, r) => s + (r.pir ?? 0), 0) / withPir.length).toFixed(1) : "N/A"}년)`);
-  log("summary", `jeonse_rate: ${withJeonse.length}건 (평균 ${withJeonse.length ? (withJeonse.reduce((s, r) => s + (r.jeonse_rate ?? 0), 0) / withJeonse.length).toFixed(1) : "N/A"}%)`);
+  // 옛 칸이 전부 빈 행은 splitUpsertRows 가 새 칸만 써서 지난 jeonse_rate 를 덮지 않는다 — 그 수를 같이 보인다
+  const scopeOnlyN = splitUpsertRows(results).scopeOnly.length;
+  log("summary", `jeonse_rate: 구 단위 폐지 — 전부 null 로 씀(사장님 결정 세션648 · 값 있음 ${results.filter((r) => r.jeonse_rate != null).length}건 · 옛 칸 전부 빈 행이라 안 덮는 곳 ${scopeOnlyN}건)`);
   log("summary", `recent_trades_6m: ${withTrades.length}건`);
   log("summary", `cancel_ratio_6m: ${withCancel.length}건 (평균 ${withCancel.length ? (withCancel.reduce((s, r) => s + (r.cancel_ratio_6m ?? 0), 0) / withCancel.length).toFixed(1) : "N/A"}%)`);
   log("summary", `dsr40pass: ${dsrUpdates.filter(d => d.dsr40pass === true).length}통과 / ${dsrUpdates.filter(d => d.dsr40pass === false).length}미통과 / ${dsrUpdates.filter(d => d.dsr40pass === null).length}비움 (총 ${dsrUpdates.length}건)`);
@@ -817,9 +755,9 @@ async function main() {
     const jr = sc.filter((r) => r.complex_jeonse_rate != null);
     const jrOver = jr.filter((r) => r.complex_jeonse_rate > 100);
     const df = sc.filter((r) => r.dong_fact != null).length;
-    const movedInPresale = [...scopeDiagById.entries()].filter(([id, d]) => {
-      const row = sc.find((r) => r.apartment_id === id);
-      return d.moved_in && (row?.complex_sale_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
+    const movedInPresale = [...scopeDiagById.values()].filter((d) => {
+      // 같은 면적(소수 둘째, 세션651 — 부동산원 정의) 매매 수 = 진단의 sale_same_n · 분양권 수와 같은 판정으로 센다
+      return d.moved_in && (d.sale_same_n ?? 0) < 3 && (d.presale_n_if_moved_in ?? 0) >= 3;
     }).length;
     log("summary", `새 칸 범위: T1 매매 ${t1s} · T1 분양권 ${t1p} · T2 동네 또래 ${t2} · T3 없음 ${t3} (㎡당 환산 ${perM2})`);
     log("summary", `같은 단지 전세가율 ${jr.length}곳 · 100% 초과 ${jrOver.length}곳 · 동네 사실 ${df}곳`);
@@ -848,7 +786,7 @@ async function main() {
       console.log("\nPIR 상위 10:");
       for (const r of withPir.sort((a, b) => (b.pir ?? 0) - (a.pir ?? 0)).slice(0, 10)) {
         const apt = apartments.find((a) => a.id === r.apartment_id);
-        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
+        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년`);
       }
     }
 
@@ -856,7 +794,7 @@ async function main() {
       console.log("\nPIR 하위 10:");
       for (const r of withPir.sort((a, b) => (a.pir ?? 0) - (b.pir ?? 0)).slice(0, 10)) {
         const apt = apartments.find((a) => a.id === r.apartment_id);
-        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년, 전세가율 ${r.jeonse_rate ?? "N/A"}%`);
+        console.log(`  ${apt?.name ?? r.apartment_id}: PIR ${r.pir}년`);
       }
     }
     return;

@@ -161,7 +161,7 @@ parseLinkDecisions(json) → Decision[]   // 형식 틀리면 던진다
 ### 4-1. 순수 함수
 
 ```
-상수: SAME_AREA_TOL_M2 = 10 (미만) · PER_M2_TOL_M2 = 20 (이하) · PEER_YEARS = 10 (이하) · MIN_DEALS = 3 · CMP_MONTHS = 12
+상수: SAME_AREA_TOL_M2 = 10 (미만 — **세션651 삭제: 같은 평수 = 정확히 같음(부동산원), `sameAreaExact`**) · PER_M2_TOL_M2 = 20 (이하) · PEER_YEARS = 10 (이하) · MIN_DEALS = 3 · CMP_MONTHS = 12
 computeScopeStats(apt, ctx) → 새 칸 12개(설계서 §4-3)
   apt = { id, area, completion, bjd_code }   (area = trade-stats 의 대표 면적 latestPriceMap)
   ctx = { links: Link[](이 단지 active), dealsByAptSeq, dealsByPresaleKey, saleByUmd: Map<sgg+umd_cd, deal[]>, now }
