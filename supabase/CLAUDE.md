@@ -217,6 +217,15 @@ CLI 가 없거나 사용자가 직접 적용할 때:
 4. Run 버튼 → 결과 확인 (에러 0건 + Success 응답)
 5. 후속 collector 호출로 컬럼 채움 검증
 
+### 방법 C — Supabase MCP(`execute_sql`) — **사전 승인된 SQL 한 건**을 사장님이 자리에 없을 때 (세션653 2026-10-21 실사용)
+
+사장님 휴대폰에서 OAuth 승인 한 번이면 이 대화의 Claude 가 SQL 을 직접 넣을 수 있다(VIEW 새 정의 25KB 를 이 길로 적용했다). **무인 쓰기 길이 아니다** — 검사관·리허설·사장님 승인을 이미 거친 **그 파일 하나**만, 되돌리기 SQL(`_rollbacks/…`)이 준비된 상태에서, 적용 뒤 권한 지문(`perm-baseline.mjs` 미리보기)까지 본다.
+1. `authenticate` 도구 → 링크를 사장님께 → 조직 developer-duno's Org 선택 → Authorize → "페이지를 열 수 없음" 화면의 `http://localhost:<port>/callback?code=…` 주소 전체를 받아 `complete_authentication`.
+   ⚠️ 첫 링크는 사장님이 붙여 넣기까지 걸린 시간에 **대기가 끝나 "진행 중인 흐름 없음"** 이 날 수 있다 — 새 링크를 만들어 **바로** 받는다(code 는 1회용). 연결은 이 대화 안에서만 유효, 끊기는 Supabase 계정 설정.
+2. `list_projects` 로 **`rwdtljipvmqpazrimyns`(이름 naver-estate)** 를 확인한 뒤에만 `execute_sql(project_id=…)` — 같은 조직에 `sangga` 가 있다.
+3. 적용 전 읽기 탐침 1회(칸 수·`reloptions`·행 수)로 도구 자체를 검증 → 파일 본문 그대로(`SET lock_timeout` 포함, 여러 문장 한 번에 됨) → 적용 뒤 같은 탐침 + PostgREST 경로(supabase-js `select("*")`) 재확인(스키마 캐시).
+4. 이 길로 하는 **운영 쓰기도 전이표 승인·사본은 그대로**(data-changing-run-approval). `apply_migration` 은 쓰지 않는다(마이그 히스토리 표를 안 쓰는 레포 — `db push` 금지와 같은 이유).
+
 ### 공유 DB 컨텍스트
 
 mibunyang ↔ naver-estate-web 공유 instance `rwdtljipvmqpazrimyns`. 어느 프로젝트
