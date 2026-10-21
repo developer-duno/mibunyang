@@ -1,10 +1,10 @@
 {
-  "fetchedAt": "2026-10-20T18:10:07.069Z",
-  "count": 1948,
+  "fetchedAt": "2026-10-21T08:12:24.762Z",
+  "count": 1659,
   "phases": {
     "supabaseOnly": {
       "ok": true,
-      "count": 1948
+      "count": 1659
     }
   },
   "errors": []
