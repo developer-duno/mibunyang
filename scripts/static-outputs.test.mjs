@@ -143,7 +143,7 @@ describe("buildDetailBuckets", () => {
   it("각 원소 = 상세 필드 + 가격배열 + full catsCache", () => {
     const el = buckets.flatMap((b) => b.data)[0];
     expect(Object.keys(el).sort()).toEqual(
-      ["benefits", "catsCache", "complexJeonseTable", "complexTable", "dongFact", "id", "jeonseByArea", "nearbyChildcare", "nearbyFacilities", "nearbySchools", "priceByArea", "priceByFloor", "rentByArea"].sort()
+      ["benefits", "catsCache", "complexJeonseTable", "complexTable", "dongFact", "id", "jeonseByArea", "nearbyChildcare", "nearbyFacilities", "nearbySchools", "noticeName", "priceByArea", "priceByFloor", "rentByArea"].sort()
     );
     // full catsCache — 슬림 안 됨 (product subs 도 전량)
     expect(/** @type {any} */ (el).catsCache.product.subs.length).toBeGreaterThan(0);

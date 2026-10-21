@@ -4,7 +4,7 @@ import crypto from "node:crypto";
 import {
   pickEvents, addDays, normalizeRegionKey, matchPairs, dedupeByPhone,
   maskPhone, optOutToken, buildMessage, isNightKst, kstHour, hasLiveEnv,
-  e164ToLocal, SMS_ADAPTER_READY,
+  e164ToLocal, SMS_ADAPTER_READY, rosterIds, makeBundleOf,
 } from "./notify-subscribers.mjs";
 
 const TODAY = "2026-07-06";
@@ -123,6 +123,15 @@ describe("matchPairs — 단지/지역/전국 3분기", () => {
   it("미등재 지역 표기는 매칭 0 (전국으로 새지 않음)", () => {
     expect(matchPairs([sub({ region: "서울시" })], events, aptById)).toHaveLength(0);
   });
+  it("단지 구독 = 같은 묶음이면 매칭(세션635 다 — 옛 카드 id ah-2 로 구독, 공고는 ah-1)", () => {
+    const subs = [{ id: 1, phone: "01000000000", region: null, apartment_id: "ah-2" }];
+    const evs = [{ aptId: "ah-1", houseNo: "H", receiptDate: "2026-10-20", url: null }];
+    const byId = new Map([["ah-1", { name: "하양", region: "경북" }]]);
+    /** @param {string} id */
+    const bundleOf = (id) => /** @type {Record<string, string>} */ ({ "ah-1": "K", "ah-2": "K" })[id] ?? id;
+    expect(matchPairs(subs, evs, byId, bundleOf)).toHaveLength(1);
+    expect(matchPairs(subs, evs, byId)).toHaveLength(0); // bundleOf 기본값 = id 정확 일치
+  });
   it("로스터에 없는 단지 이벤트는 매칭하지 않는다", () => {
     const ev2 = [{ aptId: "ap-없음", houseNo: "h1", receiptDate: "2026-07-08", url: null }];
     expect(matchPairs([sub()], ev2, aptById)).toHaveLength(0);
@@ -228,5 +237,35 @@ describe("buildMessage", () => {
     const text = buildMessage({ receiptDate: "2026-07-08", url: null }, { name: "단지" }, null);
     expect(text).not.toContain("공고:");
     expect(text).not.toContain("수신거부");
+  });
+});
+
+describe("rosterIds — 단지 정보를 읽을 id(세션635 다)", () => {
+  it("이벤트 단지 ∪ 단지 구독자의 apartment_id(중복 없이) — 지역·전국 구독(null)은 빠진다", () => {
+    const events = [{ aptId: "ah-1" }, { aptId: "ah-5" }];
+    const subs = [{ apartment_id: "ah-2" }, { apartment_id: null }, { apartment_id: "ah-1" }];
+    expect(rosterIds(events, subs)).toEqual(["ah-1", "ah-5", "ah-2"]);
+  });
+});
+
+describe("makeBundleOf — 오피스텔 (오) 행은 묶음 매칭에서 빠진다(세션636 D9)", () => {
+  const rows = [
+    { id: "ah-1", name: "하양 아파트", complex_key: "K" },
+    { id: "ah-2", name: "하양 아파트(2차)", complex_key: "K" },
+    { id: "ah-7", name: "하양 아파트(오)", complex_key: "K" },
+  ];
+  const sub = (/** @type {string} */ aptId) => [{ id: 1, phone: "01000000000", region: null, apartment_id: aptId }];
+  /** @param {string} aptId */
+  const ev = (aptId) => [{ aptId, houseNo: "H", receiptDate: "2026-10-20", url: null }];
+  const byId = new Map(rows.map((r) => [r.id, { name: r.name, region: "경북" }]));
+  it("아파트 구독(ah-1) × 같은 열쇠의 (오) 공고(ah-7) → 매칭 0", () => {
+    expect(matchPairs(sub("ah-1"), ev("ah-7"), byId, makeBundleOf(rows))).toHaveLength(0);
+  });
+  it("(오) 구독(ah-7) × 같은 열쇠의 아파트 공고(ah-1) → 매칭 0 · 같은 (오) id 끼리는 1", () => {
+    expect(matchPairs(sub("ah-7"), ev("ah-1"), byId, makeBundleOf(rows))).toHaveLength(0);
+    expect(matchPairs(sub("ah-7"), ev("ah-7"), byId, makeBundleOf(rows))).toHaveLength(1);
+  });
+  it("대조군: 아파트끼리 같은 열쇠(ah-2 구독 × ah-1 공고)는 1", () => {
+    expect(matchPairs(sub("ah-2"), ev("ah-1"), byId, makeBundleOf(rows))).toHaveLength(1);
   });
 });

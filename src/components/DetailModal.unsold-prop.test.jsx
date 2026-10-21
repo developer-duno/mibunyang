@@ -73,3 +73,14 @@ describe("DetailModal → UnsoldChart unsold prop", () => {
     expect(JSON.parse(mock.dataset.unsold ?? "null")).toBeNull();
   });
 });
+
+describe("DetailModal 재공고 배지 — 청약홈 공고(ah-)만 센다(세션635 다)", () => {
+  it('siblingIds 에 ah- 가 둘이면 "재공고 2회"', () => {
+    render(<DetailModal {...makeProps({ item: makeItem({ siblingIds: ["ap-9", "ah-1", "ah-2"] }) })} />);
+    expect(screen.getByText(/재공고 2회/)).toBeTruthy();
+  });
+  it("ah- 가 하나뿐이면 배지가 없다(네이버 행은 세지 않는다)", () => {
+    render(<DetailModal {...makeProps({ item: makeItem({ siblingIds: ["ap-9", "ah-1"] }) })} />);
+    expect(screen.queryByText(/재공고/)).toBeNull();
+  });
+});

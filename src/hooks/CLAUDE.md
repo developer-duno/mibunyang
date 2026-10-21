@@ -104,6 +104,8 @@ App.tsx L389~455 에 있던 독립 useEffect 3개를 **순서·deps·로직 무�
 호출 위치는 원래 자리(`// ── JSX ──` 직전) 유지 — 훅 순서가 바뀌면 Rules of Hooks 위반.
 MAX_COMPARE 딥링크 방어 경로가 App.tsx → 이 훅으로 이동(useComparison 의 4경로 중 1개).
 
+**세션635 다) — 옛 카드 id 넘김**: `useApartmentData` 가 `idAlias`(구성원 id → 카드 id, `buildIdAlias`)를 돌려주고 App 이 `useUrlSync`·`HomePage` 에 넘긴다. 정리 effect 는 지우기 **전에** 구성원 id 를 카드 id 로 바꾼다(같은 카드는 하나만 · 토스트는 모르는 id 만 셈). 상세 딥링크(`/apt/{id}`·옛 `?detail=`)는 mount 1회가 아니라 **목록이 들어온 뒤 한 번만**(`deepLinkDoneRef`) 대표로 열고 주소를 `replaceState` — 쿼리(profile·compare)·옛 `?detail=` 의 `/apt/` 승격은 mount 1회 그대로, 두 함정 한 줄 무변경. `useHistoryData` 는 `siblingIds` 앞 20개만(API 상한).
+
 ## 파생 상태 규칙
 
 ```js

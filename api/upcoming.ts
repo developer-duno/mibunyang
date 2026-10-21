@@ -40,13 +40,13 @@ const UPCOMING_PAGE = 1000;
  * 행이 새지 않는다. 조회 중 에러가 나면 그때까지 모은 부분 결과를 버리고 throw —
  * 호출부가 500 으로 응답해 "일부만 조용히 반환" 을 막는다.
  */
-async function fetchAllUpcoming(sb: any): Promise<any[]> {
+async function fetchAllUpcoming(sb: any, select: string): Promise<any[]> {
   const rows: any[] = [];
   let cursor: any = null;
   while (true) {
     let q = sb
       .from("apartments_flat")
-      .select(UPCOMING_SELECT)
+      .select(select)
       .in("presaleStage", ALL_STAGES)
       .order("id", { ascending: true })
       .limit(UPCOMING_PAGE);
@@ -66,9 +66,16 @@ async function handleGet(req: any, res: any) {
     const sb = getSupabase();
 
     // apartments_flat VIEW 에서 presaleStage IN (분양계획/청약중/분양중) 필터 — 전량 커서 페이징
+    // 세션635 다: 묶음 구성원(memberIds)도 함께 묻는다 — 일정은 묶음 안 아무 행에나 붙어 있다.
+    //   VIEW 적용 전(또는 되돌린 날)엔 그 칸이 없어 칸 없음 오류가 난다 → 빼고 **처음부터** 한 번 더(페이지 중간에 바꾸지 않는다).
     let data: any[];
     try {
-      data = await fetchAllUpcoming(sb);
+      try {
+        data = await fetchAllUpcoming(sb, `${UPCOMING_SELECT}, memberIds`);
+      } catch (e: any) {
+        if (!String(e?.message ?? "").includes("memberIds")) throw e;
+        data = await fetchAllUpcoming(sb, UPCOMING_SELECT);
+      }
     } catch (e: any) {
       console.error("[/api/upcoming] supabase error:", e?.message ?? e);
       return res.status(500).json({ ok: false, error: "데이터 조회 실패" });
@@ -145,6 +152,27 @@ export function recruitDateIsPast(recruitDate: unknown, today: string): boolean 
   return false; // 파싱 불가(미정 등) → 제외 안 함
 }
 
+/** 일정 행의 공고일이 카드 자체 모집일(YYYY.MM 꼴 — recruitDateIsPast 가 읽는 꼴)보다 이전인가. 둘 중 하나라도 못 읽으면 false(빼지 않는다). */
+export function noticeIsBeforeCard(recruitDate: unknown, cardRecruit: unknown): boolean {
+  const n = /^(\d{4})-(\d{2})/.exec(String(recruitDate ?? ""));
+  const c = /^(\d{4})[.\-/](\d{1,2})/.exec(String(cardRecruit ?? ""));
+  if (!n || !c) return false;
+  return `${n[1]}${n[2]}` < `${c[1]}${c[2].padStart(2, "0")}`;
+}
+
+/** 카드 행들의 구성원 id 전부 + 구성원 → 카드 id 표(memberIds 가 없으면 자기 id 만). */
+export function memberIdMap(rows: Array<{ id: string; memberIds?: string[] | null }>): {
+  ids: string[];
+  cardOf: Map<string, string>;
+} {
+  const cardOf = new Map<string, string>();
+  for (const r of rows) {
+    cardOf.set(r.id, r.id);
+    for (const m of Array.isArray(r.memberIds) ? r.memberIds : []) if (!cardOf.has(m)) cardOf.set(m, r.id);
+  }
+  return { ids: [...cardOf.keys()], cardOf };
+}
+
 /**
  * "곧 분양(분양계획)"인데 실제로는 과거 공고인 단지 ID 집합 (세션 469~470).
  * 네이버 presaleStage 가 stale(수집기 정지 등)이면 과거 공고가 계속 "분양계획"으로 남는다. 두 신호로 교차 제외:
@@ -166,21 +194,29 @@ export async function findStalePlanIds(sb: any, rows: any[], today: string = tod
     if (recruitDateIsPast(r.presaleRecruitDate, today)) stale.add(r.id);
   }
 
-  // (A) 청약홈 공식 접수시작일 교차 검증
-  const planIds = planRows.map((r) => r.id);
-  const { data, error } = await sb
-    .from("presale_schedule_official")
-    .select("apartment_id, general_rank1_bgnde, special_receipt_bgnde, recruit_date")
-    .in("apartment_id", planIds);
-  if (error || !data) return stale; // 조회 실패 시 (A) 미적용(fail-open) — (B) 결과는 유지
+  // (A) 청약홈 공식 접수시작일 교차 검증 — 세션635: 일정은 같은 묶음의 아무 행에나 붙어 있으므로 구성원 id 전부로 묻고 카드 id 로 되돌린다.
+  //     200개씩 나눠 묻는다(응답 1,000행 상한 — 한 행에 공고가 여럿). 카드 자체 모집일보다 이전 공고는 뺀다(옛 회차가 새 회차를 가리지 않게).
+  const { ids: planIds, cardOf } = memberIdMap(planRows);
+  const recruitOf = new Map(planRows.map((r) => [r.id, r.presaleRecruitDate]));
+  const data: any[] = [];
+  for (let i = 0; i < planIds.length; i += 200) {
+    const res = await sb
+      .from("presale_schedule_official")
+      .select("apartment_id, general_rank1_bgnde, special_receipt_bgnde, recruit_date")
+      .in("apartment_id", planIds.slice(i, i + 200));
+    if (res.error || !res.data) return stale; // 조회 실패 시 (A) 미적용(fail-open) — (B) 결과는 유지
+    data.push(...res.data);
+  }
 
   // 단지별 최신(recruit_date desc) 접수시작일만 판정 — 여러 차수가 있으면 가장 최근 공고 기준
   const latestByApt = new Map<any, { bgn: string | null; recruit: string | null }>();
-  for (const row of data as any[]) {
+  for (const row of data) {
+    const cardId = cardOf.get(row.apartment_id) ?? row.apartment_id;
+    if (noticeIsBeforeCard(row.recruit_date, recruitOf.get(cardId))) continue; // 옛 공고(카드 모집일보다 이전)는 판정에서 뺀다
     const bgn = row.general_rank1_bgnde || row.special_receipt_bgnde || null;
-    const prev = latestByApt.get(row.apartment_id);
+    const prev = latestByApt.get(cardId);
     if (!prev || (row.recruit_date && (!prev.recruit || row.recruit_date > prev.recruit))) {
-      latestByApt.set(row.apartment_id, { bgn, recruit: row.recruit_date ?? null });
+      latestByApt.set(cardId, { bgn, recruit: row.recruit_date ?? null });
     }
   }
   for (const [aptId, { bgn }] of latestByApt) {

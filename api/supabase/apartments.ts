@@ -415,5 +415,11 @@ function sanitize(row: any) {
     energyCollectedAt: row.energyCollectedAt ?? null,
     catsCache: row.catsCache ?? null,
     ...sanitizePresale(row),
+    // 한 단지 = 한 장 묶음 칸(세션635 다 — 정보성, 점수 미사용). 화면은 memberIds 가 있으면 다시 묶지 않는다.
+    complexKey: row.complexKey ?? null,
+    memberIds: Array.isArray(row.memberIds) ? row.memberIds : null,
+    materialId: row.materialId ?? null,
+    noticeName: row.noticeName ?? null,
+    aliasIds: Array.isArray(row.aliasIds) ? row.aliasIds : null,
   };
 }

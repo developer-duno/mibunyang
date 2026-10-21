@@ -2,6 +2,7 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { AptCard } from "@/components/AptCard";
 import { WidgetCard } from "./WidgetCard";
+import { resolveAptId } from "@/lib/dedup";
 import type { ScoredApt } from "@/types/hooks";
 import type { ProfileWeights } from "@/types/scoring";
 
@@ -9,6 +10,8 @@ type RecentlyViewedWidgetProps = {
   recentIds: string[];
   /** id → ScoredApt 복원용 (useDataPipeline scoredMap, O(1)) */
   scoredMap: Map<string, ScoredApt>;
+  /** 구성원 id → 카드 id(세션635 다) — 옛 카드 id 를 거르기 전에 대표로 바꾼다. 없으면 id 그대로. */
+  idAlias?: Map<string, string>;
   pw: ProfileWeights;
   onDetail: (_id: string) => void;
   onFav: (_id: string) => void;
@@ -37,11 +40,21 @@ export const RecentlyViewedWidget = memo(function RecentlyViewedWidget({
   isLoggedIn,
   isDesktop,
   onClear,
+  idAlias,
 }: RecentlyViewedWidgetProps) {
-  const items = useMemo(
-    () => recentIds.map((id) => scoredMap.get(id)).filter((x): x is ScoredApt => Boolean(x)),
-    [recentIds, scoredMap]
-  );
+  // 세션635: 옛 구성원 id 는 거르기 **전에** 대표 카드 id 로 바꾸고, 같은 카드로 모이면 하나만(최근순 유지).
+  const items = useMemo(() => {
+    const seen = new Set<string>();
+    const out: ScoredApt[] = [];
+    for (const raw of recentIds) {
+      const id = (idAlias && resolveAptId(idAlias, raw)) || raw;
+      const x = seen.has(id) ? undefined : scoredMap.get(id);
+      if (!x) continue;
+      seen.add(id);
+      out.push(x);
+    }
+    return out;
+  }, [recentIds, scoredMap, idAlias]);
 
   return (
     <WidgetCard title="👀 최근 본 단지">

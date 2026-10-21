@@ -9,6 +9,7 @@ import { createClient } from "@supabase/supabase-js";
 import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate, resolveRegionName } from "./collectors/_shared.mjs";
 import { buildListData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
 import { excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
+import { evaluateCountGuard } from "./_count-guard.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, "..");
@@ -1122,20 +1123,29 @@ export async function supabaseOnlyMode() {
     process.exit(1);
   }
 
-  // 전일 대비 동적 임계값 감소 검출 (세션 311: 1565 박힘값 → 동적 12% 박힘)
+  // 전환일 1회용 승인 장수(세션635 다) — `--expect-count=<N>` 또는 env EXPECT_COUNT(daily-deploy workflow_dispatch 입력).
+  //   cron 실행에선 env 가 빈 문자열이라 null → 지금과 같다. 정수가 아니면 굽지 않는다.
+  const expectArg = process.argv.find((a) => a.startsWith("--expect-count="));
+  const expectRaw = expectArg ? expectArg.split("=")[1] : (process.env.EXPECT_COUNT || null);
+  const expectCount = expectRaw == null ? null : Number(expectRaw);
+  if (expectRaw != null && !Number.isInteger(expectCount)) {
+    logError("supabase-only", "--expect-count / EXPECT_COUNT 는 정수여야 합니다");
+    process.exit(1);
+  }
+
+  // 전일 대비 동적 임계값 감소 검출 (세션 311: 1565 박힘값 → 동적 12% 박힘) — 판정은 _count-guard.mjs evaluateCountGuard
   const cachedPath = resolve(ROOT, "public/data/apartments.json");
   if (existsSync(cachedPath)) {
     try {
       const prev = JSON.parse(readFileSync(cachedPath, "utf8"));
       const prevCount = prev.count ?? 0;
-      const diff = apartments.length - prevCount;
       // 동적 임계값: 현재 row 수의 12% (1424 × 12% = 170, 1565 × 12% = 187). 최소 150 박힘
-      const threshold = Math.max(150, Math.ceil(apartments.length * 0.12));
-      if (diff <= -threshold) {
-        logError("supabase-only", `count 전일 대비 ${diff} 감소 (이전 ${prevCount} → 신규 ${apartments.length}, 임계값 -${threshold}) — 회귀 가드 발동`);
+      const g = evaluateCountGuard({ count: apartments.length, prevCount, expectCount });
+      if (g.fired) {
+        logError("supabase-only", g.reason);
         process.exit(1);
       }
-      log(`  전일 대비 count 변동: ${diff >= 0 ? "+" : ""}${diff} (${prevCount} → ${apartments.length}, 임계값 -${threshold})`);
+      log(`  ${g.reason}`);
     } catch (err) {
       log(`  cached apartments.json 파싱 실패 (회귀 가드 비교 스킵): ${err instanceof Error ? err.message : String(err)}`);
     }

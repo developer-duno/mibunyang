@@ -648,8 +648,11 @@ describe("data-audit — 모수 보정이 배선돼 있다", () => {
   });
 
   it("VIEW id 를 apartments_flat 에서 가져온다", () => {
-    expect(src).toMatch(/const viewIds = await fetchViewIds\(sb, regionFilter\);/);
-    expect(src).toMatch(/"apartments_flat",\s*\n\s*"id",/);
+    // 세션635 다: fetchViewIds 가 { ids, materialOf, unitsOf } 를 돌려주게 바뀌어 배선 모양을 따라 고침(뜻은 같다).
+    expect(src).toMatch(/const view = await fetchViewIds\(sb, regionFilter\);/);
+    expect(src).toMatch(/const viewIds = view \? view\.ids : null;/);
+    expect(src).toMatch(/const run = \(cols\) => fetchAllFromTable\(sb, "apartments_flat", cols,/);
+    expect(src).toMatch(/rows = await run\("id"\);/); // VIEW 적용 전 폴백 = 지금처럼 id 만
   });
 });
 
@@ -774,5 +777,97 @@ describe("computeReliabilityMirror — VIEW dataReliability 식 거울 (세션60
     expect(rows[0].cmpScope).toBe("complex");
     expect(rows[0].complexJeonseRate).toBe(62.5);
     expect(rows[0].dataReliability).toBe(100);
+  });
+});
+
+// 세션635 다 — 묶음 VIEW 는 카드 id(대표)로 내지만 파생표는 재료 행(materialId)에서, 세대수는 묶음 세대수(D7)다.
+describe("fetchAllFromView — 묶음 VIEW 의 재료 행으로 파생표를 붙인다(세션635 다)", () => {
+  /**
+   * @param {Record<string, Record<string, unknown>[]>} tableRows
+   * @param {{ flatNoMaterial?: boolean }} [o] true 면 apartments_flat 이 materialId 를 고르는 select 에 칸 없음 오류
+   */
+  function makeSb(tableRows, o = {}) {
+    /** @type {string[]} */
+    const flatSelects = [];
+    return {
+      flatSelects,
+      from(/** @type {string} */ table) {
+        /** @type {string} */
+        let cols = "";
+        /** @type {any} */
+        const builder = {
+          select: (/** @type {string} */ c) => {
+            cols = c;
+            if (table === "apartments_flat") flatSelects.push(c);
+            return builder;
+          },
+          eq: () => builder,
+          order: () => builder,
+          gt: () => builder,
+          limit: () => builder,
+          range: () => builder,
+          then: (/** @type {any} */ resolve, /** @type {any} */ reject) => {
+            const res =
+              table === "apartments_flat" && o.flatNoMaterial && cols.includes("materialId")
+                ? { data: null, error: { message: "column apartments_flat.materialId does not exist" } }
+                : { data: tableRows[table] ?? [], error: null };
+            return Promise.resolve(res).then(resolve, reject);
+          },
+        };
+        return builder;
+      },
+    };
+  }
+  const base = {
+    apartments: [{ id: "ah-1", region: "경북", units: 3 }],
+    prices: [], schools: [], transport: [], builders: [], regions: [], trade_stats: [],
+    infra: [{ apartment_id: "ap-9", hospital: 3 }],
+  };
+
+  it("materialId 가 ap-9 면 ap-9 의 infra 가 카드 ah-1 에 붙고 세대수는 VIEW 값(614)", async () => {
+    const sb = makeSb({ ...base, apartments_flat: [{ id: "ah-1", materialId: "ap-9", units: 614 }] });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows).toHaveLength(1);
+    expect(rows[0].hospital).toBe(3);
+    expect(rows[0].units).toBe(614);
+  });
+
+  it("VIEW 적용 전(materialId 칸 없음)이면 빼고 다시 물어 지금처럼 자기 id 로 붙인다", async () => {
+    const sb = makeSb({ ...base, apartments_flat: [{ id: "ah-1" }] }, { flatNoMaterial: true });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(sb.flatSelects[0]).toContain("materialId");
+    expect(sb.flatSelects[1]).not.toContain("materialId");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].hospital).toBeUndefined(); // ap-9 infra 는 안 붙는다(자기 id ah-1 로 찾음)
+    expect(rows[0].units).toBe(3);
+  });
+});
+
+describe("fetchAllFromView — 칸 없음이 아닌 오류(세션636 D10ⓐ)", () => {
+  it("칸 없음이 아닌 오류(시간 초과)면 id 만으로 재시도하지 않고 보정을 건너뛴다(세션636 D10ⓐ)", async () => {
+    /** @type {string[]} */
+    const flatSelects = [];
+    const sb = {
+      from(/** @type {string} */ table) {
+        /** @type {string} */
+        let cols = "";
+        /** @type {any} */
+        const builder = {
+          select: (/** @type {string} */ c) => { cols = c; if (table === "apartments_flat") flatSelects.push(c); return builder; },
+          eq: () => builder, order: () => builder, gt: () => builder, limit: () => builder, range: () => builder,
+          then: (/** @type {any} */ resolve, /** @type {any} */ reject) => {
+            const res = table === "apartments_flat"
+              ? { data: null, error: { message: "canceling statement due to statement timeout" } }
+              : { data: table === "apartments" ? [{ id: "ah-1", region: "경북" }, { id: "ah-9", region: "경북" }] : [], error: null };
+            void cols;
+            return Promise.resolve(res).then(resolve, reject);
+          },
+        };
+        return builder;
+      },
+    };
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(flatSelects).toHaveLength(1); // 재시도 없음
+    expect(rows).toHaveLength(2); // 보정 건너뜀 = 테이블 전체(fail-open)
   });
 });

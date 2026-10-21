@@ -319,6 +319,12 @@ export async function clearStaleScores(sb, viewIds, { dryRun = DRY_RUN } = {}) {
   /** @type {{ id: string }[]} */
   const scored = await selectAll((s) => s.from("apartments").select("id").not("cats_cache", "is", null), sb, "id");
   const staleIds = findStaleScoreIds(viewIds, scored);
+  // 세션635 다: 비우기 전에 몇 %를 비울지 먼저 남긴다(전환일 사전 집계 — 안전판 자체는 아래 그대로).
+  const ratio = scored.length ? ((staleIds.length / scored.length) * 100).toFixed(1) : "0.0";
+  log(
+    PHASE,
+    `낡은 점수 정리 예정 ${staleIds.length} / 점수 있는 행 ${scored.length} = ${ratio}% (안전판 ${STALE_CLEAR_MAX_RATIO * 100}%)`,
+  );
   if (staleIds.length === 0) {
     log(PHASE, "낡은 점수 없음 — 정리 생략");
     return 0;

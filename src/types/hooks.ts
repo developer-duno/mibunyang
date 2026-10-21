@@ -164,6 +164,8 @@ export interface UseApartmentDataReturn {
   error: string | null;
   retry: () => void;
   dataUpdatedAt: string | null;
+  /** 구성원 id → 카드 id(세션635 다 — 옛 카드 id 로 저장된 관심매물·딥링크를 대표로 넘긴다). */
+  idAlias: Map<string, string>;
 }
 
 /**

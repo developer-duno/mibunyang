@@ -19,6 +19,9 @@ const DETAIL_ONLY_FIELDS = [
   "dongFact",
   "complexTable",
   "complexJeonseTable",
+  // 세션635 다: 원래 공고 이름(상세 제목 아래 한 줄만 씀). memberIds·aliasIds·materialId·complexKey 는
+  //   목록에 남긴다 — 옛 id 넘김표·시계열 id 가 목록에서 만들어진다.
+  "noticeName",
 ];
 
 // 목록에 잔존할 catsCache subs (첫 항목만) — AptCard 가 price/location subs[0] 의 info/detail 사용.
@@ -95,6 +98,8 @@ export function buildDetailBuckets(apartments, n = DETAIL_BUCKET_COUNT) {
       dongFact: apt.dongFact ?? null,
       complexTable: apt.complexTable ?? null,
       complexJeonseTable: apt.complexJeonseTable ?? null,
+      // 세션636 D7: 목록에서 지운 칸(DETAIL_ONLY_FIELDS)은 여기 실어야 화면에 닿는다 — 빠지면 정적 모드에서 공고명 줄이 영영 안 뜬다
+      noticeName: apt.noticeName ?? null,
     });
   }
   return buckets.map((data, bucket) => ({ bucket, data }));

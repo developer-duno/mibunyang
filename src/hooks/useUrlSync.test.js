@@ -1,0 +1,55 @@
+import { describe, it, expect, vi } from "vitest";
+import { renderHook } from "@testing-library/react";
+import { useUrlSync } from "./useUrlSync";
+import { buildIdAlias } from "@/lib/dedup";
+
+const apartments = [
+  { id: "ah-1", name: "하양", memberIds: ["ah-1", "ah-2", "ap-9"] },
+  { id: "ah-5", name: "다른", memberIds: ["ah-5"] },
+];
+const idAlias = buildIdAlias(apartments);
+const base = () => ({
+  tab: "home",
+  setTab: vi.fn(),
+  setProfile: vi.fn(),
+  detailAptId: null,
+  openDetail: vi.fn(),
+  closeDetail: vi.fn(),
+  setCompIds: vi.fn((f) => f),
+  setShowCompOpen: vi.fn(),
+  apartments,
+  dataLoading: false,
+  dataError: null,
+  setFavoriteIds: vi.fn(),
+  showToast: vi.fn(),
+  idAlias,
+});
+
+describe("useUrlSync — 옛 id 넘김(세션635 다)", () => {
+  it("관심매물의 구성원 id 는 지우지 않고 카드 id 로 바꾼다 — 정리 토스트는 모르는 id(ah-999) 1개만 센다", () => {
+    const p = base();
+    renderHook(() => useUrlSync(p));
+    const updater = p.setFavoriteIds.mock.calls.at(-1)[0];
+    expect(updater(["ah-2", "ah-5", "ah-999"])).toEqual(["ah-1", "ah-5"]);
+    expect(p.showToast).toHaveBeenCalledWith(expect.stringContaining("1개가 정리"));
+  });
+  it("같은 카드로 모이는 중복은 하나만 남긴다", () => {
+    const p = base();
+    renderHook(() => useUrlSync(p));
+    const updater = p.setFavoriteIds.mock.calls.at(-1)[0];
+    expect(updater(["ah-1", "ah-2", "ap-9"])).toEqual(["ah-1"]);
+  });
+  it("딥링크 /apt/ah-2 는 목록이 들어온 뒤 한 번만 카드 ah-1 을 열고 주소를 /apt/ah-1 로 바꾼다", () => {
+    window.history.replaceState(null, "", "/apt/ah-2");
+    const p = { ...base(), apartments: [], dataLoading: true, idAlias: new Map() };
+    const { rerender } = renderHook((props) => useUrlSync(props), { initialProps: p });
+    expect(p.openDetail).not.toHaveBeenCalled(); // 목록 전엔 옛 id 로 열지 않는다
+    rerender({ ...p, apartments, dataLoading: false, idAlias });
+    expect(p.openDetail).toHaveBeenCalledTimes(1);
+    expect(p.openDetail).toHaveBeenCalledWith("ah-1");
+    expect(window.location.pathname).toBe("/apt/ah-1");
+    rerender({ ...p, apartments, dataLoading: false, idAlias });
+    expect(p.openDetail).toHaveBeenCalledTimes(1); // 다시 렌더해도 한 번만
+    window.history.replaceState(null, "", "/");
+  });
+});

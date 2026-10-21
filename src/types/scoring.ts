@@ -222,6 +222,16 @@ export interface Apt {
   coordShared?: boolean;
   /** sanitize 가 `coordShared === true` 를 보고 세우는 플래그(세션568). scoreLocation/scoreRisk 의 좌표 파생 sub 를 중립 처리할 때 쓴다. */
   _coordUnknown?: boolean;
+  /** "한 단지 = 한 장" 다)(세션635) — VIEW 가 내는 묶음 칸. 없으면(옛 정적 JSON) 화면은 옛 규칙으로 돈다(src/lib/dedup.ts). */
+  complexKey?: string | null;
+  /** 묶음 구성원 id((오) 제외, 비면 대표 id 하나) — 시계열·재공고 수·곧분양 판정용. */
+  memberIds?: string[] | null;
+  /** 재료 행 id(좌표·건물·파생표·가격을 가져온 행). */
+  materialId?: string | null;
+  /** 대표 행의 원래 공고 이름(카드 name 은 회차·안내문을 뗀 것). */
+  noticeName?: string | null;
+  /** dedupApartments 가 붙이는 시계열 통합 조회 id(재료 행 먼저). */
+  siblingIds?: string[];
 
   // 추가 필드 (도메인 확장 — strict 회피)
   [key: string]: unknown;

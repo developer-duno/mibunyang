@@ -470,28 +470,46 @@ function toCamel(row) {
 }
 
 /**
- * 화면(apartments_flat VIEW)에 실제로 있는 id 집합. 실패하면 null (호출처가 fail-open).
+ * 화면(apartments_flat VIEW)에 실제로 있는 id 집합 + (묶음 VIEW 면) 카드 id → 재료 행 id · 카드 세대수. 실패하면 null (호출처가 fail-open).
  *
  * 조용히 전체를 세면 감사 수치가 화면과 어긋난 채 초록불이 된다 — 실패는 로그로 드러낸다.
  *
  * @param {any} sb
  * @param {string | null | undefined} regionFilter
- * @returns {Promise<Set<unknown> | null>}
+ * @returns {Promise<{ ids: Set<unknown>, materialOf: Map<unknown, unknown>, unitsOf: Map<unknown, unknown> } | null>}
  */
 async function fetchViewIds(sb, regionFilter) {
+  /** @param {string} cols */
+  const run = (cols) => fetchAllFromTable(sb, "apartments_flat", cols, regionFilter ? "region" : null, regionFilter ?? null);
   try {
-    const rows = await fetchAllFromTable(
-      sb,
-      "apartments_flat",
-      "id",
-      regionFilter ? "region" : null,
-      regionFilter ?? null,
-    );
+    // 세션635 다: 묶음 VIEW 는 카드 id(대표)로 내지만 파생표·가격은 재료 행(materialId)에서, 세대수는 묶음 세대수(D7)를 쓴다.
+    //   VIEW 적용 전(또는 되돌린 날)엔 materialId 칸이 없어 칸 없음 오류(42703) → 빼고 처음부터 한 번 더(지금과 같은 동작).
+    /** @type {Record<string, unknown>[]} */
+    let rows;
+    let bundled = true;
+    try {
+      rows = await run("id, materialId, units");
+    } catch (err) {
+      if (!String(err instanceof Error ? err.message : err).includes("materialId")) throw err;
+      log(PHASE, "  apartments_flat 에 materialId 칸 없음(묶음 VIEW 적용 전) — 카드 id 로 붙인다");
+      rows = await run("id");
+      bundled = false;
+    }
     if (!rows.length) {
       logError(PHASE, "apartments_flat 에서 id 를 0건 받았습니다 — 모수 보정을 건너뜁니다.");
       return null;
     }
-    return new Set(rows.map((r) => r.id));
+    /** @type {Map<unknown, unknown>} */
+    const materialOf = new Map();
+    /** @type {Map<unknown, unknown>} */
+    const unitsOf = new Map();
+    if (bundled) {
+      for (const r of rows) {
+        materialOf.set(r.id, r.materialId ?? r.id);
+        unitsOf.set(r.id, r.units ?? null);
+      }
+    }
+    return { ids: new Set(rows.map((r) => r.id)), materialOf, unitsOf };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logError(PHASE, `apartments_flat id 조회 실패(${msg}) — 모수 보정을 건너뜁니다.`);
@@ -582,13 +600,14 @@ export function pickLatestNonNullByRegionGu(regionRows, cols) {
  * @param {string} joinKey
  * @param {string} targetKey
  * @param {Record<string, string>} colMap
+ * @param {(apt: FlatRow) => unknown} [keyOf] 조인 열쇠(세션635 다 — 묶음 VIEW 면 재료 행 id). 기본 = apt[targetKey]
  */
-function mergeRelated(aptRows, relatedRows, joinKey, targetKey, colMap) {
+function mergeRelated(aptRows, relatedRows, joinKey, targetKey, colMap, keyOf = (/** @type {FlatRow} */ apt) => apt[targetKey]) {
   /** @type {Map<unknown, Record<string, unknown>>} */
   const lookup = new Map();
   for (const r of relatedRows) lookup.set(r[joinKey], r);
   for (const apt of aptRows) {
-    const rel = lookup.get(apt[targetKey]);
+    const rel = lookup.get(keyOf(apt));
     if (!rel) continue;
     for (const [src, dst] of Object.entries(colMap)) apt[dst] = rel[src];
   }
@@ -639,8 +658,14 @@ export async function fetchAllFromView(sb, regionFilter) {
   //   noxious_dist        1934/2635 = 73.4%  vs  화면 1363/2043 = 66.7%
   //   crime_safety_grade  1945/2635 = 73.8%  vs  화면 1366/2043 = 66.9%
   // 감사는 "손님이 보는 화면의 빈칸" 을 재는 도구이므로 화면에 없는 단지를 세면 안 된다.
-  const viewIds = await fetchViewIds(sb, regionFilter);
+  const view = await fetchViewIds(sb, regionFilter);
+  const viewIds = view ? view.ids : null;
   const apts = filterToViewRows(rawApts.map(toCamel), viewIds);
+  // 세션635 다: 묶음 VIEW 는 파생표·가격을 재료 행에서 붙이고 세대수는 묶음 세대수(D7)다 — 감사도 같은 열쇠·같은 값으로.
+  //   VIEW 적용 전엔 materialOf·unitsOf 가 비어 지금과 같다(자기 id · 자기 세대수).
+  /** @param {FlatRow} a */
+  const joinOf = (a) => view?.materialOf.get(a.id) ?? a.id;
+  if (view) for (const a of apts) if (view.unitsOf.has(a.id)) a.units = /** @type {number | undefined} */ (view.unitsOf.get(a.id) ?? undefined);
   log(
     PHASE,
     viewIds
@@ -669,7 +694,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     if (!latestPrices.has(p.apartment_id)) latestPrices.set(p.apartment_id, p);
   }
   for (const apt of apts) {
-    const p = latestPrices.get(apt.id);
+    const p = latestPrices.get(joinOf(apt));
     if (!p) continue;
     apt.area = p.area;
     apt.price = p.price;
@@ -686,16 +711,16 @@ export async function fetchAllFromView(sb, regionFilter) {
     nearby_facilities: "nearbyFacilities",
     emergency: "emergency", emergency_dist: "emergencyDist",
     emergency_name: "emergencyName", emergency_type: "emergencyType",
-  });
+  }, joinOf);
 
   // merge schools
   mergeRelated(apts, schools, "apartment_id", "id", {
     school_score: "schoolScore", school_grade: "schoolGrade", nearby_schools: "nearbySchools",
-  });
+  }, joinOf);
 
   // merge transport (subwayDist: transport 우선, 없으면 infra에서 이미 설정됨)
   for (const t of transport) {
-    const apt = apts.find((/** @type {FlatRow} */ a) => a.id === t.apartment_id);
+    const apt = apts.find((/** @type {FlatRow} */ a) => joinOf(a) === t.apartment_id);
     if (!apt) continue;
     if (t.subway_dist != null) apt.subwayDist = t.subway_dist;
     apt.busRoutes = t.bus_routes;
@@ -775,7 +800,7 @@ export async function fetchAllFromView(sb, regionFilter) {
     cancel_ratio_6m: "cancelRatio6m",
     // 세션609: VIEW 신뢰도 식(20261007000000)이 새 비교 칸을 센다 — 거울도 같은 칸을 받아야 한다
     cmp_scope: "cmpScope", complex_jeonse_rate: "complexJeonseRate",
-  });
+  }, joinOf);
 
   // dataReliability 계산 (VIEW의 SQL 로직 재현 — 식은 computeReliabilityMirror 한 곳)
   for (const apt of apts) {
