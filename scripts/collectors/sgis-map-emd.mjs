@@ -30,6 +30,7 @@
  *   구청 같은 대표 좌표가 멀쩡한 행정동 코드를 받아 "맞는 것처럼" 저장되는 길을 막는다. 선례 calc-school-walk.mjs).
  * 기록 표시(감시 ⑱ checkSgisMapMarkers 가 읽는다): 관문 대기 = error_message `FIRST_RUN_PENDING` ·
  *   시도 불일치로 안 쓴 단지가 있으면 `SGIS_SIDO_MISMATCH=<N>`(status 는 그대로) — 상수·파서는 _shared.mjs.
+ *   단 `SIDO_MISMATCH_ALLOWLIST` 에 등재된 단지가 명단에 적힌 시도 코드로 답한 불일치는 이 숫자에 안 센다(여전히 쓰지 않음 · 세션654 사장님 결정).
  *
  * 외부 호출: 인증 1 + 대조군 1 + 대상 수(첫 회차 ≈ 2,6xx · 그 뒤 주당 새 단지 수). 호출 사이 0.2초.
  *   관문에 걸린 실행·대상 0건인 실행은 호출 0.
@@ -54,6 +55,17 @@ export const DEFAULT_BUDGET_MIN = 60;
 
 /** 첫 회차 관문에 걸린 실행의 collector_runs.error_message 표시(정본 = _shared.mjs — 감시 ⑱ 과 한 상수). */
 export const FIRST_RUN_PENDING = SGIS_FIRST_RUN_PENDING_MARKER;
+
+/**
+ * 시도 불일치 예외 명단(id → { 그 단지가 늘 답하던 시도 코드, 이유 }). 이 단지가 **적힌 그 시도 코드**로 불일치를 답하면
+ * 평소처럼 쓰지 않되(sgis_emd_cd 빈칸 그대로) `SGIS_SIDO_MISMATCH` 표식(감시 ⑱ 매주 경보)에는 세지 않는다.
+ * 다른 시도 코드로 오면(좌표가 또 틀어진 신호) 명단 밖처럼 센다. 시도가 맞게 오면 명단과 무관하게 평소대로 쓴다.
+ * 등재는 사장님 결정으로만(세션654) — 이유 문장에 근거를 남긴다.
+ */
+export const SIDO_MISMATCH_ALLOWLIST = Object.freeze({
+  "ap-6023092": Object.freeze({ sidoCd: "31", why: "서울 강동 상일동·하남 미사 경계 — SGIS 가 31 로 답함(10/08~ 매주), 임대(행복주택)라 화면 영향 0 (세션654)" }),
+  "ap-6024718": Object.freeze({ sidoCd: "31", why: "서울 강동 상일동·하남 미사 경계 — SGIS 가 31 로 답함(10/08~ 매주), 임대(장기전세)라 화면 영향 0 (세션654)" }),
+});
 
 /**
  * 양성 대조군 — 실행 시작 때 1콜. 역삼1동 좌표가 이 코드가 아니면 즉시 중단(probe-must-be-self-verified).
@@ -135,15 +147,17 @@ export function parseArgs(argv) {
  * @typedef {import("./_sgis-api.mjs").RgeocodeResult} RgeocodeResult
  * @typedef {{ action: "write", admCd: string }
  *   | { action: "skip", reason: "none" }
- *   | { action: "skip", reason: "sido-mismatch", expected: readonly string[], sidoCd: string }} RowPlan
+ *   | { action: "skip", reason: "sido-mismatch", expected: readonly string[], sidoCd: string }
+ *   | { action: "skip", reason: "sido-mismatch-allowlisted", expected: readonly string[], sidoCd: string, why: string }} RowPlan
  */
 
 /**
  * 한 단지의 판정(순수 함수). API 가 던진 경우(fail)는 호출자가 다룬다.
  *  - ok + 그 지역의 허용 시도 코드에 응답 sido_cd 가 있음 → write
  *  - ok + 시도 불일치(모르는 지역 포함) → skip sido-mismatch(자리표시·엉뚱한 좌표 신호 — 쓰지 않는다)
+ *  - 같은 불일치인데 id 가 SIDO_MISMATCH_ALLOWLIST 에 있고 응답 시도가 명단에 적힌 코드 → skip sido-mismatch-allowlisted(쓰지 않음 · 경보 집계에서만 빠짐)
  *  - none → skip none(해상·국외 좌표 등)
- * @param {Pick<AptRow, "region">} apt
+ * @param {Pick<AptRow, "region"> & Partial<Pick<AptRow, "id">>} apt
  * @param {RgeocodeResult} resp
  * @returns {RowPlan}
  */
@@ -153,6 +167,12 @@ export function planRow(apt, resp) {
     ? SGIS_SIDO_CODE[apt.region]
     : [];
   if (!expected.includes(resp.sidoCd)) {
+    const entry = apt.id != null && Object.prototype.hasOwnProperty.call(SIDO_MISMATCH_ALLOWLIST, apt.id)
+      ? /** @type {Record<string, { sidoCd: string, why: string }>} */ (SIDO_MISMATCH_ALLOWLIST)[apt.id]
+      : null;
+    if (entry && entry.sidoCd === resp.sidoCd) {
+      return { action: "skip", reason: "sido-mismatch-allowlisted", expected, sidoCd: resp.sidoCd, why: entry.why };
+    }
     return { action: "skip", reason: "sido-mismatch", expected, sidoCd: resp.sidoCd };
   }
   return { action: "write", admCd: resp.admCd };
@@ -178,7 +198,7 @@ export async function hasWrittenRun(sb) {
 
 /**
  * @typedef {{ ranAt: string, dryRun: boolean, total: number,
- *   planned: { ok: number, skipNone: number, skipSidoMismatch: number, skipCoordShared: number, fail: number },
+ *   planned: { ok: number, skipNone: number, skipSidoMismatch: number, skipAllowlisted: number, skipCoordShared: number, fail: number },
  *   bySido: Record<string, number>,
  *   byRegionSido: Record<string, Record<string, number>>,
  *   byRegion: Record<string, { ok: number, skip: number, fail: number }>,
@@ -243,7 +263,7 @@ export async function runMapping(opts) {
   /** @type {Impact} */
   const impact = {
     ranAt: nowIso(), dryRun, total: 0,
-    planned: { ok: 0, skipNone: 0, skipSidoMismatch: 0, skipCoordShared: 0, fail: 0 },
+    planned: { ok: 0, skipNone: 0, skipSidoMismatch: 0, skipAllowlisted: 0, skipCoordShared: 0, fail: 0 },
     bySido: {}, byRegionSido: {}, byRegion: {}, sameCoordGroups: { groups: 0, rows: 0 },
     sidoMismatch: [], sggMismatch: [], sample: [], stopped: null, aborted: null,
   };
@@ -352,6 +372,9 @@ export async function runMapping(opts) {
       skip++; bump(apt.region, "skip");
       if (plan.reason === "none") {
         impact.planned.skipNone++;
+      } else if (plan.reason === "sido-mismatch-allowlisted") {
+        impact.planned.skipAllowlisted++;
+        log(PHASE, `[예외 명단] ${apt.id} ${apt.region} 기대{${plan.expected.join(",")}} 응답 ${plan.sidoCd} — ${plan.why}`);
       } else {
         impact.planned.skipSidoMismatch++;
         const fullAddr = resp.kind === "ok" ? resp.fullAddr : null;
@@ -478,7 +501,7 @@ export async function runAndRecord(deps) {
     log(PHASE, "대상 0건 — 좌표 있는 단지는 전부 매핑돼 있음");
   } else {
     const p = r.impact.planned;
-    log(PHASE, `=== 완료: 대상 ${r.total} · 반영 ${r.ok}${args.dryRun ? "(예정)" : ""} · 건너뜀 ${r.skip}(결과 없음 ${p.skipNone} · 시도 불일치 ${p.skipSidoMismatch} · 자리표시 좌표 ${p.skipCoordShared}) · 실패 ${r.fail}${r.stopped ? ` · 멈춤=${r.stopped}` : ""} ===`);
+    log(PHASE, `=== 완료: 대상 ${r.total} · 반영 ${r.ok}${args.dryRun ? "(예정)" : ""} · 건너뜀 ${r.skip}(결과 없음 ${p.skipNone} · 시도 불일치 ${p.skipSidoMismatch} · 예외 명단 ${p.skipAllowlisted} · 자리표시 좌표 ${p.skipCoordShared}) · 실패 ${r.fail}${r.stopped ? ` · 멈춤=${r.stopped}` : ""} ===`);
     if (r.aborted) logError(PHASE, r.aborted);
   }
   await record(PHASE, { ...out.record, elapsed: elapsedSec(), startedAt });
