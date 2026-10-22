@@ -213,4 +213,201 @@ describe("useKakaoAuth", () => {
     expect(response.pendingTab).toBe("map");
     expect(sessionStorage.getItem("kakao_pending_tab")).toBeNull();
   });
+
+  // 세션 656: 카카오에서 뒤로 가기(bfcache 복원)로 돌아오면 "처리 중"이 풀린다
+  describe("로그인 시작 뒤 굳음 해제 (세션 656)", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** @param {boolean} persisted */
+    function firePageShow(persisted) {
+      const ev = new Event("pageshow");
+      Object.defineProperty(ev, "persisted", { value: persisted });
+      window.dispatchEvent(ev);
+    }
+
+    it("pageshow persisted=true 면 kakaoLoading 이 false 로 돌아오고 다시 누를 수 있다", async () => {
+      const { result } = await renderKakaoHook();
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      expect(result.current.kakaoLoading).toBe(true);
+      const firstState = sessionStorage.getItem("kakao_oauth_state");
+
+      act(() => {
+        firePageShow(true);
+      });
+      expect(result.current.kakaoLoading).toBe(false);
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      expect(sessionStorage.getItem("kakao_oauth_state")).not.toBe(firstState);
+    });
+
+    it("pageshow persisted=false(보통 첫 로드)면 처리 중을 건드리지 않는다", async () => {
+      const { result } = await renderKakaoHook();
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      act(() => {
+        firePageShow(false);
+      });
+      expect(result.current.kakaoLoading).toBe(true);
+    });
+
+    it("10초가 지나도 페이지가 그대로면 kakaoLoading 이 false 로 돌아온다 (9,999ms 엔 그대로)", async () => {
+      vi.useFakeTimers();
+      const { result } = await renderKakaoHook();
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      act(() => {
+        vi.advanceTimersByTime(9_999);
+      });
+      expect(result.current.kakaoLoading).toBe(true);
+
+      act(() => {
+        vi.advanceTimersByTime(1);
+      });
+      expect(result.current.kakaoLoading).toBe(false);
+    });
+
+    it("언마운트하면 10초 타이머와 pageshow 감시를 정리한다", async () => {
+      vi.useFakeTimers();
+      const removeSpy = vi.spyOn(window, "removeEventListener");
+      const { result, unmount } = await renderKakaoHook();
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      unmount();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(removeSpy).toHaveBeenCalledWith("pageshow", expect.any(Function));
+    });
+
+    it("10초 타이머가 남은 채 다시 시작하면 옛 타이머를 정리해 타이머가 1개만 남는다", async () => {
+      vi.useFakeTimers();
+      const { result } = await renderKakaoHook();
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      // 콜백 처리의 finally 가 처리 중을 풀지만 시작 타이머는 그대로 남는다 → 중복 방지 없이 다시 시작 가능
+      sessionStorage.setItem("kakao_oauth_state", "st-again");
+      setCallbackUrl("code=auth-code&state=st-again");
+      await act(async () => {
+        await result.current.handleKakaoCallback();
+      });
+      expect(result.current.kakaoLoading).toBe(false);
+      expect(vi.getTimerCount()).toBe(1);
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      expect(result.current.kakaoLoading).toBe(true);
+      expect(vi.getTimerCount()).toBe(1);
+    });
+
+    it("pageshow persisted=true 뒤에는 10초 타이머가 남지 않는다", async () => {
+      vi.useFakeTimers();
+      const { result } = await renderKakaoHook();
+
+      act(() => {
+        result.current.initKakaoLogin();
+      });
+      expect(vi.getTimerCount()).toBe(1);
+
+      act(() => {
+        firePageShow(true);
+      });
+      expect(result.current.kakaoLoading).toBe(false);
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
+
+  // 세션 656: 콜백에서 서버 답이 20초 넘게 없으면 끊고 다시 시도 안내
+  describe("콜백 서버 응답 20초 한도 (세션 656)", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("20초 동안 답이 없으면 abort 하고 '다시 시도' 토스트·kakaoError·ok:false 를 낸다", async () => {
+      vi.useFakeTimers();
+      /** @type {AbortSignal | undefined} */
+      let seenSignal;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn((_url, /** @type {RequestInit} */ opts) => {
+          seenSignal = opts.signal ?? undefined;
+          return new Promise((_resolve, reject) => {
+            opts.signal?.addEventListener("abort", () => reject(new DOMException("Aborted", "AbortError")));
+          });
+        })
+      );
+      const { result, showToast } = await renderKakaoHook();
+      sessionStorage.setItem("kakao_oauth_state", "st-slow");
+      setCallbackUrl("code=auth-code&state=st-slow");
+
+      /** @type {Promise<import('@/types/hooks').KakaoCallbackResult>} */
+      let pending = /** @type {any} */ (undefined);
+      act(() => {
+        pending = result.current.handleKakaoCallback();
+      });
+      expect(result.current.kakaoLoading).toBe(true);
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(19_999);
+      });
+      expect(seenSignal?.aborted).toBe(false);
+      expect(result.current.kakaoLoading).toBe(true);
+
+      /** @type {import('@/types/hooks').KakaoCallbackResult} */
+      let response = /** @type {any} */ (undefined);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+        response = await pending;
+      });
+
+      const msg = "로그인 응답이 늦습니다. 다시 시도해주세요.";
+      expect(seenSignal?.aborted).toBe(true);
+      expect(response.ok).toBe(false);
+      expect(response.error).toBe(msg);
+      expect(showToast).toHaveBeenCalledWith(msg);
+      expect(result.current.kakaoError).toBe(msg);
+      expect(result.current.kakaoLoading).toBe(false);
+    });
+
+    it("시간 안에 끝나면 한도 타이머를 남기지 않고, 네트워크 실패는 기존 문구 그대로", async () => {
+      vi.useFakeTimers();
+      const { result, showToast } = await renderKakaoHook();
+      sessionStorage.setItem("kakao_oauth_state", "st-ok");
+      setCallbackUrl("code=auth-code&state=st-ok");
+
+      await act(async () => {
+        await result.current.handleKakaoCallback();
+      });
+      expect(vi.getTimerCount()).toBe(0);
+
+      vi.stubGlobal("fetch", vi.fn().mockRejectedValue(new TypeError("Failed to fetch")));
+      sessionStorage.setItem("kakao_oauth_state", "st-net");
+      setCallbackUrl("code=auth-code&state=st-net");
+      /** @type {import('@/types/hooks').KakaoCallbackResult} */
+      let response = /** @type {any} */ (undefined);
+      await act(async () => {
+        response = await result.current.handleKakaoCallback();
+      });
+      expect(response.error).toBe("서버 연결에 실패했습니다");
+      expect(showToast).toHaveBeenCalledWith("서버 연결에 실패했습니다");
+      expect(vi.getTimerCount()).toBe(0);
+    });
+  });
 });

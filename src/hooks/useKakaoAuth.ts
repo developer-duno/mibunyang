@@ -17,10 +17,17 @@ function generateState(): string {
   return Array.from(arr, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// 카카오로 넘어가지 못하고 페이지가 그대로면 버튼을 되돌리는 시간 (세션 656)
+const LOGIN_START_RESET_MS = 10_000;
+// 콜백에서 서버 답을 기다리는 한도 (세션 656)
+const CALLBACK_TIMEOUT_MS = 20_000;
+const CALLBACK_TIMEOUT_MSG = "로그인 응답이 늦습니다. 다시 시도해주세요.";
+
 export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthReturn {
   const [kakaoLoading, setKakaoLoading] = useState<boolean>(false);
   const [kakaoError, setKakaoError] = useState<string>("");
   const showToastRef = useRef<(_msg: string) => void>(showToast);
+  const startResetTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
     showToastRef.current = showToast;
   }, [showToast]);
@@ -36,6 +43,12 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
 
       const state = generateState();
       setKakaoLoading(true);
+      // 10초가 지나도 페이지가 그대로면(이동 실패) 버튼을 되돌린다
+      if (startResetTimerRef.current) clearTimeout(startResetTimerRef.current);
+      startResetTimerRef.current = setTimeout(() => {
+        startResetTimerRef.current = null;
+        setKakaoLoading(false);
+      }, LOGIN_START_RESET_MS);
       try {
         sessionStorage.setItem("kakao_oauth_state", state);
         if (pendingDetailId) sessionStorage.setItem("kakao_pending_detail", pendingDetailId);
@@ -99,11 +112,16 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
     setKakaoLoading(true);
     setKakaoError("");
 
+    // 서버 답이 20초 넘게 없으면 끊고 "다시 시도" 안내
+    const controller = new AbortController();
+    const abortTimer = setTimeout(() => controller.abort(), CALLBACK_TIMEOUT_MS);
+
     try {
       const res = await fetch("/api/auth/kakao", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code, redirect_uri: `${window.location.origin}/oauth/kakao/callback` }),
+        signal: controller.signal,
       });
 
       if (res.status === 429) {
@@ -144,13 +162,30 @@ export function useKakaoAuth(showToast: (_msg: string) => void): UseKakaoAuthRet
       showToastRef.current(data.error || "카카오 로그인 실패");
       return { ok: false, error: data.error, statusCode: data.statusCode };
     } catch {
-      const msg = "서버 연결에 실패했습니다";
+      const msg = controller.signal.aborted ? CALLBACK_TIMEOUT_MSG : "서버 연결에 실패했습니다";
       setKakaoError(msg);
       showToastRef.current(msg);
       return { ok: false, error: msg };
     } finally {
+      clearTimeout(abortTimer);
       setKakaoLoading(false);
     }
+  }, []);
+
+  // 카카오에서 뒤로 가기로 돌아오면(bfcache 복원) "처리 중"을 푼다 + 언마운트 때 타이머 정리
+  useEffect(() => {
+    const onPageShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      if (startResetTimerRef.current) clearTimeout(startResetTimerRef.current);
+      startResetTimerRef.current = null;
+      setKakaoLoading(false);
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => {
+      window.removeEventListener("pageshow", onPageShow);
+      if (startResetTimerRef.current) clearTimeout(startResetTimerRef.current);
+      startResetTimerRef.current = null;
+    };
   }, []);
 
   return { kakaoLoading, kakaoError, initKakaoLogin, handleKakaoCallback };
