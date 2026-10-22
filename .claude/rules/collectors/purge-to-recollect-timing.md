@@ -16,7 +16,7 @@
 3. **타이밍을 못 맞추면 재생성을 앞당긴다** — `daily-deploy.yml` `workflow_dispatch` 를 재수집 완료를 DB 로 확인한 뒤 한 번. 운영 배포이므로 사람 확인 후.
 4. **지우기 전에 "빈칸이 화면에 어떻게 보이는지"** 를 표시 경로(`fieldMeta.ts`·`score*.ts` 의 `info`/`detail`)로 확인 — `subway_dist` 는 `9999` 로 "지하철 없음", 인프라 개수는 `0` 으로 "병원 0개". **"미수집"이라 정직하게 표시되는 필드만 안심하고 지울 수 있다.** 그 값의 이력을 그리는 자리(`unsold_history` → `UnsoldChart`)도 본다 — 비움·hold 전이표에 이력 행 처리를 같이 적는다.
 5. **지우는 대신 재수집을 강제할 수 있는지 먼저** — `--force`·대상 재선정 인자(`transport-tago.mjs --force` 는 전 단지라 비쌈). 좁게 강제하는 경로가 있으면 그쪽이 언제나 안전(빈칸 구간이 없다).
-6. **파생 시계열(`unsold_history`)을 명단으로 지울 땐 재생성 수집기의 계획(`--dry-run --impact-out` 의 action)에서 그 단지가 다시 받는지(write) 먼저 센다** — `skip_*` 단지는 지운 뒤 새 점이 안 생겨 그래프가 빈다(세션655 형남아파트6차 1곳, 되살림은 사본 INSERT).
+6. **파생 시계열(`unsold_history`)을 명단으로 지울 땐 재생성 수집기가 그 단지에 새 점을 다시 만드는지 먼저 센다** — 잣대는 시계열 루프(`collect-unsold-kosis.mjs` 957~1006 — `isRespected: () => false` 라 단지 쪽 action 과 **따로** 계산) 흉내(`.omc/artifacts/session655/history-sim/sim.mjs` 의 historyMap)만 — 미리보기 action 으로는 가늠하지 않는다(실측: skip_preserved 110 중 39·write_zero 440 중 65·hold_ge50 13 중 6 이 점을 받는다). 안 받는 단지는 지운 뒤 그래프가 빈다(세션655 형남아파트6차 1곳 — KOSIS 추정률 100% 초과). **되살림은 "그대로 INSERT" 가 아니다** — 재생성이 이미 돈 뒤면 같은 열쇠(단지·달)가 생겨 UNIQUE 충돌, 지금 행을 먼저 지운다. 여러 단계 반영의 되돌림은 역순으로만(`.omc/artifacts/session655/rollback-order.md`).
 
 ## 안티 패턴
 
