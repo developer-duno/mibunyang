@@ -32,7 +32,7 @@ function makeRaw(overrides = {}) {
 
 // ── mapRow ─────────────────────────────────────────────────
 describe("mapRow", () => {
-  it("정상 행 → ah-* INSERT 행 (주소 파싱 + 회차분 unsold + rate 100)", () => {
+  it("정상 행 → ah-* INSERT 행 (주소 파싱 + 회차분 unsold · 세대수·률 빈칸 — 세션656)", () => {
     const apt = /** @type {any} */ (mapRow(makeRaw()));
     expect(apt.id).toBe("ah-2026910168");
     expect(apt.name).toBe("해운대 마티안 디 에디션");
@@ -40,9 +40,10 @@ describe("mapRow", () => {
     expect(apt.gu).toBe("해운대구");
     expect(apt.dong).toBe("중동");
     expect(apt.address).toContain("해운대구");
-    expect(apt.units).toBe(26);
+    // 회차분(26)은 미분양 수로만 — 단지 세대수가 아니다. 옛 값(units 26 · rate 100)이면 빨강(세션656 사장님 결정)
+    expect(apt.units).toBe(null);
     expect(apt.unsold).toBe(26);
-    expect(apt.unsold_rate).toBe(100);
+    expect(apt.unsold_rate).toBe(null);
     expect(apt.announcement_url).toBe("https://www.applyhome.co.kr/x");
     expect(apt.unit_source).toBe("applyhome");
     expect(apt.lat).toBe(null);
@@ -85,9 +86,10 @@ describe("mapRow", () => {
     expect(mapRow(makeRaw({ HOUSE_NM: "" }))).toBe(null);
   });
 
-  it("TOT_SUPLY_HSHLDCO 0/누락 → units 0, unsold null, rate null", () => {
+  it("TOT_SUPLY_HSHLDCO 0/누락 → units null, unsold null, rate null (unit_source 는 seed 표시 그대로)", () => {
     const apt = /** @type {any} */ (mapRow(makeRaw({ TOT_SUPLY_HSHLDCO: null })));
-    expect(apt.units).toBe(0);
+    expect(apt.units).toBe(null);
+    expect(apt.unit_source).toBe("applyhome");
     expect(apt.unsold).toBe(null);
     expect(apt.unsold_rate).toBe(null);
   });
