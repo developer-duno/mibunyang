@@ -29,8 +29,8 @@ export const AdminUnitSupply = memo(function AdminUnitSupply({ apt }: AdminUnitS
   // 관리자 카드는 "15" 라고 서로 다른 말을 하면 안 된다(세션538 적대검증 high).
   const unitsUnknown = !(units > 1) || (unsold != null && unsold > units);
   // 세션539 E-2: 예전엔 unsoldRate 가 unitsUnknown 과 다른 문턱(apt.unsoldRate 유무만)으로
-  // 갈려서, units=1·unsold=1 인 무순위 회차(collect-applyhome-seed.mjs:118-132 가 실제로
-  // 만드는 상태, molit-units.mjs:48-52 가 이걸 ".or(units.lte.1,...)" 로 보정 대상 삼는다)에서
+  // 갈려서, units=1·unsold=1 인 무순위 회차(세션656 전까지 collect-applyhome-seed.mjs 가 실제로
+  // 만들던 상태 — 그 뒤 seed 는 units 를 비움. molit-units.mjs 가 ".or(units.lte.1,...)" 로 보정 대상 삼는다)에서
   // "총 세대 —"와 "미분양률 100.0%"가 나란히 뜨는 자기모순이 났다(세션538 적대검증 high).
   // "총 세대를 모른다"고 한 자리에서 그 값으로 만든 비율(unsold_rate 도 결국 units 기반)만
   // 믿을 수 있다고 보여줄 이유가 없다 — 같은 게이트를 탄다.

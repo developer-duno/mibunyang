@@ -29,9 +29,13 @@ paths:
 
 **신규 ah-* seeding (세션 466)**: `collect-applyhome-seed.mjs` (collect-applyhome.yml 앞단 스텝, 주간 월)가
 `getRemndrLttotPblancDetail` 로스터 부재 + 공고일≥since(기본 2026-03-14) 공고를 INSERT. 현행 API 에
-REMNDR_HSHLDCO 부재라 **units=unsold=회차 공급분, unsold_rate=100** 으로 박아 molit-units 보정 대상에
-의도적으로 편입 (월/목 로컬 파이프라인 + 매월 6일 cron 이 실제 세대수로 정정). 등록 전 좌표 정밀 중복
-게이트(이름 유사도 0.85 + region + 좌표 500m — 사장님 결정)로 기존 ap-*/ah-* 물리 중복 차단.
+REMNDR_HSHLDCO 부재라 **unsold = 회차 공급분, units·unsold_rate = null**(세션656 사장님 결정 "전부 빈칸").
+옛 방식(units=unsold=회차분·rate 100 → molit-units 가 정정)은 분양 중 단지가 국토부 목록에 없어 안 고쳐져
+카드에 "세대수 1" 이 떴고, 처음 분양 공고 총공급으로 채우는 안은 재개발·재건축(조합원 몫 빠짐 — 120 중 118 작음)과
+차수 분할 공고 때문에 버렸다. 빈칸은 molit-units 대상이 아니다(`.or(units.lte.1,…)` 는 NULL 을 안 잡음) — 같은 묶음
+네이버 행이 있으면 VIEW 가 그 세대수를 쓰고, `naver-presale.mjs` 가 빈칸이면 네이버 총세대수로 채운다(그때 미분양률은
+다시 계산하지 않는다 — 후속). 등록 전 좌표 정밀 중복 게이트(이름 유사도 0.85 + region + 좌표 500m — 사장님 결정)로
+기존 ap-*/ah-* 물리 중복 차단.
 
 **세대수 필드 = kaptdaCnt 우선, 0이면 hoCnt(호수) 폴백** (세션 444 `resolveUnits()`): 국토부
 `getAphusBassInfoV4` 응답에서 `kaptdaCnt`(공동주택 세대수)를 우선 쓰되, 임의공급·계약취소·블록

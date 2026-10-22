@@ -24,10 +24,12 @@
  *     HEAT_MTHD_NM, PRESNTN_DTLS_URL → unsold 는 회차 공급분(TOT_SUPLY)으로 대체(아래 주석),
  *     builder 는 BSNS_MBY_NM, announcement_url 은 PBLANC_URL, heating 은 미설정.
  *
- * units/unsold 의미 (세션 444/445 답습): 무순위 공고의 TOT_SUPLY_HSHLDCO = 이번 회차 잔여
- *   공급분(단지 전체 세대수 아님). units=unsold=회차분, unsold_rate=100 으로 박아
- *   molit-units 보정 대상(units<=1 또는 unsold_rate>=100)에 자연 편입 → 월/목 로컬 파이프라인
- *   + 매월 6일 cron 이 실제 세대수로 정정. (api/applyhome/apartments.ts 의 remndr→units 폴백 답습)
+ * units/unsold 의미: 무순위 공고의 TOT_SUPLY_HSHLDCO = 이번 회차 잔여 공급분(단지 전체 세대수 아님).
+ *   unsold = 회차분, **units = null · unsold_rate = null**(세션656 사장님 결정 "전부 빈칸").
+ *   옛 방식(units=unsold=회차분·rate 100 → molit-units 가 고친다는 기대)은 분양 중 단지가 국토부 목록에
+ *   없어 안 고쳐졌다(10/22 실측: 최근 30일 새 행 5개 중 4개가 units 1~5). 처음 분양 공고 총공급으로 채우는
+ *   안은 검사관 실측(묶음 721 중 공고가 작음 294 · 재개발 120 중 118 — 조합원 몫 빠짐)으로 버렸다 —
+ *   빈칸이면 카드는 "정보 없음", 같은 묶음 네이버 행이 있으면 VIEW 가 그 세대수를 쓴다.
  *
  * 사용법:
  *   node scripts/collectors/collect-applyhome-seed.mjs                       (INSERT)
@@ -40,7 +42,7 @@ import {
   loadEnv, getSupabase, log, logError, sleep, createReporter,
   selectAll, upsertBatch, stringSimilarity, haversineMeters,
   recordApiQuota, recordCollectorRun,
-  REGION_MAP, VALID_REGIONS, GU_LAWD_MAP, normalizeGu, resolveBuilder, clampUnsoldRate, resolveRegionName,
+  REGION_MAP, VALID_REGIONS, GU_LAWD_MAP, normalizeGu, resolveBuilder, resolveRegionName,
 } from "./_shared.mjs";
 import { normName } from "./collect-applyhome-detail.mjs";
 import {
@@ -78,7 +80,7 @@ const NO_DATE_ABORT_RATIO = 0.5;
  *   BSNS_MBY_NM?: string | null; MVN_PREARNGE_YM?: string | null; PBLANC_URL?: string | null;
  *   HOUSE_SECD_NM?: string | null; [k: string]: unknown }} RemndrRow
  * @typedef {{ id: string; name: string; region: string; gu: string | null; dong: string | null;
- *   address: string | null; lat: number | null; lng: number | null; units: number; unsold: number | null;
+ *   address: string | null; lat: number | null; lng: number | null; units: number | null; unsold: number | null;
  *   unsold_rate: number | null; unsold_source: string | null; unsold_as_of: string | null;
  *   builder: string | null; completion: string | null;
  *   announcement_url: string | null; unit_source: string; _recruitDate: string }} Candidate
@@ -170,9 +172,10 @@ export function mapRow(item) {
     region = (areaName ? REGION_MAP[areaName] : null) || AREA_CODE_REGION[areaCode] || null;
     if (!region) return null;
   }
-  const units = parseInt(String(item.TOT_SUPLY_HSHLDCO ?? 0), 10) || 0;
-  // 무순위 공고 = 잔여물량 판매 → 회차 공급분 전체가 잔여 (파일 상단 units/unsold 주석 참조)
-  const unsold = units > 0 ? units : null;
+  const supply = parseInt(String(item.TOT_SUPLY_HSHLDCO ?? 0), 10) || 0;
+  // 무순위 공고 = 잔여물량 판매 → 회차 공급분 전체가 잔여. 단지 세대수는 모른다 → units·rate 빈칸
+  // (파일 상단 units/unsold 주석 참조)
+  const unsold = supply > 0 ? supply : null;
   return {
     id: `ah-${no}`,
     name,
@@ -182,9 +185,9 @@ export function mapRow(item) {
     address: addr || null,
     lat: null,
     lng: null,
-    units,
+    units: null,
     unsold,
-    unsold_rate: clampUnsoldRate(unsold != null && units > 0 ? Math.round((unsold / units) * 1000) / 10 : null),
+    unsold_rate: null,
     // 세션568 — 값을 내가(청약홈 seed) 썼음을 표시한다. 회차 공급분(잔여물량)이라 KOSIS 구
     // 단위 추정보다 정확한 단지별 값이므로 collect-unsold-kosis.mjs 가 존중한다(shouldSkipKosisFill).
     unsold_source: unsold != null ? "applyhome" : null,
@@ -197,6 +200,7 @@ export function mapRow(item) {
     builder: resolveBuilder(item.BSNS_MBY_NM || null),
     completion: item.MVN_PREARNGE_YM || null,
     announcement_url: item.PBLANC_URL || null,
+    // 세대수 값이 없어도 "청약홈 seed 행" 표시로 남긴다(세션656 — 출처 칸 뜻은 그대로).
     unit_source: "applyhome",
     _recruitDate: item.RCRIT_PBLANC_DE || "",
   };
@@ -465,7 +469,7 @@ async function main() {
 
     if (dryRun) {
       for (const c of kept.slice(0, 15)) {
-        log(PHASE, `  [DRY-RUN 등록 예정] ${c.id} ${c.name} (${c.region} ${c.gu ?? "-"}) units=${c.units} 공고=${c._recruitDate} 좌표=${c.lat != null ? "O" : "X"}`);
+        log(PHASE, `  [DRY-RUN 등록 예정] ${c.id} ${c.name} (${c.region} ${c.gu ?? "-"}) 회차분=${c.unsold ?? "-"} 공고=${c._recruitDate} 좌표=${c.lat != null ? "O" : "X"}`);
       }
       log(PHASE, `\n=== DRY-RUN 요약: 등록 예정 ${kept.length}건 (DB 쓰기 0) ===`);
       rpt.success(kept.length);

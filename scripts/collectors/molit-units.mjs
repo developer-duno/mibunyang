@@ -97,7 +97,7 @@ export function resolveUnits(detail) {
  * @returns {Promise<boolean>}
  */
 export async function updateUnits(sb, aptId, newUnits, unsold, dryRun) {
-  // 세션539 F-2: 형제 writer(collect-data·sync-naver-complex·applyhome-seed 는 clampUnsoldRate,
+  // 세션539 F-2: 형제 writer(collect-data·sync-naver-complex·applyhome-seed(세션656 부터는 rate 를 아예 비움) 는 clampUnsoldRate,
   // collect-unsold-kosis 는 calcProportionalUnsold 내부에 같은 >100→null 방어)는 전부 갖고
   // 있는데 이 수집기만 없었다. 하물며 이 수집기의 **대상 자체가**
   // `unsold_rate>=100`(위 SELECT `.or("units.lte.1,unsold_rate.gte.100")`)인 망가진 행이라,
