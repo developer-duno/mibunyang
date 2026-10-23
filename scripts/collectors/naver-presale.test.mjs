@@ -1938,3 +1938,40 @@ describe("unitsFollowUpdate — 번호 주인 행의 네이버 총세대수 따�
     expect(applyUnitsFollow({ id: "ap-1" }, { ...apt, units: 638 }, 638, true)).toBeNull();
   });
 });
+
+import { unitsFillUpdate } from "./naver-presale.mjs";
+describe("unitsFillUpdate — 빈 세대수를 네이버 총세대수로 채울 때 미분양률·출처(세션657)", () => {
+  it("청약홈 출처 행은 미분양률을 같은 식으로 다시 낸다(세종 꼴: 미분양 1 / 세대수 1000 → 0.1)", () => {
+    expect(unitsFillUpdate({ units: null, unsold: 1, unsold_source: "applyhome" }, 1000))
+      .toEqual({ units: 1000, unit_source: "naver_presale", unsold_rate: 0.1 });
+    expect(unitsFillUpdate({ units: null, unsold: 5, unsold_source: "applyhome" }, 233)?.unsold_rate).toBe(2.1);
+    // 반올림 경계 — fix-units-from-plan.mjs:94 와 같은 Math.round(floor 면 66.6)
+    expect(unitsFillUpdate({ units: null, unsold: 2, unsold_source: "applyhome" }, 3)?.unsold_rate).toBe(66.7);
+  });
+  it("KOSIS 출처 행은 미분양률을 건드리지 않는다(동래 꼴)", () => {
+    expect(unitsFillUpdate({ units: null, unsold: 8, unsold_source: "kosis" }, 110))
+      .toEqual({ units: 110, unit_source: "naver_presale" });
+  });
+  it("미분양이 빈칸이면 률 칸을 넣지 않는다", () => {
+    expect(unitsFillUpdate({ units: null, unsold: null, unsold_source: "applyhome" }, 300))
+      .toEqual({ units: 300, unit_source: "naver_presale" });
+  });
+  it("100% 초과는 null(clampUnsoldRate)", () => {
+    expect(unitsFillUpdate({ units: null, unsold: 5, unsold_source: "applyhome" }, 2)?.unsold_rate).toBeNull();
+  });
+  it("세대수가 이미 있거나 네이버 값이 없으면 채우지 않는다(옛 조건 그대로)", () => {
+    expect(unitsFillUpdate({ units: 486, unsold: 1, unsold_source: "applyhome" }, 638)).toBeNull();
+    expect(unitsFillUpdate({ units: null, unsold: 1, unsold_source: "applyhome" }, null)).toBeNull();
+    expect(unitsFillUpdate({ units: 0, unsold: 1, unsold_source: "applyhome" }, 0)).toBeNull();
+  });
+});
+
+describe("빈 세대수 채움 배선 — 조회 칸·본체 연결 (세션657 검사관 🟡1)", () => {
+  const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+  it("apartments 조회에 unsold·unsold_source 가 있다(없으면 률이 조용히 안 생김)", () => {
+    expect(src).toMatch(/s\.from\("apartments"\)\s*\.select\("[^"]*unsold, unsold_source[^"]*"\)/);
+  });
+  it("채움 결과를 update 에 통째로 넣는다", () => {
+    expect(src).toMatch(/const fill = unitsFillUpdate\(match\.apartment, enrich\.units\);\s*if \(fill\) Object\.assign\(update, fill\);/);
+  });
+});

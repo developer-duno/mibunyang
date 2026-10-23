@@ -23,7 +23,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
-  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP, joinRunMessage,
+  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP, joinRunMessage, clampUnsoldRate,
 } from "./_shared.mjs";
 import { isLeaseName, isLeasePresale } from "../../src/constants/leaseTypes.mjs";
 import { isPresaleOwner } from "./_same-complex.mjs";
@@ -32,7 +32,7 @@ import {
 } from "./_kakao-poi.mjs";
 
 /** @typedef {{ name: string; tier: number; sim: number; reason: "차수충돌" | "이름약함" }} GateBlocked */
-/** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; unit_source: string | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
+/** @typedef {{ id: string; name: string; region: string | null; gu: string | null; dong: string | null; lat: number | null; lng: number | null; bjd_code: string | null; naver_presale_no: string | null; units: number | null; unit_source: string | null; unsold: number | null; unsold_source: string | null; builder: string | null; max_floor: number | null; completion: string | null }} AptForMatch */
 /** @typedef {{ byPresaleNo: Map<string, AptForMatch>; byBjd: Map<string, AptForMatch[]>; byId: Map<string, AptForMatch> }} AptIndexes */
 /** @typedef {{ build_dtl_cd?: number | string | null; supp_cd?: number | string | null; build_nm?: string; min_price?: number | null; max_price?: number | null; pyper_price?: number | null; supp_sclass?: string | null; supp_proc_step_nm?: string | null; preview_image?: string | null; house_supp_cnt?: number | null; dong_cnt?: number | null; parking_cnt?: number | null; sell_office_phone?: string | null; build_point?: string | null; mvi_date?: string | null; recruit_date?: string | null; schdl_info?: unknown; bclass_nm?: string | null; total_house_cnt?: number | null; cmpy_nm?: string | null; max_flr_cnt?: number | null; ypos?: number | string | null; xpos?: number | string | null; bubdong_code?: string | null; address?: string | null }} ComplexData */
 /** @typedef {{ dong_cnt?: number | null; parking_cnt?: number | null; inquiry_tel?: string | null; features?: string | null; move_in_date?: string | null }} DetailData */
@@ -651,6 +651,25 @@ export function applyUnitsFollow(update, apt, enrichUnits, followOn) {
 }
 
 /**
+ * 빈 세대수를 네이버 총세대수로 채울 때 넣을 칸(세션657). 옛 코드는 세대수만 넣어 청약홈 출처 행(seed — 미분양 = 회차에
+ * 남은 세대)이 "세대수 N · 미분양률 빈칸"으로 남았고, 출처 칸도 applyhome 그대로였다. 출처는 naver_presale 로 바꾸고,
+ * 미분양률은 미분양 출처가 applyhome 인 행만 fix-units-from-plan 과 같은 식으로 다시 낸다 — KOSIS 출처 행의 률은
+ * KOSIS 회차가 묶음 세대수로 낸 값이라 건드리지 않는다.
+ * @param {{ units: number | null; unsold: number | null; unsold_source: string | null }} apt
+ * @param {number | null | undefined} enrichUnits
+ * @returns {Record<string, unknown> | null}
+ */
+export function unitsFillUpdate(apt, enrichUnits) {
+  if (apt.units || !enrichUnits) return null;
+  /** @type {Record<string, unknown>} */
+  const out = { units: enrichUnits, unit_source: "naver_presale" };
+  if (apt.unsold_source === "applyhome" && apt.unsold != null) {
+    out.unsold_rate = clampUnsoldRate(Math.round((apt.unsold / enrichUnits) * 1000) / 10);
+  }
+  return out;
+}
+
+/**
  * 두 시군구 표기가 같은 시군구를 가리키는가 (세션578 — 분양 매칭 게이트와 정리 도구가 **같은 잣대**를 쓴다).
  *
  * 규칙:
@@ -1050,7 +1069,7 @@ async function main() {
     apts = /** @type {AptForMatch[]} */ (/** @type {unknown} */ (
       await selectAll(
         (s) => s.from("apartments")
-          .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion, unit_source"),
+          .select("id, name, region, gu, dong, lat, lng, bjd_code, naver_presale_no, units, builder, max_floor, completion, unit_source, unsold, unsold_source"),
         sb,
         "id",
       )
@@ -1267,7 +1286,8 @@ async function main() {
       // enrichment: null인 기존 컬럼만 채움
       const enrich = row._enrich;
       if (enrich) {
-        if (!match.apartment.units && enrich.units) update.units = enrich.units;
+        const fill = unitsFillUpdate(match.apartment, enrich.units);
+        if (fill) Object.assign(update, fill);
         else {
           // 인자 없으면 후보만 센다(첫 회차 명단 → 승인 → 러너에 인자)
           const followLine = applyUnitsFollow(update, match.apartment, enrich.units, FOLLOW_UNITS);
