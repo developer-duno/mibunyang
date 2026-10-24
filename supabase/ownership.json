@@ -605,6 +605,11 @@
           "*"
         ]
       },
+      "scripts/recalc-unsold-history.mjs": {
+        "unsold_history": [
+          "unsold_count"
+        ]
+      },
       "scripts/collectors/_shared.mjs": {
         "api_quota_log": [
           "*"
