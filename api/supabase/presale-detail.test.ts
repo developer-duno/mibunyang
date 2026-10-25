@@ -14,20 +14,26 @@ type Row = Record<string, unknown>;
 let db: Record<string, Row[]> = {};
 /** 표마다 불린 조건(시험이 "자기 id 만 읽었나"를 본다). */
 let calls: { table: string; ops: [string, unknown[]][] }[] = [];
+/** 참이면 첫 공고일 조회(`.not(...)` 가 붙은 일정 조회)만 오류를 돌려준다(세션659). */
+let failFirstRecruit = false;
 
 /** supabase 쿼리 빌더 흉내 — eq·in·order·limit 를 실제로 적용하고 await 하면 { data, error }. */
 function from(table: string) {
   const call = { table, ops: [] as [string, unknown[]][] };
   calls.push(call);
   const b: Record<string, unknown> = {};
-  for (const op of ['select', 'eq', 'in', 'order', 'limit']) {
+  for (const op of ['select', 'eq', 'in', 'not', 'order', 'limit']) {
     b[op] = (...args: unknown[]) => { call.ops.push([op, args]); return b; };
   }
   b.then = (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+    if (failFirstRecruit && call.ops.some(([op]) => op === 'not')) {
+      return Promise.resolve({ data: null, error: { message: 'boom' } }).then(resolve, reject);
+    }
     let rows = [...(db[table] ?? [])];
     for (const [op, args] of call.ops) {
       if (op === 'eq') rows = rows.filter((r) => r[args[0] as string] === args[1]);
       if (op === 'in') rows = rows.filter((r) => (args[1] as unknown[]).includes(r[args[0] as string]));
+      if (op === 'not' && args[1] === 'is' && args[2] === null) rows = rows.filter((r) => r[args[0] as string] != null);
       if (op === 'order') {
         const [col, opt] = args as [string, { ascending: boolean }];
         const v = (r: Row) => (typeof r[col] === 'number' ? (r[col] as number) : String(r[col]));
@@ -41,7 +47,7 @@ function from(table: string) {
 }
 vi.mock('../_lib/supabase.js', () => ({ getSupabase: () => ({ from }) }));
 
-beforeEach(() => { calls = []; });
+beforeEach(() => { calls = []; failFirstRecruit = false; });
 
 const { default: handlerImport } = await import('./presale-detail.js');
 const handler = handlerImport as any;
@@ -53,7 +59,7 @@ async function get(id: string) {
   const res = makeRes();
   await handler({ method: 'GET', query: { apartment_id: id }, headers: {} }, res);
   expect(res.status).toHaveBeenCalledWith(200);
-  return res.json.mock.calls[0][0] as { ok: boolean; schedule: Row | null; units: Row[] };
+  return res.json.mock.calls[0][0] as { ok: boolean; schedule: Row | null; units: Row[]; firstRecruitDate: string | null };
 }
 
 describe('supabase/presale-detail — 묶음 단위 읽기 (세션630)', () => {
@@ -125,5 +131,43 @@ describe('supabase/presale-detail — 묶음 단위 읽기 (세션630)', () => {
     };
     const body = await get('ah-1');
     expect(body.units.map((u) => `${u.house_manage_no}|${u.model_no}`)).toEqual(['H|02', 'H|01']);
+  });
+  it('firstRecruitDate = 묶음 안 가장 이른 모집공고일(빈 날짜 제외) — 일정은 최신 1건 그대로 (세션659)', async () => {
+    db = {
+      apartments: [{ id: 'ah-1', complex_key: 'K' }, { id: 'ah-2', complex_key: 'K' }, { id: 'ah-9', complex_key: 'OTHER' }],
+      presale_schedule_official: [
+        { apartment_id: 'ah-1', house_manage_no: '2026000235', recruit_date: '2026-06-12' },
+        { apartment_id: 'ah-2', house_manage_no: '2021000930', recruit_date: '2021-03-05' },
+        { apartment_id: 'ah-9', house_manage_no: '2019000001', recruit_date: '2019-01-01' }, // 다른 묶음 — 더 일러도 안 섞인다
+      ],
+      applyhome_unit_supply: [],
+    };
+    const body = await get('ah-1');
+    expect(body.schedule?.house_manage_no).toBe('2026000235');
+    expect(body.firstRecruitDate).toBe('2021-03-05');
+  });
+
+  it('firstRecruitDate — 날짜가 하나도 없으면 null', async () => {
+    db = {
+      apartments: [{ id: 'ah-1', complex_key: null }],
+      presale_schedule_official: [{ apartment_id: 'ah-1', house_manage_no: 'H', recruit_date: null }],
+      applyhome_unit_supply: [],
+    };
+    expect((await get('ah-1')).firstRecruitDate).toBeNull();
+  });
+  it('첫 공고일 조회만 실패하면 500 이 아니라 200 — 일정·평형표 그대로 · firstRecruitDate null (세션659)', async () => {
+    db = {
+      apartments: [{ id: 'ah-1', complex_key: null }],
+      presale_schedule_official: [{ apartment_id: 'ah-1', house_manage_no: 'H', recruit_date: '2021-03-05' }],
+      applyhome_unit_supply: [{ apartment_id: 'ah-1', house_manage_no: 'H', model_no: '01', supply_area: 80 }],
+    };
+    failFirstRecruit = true;
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const body = await get('ah-1'); // get() 이 200 을 단언한다
+    expect(body.schedule?.house_manage_no).toBe('H');
+    expect(body.units).toHaveLength(1);
+    expect(body.firstRecruitDate).toBeNull();
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
   });
 });

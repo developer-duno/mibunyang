@@ -53,6 +53,22 @@ describe("usePresaleDetail", () => {
     );
   });
 
+  // 첫 모집공고일(세션659) — 문자열이면 그대로, 캐시 적중에도 유지, 없거나 문자열이 아니면 null
+  it("firstRecruitDate 를 넘기고 캐시 적중에도 유지 · 없으면 null", async () => {
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(okResponse({ ok: true, schedule: null, units: [], firstRecruitDate: "2021-03-05" }))
+      .mockResolvedValueOnce(okResponse({ ok: true, schedule: null, units: [], firstRecruitDate: 20210305 }));
+    const first = renderHook(() => usePresaleDetail("ah-first"));
+    await waitFor(() => expect(first.result.current.firstRecruitDate).toBe("2021-03-05"));
+    const again = renderHook(() => usePresaleDetail("ah-first"));
+    await waitFor(() => expect(again.result.current.firstRecruitDate).toBe("2021-03-05"));
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const other = renderHook(() => usePresaleDetail("ah-first-bad"));
+    await waitFor(() => expect(other.result.current.loading).toBe(false));
+    expect(other.result.current.firstRecruitDate).toBeNull();
+  });
+
   // schedule/units 누락 시 null/빈 배열 폴백
   it("응답에 schedule/units 누락 시 null·[] 폴백", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse({ ok: true }));

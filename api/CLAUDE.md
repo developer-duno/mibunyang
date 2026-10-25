@@ -69,7 +69,7 @@ export default withHandler({
 - ID 검증: `api/_lib/apartmentValidation.js` — `parseApartmentIds()` + `/^ah-\d+$/` 패턴
 - 에러 응답: `{ ok: false, error: "메시지" }` (400/500)
 - RLS: "Public read" 정책 (인증 불필요)
-- `GET /api/supabase/presale-detail`(세션630): 그 단지의 `complex_key` 를 1회 읽어 **같은 묶음 행 전부**에서 일정 최신 1행(빈 날짜는 뒤로)·평형((공고번호, 모델번호) 한 벌)을 읽는다(열쇠 없으면 자기 id 만 · `(오)` 행은 서로 안 섞음 — 오피스텔 카드는 자기 id 만, 아파트 카드는 묶음에서 `(오)` 행을 뺌) — 수집기가 같은 묶음 동점 공고를 id 작은 행에 붙여도 카드(다른 행)에 일정이 뜨게. 응답 꼴 불변
+- `GET /api/supabase/presale-detail`(세션630): 그 단지의 `complex_key` 를 1회 읽어 **같은 묶음 행 전부**에서 일정 최신 1행(빈 날짜는 뒤로)·평형((공고번호, 모델번호) 한 벌)을 읽는다(열쇠 없으면 자기 id 만 · `(오)` 행은 서로 안 섞음 — 오피스텔 카드는 자기 id 만, 아파트 카드는 묶음에서 `(오)` 행을 뺌) — 수집기가 같은 묶음 동점 공고를 id 작은 행에 붙여도 카드(다른 행)에 일정이 뜨게. 응답 꼴 불변 · 세션659: 칸 `firstRecruitDate`(묶음 안 가장 이른 모집공고일, 없으면 null — 금융 탭 잔금 계획의 경과규정 갈래) 추가
 - 세션635 다): `GET /api/supabase/apartments` 는 묶음 칸 5개(`complexKey`·`memberIds`·`materialId`·`noticeName`·`aliasIds` — 정보성, 배열 칸은 배열 아니면 null)를 통과 · `unsold-history` 는 복수 id 응답을 **한 달 한 값**으로 접는다(`mergeMonthlyRows` — 요청 순서 첫 id(재료 행) 값, 없으면 최댓값 · `prices` 는 회차별 행이라 그대로) · `/api/upcoming` 은 `memberIds` 포함으로 묻고 칸 없음 오류면 빼고 처음부터 다시, 지난 공고 교차 검증은 구성원 id 전부(200개씩)·카드 모집일보다 이전 공고 제외
 
 ## 인증 시스템 (세션 405 — 관리자+손님 2축)

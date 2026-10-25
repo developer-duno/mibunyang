@@ -8,7 +8,10 @@
  * 행에 붙이는데 카드는 묶음의 다른 행(id 큰 행)일 수 있다. 열쇠가 비면 자기 id 만. 일정은 묶음 전체에서 최신 1행,
  * 평형은 (공고번호, 모델번호)로 한 벌만(같은 공고가 묶음 두 행에 붙어 있어도 두 벌이 안 되게).
  *
- * 응답: { ok: true, schedule: {...}|null, units: [...], fetchedAt: "..." }
+ * 세션659: `firstRecruitDate` = 묶음 안 가장 이른 모집공고일(없으면 null) — 금융 탭 잔금 계획의 규제지역 경과규정
+ * 갈래용(지정 효력일 전일까지 공고한 사업장은 종전 LTV). 일정 `schedule` 은 최신 1건이라 첫 공고를 못 준다.
+ *
+ * 응답: { ok: true, schedule: {...}|null, units: [...], firstRecruitDate: "YYYY-MM-DD"|null, fetchedAt: "..." }
  */
 import { getSupabase } from "../_lib/supabase.js";
 import { withHandler } from "../_lib/handler.js";
@@ -61,8 +64,8 @@ export default withHandler({
         ids = [...new Set([aptId, ...members.map((r) => r.id)])];
       }
 
-      // 두 테이블 병렬 조회 후 JS merge (VIEW JOIN 회피)
-      const [scheduleRes, unitsRes] = await Promise.all([
+      // 세 조회 병렬 후 JS merge (VIEW JOIN 회피)
+      const [scheduleRes, unitsRes, firstRes] = await Promise.all([
         supabase
           .from("presale_schedule_official")
           .select(SCHEDULE_SELECT)
@@ -74,12 +77,23 @@ export default withHandler({
           .select(UNIT_SELECT)
           .in("apartment_id", ids)
           .order("supply_area", { ascending: true }),
+        // 묶음 안 첫 모집공고일 — 빈 날짜는 빼고 오름차순 1건(세션659)
+        supabase
+          .from("presale_schedule_official")
+          .select("recruit_date")
+          .in("apartment_id", ids)
+          .not("recruit_date", "is", null)
+          .order("recruit_date", { ascending: true })
+          .limit(1),
       ]);
 
       if (scheduleRes.error || unitsRes.error) {
         console.error("presale-detail query error:", scheduleRes.error || unitsRes.error);
         return res.status(500).json({ ok: false, error: "분양 상세 데이터 조회 중 오류가 발생했습니다" });
       }
+      // 첫 공고일은 덧붙인 칸 — 이것만 실패하면 일정·평형표까지 지우지 않고 null 로 둔다(화면은 카드 공고일로만 갈래).
+      if (firstRes.error) console.error("presale-detail first recruit query error:", firstRes.error);
+      const firstRow = firstRes.error ? undefined : (firstRes.data || [])[0];
 
       // 같은 공고가 묶음 두 행에 붙어 있으면 평형이 두 벌 — (공고번호, 모델번호)로 한 벌만 남긴다(순서 = 면적 오름차순 그대로).
       const seen = new Set<string>();
@@ -95,6 +109,7 @@ export default withHandler({
         ok: true,
         schedule: (scheduleRes.data || [])[0] ?? null,
         units,
+        firstRecruitDate: (firstRow as { recruit_date?: string | null } | undefined)?.recruit_date ?? null,
         fetchedAt: new Date().toISOString(),
       });
     } catch (err) {

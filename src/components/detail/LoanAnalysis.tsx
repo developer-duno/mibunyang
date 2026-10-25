@@ -17,6 +17,8 @@ import { useLoanRates } from "@/hooks/useLoanRates";
 import { DEFAULT_GROUP } from "@/constants/loanGroups";
 import { LoanRatesSection } from "./LoanRatesSection";
 import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
+import { FundingPlanner } from "./FundingPlanner";
+import { LOAN_RULES_BASIS } from "@/constants/loanRules";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
 import type { PriceAreaRow } from "@/types/detail";
 
@@ -93,6 +95,9 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
 
   return (
     <>
+      {/* 잔금 계획(세션659) — 금융 탭 맨 위 대출 막대(LoanStack) 바로 아래 자리. 여기서 그리면 위에서 받은
+        은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다(따로 부르면 같은 금리를 두 번 받는다). */}
+      <FundingPlanner apt={apt} rates={bankRates} />
       <MonthlyPaymentBlock loan={ltvBase} rates={bankRates} disclosureMonth={disclosureMonth} />
       <BankRateBars rates={bankRates} disclosureMonth={disclosureMonth} />
       <div
@@ -123,7 +128,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 8 }}>{ltvSummary}</div>
         {zone !== "normal" && (
           <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 8 }}>
-            정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요(2026년 10월 기준).
+            {`정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요(${LOAN_RULES_BASIS} 기준).`}
             {/* 경과 규정 — 금융위 「대출수요 관리 방안 FAQ」(2025-10-15, fsc.go.kr/po020201/85518).
                 금액 계산은 바꾸지 않고 규칙만 한 줄로 알린다(사장님 결정, 세션592). */}
             <div style={{ marginTop: 2 }}>
@@ -242,7 +247,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         </div>
         {showLegal && (
           <div style={{ fontSize: F.xs, color: C.muted, lineHeight: 1.6, marginTop: 8 }}>
-            <div style={{ marginBottom: 6, fontWeight: 600 }}>2026년 10월 기준</div>
+            <div style={{ marginBottom: 6, fontWeight: 600 }}>{`${LOAN_RULES_BASIS} 기준`}</div>
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>LTV (담보인정비율)</strong> — 규제지역(조정대상지역·투기과열지구 동시
               지정) 40%, 단 대출한도는 집값 15억 이하 6억·15억 초과 4억·25억 초과 2억. 비규제지역 70%. 수도권(서울·
