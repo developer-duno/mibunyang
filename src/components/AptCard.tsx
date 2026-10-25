@@ -469,6 +469,10 @@ export const AptCard = memo(
     if (pa.complexJeonseN !== na.complexJeonseN || pa.complexSaleN !== na.complexSaleN) return false;
     if (pa.cmpFairPrice !== na.cmpFairPrice || pa.cmpN !== na.cmpN) return false;
     if (pa.cmpMonths !== na.cmpMonths || pa.cmpAreaMode !== na.cmpAreaMode) return false;
+    // 세션661: 가격 비교 칩이 실거래 범위(최저~최고)를 적는다 — 빠지면 칩이 옛 범위를 재사용한다
+    if (pa.cmpMin !== na.cmpMin || pa.cmpMax !== na.cmpMax) return false;
+    // cmpScope 는 hasRange 의 재료(범위 none 이면 범위 대신 옛 문장) — 바뀌면 다시 그린다
+    if (pa.cmpScope !== na.cmpScope) return false;
     if (pa.parkingRatio !== na.parkingRatio) return false;
     if (pa.noxiousDist !== na.noxiousDist) return false;
     if (pa.corridorType !== na.corridorType) return false;

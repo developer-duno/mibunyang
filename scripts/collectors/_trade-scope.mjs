@@ -80,7 +80,9 @@ function medianRaw(arr) {
  *   age_gap_years: number | null; peer_n: number; peer_median: number | null }} DongFact
  * @typedef {{ cmp_scope: "complex" | "dong_peer" | "none"; cmp_fair_price: number | null; cmp_n: number; cmp_months: number;
  *   cmp_area_mode: "same_area" | "per_m2" | null; cmp_src: "sale" | "presale" | null;
+ *   cmp_min: number | null; cmp_max: number | null;
  *   complex_jeonse_rate: number | null; complex_jeonse_n: number | null; complex_sale_n: number | null; complex_area: number | null;
+ *   complex_jeonse_min: number | null; complex_jeonse_max: number | null;
  *   complex_table: AreaRow[]; complex_jeonse_table: AreaRow[]; complex_src: "sale" | "presale" | null; dong_fact: DongFact | null }} ScopeCols
  */
 
@@ -167,7 +169,10 @@ export function computeScopeStats(apt, ctx) {
   /** @type {ScopeCols} */
   const cols = {
     cmp_scope: "none", cmp_fair_price: null, cmp_n: 0, cmp_months: CMP_MONTHS, cmp_area_mode: null, cmp_src: null,
+    // 실거래 범위(세션661) — 적정가·전세가율과 **같은 거래 집합**의 최저·최고(만원). 범위 none·전세 0건이면 null
+    cmp_min: null, cmp_max: null,
     complex_jeonse_rate: null, complex_jeonse_n: null, complex_sale_n: null,
+    complex_jeonse_min: null, complex_jeonse_max: null,
     // complex_area = 모든 범위 계산의 기준인 대표 면적 A(소수 넷째 반올림 — 84/85 표기는 읽는 쪽이 정함) — 전세가율 값 유무와 무관
     // (세션650 · 2u 라벨 평수). 칸이 NUMERIC(8,4)(상한 9999.9999)라 10000 이상은 null(넘치면 upsert 전체가 실패한다)
     complex_area: A != null && A < 10000 ? Math.round(A * 10000) / 10000 : null,
@@ -181,10 +186,15 @@ export function computeScopeStats(apt, ctx) {
     const same = src.filter((d) => sameAreaExact(Number(d.area), A));
     const near = src.filter((d) => Math.abs(Number(d.area) - A) <= PER_M2_TOL_M2);
     if (same.length >= MIN_DEALS) {
-      Object.assign(cols, { cmp_scope: "complex", cmp_fair_price: median(same.map((d) => Number(d.price))), cmp_n: same.length, cmp_area_mode: "same_area", cmp_src: srcKind });
+      const prices = same.map((d) => Number(d.price));
+      Object.assign(cols, { cmp_scope: "complex", cmp_fair_price: median(prices), cmp_n: same.length, cmp_area_mode: "same_area", cmp_src: srcKind,
+        cmp_min: Math.min(...prices), cmp_max: Math.max(...prices) });
     } else if (near.length >= MIN_DEALS) {
-      const perM2 = medianRaw(near.map((d) => Number(d.price) / Number(d.area)));
-      Object.assign(cols, { cmp_scope: "complex", cmp_fair_price: perM2 == null ? null : Math.round(perM2 * A), cmp_n: near.length, cmp_area_mode: "per_m2", cmp_src: srcKind });
+      // ㎡당 값의 최저·최고 × 우리 면적 — 적정가(㎡당 중앙값 × A)와 같은 꼴. Math.min(price) 로 내면 면적이 섞여 틀린다
+      const perM2s = near.map((d) => Number(d.price) / Number(d.area));
+      const perM2 = medianRaw(perM2s);
+      Object.assign(cols, { cmp_scope: "complex", cmp_fair_price: perM2 == null ? null : Math.round(perM2 * A), cmp_n: near.length, cmp_area_mode: "per_m2", cmp_src: srcKind,
+        cmp_min: Math.round(Math.min(...perM2s) * A), cmp_max: Math.round(Math.max(...perM2s) * A) });
     }
     // 동네 재료(T2 · 동네 사실) — 같은 법정동 매매 · 같은 면적
     const bjd = String(apt.bjd_code ?? "");
@@ -193,7 +203,10 @@ export function computeScopeStats(apt, ctx) {
       : [];
     const peer = dongSame.filter((d) => ourYear != null && d.build_year != null && Math.abs(Number(d.build_year) - ourYear) <= PEER_YEARS);
     if (cols.cmp_scope === "none" && peer.length >= MIN_DEALS) {
-      Object.assign(cols, { cmp_scope: "dong_peer", cmp_fair_price: median(peer.map((d) => Number(d.price))), cmp_n: peer.length, cmp_area_mode: "same_area", cmp_src: "sale" });
+      // 범위도 또래(peer) 집합에서 — 또래 밖 거래가 섞인 dongSame 으로 내면 적정가와 다른 집합이 된다
+      const prices = peer.map((d) => Number(d.price));
+      Object.assign(cols, { cmp_scope: "dong_peer", cmp_fair_price: median(prices), cmp_n: peer.length, cmp_area_mode: "same_area", cmp_src: "sale",
+        cmp_min: Math.min(...prices), cmp_max: Math.max(...prices) });
     }
     if (dongSame.length >= 1) {
       const prices = dongSame.map((d) => Number(d.price));
@@ -211,6 +224,12 @@ export function computeScopeStats(apt, ctx) {
     const sSame = sale.filter((d) => sameAreaExact(Number(d.area), A));
     cols.complex_jeonse_n = jSame.length;
     cols.complex_sale_n = sSame.length;
+    // 같은 단지 전세 범위(세션661) — 전세가율과 같은 집합(jSame) · 1건 이상이면 저장(전세가율은 ≥3 문턱이라 범위만 있을 수 있다)
+    if (jSame.length >= 1) {
+      const jp = jSame.map((d) => Number(d.price));
+      cols.complex_jeonse_min = Math.min(...jp);
+      cols.complex_jeonse_max = Math.max(...jp);
+    }
     if (jSame.length >= MIN_DEALS && sSame.length >= MIN_DEALS) {
       const jm = median(jSame.map((d) => Number(d.price)));
       const sm = median(sSame.map((d) => Number(d.price)));

@@ -74,6 +74,9 @@ export interface AptDetailFields {
   dongFact?: unknown;
   complexTable?: unknown[] | null;
   complexJeonseTable?: unknown[] | null;
+  /** 세션661 실거래 범위 — 같은 단지 전세 최저·최고(만원, 상세 전용) */
+  complexJeonseMin?: number | null;
+  complexJeonseMax?: number | null;
 }
 
 // ─── 상세 버킷 lazy fetch (세션 468) ───

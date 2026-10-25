@@ -1,8 +1,9 @@
-import { memo } from "react";
+import { Fragment, memo } from "react";
 import { C, F } from "@/theme";
 import { TRADE_SCOPE_PEER_YEARS, TRADE_SCOPE_PER_M2_TOL_M2 } from "@/constants/scoringTiers";
-import { fmtPrice, fmtPriceGap } from "@/lib/format";
+import { fmtPrice, fmtPriceGap, fmtPriceRange } from "@/lib/format";
 import { hasKnownArea } from "@/lib/area";
+import { hasRange } from "@/constants/cardChips";
 import type { Apt } from "@/types/scoring";
 
 /**
@@ -21,6 +22,7 @@ import type { Apt } from "@/types/scoring";
  * ② 표 — 분양가 · 비교 중앙값(건수·기간) · 차이 · 같은 단지 전세가율(산식). 차이는 점수 캐시의 괴리율
  *    (`priceCat.deviation`)인데, 캐시의 범위(`fairPriceScope`)가 지금 칸과 다르면(재계산 전 옛 캐시) 차이 줄을
  *    비운다 — 서로 다른 기준의 숫자를 한 상자에 나란히 두지 않는다.
+ *    세션661: 실거래 최저~최고가 있으면(`hasRange`) 범위 줄(큰 글씨)·막대·가운데 값(작게)·전세 범위로 그린다(`compareRows`·`rangeBar`).
  *
  * ③ 동네 사실 줄 (세션609 · R5) — 같은 동·같은 평수 매매를 **나이 제한 없이** 사실대로(T2·T3 에서만).
  *    ⚠️ 준공 연도 토막은 가격 토막과 **같은 줄·같은 글자 크기**(§8 픽셀 조건).
@@ -40,6 +42,28 @@ const S = {
   row: { display: "flex", justifyContent: "space-between", gap: 12, fontSize: F.sm, lineHeight: 1.7 },
   rowLabel: { color: C.sub },
   rowValue: { color: C.text, fontWeight: 600, textAlign: "right" },
+  // 세션661 「안 가」: 범위 줄이 큰 글씨, 가운데 값은 작게 · 범위 줄 아래 건수·기간 작은 글씨 · 최저~최고 막대
+  rowSmall: {
+    display: "flex",
+    justifyContent: "space-between",
+    gap: 12,
+    fontSize: F.xs,
+    lineHeight: 1.7,
+    color: C.sub,
+  },
+  rowSub: { fontSize: F.xs, color: C.muted, lineHeight: 1.5, textAlign: "right" },
+  barTrack: { position: "relative", height: 6, borderRadius: 3, background: C.track, margin: "6px 4px 8px" },
+  barFill: { position: "absolute", top: 0, bottom: 0, left: 0, right: 0, borderRadius: 3, background: C.gridStrong },
+  barDot: {
+    position: "absolute",
+    top: "50%",
+    width: 10,
+    height: 10,
+    borderRadius: "50%",
+    background: C.amber,
+    border: `2px solid ${C.white}`,
+    transform: "translate(-50%, -50%)",
+  },
   fact: { fontSize: F.sm, color: C.sub, lineHeight: 1.6 },
   source: { fontSize: F.xs, color: C.muted, lineHeight: 1.5, marginTop: 8 },
 } as const;
@@ -117,12 +141,20 @@ export function scopeHeadText(apt: Apt): string | null {
   return `${who}와 견주면${tail}`;
 }
 
+/** 표의 한 줄 — `small` = 가운데 값처럼 작게 · `sub` = 값 아래 작은 글씨(건수·기간). */
+export type CompareRow = { key: string; label: string; value: string; small?: boolean; sub?: string };
+
 /**
  * 표의 줄들 — 분양가 · 비교 중앙값 · 차이 · 전세가율. 값이 없는 줄은 빼고 0 으로 적지 않는다.
  * 범위가 complex·dong_peer 가 아니면 가격 줄은 없다(전세가율 줄만 남을 수 있다).
+ *
+ * 세션661(사장님 결정 ① 「범위 + 가운데 값 작게」): `hasRange(apt)` 가 참이면 중앙값 줄 대신
+ *   분양가 · 실거래 범위(큰 글씨 + 건수·기간 작은 글씨 · 막대는 `rangeBar`) · 가운데 값(작게) · 차이 · 전세 범위 · 전세가율.
+ *   범위·가운데 값·전세 범위는 수집기가 **같은 거래 집합**에서 낸 값이다(trade_stats cmp_min/max·complex_jeonse_min/max).
+ *   거짓(반영 전·옛 캐시·범위 none)이면 지금 줄 구성 그대로.
  */
-export function compareRows(apt: Apt, priceCat: PriceCatLike): Array<{ key: string; label: string; value: string }> {
-  const rows: Array<{ key: string; label: string; value: string }> = [];
+export function compareRows(apt: Apt, priceCat: PriceCatLike): CompareRow[] {
+  const rows: CompareRow[] = [];
   const scope = effectiveScope(apt);
   if (scope === "complex" || scope === "dong_peer") {
     const price = Number(apt.price);
@@ -130,17 +162,63 @@ export function compareRows(apt: Apt, priceCat: PriceCatLike): Array<{ key: stri
     const n = Number(apt.cmpN ?? 0) || 0;
     const months = Number(apt.cmpMonths ?? 0);
     const counts = [n > 0 ? `${n}건` : null, months > 0 ? `최근 ${months}개월` : null].filter(Boolean).join(" · ");
-    rows.push({
-      key: "median",
-      label: `${compareLabel(apt, scope)} 중앙값`,
-      value: `${fmtPrice(Number(apt.cmpFairPrice))}${counts ? ` (${counts})` : ""}`,
-    });
     const dev = devOf(priceCat, scope);
-    if (dev != null && price > 0) rows.push({ key: "gap", label: "차이", value: fmtPriceGap(dev) });
+    if (hasRange(apt)) {
+      const sub = [counts || null, apt.cmpAreaMode === "per_m2" ? "㎡당 환산" : null].filter(Boolean).join(" · ");
+      rows.push({
+        key: "range",
+        label: compareLabel(apt, scope),
+        value: fmtPriceRange(Number(apt.cmpMin), Number(apt.cmpMax)),
+        ...(sub ? { sub } : {}),
+      });
+      rows.push({ key: "median", label: "가운데 값", value: fmtPrice(Number(apt.cmpFairPrice)), small: true });
+      if (dev != null && price > 0) rows.push({ key: "gap", label: "차이", value: fmtPriceGap(dev) });
+      const jMin = apt.complexJeonseMin,
+        jMax = apt.complexJeonseMax;
+      if (Number.isFinite(jMin) && Number.isFinite(jMax)) {
+        const jn = Number(apt.complexJeonseN);
+        rows.push({
+          key: "jeonseRange",
+          // 같은 동 또래 상자에서는 위 범위가 다른 단지 거래라 "이 단지" 를 밝힌다
+          label: scope === "dong_peer" ? "이 단지 전세" : "전세",
+          value: `${fmtPriceRange(Number(jMin), Number(jMax))}${jn > 0 ? ` (${jn}건)` : ""}`,
+        });
+      }
+    } else {
+      rows.push({
+        key: "median",
+        label: `${compareLabel(apt, scope)} 중앙값`,
+        value: `${fmtPrice(Number(apt.cmpFairPrice))}${counts ? ` (${counts})` : ""}`,
+      });
+      if (dev != null && price > 0) rows.push({ key: "gap", label: "차이", value: fmtPriceGap(dev) });
+    }
   }
   const jeonse = complexJeonseText(apt);
   if (jeonse) rows.push({ key: "jeonse", label: "전세가율", value: jeonse });
   return rows;
+}
+
+/**
+ * 범위 줄 아래 막대(세션661 「안 가」) — 최저~최고 가로 막대 위 분양가 자리(주황 점).
+ * 그리지 않음(null): 범위 없음(`hasRange` 거짓·범위 none) · 최저 = 최고(0÷0) · 분양가 모름.
+ * 분양가가 범위 밖이면 점을 끝에 붙이고(`clamped`) 글자는 쓰지 않는다(사장님 결정 ⑦ — 차이 줄이 숫자로 말한다).
+ * `pos` = 0~100(%). `aria` = 보조기기용 문장(화면 글자 아님).
+ */
+export function rangeBar(apt: Apt): { pos: number; clamped: "low" | "high" | null; aria: string } | null {
+  const scope = effectiveScope(apt);
+  if ((scope !== "complex" && scope !== "dong_peer") || !hasRange(apt)) return null;
+  const min = Number(apt.cmpMin),
+    max = Number(apt.cmpMax),
+    price = Number(apt.price);
+  if (!(max > min) || !(price > 0)) return null;
+  const raw = ((price - min) / (max - min)) * 100;
+  const clamped = raw < 0 ? "low" : raw > 100 ? "high" : null;
+  const pos = Math.min(100, Math.max(0, raw));
+  return {
+    pos,
+    clamped,
+    aria: `실거래 최저 ${fmtPrice(min)} ~ 최고 ${fmtPrice(max)}, 분양가 ${fmtPrice(price)}`,
+  };
 }
 
 /**
@@ -155,8 +233,15 @@ export function dongFactParts(apt: Apt): { count: string; price: string | null; 
   const count = `같은 동·같은 평수 실거래 ${f.n}건`;
   const min = Number(f.min),
     max = Number(f.max);
+  // 세션661(사장님 결정 ⑥): 같은 동 또래 상자에 범위 줄이 있으면 동네 가격 토막은 뺀다(건수·연식만) —
+  //   또래 범위와 나이 제한 없는 동네 범위 두 개가 한 상자에 나란히 서면 어느 것이 비교 대상인지 흐려진다.
+  const dropPrice = scope === "dong_peer" && hasRange(apt);
   const price =
-    min > 0 && max > 0 ? (min === max ? fmtPrice(min) : `최저 ${fmtPrice(min)} ~ 최고 ${fmtPrice(max)}`) : null;
+    !dropPrice && min > 0 && max > 0
+      ? min === max
+        ? fmtPrice(min)
+        : `최저 ${fmtPrice(min)} ~ 최고 ${fmtPrice(max)}`
+      : null;
   let year: string | null = null;
   if (f.build_year_min != null && f.build_year_max != null) {
     const span =
@@ -192,6 +277,7 @@ export const PricePositionBox = memo(function PricePositionBox({
 }) {
   const head = scopeHeadText(apt);
   const rows = compareRows(apt, priceCat);
+  const bar = rangeBar(apt);
   const fact = dongFactParts(apt);
 
   if (!head && rows.length === 0 && !fact) return null;
@@ -209,15 +295,33 @@ export const PricePositionBox = memo(function PricePositionBox({
       {rows.length > 0 && (
         <div data-testid="price-compare-table">
           {rows.map((r) => (
-            <div
-              key={r.key}
-              data-row={r.key}
-              data-testid={r.key === "jeonse" ? "complex-jeonse" : undefined}
-              style={S.row}
-            >
-              <span style={S.rowLabel}>{r.label}</span>
-              <span style={S.rowValue}>{r.value}</span>
-            </div>
+            <Fragment key={r.key}>
+              <div
+                data-row={r.key}
+                data-testid={r.key === "jeonse" ? "complex-jeonse" : undefined}
+                style={r.small ? S.rowSmall : S.row}
+              >
+                <span style={r.small ? undefined : S.rowLabel}>{r.label}</span>
+                <span style={r.small ? undefined : S.rowValue}>{r.value}</span>
+              </div>
+              {r.sub && (
+                <div data-row-sub={r.key} style={S.rowSub}>
+                  {r.sub}
+                </div>
+              )}
+              {r.key === "range" && bar && (
+                <div
+                  data-testid="price-range-bar"
+                  data-clamped={bar.clamped ?? undefined}
+                  role="img"
+                  aria-label={bar.aria}
+                  style={S.barTrack}
+                >
+                  <div style={S.barFill} />
+                  <div data-part="price-dot" style={{ ...S.barDot, left: `${bar.pos}%` }} />
+                </div>
+              )}
+            </Fragment>
           ))}
         </div>
       )}

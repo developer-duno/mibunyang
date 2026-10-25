@@ -339,6 +339,26 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
     expect(checked).toBeGreaterThan(300); // 양성 앵커 — 빈 목록으로 초록이 되지 않게
   });
 
+  // 세션661 실거래 범위 — 새 줄 글자("가운데 값"·"이 단지 전세"·범위 칩)도 같은 금칙어 검사를 지난다
+  it("실거래 범위가 있을 때(범위 줄 · 가운데 값 · 전세 범위 · 범위 칩)도 판정어 0건", () => {
+    const RANGE = { cmpMin: 52000, cmpMax: 66000, complexJeonseMin: 38000, complexJeonseMax: 46000 };
+    const seen = new Set();
+    let checked = 0;
+    for (const scope of SCOPES)
+      for (const dev of DEVS) {
+        const { out } = customerStrings(mk({ ...scope, ...RANGE }, dev));
+        for (const s of out) {
+          expect(s, `${scope.cmpScope} dev=${dev}: ${s}`).not.toMatch(JUDGE);
+          const m = /^(가운데 값|이 단지 전세|전세) /.exec(s);
+          if (m) seen.add(m[1]);
+          checked++;
+        }
+      }
+    expect(checked).toBeGreaterThan(300);
+    // 양성 앵커 — 새 줄이 실제로 검사 대상에 들어왔다(범위 모드가 안 켜지면 red)
+    expect([...seen].sort()).toEqual(["가운데 값", "이 단지 전세", "전세"]);
+  });
+
   // 비교 대상이 없는 단지(범위 none · 분양가 없음 · 칸 없음)도 판정어 없이 빠진다 — catVerdict·subContext 가 같은 어휘
   // 세션651 보완 ④(사장님 결정): 종합 탭·카드 편차 줄의 평당가·전세가율도 가격 축 손님 문자열이다 —
   //   끝말·값 문구·스크린리더 문장 어디에도 유불리 판정어("싸요/비싸요"·"높아요/낮아요"·"유리")가 없고 색은 중립.

@@ -7,6 +7,8 @@ import {
   maskName,
   maskPhone,
   fmtPriceRange,
+  fmtPriceEok1,
+  fmtPriceRangeEok1,
   fmtPresaleSchedule,
   fmtRecruitDate,
   fmtCompetitionRate,
@@ -213,6 +215,42 @@ describe("fmtPriceRange", () => {
   });
   it('min만 있고 max null → "3억 ~ ?"', () => {
     expect(fmtPriceRange(30000, null)).toBe("3억 ~ ?");
+  });
+  it("시세 탭 범위 줄 예시(세션661) — 58,000~64,200 → 「5억 8,000만 ~ 6억 4,200만」", () => {
+    expect(fmtPriceRange(58000, 64200)).toBe("5억 8,000만 ~ 6억 4,200만");
+  });
+});
+
+// 세션661 실거래 범위 — 카드 칩용 짧은 금액
+describe("fmtPriceEok1 — 소수 첫째 억 · 1억 미만은 만", () => {
+  it("1억 이상 — 소수 첫째(끝 .0 은 정수)", () => {
+    expect(fmtPriceEok1(60000)).toBe("6억");
+    expect(fmtPriceEok1(125000)).toBe("12.5억");
+    expect(fmtPriceEok1(58000)).toBe("5.8억");
+    expect(fmtPriceEok1(64200)).toBe("6.4억");
+    expect(fmtPriceEok1(57600)).toBe("5.8억"); // 반올림
+    expect(fmtPriceEok1(10000)).toBe("1억"); // 경계 — 1억은 억 단위
+  });
+  it("1억 미만 — 만 단위 쉼표", () => {
+    expect(fmtPriceEok1(8000)).toBe("8,000만");
+    expect(fmtPriceEok1(9999)).toBe("9,999만"); // 경계 — 1억 바로 아래
+  });
+  it("값 없음·0·음수 → -", () => {
+    expect(fmtPriceEok1(null)).toBe("-");
+    expect(fmtPriceEok1(undefined)).toBe("-");
+    expect(fmtPriceEok1(0)).toBe("-");
+    expect(fmtPriceEok1(-5000)).toBe("-");
+  });
+});
+
+describe("fmtPriceRangeEok1 — 칩 범위(물결 앞뒤 공백 없음)", () => {
+  it("다르면 「5.8억~6.4억」", () => {
+    expect(fmtPriceRangeEok1(58000, 64200)).toBe("5.8억~6.4억");
+    expect(fmtPriceRangeEok1(8000, 12500)).toBe("8,000만~1.3억");
+  });
+  it("표시 글자가 같으면 하나만 — 57,600·58,400 → 「5.8억」", () => {
+    expect(fmtPriceRangeEok1(57600, 58400)).toBe("5.8억");
+    expect(fmtPriceRangeEok1(60000, 60000)).toBe("6억");
   });
 });
 

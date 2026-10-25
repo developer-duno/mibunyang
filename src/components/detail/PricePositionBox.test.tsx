@@ -10,6 +10,7 @@ import {
   PRICE_SOURCE_TEXT,
   SAME_HOME_BASIS_TEXT,
   priceSourceText,
+  rangeBar,
 } from "./PricePositionBox";
 import type { Apt } from "@/types/scoring";
 
@@ -344,5 +345,154 @@ describe("같은 단지 전세가율 — 산식 (R3 · 세션651 W3)", () => {
     const { container } = render(<PricePositionBox priceCat={cat("complex", "12.4")} apt={a} />);
     expect(screen.queryByTestId("complex-jeonse")).toBeNull();
     expect(container.textContent).not.toContain("전세가율");
+  });
+});
+
+// ── 세션661 실거래 범위 — 「범위 + 가운데 값 작게」(사장님 결정 ①⑥⑦ · 설계서 v2 §4-1) ──────────
+describe("실거래 범위 — 범위 있을 때 줄 구성 · 없을 때 옛 구성 (세션661)", () => {
+  const RANGE = { cmpMin: 45000, cmpMax: 52000 };
+  const T1R = { ...T1_SALE, ...RANGE, cmpN: 13 };
+
+  it("범위 있음 — 줄 순서 price · range · median · gap · jeonseRange · jeonse, 가운데 값만 small · range 에 sub", () => {
+    const a = apt({
+      ...T1R,
+      complexJeonseMin: 31000,
+      complexJeonseMax: 36000,
+      complexJeonseN: 3,
+      complexJeonseRate: 62.4,
+      complexSaleN: 13,
+    });
+    const rows = compareRows(a, cat("complex", "12.5"));
+    expect(rows.map((r) => r.key)).toEqual(["price", "range", "median", "gap", "jeonseRange", "jeonse"]);
+    const by = Object.fromEntries(rows.map((r) => [r.key, r]));
+    expect(by.range).toEqual({
+      key: "range",
+      label: "이 단지 실거래",
+      value: "4억 5,000만 ~ 5억 2,000만",
+      sub: "13건 · 최근 12개월",
+    });
+    expect(by.median).toEqual({ key: "median", label: "가운데 값", value: "4억 8,000만", small: true });
+    expect(by.jeonseRange).toEqual({ key: "jeonseRange", label: "전세", value: "3억 1,000만 ~ 3억 6,000만 (3건)" });
+    expect(rows.filter((r) => r.small).map((r) => r.key)).toEqual(["median"]);
+    // 옛 중앙값 줄 이름("… 중앙값")은 범위 모드에 없다
+    expect(rows.some((r) => r.label.endsWith("중앙값"))).toBe(false);
+  });
+
+  it("설계서 예시 — 58,000~64,200 · 13건 · 12개월 → 「5억 8,000만 ~ 6억 4,200만」 + 「13건 · 최근 12개월」", () => {
+    const a = apt({ ...T1_SALE, cmpFairPrice: 61000, cmpMin: 58000, cmpMax: 64200, cmpN: 13 });
+    const r = compareRows(a, cat("complex", "5", 61000)).find((x) => x.key === "range");
+    expect([r?.value, r?.sub]).toEqual(["5억 8,000만 ~ 6억 4,200만", "13건 · 최근 12개월"]);
+  });
+
+  it("㎡당 환산이면 sub 끝에 「 · ㎡당 환산」", () => {
+    const a = apt({ ...T1R, cmpAreaMode: "per_m2" });
+    expect(compareRows(a, cat("complex", "12.5")).find((r) => r.key === "range")?.sub).toBe(
+      "13건 · 최근 12개월 · ㎡당 환산"
+    );
+  });
+
+  it("범위 없음(반영 전 · null · undefined) — 지금 줄 구성 그대로(중앙값 큰 글씨, 범위·막대·전세 범위 없음)", () => {
+    for (const r of [{}, { cmpMin: null, cmpMax: null }, { cmpMin: 45000, cmpMax: null }]) {
+      const a = apt({ ...T1_SALE, ...r, complexJeonseMin: 31000, complexJeonseMax: 36000 });
+      const rows = compareRows(a, cat("complex", "12.5"));
+      expect(rows.map((x) => x.key)).toEqual(["price", "median", "gap"]);
+      expect(rows[1]).toEqual({
+        key: "median",
+        label: "이 단지 실거래 중앙값",
+        value: "4억 8,000만 (7건 · 최근 12개월)",
+      });
+      expect(rangeBar(a)).toBeNull();
+    }
+  });
+
+  it("반대 방향 — 범위 none 이면 cmpMin·cmpMax 가 있어도 범위 줄·막대 없음", () => {
+    const a = apt({ ...T3, price: 42000, cmpMin: 45000, cmpMax: 52000 });
+    expect(compareRows(a, cat("none", "0", 0)).map((r) => r.key)).toEqual([]);
+    expect(rangeBar(a)).toBeNull();
+    const { container } = render(<PricePositionBox priceCat={cat("none", "0", 0)} apt={a} />);
+    expect(container.querySelector('[data-row="range"]')).toBeNull();
+    expect(screen.queryByTestId("price-range-bar")).toBeNull();
+  });
+
+  it("전세 범위 줄 — 둘 다 유한수일 때만 · 같은 동 또래 상자에서는 「이 단지 전세」", () => {
+    const one = apt({ ...T1R, complexJeonseMin: 31000, complexJeonseMax: null });
+    expect(compareRows(one, cat("complex", "12.5")).some((r) => r.key === "jeonseRange")).toBe(false);
+    const t2 = apt({
+      ...T2,
+      cmpMin: 49000,
+      cmpMax: 56000,
+      complexJeonseMin: 30000,
+      complexJeonseMax: 30000,
+      complexJeonseN: 1,
+    });
+    const jr = compareRows(t2, cat("dong_peer", "3")).find((r) => r.key === "jeonseRange");
+    expect(jr).toEqual({ key: "jeonseRange", label: "이 단지 전세", value: "3억 (1건)" });
+    expect(compareRows(t2, cat("dong_peer", "3")).find((r) => r.key === "range")?.label).toBe("같은 동 또래 실거래");
+  });
+
+  it("렌더 — data-row range·median 과 sub 줄 · 막대 data-testid · 판정어 없음", () => {
+    const a = apt({ ...T1R, price: 47000 });
+    const { container } = render(<PricePositionBox priceCat={cat("complex", "2.1")} apt={a} />);
+    const range = container.querySelector('[data-row="range"]');
+    expect(range?.textContent).toBe("이 단지 실거래4억 5,000만 ~ 5억 2,000만");
+    expect(range?.textContent).toContain(" ~ ");
+    expect(container.querySelector('[data-row-sub="range"]')?.textContent).toBe("13건 · 최근 12개월");
+    expect(container.querySelector('[data-row="median"]')?.textContent).toBe("가운데 값4억 8,000만");
+    expect(screen.getByTestId("price-range-bar")).toBeTruthy();
+    expect(container.textContent).not.toMatch(JUDGE_WORDS);
+  });
+});
+
+describe("실거래 범위 막대 — 위치 · 끝 고정 · 최저=최고 (세션661 · 사장님 결정 ⑦)", () => {
+  const T1R = { ...T1_SALE, cmpMin: 45000, cmpMax: 52000 };
+
+  it("범위 안 — 분양가 자리 비율(%) · clamped 없음 · aria 문장", () => {
+    const b = rangeBar(apt({ ...T1R, price: 47000 }));
+    expect(b?.clamped).toBeNull();
+    expect(b?.pos).toBeCloseTo(((47000 - 45000) / 7000) * 100, 6);
+    expect(b?.aria).toBe("실거래 최저 4억 5,000만 ~ 최고 5억 2,000만, 분양가 4억 7,000만");
+  });
+
+  it("범위 밖 — 끝에 붙이고(0 · 100) 화면 글자 없음", () => {
+    const low = rangeBar(apt({ ...T1R, price: 42000 }));
+    expect([low?.pos, low?.clamped]).toEqual([0, "low"]);
+    const high = rangeBar(apt({ ...T1R, price: 60000 }));
+    expect([high?.pos, high?.clamped]).toEqual([100, "high"]);
+    const { container } = render(
+      <PricePositionBox priceCat={cat("complex", "12.5")} apt={apt({ ...T1R, price: 42000 })} />
+    );
+    const bar = screen.getByTestId("price-range-bar");
+    expect(bar.getAttribute("data-clamped")).toBe("low");
+    expect(bar.textContent).toBe(""); // 막대에는 글자를 쓰지 않는다(보조기기용 aria-label 만)
+    expect(bar.getAttribute("aria-label")).toContain("분양가 4억 2,000만");
+    expect((container.querySelector('[data-part="price-dot"]') as HTMLElement | null)?.style.left).toBe("0%");
+  });
+
+  it("최저 = 최고 — 막대 없음(0÷0) · 범위 줄은 값 하나", () => {
+    const a = apt({ ...T1_SALE, cmpMin: 48000, cmpMax: 48000 });
+    expect(rangeBar(a)).toBeNull();
+    expect(compareRows(a, cat("complex", "12.5")).find((r) => r.key === "range")?.value).toBe("4억 8,000만");
+    render(<PricePositionBox priceCat={cat("complex", "12.5")} apt={a} />);
+    expect(screen.queryByTestId("price-range-bar")).toBeNull();
+  });
+
+  it("분양가 모름 — 막대 없음", () => {
+    expect(rangeBar(apt({ ...T1R, price: null }))).toBeNull();
+  });
+});
+
+describe("같은 동 또래 + 범위 — 동네 사실 줄 가격 토막 없음(건수·연식만, 사장님 결정 ⑥)", () => {
+  it("dong_peer + 범위 있음 → price null · 건수·연식은 남는다", () => {
+    const parts = dongFactParts(apt({ ...T2, cmpMin: 49000, cmpMax: 56000, completion: "202401", dongFact: DONG }));
+    expect(parts?.price).toBeNull();
+    expect(parts?.count).toBe("같은 동·같은 평수 실거래 4건");
+    expect(parts?.year).toBe("1996~2004년에 지은 집 (이 단지보다 약 22년 오래됨)");
+  });
+
+  it("dong_peer + 범위 없음 · none → 가격 토막 그대로", () => {
+    expect(dongFactParts(apt({ ...T2, dongFact: DONG }))?.price).toBe("최저 3억 ~ 최고 4억 1,000만");
+    expect(dongFactParts(apt({ ...T3, cmpMin: 49000, cmpMax: 56000, dongFact: DONG }))?.price).toBe(
+      "최저 3억 ~ 최고 4억 1,000만"
+    );
   });
 });

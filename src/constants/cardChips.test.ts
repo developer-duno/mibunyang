@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildCardChips, splitCardChips, CHIP_ORDER, GOOD_CHIP_MAX, BAD_CHIP_MAX } from "./cardChips";
+import { buildCardChips, splitCardChips, CHIP_ORDER, GOOD_CHIP_MAX, BAD_CHIP_MAX, hasRange } from "./cardChips";
 import type { CardChip } from "./cardChips";
 import { NOXIOUS_PENALTY } from "@/constants/brands";
 import { FIELD_META } from "@/constants/fieldMeta";
@@ -738,5 +738,76 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
       }
     }
     for (const k of Object.keys(CHIP_ORDER)) expect(everyId, `순서표의 '${k}' 를 만드는 칩이 없다`).toContain(k);
+  });
+});
+
+// 세션661(사장님 결정 ② 「범위로」 · 설계서 v2 §4-2) — 범위가 있으면 중앙값 대신 최저~최고
+describe("buildCardChips — 실거래 범위 칩 (세션661)", () => {
+  const priceRes = (extra: Record<string, unknown> = {}) =>
+    mkRes({
+      price: {
+        total: 70,
+        subs: [{ info: "x" }],
+        fairPrice: 61000,
+        deviation: 5,
+        fairPriceScope: "complex",
+        fairPriceSrc: "sale",
+        ...extra,
+      },
+    });
+  const RANGED = {
+    cmpScope: "complex",
+    cmpFairPrice: 61000,
+    cmpMin: 58000,
+    cmpMax: 64200,
+    cmpN: 13,
+    cmpMonths: 12,
+    cmpAreaMode: "same_area",
+  };
+
+  it("범위 있음 — 「이 단지 실거래 5.8억~6.4억 (13건·12개월)」 · plain·core·판정어 없음", () => {
+    const chip = find(build(RANGED, priceRes()), "priceCompare");
+    expect(chip?.text).toBe("이 단지 실거래 5.8억~6.4억 (13건·12개월)");
+    expect(chip?.text).toMatch(/\d+(\.\d)?억(~\d+(\.\d)?억)? \(\d+건·\d+개월/); // e2e 와 같은 정규식
+    expect([chip?.tone, chip?.layer]).toEqual(["plain", "core"]);
+    expect(chip?.text).not.toMatch(/중앙|적정가|저렴|비쌈|수준|%/);
+  });
+
+  it("㎡당 환산 · 같은 동 또래도 같은 꼴", () => {
+    expect(find(build({ ...RANGED, cmpAreaMode: "per_m2" }, priceRes()), "priceCompare")?.text).toBe(
+      "이 단지 실거래 5.8억~6.4억 (13건·12개월·㎡당 환산)"
+    );
+    expect(
+      find(build({ ...RANGED, cmpScope: "dong_peer" }, priceRes({ fairPriceScope: "dong_peer" })), "priceCompare")?.text
+    ).toBe("같은 동 또래 실거래 5.8억~6.4억 (13건·12개월)");
+  });
+
+  it("표시 글자가 같으면 하나만 — 57,600~58,400 → 「5.8억」", () => {
+    expect(find(build({ ...RANGED, cmpMin: 57600, cmpMax: 58400 }, priceRes()), "priceCompare")?.text).toBe(
+      "이 단지 실거래 5.8억 (13건·12개월)"
+    );
+  });
+
+  it("범위 없음(반영 전 · null · 한쪽만) — 지금 문장 그대로 「… 중앙 X (N건·M개월)」", () => {
+    for (const r of [
+      { cmpMin: undefined, cmpMax: undefined },
+      { cmpMin: null, cmpMax: null },
+      { cmpMin: 58000, cmpMax: null },
+    ]) {
+      expect(find(build({ ...RANGED, ...r }, priceRes()), "priceCompare")?.text, JSON.stringify(r)).toBe(
+        "이 단지 실거래 중앙 6억 1,000만 (13건·12개월)"
+      );
+    }
+  });
+
+  it("반대 방향 — 범위 none 이면 cmpMin·cmpMax 가 있어도 hasRange 거짓", () => {
+    expect(hasRange({ cmpScope: "none", cmpMin: 58000, cmpMax: 64200 } as unknown as Apt)).toBe(false);
+    expect(hasRange({ cmpScope: null, cmpMin: 58000, cmpMax: 64200 } as unknown as Apt)).toBe(false);
+    expect(hasRange({ cmpScope: "complex", cmpMin: 58000, cmpMax: 64200 } as unknown as Apt)).toBe(true);
+    expect(hasRange({ cmpScope: "dong_peer", cmpMin: 58000, cmpMax: 64200 } as unknown as Apt)).toBe(true);
+    // 점수 캐시가 판정(complex)이어도 칸이 none 이면 칩은 옛 문장
+    expect(find(build({ ...RANGED, cmpScope: "none" }, priceRes()), "priceCompare")?.text).toBe(
+      "이 단지 실거래 중앙 6억 1,000만 (13건·12개월)"
+    );
   });
 });

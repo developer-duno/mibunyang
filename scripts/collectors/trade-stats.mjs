@@ -25,10 +25,10 @@ import { existsSync, writeFileSync } from "node:fs";
 import { calcLTV, zoneOf } from "../../src/constants/regulations.ts";
 
 // ── 세션590 새 칸 배선 도우미(보완 F3·F4·F11 — 시험이 직접 부른다) ──────────────
-/** 새 칸 14개(trade_stats `cmp_*`·`complex_*`·`dong_fact` · 세션650 complex_area 추가). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
+/** 새 칸 18개(trade_stats `cmp_*`·`complex_*`·`dong_fact` · 세션650 complex_area · 세션661 범위 4칸 cmp_min/max·complex_jeonse_min/max 추가). 옛 칸 행에 펼치는 칸이자, 옛 칸이 전부 빈 행만 따로 쓸 때 담는 칸. */
 export const SCOPE_COLS = Object.freeze([
-  "cmp_scope", "cmp_fair_price", "cmp_n", "cmp_months", "cmp_area_mode", "cmp_src",
-  "complex_jeonse_rate", "complex_jeonse_n", "complex_sale_n", "complex_area", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
+  "cmp_scope", "cmp_fair_price", "cmp_n", "cmp_months", "cmp_area_mode", "cmp_src", "cmp_min", "cmp_max",
+  "complex_jeonse_rate", "complex_jeonse_n", "complex_jeonse_min", "complex_jeonse_max", "complex_sale_n", "complex_area", "complex_table", "complex_jeonse_table", "complex_src", "dong_fact",
 ]);
 /** "모든 값 null 이면 건너뜀"이 보는 옛 칸 여섯(결과 행 이름). */
 export const OLD_STAT_KEYS = Object.freeze(["nearby_median", "jeonse_rate", "pir", "psr", "recent_trades_6m", "cancel_ratio_6m"]);
@@ -83,7 +83,7 @@ export function skipStatRow(oldVals, scopeCols) {
 
 /**
  * 결과 행을 두 줄기로 가른다(보완 F3) — 옛 칸이 하나라도 있는 행은 지금처럼 전부 · 옛 칸이 전부 null 인데 새 칸이 있는 행은
- * `{apartment_id, 새 칸 14, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
+ * `{apartment_id, 새 칸 18, updated_at}` 만. 옛 조건이면 건너뛰었을 행이 옛 칸 null 을 덮어쓰지 않게 한다.
  * PostgREST 일괄 upsert 는 한 배치 안 키가 같아야 하므로 두 줄기를 한 배열에 섞지 않는다.
  * @param {Array<Record<string, any>>} results
  * @returns {{ full: Array<Record<string, any>>, scopeOnly: Array<Record<string, any>> }}
@@ -761,6 +761,10 @@ async function main() {
     }).length;
     log("summary", `새 칸 범위: T1 매매 ${t1s} · T1 분양권 ${t1p} · T2 동네 또래 ${t2} · T3 없음 ${t3} (㎡당 환산 ${perM2})`);
     log("summary", `같은 단지 전세가율 ${jr.length}곳 · 100% 초과 ${jrOver.length}곳 · 동네 사실 ${df}곳`);
+    // 세션661 실거래 범위 — 판정된 곳(complex·dong_peer)마다 있어야 한다(적정가 있음 ≈ 범위 있음)
+    const rangeN = sc.filter((r) => r.cmp_min != null && r.cmp_max != null).length;
+    const jRangeN = sc.filter((r) => r.complex_jeonse_min != null && r.complex_jeonse_max != null).length;
+    log("summary", `범위 있음 ${rangeN} · 전세 범위 ${jRangeN}`);
     log("summary", `진단: 입주 후 매매<3·분양권≥3 단지 ${movedInPresale}곳(판정엔 안 씀 — R2)`);
     if (jrOver.length) logError("summary", `같은 단지 전세가율 100% 초과 ${jrOver.length}곳 — 예: ${jrOver.slice(0, 5).map((r) => `${r.apartment_id} ${r.complex_jeonse_rate}%`).join(", ")}`);
   }
