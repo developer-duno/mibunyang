@@ -58,7 +58,7 @@ test.describe("금융 탭 금리 블록", () => {
     await modal.getByRole("tab", { name: "금융" }).click();
 
     const panel = modal.locator("#sec-finance");
-    await expect(panel.getByText("한 달에 갚을 돈")).toBeVisible({ timeout: 10000 });
+    await expect(panel.getByText("한 달에 갚을 돈", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(panel.getByText(/아파트·분할상환 최저 금리 4\.20% 기준 · 2026년 9월 공시/)).toBeVisible();
     await expect(panel.getByTestId("bank-rate-row")).toHaveCount(5);
     await expect(panel.getByTestId("bank-rate-row").nth(3)).toHaveAttribute("aria-label", "농협은행 4.49% ~ 7.71%");
