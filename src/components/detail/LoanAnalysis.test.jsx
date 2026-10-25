@@ -4,6 +4,8 @@ import { render, screen, fireEvent } from "@testing-library/react";
 import { LoanAnalysis } from "./LoanAnalysis";
 import { makeApt } from "@/__tests__/factories";
 import { useLoanRates } from "@/hooks/useLoanRates";
+import { FundingPlanner } from "./FundingPlanner";
+import { LOAN_RULES_BASIS } from "@/constants/loanRules";
 
 // useRentLoanRates 모킹
 vi.mock("@/hooks/useRentLoanRates", () => ({
@@ -32,6 +34,11 @@ vi.mock("@/hooks/useLoanRates", () => ({
     loading: false,
     error: null,
   })),
+}));
+
+// 잔금 계획 카드(세션659) 모킹 — 자기 시험(FundingPlanner.test.tsx)이 따로 있다. 여기선 받은 값만 본다.
+vi.mock("./FundingPlanner", () => ({
+  FundingPlanner: vi.fn(() => <div data-testid="funding-planner" />),
 }));
 
 // LoanRatesSection 모킹 (단위 테스트 격리)
@@ -87,8 +94,9 @@ describe("LoanAnalysis", () => {
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     expect(screen.getByText("규제지역")).toBeTruthy();
     expect(loanLine("4억")).toBeTruthy();
+    // 기준일 글자는 상수 하나(LOAN_RULES_BASIS)에서 조립한다(세션659) — 글자 자체는 loanRules.test.ts 가 고정
     expect(
-      screen.getByText(/정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요\(2026년 10월 기준\)/)
+      screen.getByText(`정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요(${LOAN_RULES_BASIS} 기준).`)
     ).toBeTruthy();
   });
 
@@ -113,12 +121,12 @@ describe("LoanAnalysis", () => {
     expect(normal.container.textContent).not.toContain("종전 기준");
   });
 
-  it("법률 안내문은 2026년 10월 기준 숫자 (DSR 은행 40%·2금융 50% · 디딤돌 · 보금자리)", () => {
+  it("법률 안내문은 기준일(LOAN_RULES_BASIS) 숫자 (DSR 은행 40%·2금융 50% · 디딤돌 · 보금자리)", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000 }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     fireEvent.click(screen.getByText("관련 법률/규정 안내"));
     const text = document.body.textContent ?? "";
-    expect(text).toContain("2026년 10월 기준");
+    expect(text).toContain(`${LOAN_RULES_BASIS} 기준`);
     expect(text).toContain("은행권 40%, 2금융권 50%");
     expect(text).toContain("연 2.85~4.15%");
     expect(text).toContain("최대 2억");
@@ -324,5 +332,17 @@ describe("LoanAnalysis", () => {
     const row = screen.getByTestId("loan-trade-count-84").closest("tr");
     const cells = [...(row?.querySelectorAll("td") ?? [])];
     expect(cells[cells.length - 1]?.textContent).toBe("6억");
+  });
+  // 세션659 — 잔금 계획 카드는 이 부품이 받은 은행권 금리 응답을 그대로 받는다(새 호출 0).
+  // ⚠️ 변이 대상: rates 를 [] 로 넘기거나 카드를 지우면 빨강.
+  it("잔금 계획 카드를 맨 위에 그리고 같은 apt·같은 은행권 금리 응답을 넘긴다", () => {
+    vi.mocked(FundingPlanner).mockClear();
+    const apt = /** @type {any} */ (makeApt({ price: 50000 }));
+    const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
+    const props = /** @type {any} */ (vi.mocked(FundingPlanner).mock.calls[0]?.[0]);
+    expect(props.apt).toBe(apt);
+    expect(props.rates).toEqual(vi.mocked(useLoanRates).mock.results[0]?.value.rates);
+    expect(props.rates.length).toBeGreaterThan(0);
+    expect(container.firstElementChild?.getAttribute("data-testid")).toBe("funding-planner");
   });
 });

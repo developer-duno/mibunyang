@@ -42,12 +42,17 @@ export interface ApplyhomeUnitSupply {
 interface UsePresaleDetailReturn {
   schedule: PresaleScheduleOfficial | null;
   units: ApplyhomeUnitSupply[];
+  /** 묶음 안 가장 이른 모집공고일 'YYYY-MM-DD'(없으면 null) — 금융 탭 잔금 계획의 경과규정 갈래(세션659) */
+  firstRecruitDate: string | null;
   loading: boolean;
   error: string | null;
 }
 
 // apartmentId별 응답 캐시 (SPA 세션 유지). DetailModal 재오픈 시 재fetch 제거.
-const cache = new Map<string, { schedule: PresaleScheduleOfficial | null; units: ApplyhomeUnitSupply[] }>();
+const cache = new Map<
+  string,
+  { schedule: PresaleScheduleOfficial | null; units: ApplyhomeUnitSupply[]; firstRecruitDate: string | null }
+>();
 /** 테스트 격리용 */
 export function _clearPresaleDetailCache(): void {
   cache.clear();
@@ -60,6 +65,7 @@ export function _clearPresaleDetailCache(): void {
 export function usePresaleDetail(apartmentId: string | null | undefined): UsePresaleDetailReturn {
   const [schedule, setSchedule] = useState<PresaleScheduleOfficial | null>(null);
   const [units, setUnits] = useState<ApplyhomeUnitSupply[]>([]);
+  const [firstRecruitDate, setFirstRecruitDate] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,6 +76,7 @@ export function usePresaleDetail(apartmentId: string | null | undefined): UsePre
       if (cached) {
         setSchedule(cached.schedule);
         setUnits(cached.units);
+        setFirstRecruitDate(cached.firstRecruitDate);
         setLoading(false);
         setError(null);
         return;
@@ -88,14 +95,17 @@ export function usePresaleDetail(apartmentId: string | null | undefined): UsePre
           ok?: boolean;
           schedule?: PresaleScheduleOfficial | null;
           units?: ApplyhomeUnitSupply[];
+          firstRecruitDate?: string | null;
           error?: string;
         };
         if (!json.ok) throw new Error(json.error || "데이터 조회 실패");
         const sched = json.schedule ?? null;
         const us = json.units ?? [];
-        cache.set(apartmentId, { schedule: sched, units: us });
+        const first = typeof json.firstRecruitDate === "string" ? json.firstRecruitDate : null;
+        cache.set(apartmentId, { schedule: sched, units: us, firstRecruitDate: first });
         setSchedule(sched);
         setUnits(us);
+        setFirstRecruitDate(first);
       } catch (err) {
         if (err instanceof Error && err.name === "AbortError") return;
         const message = err instanceof Error ? err.message : String(err);
@@ -116,5 +126,5 @@ export function usePresaleDetail(apartmentId: string | null | undefined): UsePre
     return () => ac.abort();
   }, [load]);
 
-  return { schedule, units, loading, error };
+  return { schedule, units, firstRecruitDate, loading, error };
 }
