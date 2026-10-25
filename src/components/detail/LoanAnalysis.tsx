@@ -18,7 +18,7 @@ import { DEFAULT_GROUP } from "@/constants/loanGroups";
 import { LoanRatesSection } from "./LoanRatesSection";
 import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
 import { FundingPlanner } from "./FundingPlanner";
-import { LOAN_RULES_BASIS } from "@/constants/loanRules";
+import { LOAN_RULES_BASIS, grandfatherRule } from "@/constants/loanRules";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
 import type { PriceAreaRow } from "@/types/detail";
 
@@ -56,6 +56,12 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
       ? `LTV: ${Math.round(NORMAL_LTV * 100)}% (무주택자 기준)` +
         (metro ? ` · 수도권 대출한도 최대 ${METRO_LOAN_CAP / 10000}억` : "")
       : `LTV: ${Math.round(REGULATED_LTV_RATE * 100)}% (무주택자 기준) · 대출한도 15억 초과 4억 / 25억 초과 2억`;
+  // 경과 규정 한 줄 — 서울 4구(강남·서초·송파·용산)는 10·15 전부터 규제지역이라 "지정 전 · 70%" 가 틀린다.
+  // 4구는 9·7 기준일·종전 50% 를 경과규정 표(GRANDFATHER_RULES)에서 읽어 조립하고, 그 밖은 옛 문장 그대로(세션660 사장님 결정).
+  const gfRule = grandfatherRule(zone, apt.region, apt.gu);
+  const grandfatherLine = gfRule?.keepRegulatedCaps
+    ? `${gfRule.cutoff}까지 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 ${Math.round(gfRule.rate * 100)}%)이 적용될 수 있어요(분양권 전매는 강화 기준).`
+    : "규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
   // 2단 통일(세션508 PR-3a A3) — 종합 탭(2단: normal→초록/그외→빨강)과 여기(옛 3단:
   // overheated→주황/speculative→빨강)가 갈려 있었다. ZONE_MAP 이 전 항목을 overheated 하나로만
   // 매핑(PR-1)해 실제로는 같은 단지가 종합=빨강·금융=주황으로 보이는 모순이 생겼다.
@@ -131,10 +137,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
             {`정부가 조정대상지역·투기과열지구로 함께 지정한 곳이에요(${LOAN_RULES_BASIS} 기준).`}
             {/* 경과 규정 — 금융위 「대출수요 관리 방안 FAQ」(2025-10-15, fsc.go.kr/po020201/85518).
                 금액 계산은 바꾸지 않고 규칙만 한 줄로 알린다(사장님 결정, 세션592). */}
-            <div style={{ marginTop: 2 }}>
-              규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수
-              있어요(분양권 전매는 강화 기준).
-            </div>
+            <div style={{ marginTop: 2 }}>{grandfatherLine}</div>
           </div>
         )}
         {/* 옛 숫자 3칸(분양가·LTV 대출한도·필요 자기자본)은 세션593 D1 에 위 대출 막대로 합쳤다 — 같은 금액이 두 번 나왔다. */}

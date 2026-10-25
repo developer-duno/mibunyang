@@ -11,6 +11,7 @@ import {
   STRESS_RATE_METRO,
   earliestIsoDate,
   isNonHousing,
+  isPreSubscription,
   kstYearMonth,
   latestIsoDate,
   moveInStarted,
@@ -249,12 +250,14 @@ export const FundingPlanner = memo(function FundingPlanner({
   const ltvCapped = cur ? cur.amount < Math.round(price * cur.rate) : false;
   // 종전 규정 사실 줄 — 종전 값이 지금보다 클 때만. 주택이 아닌 유형(비주택 담보)·입주가 이미 시작된 단지(개인 주담대)는
   // 집단대출 경과규정 대상이 아니라 숨긴다(부풀림 0 · 세션659 검사관 🔴·🟠). 입주월 형식을 모르면 숨기지 않는다.
+  // 사전청약 단지도 숨긴다 — 첫 공고가 사전당첨자모집공고라 경과규정의 "입주자모집공고"가 아니다(세션660 사장님 결정).
   const gf = plan?.ltv.grandfathered ?? null;
   const showGrandfather =
     gf != null &&
     cur != null &&
     gf.amount > cur.amount &&
     !isNonHousing(apt.presaleHousingType as string | null | undefined, apt.name as string | null | undefined) &&
+    !isPreSubscription(apt.name as string | null | undefined) &&
     !moveInStarted([apt.presaleMoveIn, schedule?.move_in_ym], kstYearMonth());
   const cashNum = toNumber(cash);
   const metroOrRegulated = plan ? plan.stressAdd === STRESS_RATE_METRO : false;

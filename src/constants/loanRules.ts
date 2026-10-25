@@ -239,6 +239,17 @@ export function isNonHousing(housingType?: string | null, name?: string | null):
   return /\(오\)|오피스텔|생활숙박|지식산업/.test(String(name ?? ""));
 }
 
+/**
+ * 사전청약 단지인가 — 이름에 "사전청약"이 들어 있으면 참(2026-10-25 실측 5곳 전부 이 꼴).
+ * 사전청약의 첫 공고는 「주택공급에 관한 규칙」 제24조의4 사전당첨자모집공고라 입주자모집공고가 아니다.
+ * 금융위 10·15 FAQ 의 경과규정은 "입주자모집공고" 기준이므로 그 날짜로 종전 규정 줄을 띄우지 않는다(세션660 사장님 결정).
+ */
+export function isPreSubscription(name?: string | null): boolean {
+  return String(name ?? "")
+    .normalize("NFC")
+    .includes("사전청약");
+}
+
 /** 입주 시작월 'YYYY-MM'·'YYYYMM' → 'YYYY-MM'. 형식 이상("미정" 등)은 null = 모름. */
 export function normalizeYearMonth(v: unknown): string | null {
   const m = /^(\d{4})-?(\d{2})$/.exec(String(v ?? "").trim());
