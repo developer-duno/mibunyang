@@ -19,6 +19,9 @@ const DETAIL_ONLY_FIELDS = [
   "dongFact",
   "complexTable",
   "complexJeonseTable",
+  // 세션661 실거래 범위 — 전세 최저·최고는 시세 탭 전용(상세 꾸러미만). cmpMin·cmpMax 는 목록에 남긴다(카드 칩이 쓴다).
+  "complexJeonseMin",
+  "complexJeonseMax",
   // 세션635 다: 원래 공고 이름(상세 제목 아래 한 줄만 씀). memberIds·aliasIds·materialId·complexKey 는
   //   목록에 남긴다 — 옛 id 넘김표·시계열 id 가 목록에서 만들어진다.
   "noticeName",
@@ -98,6 +101,9 @@ export function buildDetailBuckets(apartments, n = DETAIL_BUCKET_COUNT) {
       dongFact: apt.dongFact ?? null,
       complexTable: apt.complexTable ?? null,
       complexJeonseTable: apt.complexJeonseTable ?? null,
+      // 세션661: 목록에서 지운 전세 범위 2칸 — 빠지면 정적 모드에서 시세 탭 전세 줄이 영영 안 뜬다(아래 D7 과 같은 함정)
+      complexJeonseMin: apt.complexJeonseMin ?? null,
+      complexJeonseMax: apt.complexJeonseMax ?? null,
       // 세션636 D7: 목록에서 지운 칸(DETAIL_ONLY_FIELDS)은 여기 실어야 화면에 닿는다 — 빠지면 정적 모드에서 공고명 줄이 영영 안 뜬다
       noticeName: apt.noticeName ?? null,
     });

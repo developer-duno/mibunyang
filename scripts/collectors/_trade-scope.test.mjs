@@ -321,4 +321,81 @@ describe("대조군 픽스처 표본 값 고정(T1 매매 · T1 ㎡당 · T2 · 
       if (r != null) expect(r).toBeLessThanOrEqual(100);
     }
   });
+  it("범위 불변식(세션661) — 대조군 전 단지·여러 면적에서 cmp_min ≤ 적정가 ≤ cmp_max · 범위 none 이면 null · 전세 범위면 건수 ≥1", () => {
+    let judged = 0;
+    for (const a of APTS) for (const area of [59.9, 75.8, 84.73, 84.9, 84.94]) {
+      const c = scope(a.id, area);
+      if (c.cmp_scope === "none") {
+        expect([a.id, area, c.cmp_min, c.cmp_max]).toEqual([a.id, area, null, null]);
+      } else {
+        judged++;
+        expect(c.cmp_n).toBeGreaterThanOrEqual(3);
+        expect(c.cmp_min ?? Infinity).toBeLessThanOrEqual(c.cmp_fair_price ?? -Infinity);
+        expect(c.cmp_fair_price ?? Infinity).toBeLessThanOrEqual(c.cmp_max ?? -Infinity);
+      }
+      if (c.complex_jeonse_min != null) expect(c.complex_jeonse_n ?? 0).toBeGreaterThanOrEqual(1);
+      else expect(c.complex_jeonse_max).toBe(null);
+    }
+    expect(judged).toBeGreaterThanOrEqual(3); // 양성 대조군 — 판정된 경우가 실제로 지나갔다
+  });
+});
+
+describe("실거래 범위 cmp_min·cmp_max·complex_jeonse_min·complex_jeonse_max (세션661 설계서 v2 §3)", () => {
+  it("same_area · complex — 같은 면적 집합의 Math.min/max = complex_table 같은 면적 행의 min/max", () => {
+    const seq = [D({ price: 58000 }), D({ price: 64200 }), D({ price: 61000 }), D({ area: 59.9, price: 30000 })];
+    const c = run({ seq }).cols;
+    expect([c.cmp_scope, c.cmp_area_mode, c.cmp_min, c.cmp_fair_price, c.cmp_max]).toEqual(["complex", "same_area", 58000, 61000, 64200]);
+    const row = c.complex_table.find((r) => r.area === 84.9);
+    expect([row?.min, row?.max]).toEqual([c.cmp_min, c.cmp_max]); // 59.9㎡ 30000 은 섞이지 않는다
+  });
+
+  it("per_m2 · complex — ㎡당 값의 최저·최고 × A (면적 섞인 입력 · Math.min(price)=50000 이 아니다)", () => {
+    const seq = [D({ area: 84, price: 60000 }), D({ area: 85, price: 70000 }), D({ area: 86, price: 50000 })];
+    const c = run({ seq }, { area: 84 }).cols;
+    expect([c.cmp_scope, c.cmp_area_mode]).toEqual(["complex", "per_m2"]);
+    expect(c.cmp_min).toBe(48837); // round(50000/86×84)
+    expect(c.cmp_max).toBe(69176); // round(70000/85×84)
+    expect(c.cmp_min).not.toBe(50000);
+    expect(c.cmp_min ?? Infinity).toBeLessThanOrEqual(c.cmp_fair_price ?? -Infinity);
+    expect(c.cmp_fair_price ?? Infinity).toBeLessThanOrEqual(c.cmp_max ?? -Infinity);
+  });
+
+  it("dong_peer — 또래(peer) 집합에서만 · 또래 밖 더 싼 거래가 섞여도 cmp_min > dong_fact.min", () => {
+    const dong = [D({ price: 58000 }), D({ price: 61000 }), D({ price: 64000 }), D({ price: 40000, build_year: 1990 })];
+    const c = run({ dong }).cols;
+    expect([c.cmp_scope, c.cmp_min, c.cmp_fair_price, c.cmp_max]).toEqual(["dong_peer", 58000, 61000, 64000]);
+    expect(c.dong_fact?.min).toBe(40000);
+    expect(c.cmp_min ?? 0).toBeGreaterThan(c.dong_fact?.min ?? Infinity);
+  });
+
+  it("범위 none(문턱 미달) · 면적 미상 — cmp_min·cmp_max null · scopeColsEmpty 결과는 그대로", () => {
+    const none = run({ seq: many(2, {}) }).cols;
+    expect([none.cmp_scope, none.cmp_min, none.cmp_max]).toEqual(["none", null, null]);
+    const noArea = run({ seq: many(3, {}) }, { area: null }).cols;
+    expect([noArea.cmp_min, noArea.cmp_max, noArea.complex_jeonse_min, noArea.complex_jeonse_max]).toEqual([null, null, null, null]);
+    expect(scopeColsEmpty(run({}).cols)).toBe(true);
+  });
+
+  it("전세 범위 = 전세가율과 같은 집합(jSame — 같은 면적·갱신 제외) · complex_jeonse_table 같은 면적 행과 같다", () => {
+    const sale3 = many(3, { price: 100000 });
+    const j = [
+      D({ trade_type: "jeonse", price: 52000 }), D({ trade_type: "jeonse", price: 60000 }), D({ trade_type: "jeonse", price: 68000 }),
+      D({ trade_type: "jeonse", price: 30000, contract_type: "갱신" }), // 갱신은 빠진다
+      D({ trade_type: "jeonse", area: 59.9, price: 20000 }), // 다른 면적은 빠진다
+    ];
+    const c = run({ seq: [...sale3, ...j] }).cols;
+    expect([c.complex_jeonse_min, c.complex_jeonse_max, c.complex_jeonse_n, c.complex_jeonse_rate]).toEqual([52000, 68000, 3, 60]);
+    const row = c.complex_jeonse_table.find((r) => r.area === 84.9);
+    expect([row?.min, row?.max]).toEqual([c.complex_jeonse_min, c.complex_jeonse_max]);
+  });
+
+  it("전세 1~2건 — 범위는 있고 전세가율은 null(≥3 문턱) · 0건이면 범위도 null", () => {
+    const sale3 = many(3, { price: 100000 });
+    const one = run({ seq: [...sale3, D({ trade_type: "jeonse", price: 55000 })] }).cols;
+    expect([one.complex_jeonse_min, one.complex_jeonse_max, one.complex_jeonse_n, one.complex_jeonse_rate]).toEqual([55000, 55000, 1, null]);
+    const two = run({ seq: [...sale3, D({ trade_type: "jeonse", price: 58000 }), D({ trade_type: "jeonse", price: 61000 })] }).cols;
+    expect([two.complex_jeonse_min, two.complex_jeonse_max, two.complex_jeonse_rate]).toEqual([58000, 61000, null]);
+    const zero = run({ seq: sale3 }).cols;
+    expect([zero.complex_jeonse_min, zero.complex_jeonse_max, zero.complex_jeonse_n]).toEqual([null, null, 0]);
+  });
 });

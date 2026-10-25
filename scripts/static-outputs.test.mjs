@@ -42,6 +42,11 @@ function makeApt(id, over = {}) {
     dongFact: { n: 4, min: 30000, median: 35000, max: 40000, build_year_min: 1996, build_year_max: 2004, age_gap_years: 22, peer_n: 0, peer_median: null },
     complexTable: [{ area: 84, n: 5, min: 48000, median: 50000, max: 52000, last_month: "202609" }],
     complexJeonseTable: undefined,
+    // 세션661 실거래 범위 — cmpMin·cmpMax 는 목록에 남고, 전세 최저·최고는 상세 꾸러미에만
+    cmpMin: 58000,
+    cmpMax: 64200,
+    complexJeonseMin: 31000,
+    complexJeonseMax: 36000,
     ...over,
   };
 }
@@ -103,6 +108,12 @@ describe("buildListData", () => {
     }
   });
 
+  it("실거래 범위(세션661) — cmpMin·cmpMax 는 목록에 남고(카드 칩) complexJeonseMin·Max 는 키 삭제(상세 전용)", () => {
+    const el = /** @type {any} */ (list[0]);
+    expect([el.cmpMin, el.cmpMax]).toEqual([58000, 64200]);
+    for (const k of ["complexJeonseMin", "complexJeonseMax"]) expect(k in list[0]).toBe(false);
+  });
+
   it("noxious 잔존 (칩 + scoreLocation fallback 이중 사용)", () => {
     expect(Array.isArray(/** @type {any} */ (list[0]).noxious)).toBe(true);
   });
@@ -143,7 +154,7 @@ describe("buildDetailBuckets", () => {
   it("각 원소 = 상세 필드 + 가격배열 + full catsCache", () => {
     const el = buckets.flatMap((b) => b.data)[0];
     expect(Object.keys(el).sort()).toEqual(
-      ["benefits", "catsCache", "complexJeonseTable", "complexTable", "dongFact", "id", "jeonseByArea", "nearbyChildcare", "nearbyFacilities", "nearbySchools", "noticeName", "priceByArea", "priceByFloor", "rentByArea"].sort()
+      ["benefits", "catsCache", "complexJeonseMax", "complexJeonseMin", "complexJeonseTable", "complexTable", "dongFact", "id", "jeonseByArea", "nearbyChildcare", "nearbyFacilities", "nearbySchools", "noticeName", "priceByArea", "priceByFloor", "rentByArea"].sort()
     );
     // full catsCache — 슬림 안 됨 (product subs 도 전량)
     expect(/** @type {any} */ (el).catsCache.product.subs.length).toBeGreaterThan(0);
@@ -159,6 +170,15 @@ describe("buildDetailBuckets", () => {
     const el = /** @type {any} */ (buckets.flatMap((b) => b.data)[0]);
     expect(el.dongFact.age_gap_years).toBe(22);
     expect(el.complexTable).toHaveLength(1);
+  });
+
+  it("목록에서 지운 칸(DETAIL_ONLY_FIELDS)은 전부 꾸러미에 실린다 — 전세 범위 2칸 값 그대로(세션661 · D7 과 같은 함정 가드)", () => {
+    const el = /** @type {any} */ (buckets.flatMap((b) => b.data)[0]);
+    expect([el.complexJeonseMin, el.complexJeonseMax]).toEqual([31000, 36000]);
+    const listed = /** @type {any} */ (buildListData([makeApt("a")])[0]);
+    const dropped = Object.keys(makeApt("a")).filter((k) => !(k in listed) && !["catsCache", "priceByArea", "rentByArea", "jeonseByArea", "priceByFloor"].includes(k));
+    expect(dropped.length).toBeGreaterThanOrEqual(8); // 양성 대조군 — 지운 칸이 실제로 있다
+    for (const k of dropped) expect(k in el, k).toBe(true);
   });
 });
 

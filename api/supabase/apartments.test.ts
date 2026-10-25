@@ -414,6 +414,19 @@ describe('sanitize (null → 기본값)', () => {
     }
   });
 
+  // 세션661: 실거래 범위 4칸도 같은 규칙 — 값은 그대로, 없으면 null(0 을 지어 넣으면 "0원~0원" 이라는 없는 범위)
+  it('실거래 범위 4칸 — 값은 그대로 통과 · 없으면 null', async () => {
+    const ranged = { cmpMin: 58000, cmpMax: 64200, complexJeonseMin: 31000, complexJeonseMax: 36000 };
+    mockQuery.range.mockResolvedValue({ data: [{ id: 1, name: 'A', region: '경기', ...ranged }, { id: 2, name: 'B', region: '경기' }], error: null, count: 2 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const [a, b] = res.json.mock.calls[0][0].data;
+    for (const [k, v] of Object.entries(ranged)) {
+      expect(a[k], k).toBe(v);
+      expect(b[k], k).toBeNull();
+    }
+  });
+
   // 세션 513: recentTrades6m·dsr40pass 도 null 보존 (hugGuarantee 세션508 선례와 동형).
   //   `?? 0`/`?? false` 는 "안 재봤다"를 "재봤더니 0건/미통과"로 굳혀 화면에 거짓을 낸다.
   it('recentTrades6m null → 0 으로 강제되지 않고 null 보존', async () => {
@@ -578,36 +591,48 @@ describe('sanitize — 한 단지 = 한 장 묶음 칸 통과(세션635 다)', (
 //   주석(-- …)은 걷어내고 본다 — 머리말에 칸 이름·옛 식이 설명으로 적혀 있어 그대로 세면 무효다.
 //   세션609 라): 화면 칸 3개(dongFact·complexTable·complexJeonseTable)가 끝에 붙어 9 → 12. `dong_fact` 는
 //   `cmp_`·`complex_` 접두가 아니라 정규식에 `dong_` 를 더했다(빠뜨리면 11 로 세어 빨강).
-describe('VIEW 마이그(최신 20261013000000) ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
+//   세션661: 실거래 범위 4칸(cmpMin·cmpMax·complexJeonseMin·complexJeonseMax)이 끝에 붙어 12 → 16. 읽는 VIEW 파일 = 20261026000002.
+describe('VIEW 마이그(최신 20261026000002) ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
   const stripSql = (p: string) =>
     readFileSync(new URL(p, import.meta.url), 'utf8')
       .split(/\r?\n/)
       .map((l) => l.replace(/--.*$/, ''))
       .join('\n');
-  // 세션635 다: 최신 VIEW 파일을 읽는다(묶음 VIEW 가 20261007 판 본문을 이어받음). 롤백은 거래 범위 칸을 처음 넣은 20261007 판의 것 그대로.
-  const mig = stripSql('../../supabase/migrations/20261013000000_view_one_card_bundle.sql');
+  // 세션661: 최신 VIEW 파일을 읽는다(20261013 본문 + 끝 4칸). 롤백은 거래 범위 칸을 처음 넣은 20261007 판의 것 그대로(그 칸이 하나도 없는 판).
+  const mig = stripSql('../../supabase/migrations/20261026000002_view_add_range_cols.sql');
   const rollback = stripSql('../../supabase/migrations/_rollbacks/20261007000001_rollback_view_add_trade_scope.sql');
+  // 세션661 범위 칸의 롤백 = 20261013 본문 재생성(기존 12칸은 있고 새 4칸만 없다)
+  const rangeRollback = stripSql('../../supabase/migrations/_rollbacks/20261026000003_rollback_view_add_range_cols.sql');
+  const RANGE_ALIASES = ['cmpMin', 'cmpMax', 'complexJeonseMin', 'complexJeonseMax'];
   const aliasesOf = (sql: string) =>
     [...sql.matchAll(/\bts\.(?:cmp_|complex_|dong_)[a-z_]+\s+AS\s+"([A-Za-z]+)"/g)].map((m) => m[1]);
   const count = (sql: string, needle: string) => sql.split(needle).length - 1;
 
-  it('마이그가 내보내는 별칭 12개(점수 입력 9 + 라) 화면 3) = 화이트리스트가 받는 12칸 (집합·개수 둘 다)', async () => {
+  it('마이그가 내보내는 별칭 16개(점수 입력 9 + 라) 화면 3 + 실거래 범위 4) = 화이트리스트가 받는 16칸 (집합·개수 둘 다)', async () => {
     const viewAliases = aliasesOf(mig);
-    expect(viewAliases).toHaveLength(12);
+    expect(viewAliases).toHaveLength(16);
+    for (const a of RANGE_ALIASES) expect(viewAliases).toContain(a);
     // 화이트리스트 이름은 실제 sanitize 출력에서 읽는다(소스 문자열이 아니라 동작)
     mockQuery.range.mockResolvedValue({ data: [{ id: 1, name: 'A', region: '경기' }], error: null, count: 1 });
     const res = makeRes();
     await handler(makeReq(), res);
     const d = res.json.mock.calls[0][0].data[0];
-    // complexKey 는 묶음 열쇠(세션635)이지 거래 범위 칸이 아니라 마이그 별칭 12개 대조에서 뺀다
+    // complexKey 는 묶음 열쇠(세션635)이지 거래 범위 칸이 아니라 마이그 별칭 대조에서 뺀다
     const whitelist = Object.keys(d).filter((k) => /^(cmp|complex|dong)[A-Z]/.test(k) && k !== 'complexKey');
-    expect(whitelist).toHaveLength(12);
+    expect(whitelist).toHaveLength(16);
     expect(new Set(viewAliases)).toEqual(new Set(whitelist));
   });
 
-  it('롤백 파일에는 그 12칸이 없다', () => {
+  it('롤백 파일(20261007 판)에는 그 16칸이 없다', () => {
     expect(aliasesOf(rollback)).toHaveLength(0);
     for (const a of aliasesOf(mig)) expect(count(rollback, `"${a}"`), a).toBe(0);
+  });
+
+  it('범위 칸 롤백(20261026000003)에는 새 4칸만 없다 — 기존 12칸은 그대로(20261013 본문 재생성)', () => {
+    const rb = aliasesOf(rangeRollback);
+    expect(rb).toHaveLength(12);
+    for (const a of RANGE_ALIASES) expect(count(rangeRollback, `"${a}"`), a).toBe(0);
+    for (const a of aliasesOf(mig).filter((x) => !RANGE_ALIASES.includes(x))) expect(rb, a).toContain(a);
   });
 
   it('dataReliability 는 새 비교 칸을 센다 — 옛 칸(nearby_median·jeonse_rate) 0건, 롤백엔 옛 식 1건씩', () => {

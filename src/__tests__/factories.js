@@ -29,6 +29,11 @@ export function makeApt(overrides = {}) {
     complexJeonseRate: 70,
     complexJeonseN: 4,
     complexSaleN: 5,
+    // 세션661 실거래 범위 — 기본은 값 없음(반영 전과 같은 모양). 범위 시험은 각자 넣는다
+    cmpMin: null,
+    cmpMax: null,
+    complexJeonseMin: null,
+    complexJeonseMax: null,
     dataReliability: 80,
     subwayDist: 500,
     subwayName: "영통역",

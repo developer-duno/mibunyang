@@ -332,6 +332,12 @@ function sanitizeTransaction(row: any) {
     dongFact: row.dongFact ?? null,
     complexTable: row.complexTable ?? null,
     complexJeonseTable: row.complexJeonseTable ?? null,
+    // 실거래 범위(세션661) — 화면 칸 4개(VIEW 20261026000002 끝 4줄). null 보존: 없으면 화면이 지금 모양(중앙값)으로 그린다
+    //   (0 을 지어 넣으면 "0원~0원" 이라는 없는 범위가 된다). 점수는 읽지 않는다.
+    cmpMin: row.cmpMin ?? null,
+    cmpMax: row.cmpMax ?? null,
+    complexJeonseMin: row.complexJeonseMin ?? null,
+    complexJeonseMax: row.complexJeonseMax ?? null,
     // 규제/보증 (engine.js scoreRisk에서 사용)
     isRegulated: row.isRegulated ?? false,
     // dsr40pass 는 null 보존 (세션513, 아래 hugGuarantee 세션508 선례와 동형). 미산정 121곳은

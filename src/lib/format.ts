@@ -102,6 +102,23 @@ export const fmtPriceRange = (min: number | null | undefined, max: number | null
   return `${lo} ~ ${hi}`;
 };
 
+/**
+ * 만원 → 카드 칩용 짧은 금액(세션661 실거래 범위): 1억 이상은 소수 첫째 억("5.8억" · 끝 .0 은 "6억"),
+ * 1억 미만은 "8,000만". 칩 한 줄에 범위 두 값을 넣어야 해서 `fmtPrice`("5억 8,000만")보다 짧게 쓴다.
+ */
+export const fmtPriceEok1 = (v: number | null | undefined): string => {
+  if (v == null || !(v > 0)) return "-";
+  if (v < 10000) return `${Math.round(v).toLocaleString()}만`;
+  return `${Math.round(v / 1000) / 10}억`;
+};
+
+/** 칩용 범위 — 표시 글자가 같으면 하나만(57,600·58,400 → "5.8억"), 아니면 "5.8억~6.4억"(물결 앞뒤 공백 없음). */
+export const fmtPriceRangeEok1 = (min: number | null | undefined, max: number | null | undefined): string => {
+  const lo = fmtPriceEok1(min);
+  const hi = fmtPriceEok1(max);
+  return lo === hi ? lo : `${lo}~${hi}`;
+};
+
 interface ScheduleItem {
   scheduleName?: string;
   dateInfo?: string;

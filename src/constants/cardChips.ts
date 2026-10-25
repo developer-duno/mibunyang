@@ -1,5 +1,5 @@
 import { gr } from "@/theme";
-import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate, fmtPrice } from "@/lib/format";
+import { fmtMoveIn, fmtCompetitionRate, fmtUnsoldRate, fmtPrice, fmtPriceRangeEok1 } from "@/lib/format";
 import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
 // 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
@@ -143,6 +143,15 @@ function isJudgedScope(scope: unknown): boolean {
   return scope === "complex" || scope === "dong_peer";
 }
 
+/**
+ * 실거래 범위(최저~최고)를 보여도 되는가 (세션661 설계서 v2 §4) — 범위가 같은 단지·같은 동 또래이고
+ * `cmpMin`·`cmpMax` 둘 다 유한수일 때만. 거짓(반영 전·옛 캐시·범위 none)이면 카드 칩·시세 탭 상자 모두
+ * **지금 모양 그대로**(중앙값) 그린다 — 두 자리가 이 함수 하나로 가른다.
+ */
+export function hasRange(apt: Pick<Apt, "cmpScope" | "cmpMin" | "cmpMax">): boolean {
+  return isJudgedScope(apt.cmpScope) && Number.isFinite(apt.cmpMin) && Number.isFinite(apt.cmpMax);
+}
+
 /* ── 기존 카드의 상수 (AptCard.tsx 에서 그대로 옮김) ── */
 const UNSOLD_ALERT_THRESHOLD = 30;
 /** 청약 경쟁률 배지 노출 단계 — 청약 진행/예정만 (미분양 제외, 모순 표시 차단) */
@@ -251,9 +260,14 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
       Number.isFinite(cmpN) && cmpN > 0 && Number.isFinite(cmpMonths) && cmpMonths > 0
         ? ` (${cmpN}건·${cmpMonths}개월${a.cmpAreaMode === "per_m2" ? "·㎡당 환산" : ""})`
         : "";
+    // 세션661(사장님 결정 ②): 범위가 있으면 중앙값 대신 최저~최고(같은 거래 집합 — 수집기 cmp_min/max)를 적는다.
+    //   없으면(반영 전·옛 캐시) 지금 문장 그대로.
+    const valueText = hasRange(apt)
+      ? fmtPriceRangeEok1(apt.cmpMin, apt.cmpMax)
+      : `중앙 ${fmtPrice(cmpFair > 0 ? cmpFair : fairPrice)}`;
     out.push({
       id: "priceCompare",
-      text: `${priceBasisLabel(price ?? {})} 중앙 ${fmtPrice(cmpFair > 0 ? cmpFair : fairPrice)}${counts}`,
+      text: `${priceBasisLabel(price ?? {})} ${valueText}${counts}`,
       tone: "plain",
       layer: "core",
     });

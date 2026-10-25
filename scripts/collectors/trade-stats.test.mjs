@@ -581,8 +581,10 @@ describe("새 칸 배선 — 옛 칸이 전부 빈 행은 옛 칸 키 없이 따
     expect("_medianSource" in full[0]).toBe(false);
     expect(Object.keys(scopeOnly[0]).sort()).toEqual(["apartment_id", "cmp_fair_price", "cmp_scope", "dong_fact", "updated_at"]);
     for (const k of OLD_STAT_KEYS) expect(k in scopeOnly[0]).toBe(false);
-    expect(SCOPE_COLS.length).toBe(14);
+    expect(SCOPE_COLS.length).toBe(18);
     expect(SCOPE_COLS).toContain("complex_area"); // 세션650 — 2u 전세율 라벨의 평수
+    // 세션661 실거래 범위 4칸 — 빠지면 계산은 되는데 upsert 에 안 실려 화면이 옛 모양으로 남는다
+    for (const k of ["cmp_min", "cmp_max", "complex_jeonse_min", "complex_jeonse_max"]) expect(SCOPE_COLS).toContain(k);
     const areaOnly = splitUpsertRows([{ ...scopeOnlyRow, complex_area: 84.9967 }]).scopeOnly[0];
     expect(areaOnly.complex_area).toBe(84.9967); // 새 칸만 줄기에도 실린다
   });

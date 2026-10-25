@@ -510,6 +510,26 @@ describe("AptCard", () => {
       rerender(<AptCard {...makeProps({ apt: a1, res })} />);
       expect(screen.getByText(want)).toBeInTheDocument();
     });
+
+    // 세션661 — 가격 비교 칩이 실거래 범위(최저~최고)를 적는다.
+    // ⚠️ 뮤테이션 대상: AptCard.tsx comparator 에서 cmpMin·cmpMax 비교를 지우면 옛 범위가 카드에 남아 red.
+    it.each([
+      ["cmpMin", 50000, "이 단지 실거래 5억~5.8억 (5건·12개월)"],
+      ["cmpMax", 60000, "이 단지 실거래 5.2억~6억 (5건·12개월)"],
+      // hasRange 재료 — 범위 none 이 되면 범위 대신 옛 문장(중앙값)
+      ["cmpScope", "none", "이 단지 실거래 중앙 5억 5,000만 (5건·12개월)"],
+    ])("범위 칩 재료 %s 만 바뀌어도 카드 리렌더 (세션661)", (field, to, want) => {
+      const res = makeRes();
+      res.cats.price.fairPrice = 55000;
+      res.cats.price.deviation = "5.0";
+      const a0 = makeApt({ id: "naver-100", cmpMin: 52000, cmpMax: 58000 });
+      const a1 = makeApt({ id: "naver-100", cmpMin: 52000, cmpMax: 58000, [field]: to });
+      const { rerender } = render(<AptCard {...makeProps({ apt: a0, res })} />);
+      expect(screen.getByText("이 단지 실거래 5.2억~5.8억 (5건·12개월)")).toBeInTheDocument(); // 양성 대조군 — 처음엔 옛 범위
+      rerender(<AptCard {...makeProps({ apt: a1, res })} />);
+      expect(screen.getByText(want)).toBeInTheDocument();
+      expect(screen.queryByText("이 단지 실거래 5.2억~5.8억 (5건·12개월)")).toBeNull();
+    });
   });
 
   // 맞춤 추천 이유 칩 (세션 432) — 프로필 최우선 카테고리가 긍정일 때만 노출

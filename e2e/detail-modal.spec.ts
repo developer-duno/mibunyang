@@ -125,6 +125,35 @@ test.describe("상세 모달", () => {
     await expect(row).toBeVisible();
   });
 
+  // 세션661 실거래 범위(설계서 v2 §4-3) — 시세 탭 비교 상자 범위 줄·가운데 값·막대 + 목록 카드 범위 칩.
+  // 값이 채워지기 전(반영 전 데이터)엔 범위 줄·칩이 없어 skip — 범위가 있는 단지에서만 단언한다.
+  test("시세 탭 범위 줄 — [data-row=range] ' ~ ' · 가운데 값 · 막대, 카드 범위 칩 정규식 (세션661)", async ({ page }) => {
+    const rangeChip = page.getByText(/실거래 \d+(\.\d)?억(~\d+(\.\d)?억)? \(\d+건·\d+개월/).first();
+    const hasChip = await rangeChip
+      .waitFor({ state: "visible", timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (hasChip) await expect(rangeChip).toHaveText(/\d+(\.\d)?억(~\d+(\.\d)?억)? \(\d+건·\d+개월/);
+
+    await firstCard(page).click();
+    const modal = page.locator('[role="dialog"]');
+    await expect(modal).toBeVisible({ timeout: 5000 });
+    await modal.getByRole("tab", { name: "시세", exact: true }).click();
+    await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
+    const range = modal.locator('[data-row="range"]');
+    const hasRange = await range
+      .waitFor({ state: "visible", timeout: 5000 })
+      .then(() => true)
+      .catch(() => false);
+    if (!hasRange) {
+      test.skip(true, "첫 단지에 실거래 범위 값 없음(반영 전)");
+      return;
+    }
+    await expect(range).toContainText(" ~ ");
+    await expect(modal.locator('[data-row="median"]')).toContainText("가운데 값");
+    await expect(modal.locator('[data-testid="price-range-bar"]')).toBeVisible();
+  });
+
   // 탭바(StickyJumpNav) — 세션 407 D1: 점프 앵커 → 콘텐츠 교체 탭. 스크롤 단언은 의미 소멸로 삭제,
   // 실브라우저 고유 가치 = "비활성 패널이 실제로 숨고(keepMounted display:none) 새 패널이 보인다".
   test("탭바 '점수' 칩 클릭 시 콘텐츠 교체 — 점수 탭 노출 + 종합 탭 숨김 + active 전환", async ({ page }) => {

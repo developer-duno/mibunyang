@@ -110,6 +110,16 @@ export interface Apt {
   } | null;
   complexTable?: TradeScopeAreaRow[] | null;
   complexJeonseTable?: TradeScopeAreaRow[] | null;
+  /**
+   * 실거래 범위(세션661 · VIEW 20261026000002 끝 4칸) — 적정가·전세가율과 **같은 거래 집합**의 최저·최고(만원).
+   * - `cmpMin`·`cmpMax`: 목록·상세 모두(카드 칩·시세 탭 상자). per_m2 는 ㎡당 값의 최저·최고 × 대표 면적. 범위 none 이면 null.
+   * - `complexJeonseMin`·`complexJeonseMax`: 같은 단지 같은 면적 전세(갱신 제외) — **상세 전용**(목록 JSON 에는 없다).
+   * 값이 없으면(반영 전·옛 캐시) undefined/null — 화면은 지금 모양(중앙값)으로 그린다. 점수는 읽지 않는다.
+   */
+  cmpMin?: number | null;
+  cmpMax?: number | null;
+  complexJeonseMin?: number | null;
+  complexJeonseMax?: number | null;
 
   // 위험 (sanitize 후 num + 비관 폴백)
   // unsold = 미분양 세대 수(원시), unsoldRate = 미분양률(%). 100% 초과 폭발값은 null 로 무력화(세션 445).
