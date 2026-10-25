@@ -12,6 +12,10 @@
 --
 -- 적용 확인(기대: 4칸 · 맨 끝 4칸이 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax):
 --   SELECT "cmpMin", "cmpMax", "complexJeonseMin", "complexJeonseMax" FROM apartments_flat LIMIT 1;
+--   SELECT column_name, ordinal_position FROM information_schema.columns WHERE table_name='apartments_flat' ORDER BY ordinal_position DESC LIMIT 5;
+--     (기대: 끝 4칸이 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax — 위에서부터 complexJeonseMax·complexJeonseMin·cmpMax·cmpMin·aliasIds)
+--   SELECT reloptions FROM pg_class WHERE relname='apartments_flat';   (기대: {security_invoker=on})
+-- 리허설은 BEGIN…ROLLBACK 로 감싼 사본 1회 — 리허설 동안 VIEW 가 ACCESS EXCLUSIVE 잠금이라 손님 조회가 잠깐 막히므로 짧게 끝낸다.
 --
 -- ROLLBACK: _rollbacks/20261026000003_rollback_view_add_range_cols.sql(DROP + 20261013 본문 재생성 + GRANT)
 -- 적용 방법: 메인 세션 — supabase CLI `supabase db query --linked --file` 단발 또는 Supabase MCP execute_sql(승인된 이 파일 그대로). 작업반은 실행하지 않는다.

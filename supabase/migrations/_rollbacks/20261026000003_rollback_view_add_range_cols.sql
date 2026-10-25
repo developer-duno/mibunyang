@@ -4,10 +4,12 @@
 --   화면 코드는 칸이 없으면(hasRange 거짓) 지금 모양(중앙값 큰 글씨)으로 스스로 돌아간다.
 -- ⚠️ 코드도 같이 되돌린다 — api/supabase/apartments.test.ts 의 VIEW↔API 가드가 20261026000002 파일을 읽는다(설계서 §7-3).
 -- ⚠️ CREATE OR REPLACE 로는 칸을 **뺄 수 없다**(42P16: cannot drop columns from view) → DROP VIEW 후 재생성.
---    DROP 은 GRANT 를 함께 지운다. 실행 **전에** 지금 권한을 적어 두고, 재생성 뒤 같은 목록인지 본다:
+--    DROP 은 GRANT 를 함께 지운다. 실행 **전에** 지금 권한을 적어 두고, 재생성 뒤 같은 목록으로 다시 준다
+--    (적어 둔 목록이 아래 GRANT 줄의 역할 목록과 다르면 실행 전에 그 GRANT 줄을 고친다):
 --      SELECT grantee, privilege_type FROM information_schema.role_table_grants
 --       WHERE table_schema = 'public' AND table_name = 'apartments_flat' ORDER BY 1, 2;
 --    (권한 기준선 = scripts/perm-baseline.mjs · 감시 ⑩ — 재생성 뒤 지문이 같아야 한다)
+--    되돌린 뒤 `scripts/perm-baseline.mjs` 로 권한 기준선을 재승인한다(DROP·재생성으로 감시 ⑩ 지문이 바뀐다).
 -- ⚠️ 한 트랜잭션으로 묶는다 — DROP 과 CREATE 사이에 굽기가 VIEW 를 읽으면 그날 화면 JSON 이 실패한다.
 -- ⚠️ 표 칸(20261026000000)을 지우는 롤백(_rollbacks/20261026000001)은 이 파일과 수집기 코드 되돌림 **뒤에만**(VIEW 가 칸을 읽는 동안 DROP COLUMN 불가).
 SET lock_timeout = '5s';  -- 세션637(B-2 migration-safety 🟡): VIEW 를 읽는 조회가 잠금을 쥐고 있으면 5초만 기다리고 실패시킨다(뒤에 줄 서는 손님 조회가 멈추지 않게) — 실패하면 잠시 뒤 다시 Run
