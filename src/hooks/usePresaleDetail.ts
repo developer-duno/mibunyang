@@ -81,6 +81,11 @@ export function usePresaleDetail(apartmentId: string | null | undefined): UsePre
         setError(null);
         return;
       }
+      // 캐시에 없는 새 id — 조회 중·실패 때 이전 단지의 일정·평형·첫 공고일이 남지 않게 먼저 비운다(세션660).
+      // 상세 창은 key 없이 다시 쓰여 단지가 바뀌어도 이 훅의 상태가 이어진다.
+      setSchedule(null);
+      setUnits((prev) => (prev.length === 0 ? prev : []));
+      setFirstRecruitDate(null);
       setLoading(true);
       setError(null);
       try {

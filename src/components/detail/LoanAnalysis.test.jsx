@@ -121,6 +121,34 @@ describe("LoanAnalysis", () => {
     expect(normal.container.textContent).not.toContain("종전 기준");
   });
 
+  // 세션660 사장님 결정 — 4구(강남·서초·송파·용산)는 10·15 전부터 규제지역이라 9·7 기준일·종전 50% 문장, 그 밖은 옛 문장 그대로.
+  // ⚠️ 변이 대상: 4구 갈래를 지우면(늘 70%) 송파가 빨강 · 늘 4구 문장이면 은평·구리가 빨강.
+  it("경과 규정 문장 — 4구는 '2025-09-07까지 … 최대 50%', 은평구·구리시는 옛 70% 문장 글자 그대로", () => {
+    const old =
+      "규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
+    const g4 =
+      "2025-09-07까지 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 50%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
+    for (const gu of ["송파구", "강남구", "서초구", "용산구"]) {
+      const r = render(
+        <LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 100000, region: "서울", gu, isRegulated: true }))} />
+      );
+      expect(r.container.textContent).toContain(g4);
+      expect(r.container.textContent).not.toContain("최대 70%");
+      r.unmount();
+    }
+    for (const [region, gu] of [
+      ["서울", "은평구"],
+      ["경기", "구리시"],
+    ]) {
+      const r = render(
+        <LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 100000, region, gu, isRegulated: true }))} />
+      );
+      expect(r.container.textContent).toContain(old);
+      expect(r.container.textContent).not.toContain("2025-09-07까지");
+      r.unmount();
+    }
+  });
+
   it("법률 안내문은 기준일(LOAN_RULES_BASIS) 숫자 (DSR 은행 40%·2금융 50% · 디딤돌 · 보금자리)", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000 }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);

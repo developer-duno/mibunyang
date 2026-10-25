@@ -65,6 +65,20 @@ jobs:
           SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: node scripts/collectors/assign-completion.mjs --apply
 
+      # 규제지역 표시(apartments.is_regulated)를 regulation-zones.json 기준으로 맞춘다 — 세션660 사장님 결정.
+      # 새 단지는 is_regulated DEFAULT false 로 들어와 주간 backfill(일요일)까지 며칠씩 비규제(LTV 70%)로 보였다 → 매일 굽기 직전에 한 번 더.
+      # 열쇠와 무관하니 열쇠 성공 조건은 걸지 않는다. 불일치만 UPDATE · 외부 API 0. 실패해도 굽기는 계속(continue-on-error) — 실패 기록 = 감시 ⑬
+      # (행 쓰기 실패는 collector_runs 에 남는다 · 조회 단계에서 통째로 죽으면 행이 안 남아 ⑬ 이 못 본다 — 그날은 주간 backfill 일요일 회차가 메운다).
+      # 주간 backfill(일요일 KST 11:00)과 시각이 겹치지 않고, 둘 다 불일치만 고쳐 같은 날 두 번 돌아도 결과는 같다.
+      # 점수 계산 앞: 규제 여부가 점수·대출 막대에 쓰이므로 새 값 위에서 굽는다.
+      - name: Apply regulation zones (apartments.is_regulated)
+        continue-on-error: true
+        timeout-minutes: 5
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: node scripts/collectors/regulation-seed.mjs
+
       - name: Compute apartment scores (cats_cache)
         # 세션611 결정(작게 고치기): exit 2(재료 없음 = 점수 입력 칸 부재·채움률 미만, F1)만 통과한다 —
         #   아무것도 안 구웠으니 옛 점수(cats_cache) 그대로라 공개 JSON 갱신·배포를 계속해도 섞이지 않는다.

@@ -69,6 +69,41 @@ describe("usePresaleDetail", () => {
     expect(other.result.current.firstRecruitDate).toBeNull();
   });
 
+  // 세션660 — 캐시에 없는 새 id 로 바뀌면 조회 중·실패 때 이전 단지 값이 남지 않는다(상세 창이 key 없이 다시 쓰인다)
+  // ⚠️ 변이 대상: load 안의 "먼저 비운다" 세 줄을 지우면 B 조회 중 A 의 units·firstRecruitDate 가 남아 빨강.
+  it("A 응답 뒤 B 로 바꾸면 B 조회 중·실패 때 schedule null · units [] · firstRecruitDate null · 다시 A 는 캐시 그대로", async () => {
+    const aUnits = [{ house_manage_no: "hA", model_no: "m1" }];
+    /** @type {(v: any) => void} */
+    let resolveB = () => {};
+    const fetchSpy = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(
+        okResponse({ ok: true, schedule: { house_manage_no: "hA" }, units: aUnits, firstRecruitDate: "2021-05-04" })
+      )
+      .mockImplementationOnce(() => new Promise((r) => (resolveB = r)));
+    const { result, rerender } = renderHook(({ id }) => usePresaleDetail(id), { initialProps: { id: "ah-A" } });
+    await waitFor(() => expect(result.current.firstRecruitDate).toBe("2021-05-04"));
+    expect(result.current.units).toEqual(aUnits);
+
+    rerender({ id: "ah-B" });
+    await waitFor(() => expect(result.current.loading).toBe(true));
+    expect(result.current.schedule).toBeNull();
+    expect(result.current.units).toEqual([]);
+    expect(result.current.firstRecruitDate).toBeNull();
+
+    resolveB({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    await waitFor(() => expect(result.current.loading).toBe(false));
+    expect(result.current.error).toBe("API 오류 (500)");
+    expect(result.current.units).toEqual([]);
+    expect(result.current.firstRecruitDate).toBeNull();
+
+    rerender({ id: "ah-A" }); // 캐시 적중 — 다시 부르지 않고 A 값 그대로
+    await waitFor(() => expect(result.current.firstRecruitDate).toBe("2021-05-04"));
+    expect(result.current.units).toEqual(aUnits);
+    expect(result.current.error).toBeNull();
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
   // schedule/units 누락 시 null/빈 배열 폴백
   it("응답에 schedule/units 누락 시 null·[] 폴백", async () => {
     vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse({ ok: true }));

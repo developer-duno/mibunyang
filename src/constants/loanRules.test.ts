@@ -13,6 +13,7 @@ import {
   earliestIsoDate,
   grandfatherRule,
   isNonHousing,
+  isPreSubscription,
   kstYearMonth,
   latestIsoDate,
   ltvForPresale,
@@ -148,6 +149,23 @@ describe("지역 판정", () => {
     expect(isNonHousing("주상복합", "상봉 센트럴 아이파크")).toBe(false);
     expect(isNonHousing("도시형생활주택", "x")).toBe(false);
     expect(isNonHousing(null, null)).toBe(false);
+  });
+
+  it("isPreSubscription — 2026-10-25 실측 사전청약 5곳 이름은 참 · 보통 단지·빈값은 거짓 (세션660)", () => {
+    for (const n of [
+      "고덕강일3단지 토지임대부 사전청약",
+      "안양매곡 S1 사전청약",
+      "하남교산A5 사전청약(나눔형)",
+      "위례지구A1-14 사전청약(나눔형)",
+      "마곡지구16단지 토지임대부 사전청약(나눔형)",
+    ]) {
+      expect(isPreSubscription(n)).toBe(true);
+    }
+    expect(isPreSubscription("사전청약".normalize("NFD"))).toBe(true); // 맥 붙여넣기 꼴(NFD)도
+    expect(isPreSubscription("위례 어떤단지")).toBe(false);
+    expect(isPreSubscription("고덕강일3단지 토지임대부")).toBe(false);
+    expect(isPreSubscription(null)).toBe(false);
+    expect(isPreSubscription(undefined)).toBe(false);
   });
 });
 

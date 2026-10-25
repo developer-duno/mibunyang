@@ -258,6 +258,23 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     resetDetail();
   });
 
+  // 세션660 사장님 결정 — 사전청약의 첫 공고는 사전당첨자모집공고라 경과규정의 입주자모집공고가 아니다.
+  // ⚠️ 변이 대상: showGrandfather 의 `!isPreSubscription(...)` 줄을 지우면 첫 단언이 빨강.
+  it("사전청약 단지(이름에 '사전청약')는 종전 줄 숨김 · 큰 숫자는 그대로 · 이름만 다르면 줄 있음", () => {
+    withFirst("2023-12-29");
+    const base = { price: 94085, gu: "송파구", presaleRecruitDate: "2023-12-29" };
+    const pre = render(
+      <FundingPlanner apt={regulated({ ...base, name: "위례지구A1-14 사전청약(나눔형)" })} rates={RATES} />
+    );
+    expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("3억 7,634만");
+    pre.unmount();
+    render(<FundingPlanner apt={regulated({ ...base, name: "위례 어떤단지" })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toContain("첫 모집공고 2023-12-29");
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("3억 7,634만");
+    resetDetail();
+  });
+
   it("규제지역 + 공고일이 기준일 뒤면 지금 규정(40%) · 사실 줄 없음", () => {
     render(
       <FundingPlanner
@@ -323,13 +340,53 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
   });
 
   it("금지 문구 0 — 안내 문장·종전 줄·자세히까지 다 연 상태에서", () => {
-    render(<FundingPlanner apt={apt()} rates={RATES} />);
+    const BANNED = ["미분양이라 대출이 더", "후순위로 해결", "연결", "신청하면", "대부", "해결", "보장"];
+    const r = render(<FundingPlanner apt={apt()} rates={RATES} />);
     fireEvent.click(screen.getByRole("button", { name: /더 자세히/ }));
     type("fp-income", "4800");
     type("fp-cash", "100");
     expect(screen.getByTestId("fp-dsr-notice")).toBeTruthy();
-    for (const w of ["미분양이라 대출이 더", "후순위로 해결", "연결", "신청하면", "대부", "해결", "보장"]) {
+    for (const w of BANNED) {
       expect(text()).not.toContain(w);
     }
+    r.unmount();
+    // 종전 줄이 실제로 보이는 상태도 거친다(세션660 — 위 단지는 비규제라 종전 줄이 안 그려졌다):
+    // 서울 중구 규제 · 첫 공고 2021-05-04(기준일 2025-10-15 전) · 입주 2099-12(전) · 아파트
+    vi.mocked(usePresaleDetail).mockReturnValue({
+      schedule: null,
+      units: [],
+      firstRecruitDate: "2021-05-04",
+      loading: false,
+      error: null,
+    });
+    render(
+      <FundingPlanner
+        apt={apt({
+          price: 38850,
+          region: "서울",
+          gu: "중구",
+          isRegulated: true,
+          presaleRecruitDate: "2022-12-19",
+          presaleHousingType: "아파트",
+          presaleMoveIn: "2099-12",
+        })}
+        rates={RATES}
+      />
+    );
+    fireEvent.click(screen.getByRole("button", { name: /더 자세히/ }));
+    type("fp-income", "2000"); // 소득 한도 < 지역 한도 1억 5,540만 → 안내 문장도 함께
+    type("fp-cash", "100");
+    expect(screen.getByTestId("fp-grandfather")).toBeTruthy();
+    expect(screen.getByTestId("fp-dsr-notice")).toBeTruthy();
+    for (const w of BANNED) {
+      expect(text()).not.toContain(w);
+    }
+    vi.mocked(usePresaleDetail).mockImplementation(() => ({
+      schedule: null,
+      units: [],
+      firstRecruitDate: null,
+      loading: false,
+      error: null,
+    }));
   });
 });
