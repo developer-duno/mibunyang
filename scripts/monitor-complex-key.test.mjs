@@ -95,6 +95,18 @@ describe("checkComplexKeyRunStale — ⑭ (c) 준공월 되돌리기(assign-comp
   });
 });
 
+describe("checkComplexKeyRunStale — ⑭ (d) 규제지역 반영(regulation-seed, 세션662)", () => {
+  it("차단기에 걸려 성공이 끊기거나 기록이 없으면 그 배치 이름·단계로 알린다", () => {
+    expect(checkComplexKeyRunStale({ finished_at: at(COMPLEX_KEY_GAP_HOURS) }, { now: NOW, collector: "regulation-seed" })).toEqual([]);
+    const issues = checkComplexKeyRunStale({ finished_at: at(50) }, { now: NOW, collector: "regulation-seed" });
+    expect(issues).toHaveLength(1);
+    expect(issues[0].collector).toBe("regulation-seed");
+    expect(issues[0].detail).toBe(`규제지역 반영의 마지막 성공이 50시간 전(기준 ${COMPLEX_KEY_GAP_HOURS}시간)`);
+    expect(issues[0].lines?.[1]).toBe("daily-deploy 실행 로그의 'Apply regulation zones' 단계를 확인하고, 필요하면 손으로 1회 돌리세요(미리보기 먼저).");
+    expect(checkComplexKeyRunStale(null, { now: NOW, collector: "regulation-seed" })[0].detail).toBe("규제지역 반영의 성공 기록이 없음");
+  });
+});
+
 describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 있다", () => {
   const fresh = () => ({ finished_at: new Date().toISOString() });
   const quiet = {
@@ -146,7 +158,19 @@ describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 �
     expect(cmp(await run(fresh()))).toEqual([]);
   });
 
-  it("운영 기본 조회는 묶음 열쇠 재료(지문 함수 그대로) + assign-completion 의 최신 success 1건을 함께 준다", () => {
+  it("규제지역 반영(세션662): 마지막 성공이 오래됐거나 없으면 regulation-seed 이슈 1건, 방금 성공이면 0건 · 칸이 없는 옛 꼴은 건너뜀", async () => {
+    const old = new Date(Date.now() - (COMPLEX_KEY_GAP_HOURS + 12) * 3600000).toISOString();
+    /** @param {any} health */
+    const run = (health) => runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchKeyHealth: async () => ({ gapRows: [], latestSuccess: fresh(), completionSuccess: fresh(), ...health }) }));
+    /** @param {any[]} issues */
+    const reg = (issues) => issues.filter((i) => i.collector === "regulation-seed");
+    expect(reg(await run({ regulationSuccess: { finished_at: old } }))).toHaveLength(1);
+    expect(reg(await run({ regulationSuccess: null }))[0].detail).toBe("규제지역 반영의 성공 기록이 없음");
+    expect(reg(await run({ regulationSuccess: fresh() }))).toEqual([]);
+    expect(reg(await run({}))).toEqual([]);
+  });
+
+  it("운영 기본 조회는 묶음 열쇠 재료(지문 함수 그대로) + assign-completion · regulation-seed 의 최신 success 1건씩을 함께 준다", () => {
     const raw = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8").replace(/\r\n/g, "\n");
     expect(raw).toContain("  const fetchKeyHealth = deps.fetchKeyHealth ?? fetchKeyAndCompletionHealth;\n");
     const start = raw.indexOf("async function fetchKeyAndCompletionHealth() {\n");
@@ -154,7 +178,8 @@ describe("runDailyGuardedChecks — ⑭ 가 매일 점검 묶음에 연결돼 �
     const body = raw.slice(start, raw.indexOf("\n}\n", start) + 2);
     expect(body).toContain("  const base = await fetchComplexKeyHealth();\n");
     expect(body).toContain(['    .eq("collector", "assign-completion")', '    .eq("status", "success")', '    .order("finished_at", { ascending: false })', "    .limit(1);"].join("\n"));
-    expect(body).toContain("  return { ...base, completionSuccess: runs?.[0] ?? null };\n");
+    expect(body).toContain(['    .eq("collector", "regulation-seed")', '    .eq("status", "success")', '    .order("finished_at", { ascending: false })', "    .limit(1);"].join("\n"));
+    expect(body).toContain("  return { ...base, completionSuccess: runs?.[0] ?? null, regulationSuccess: regRuns?.[0] ?? null };\n");
   });
 
   it("조회가 던지면 '⑭ 묶음 열쇠 칸 점검 실행 실패' 1건(다른 점검은 계속)", async () => {

@@ -252,3 +252,235 @@ describe("makeRegionKey", () => {
     expect(makeRegionKey(undefined, undefined)).toBe("");
   });
 });
+
+// ── 차단기(세션662 — 사장님 결정 10/26: 하루 50곳(단지) 넘게 바뀌면 멈춤, 진짜 지정·해제 날은 --force) ──
+const {
+  evaluateRegBreaker, planRegulationChanges, countChangesBySido, countChangedPlaces, runRegulationSeed, parseSeedArgs, main,
+  REG_BREAKER_MAX_ROWS,
+} = await import("./regulation-seed.mjs");
+
+/** @param {number} n 서로 다른 단지 n곳(묶음 열쇠 = id) */
+const fakeChanges = (n) => Array.from({ length: n }, (_, i) => ({ id: `c${i}` }));
+const BREAKER_51 = "REG_BREAKER 바뀔 단지 51곳(행 51개) > 50곳 — 표를 확인하고 --force(Actions daily-deploy 수동 실행 regulation_force)로";
+
+describe("evaluateRegBreaker — 상한 판정(단지 수 = complex_key || id 고유 개수)", () => {
+  it("상한은 50", () => {
+    expect(REG_BREAKER_MAX_ROWS).toBe(50);
+  });
+  it("빈 목록 · 50곳은 통과, 51곳은 걸림(머리말 REG_BREAKER · 곳·행 둘 다 적음)", () => {
+    expect(evaluateRegBreaker([])).toEqual({ tripped: false, over: false, places: 0, reason: null });
+    expect(evaluateRegBreaker(fakeChanges(50)).tripped).toBe(false);
+    const r = evaluateRegBreaker(fakeChanges(51));
+    expect(r.tripped).toBe(true);
+    expect(r.reason).toBe(BREAKER_51);
+  });
+  it("51행이지만 30곳(같은 묶음 열쇠)이면 통과", () => {
+    const ch = Array.from({ length: 51 }, (_, i) => ({ id: `r${i}`, bundle: `k${i % 30}` }));
+    expect(countChangedPlaces(ch)).toBe(30);
+    expect(evaluateRegBreaker(ch)).toMatchObject({ tripped: false, over: false, places: 30 });
+  });
+  it("묶음 열쇠가 없는 행은 id 로 각각 센다", () => {
+    const ch = [{ id: "a", bundle: null }, { id: "b" }, { id: "c", bundle: "k" }, { id: "d", bundle: "k" }];
+    expect(countChangedPlaces(ch)).toBe(3);
+  });
+  it("force 면 51곳도 통과(over 는 그대로 true)", () => {
+    expect(evaluateRegBreaker(fakeChanges(51), { force: true })).toEqual({ tripped: false, over: true, places: 51, reason: null });
+  });
+  it("max 를 주면 그 값으로 판정", () => {
+    expect(evaluateRegBreaker(fakeChanges(3), { max: 2 }).tripped).toBe(true);
+    expect(evaluateRegBreaker(fakeChanges(2), { max: 2 }).tripped).toBe(false);
+  });
+});
+
+describe("planRegulationChanges · countChangesBySido", () => {
+  const regulated = new Set(["서울"]);
+  it("지금 값과 판정이 다른 행만 모은다(null 은 false 와 다르다) · bundle = complex_key || id", () => {
+    const apts = [
+      { id: "a", complex_key: "ka", region: "서울", gu: "강남구", dong: null, bjd_code: null, is_regulated: true },
+      { id: "b", complex_key: "kb", region: "서울", gu: "마포구", dong: null, bjd_code: null, is_regulated: false },
+      { id: "c", complex_key: null, region: "부산", gu: "해운대구", dong: null, bjd_code: null, is_regulated: null },
+      { id: "d", region: "부산", gu: "중구", dong: null, bjd_code: null, is_regulated: false },
+    ];
+    expect(planRegulationChanges(regulated, [], apts)).toEqual([
+      { id: "b", bundle: "kb", region: "서울", gu: "마포구", prev: false, next: true },
+      { id: "c", bundle: "c", region: "부산", gu: "해운대구", prev: null, next: false },
+    ]);
+  });
+  it("complex_key 가 빈 문자열인 행은 id 로 각각 센다(한 묶음으로 뭉치지 않는다)", () => {
+    const apts = ["e1", "e2"].map((id) => ({ id, complex_key: "", region: "서울", gu: "마포구", dong: null, bjd_code: null, is_regulated: false }));
+    expect(countChangedPlaces(planRegulationChanges(regulated, [], apts))).toBe(2);
+  });
+  it("시도별 개수는 단지(곳) 기준 · 많은 순", () => {
+    const ch = [
+      { region: "경기", bundle: "g1" }, { region: "서울", bundle: "s1" }, { region: "서울", bundle: "s1" }, { region: "서울", bundle: "s2" }, { region: null },
+    ].map((x, i) => ({ id: `${i}`, gu: null, prev: false, next: true, ...x }));
+    expect(countChangesBySido(/** @type {any} */ (ch))).toBe("서울 2 · 경기 1 · (시도 없음) 1");
+  });
+});
+
+describe("parseSeedArgs — 실행 인자", () => {
+  it("없음 · --dry-run · --force · 둘 다", () => {
+    expect(parseSeedArgs(["node", "x.mjs"])).toEqual({ dry: false, force: false });
+    expect(parseSeedArgs(["node", "x.mjs", "--dry-run"])).toEqual({ dry: true, force: false });
+    expect(parseSeedArgs(["node", "x.mjs", "--force"])).toEqual({ dry: false, force: true });
+    expect(parseSeedArgs(["node", "x.mjs", "--dry-run", "--force"])).toEqual({ dry: true, force: true });
+  });
+});
+
+const seedRegulated = new Set(["서울"]);
+/** @param {number} n 바뀔 단지 수(전부 서울 · 지금 false → 규제, 묶음 열쇠 각각) */
+const makeApts = (n) => [
+  ...Array.from({ length: n }, (_, i) => ({ id: `s${i}`, complex_key: `k${i}`, region: "서울", gu: "마포구", dong: null, bjd_code: null, is_regulated: false })),
+  { id: "keep", complex_key: "kk", region: "부산", gu: "중구", dong: null, bjd_code: null, is_regulated: false },
+];
+const makeSb = () => {
+  /** @type {Array<{ values: any, id: any }>} */
+  const calls = [];
+  const sb = {
+    from: (/** @type {string} */ table) => ({
+      update: (/** @type {any} */ values) => ({
+        eq: async (/** @type {string} */ _col, /** @type {any} */ id) => {
+          calls.push({ values: { table, ...values }, id });
+          return { error: null };
+        },
+      }),
+    }),
+  };
+  return { sb, calls };
+};
+const makeRpt = () => {
+  let ok = 0, fail = 0, skip = 0;
+  return {
+    interrupted: () => false,
+    success: (n = 1) => { ok += n; },
+    fail: (n = 1) => { fail += n; },
+    skip: (n = 1) => { skip += n; },
+    summary: () => ({ ok, fail, skip, status: fail > 0 ? "failure" : "success" }),
+  };
+};
+
+describe("runRegulationSeed — 판정 → 쓰기 연결부(모의 supabase)", () => {
+  const regulated = seedRegulated;
+
+  it("51곳이면 update 0회 · failure(REG_BREAKER) 기록 · exitCode 1", async () => {
+    const { sb, calls } = makeSb();
+    const record = vi.fn(async () => {});
+    const res = await runRegulationSeed({ sb, apts: makeApts(51), regulated, prefixRules: [], rpt: makeRpt(), record });
+    expect(calls).toHaveLength(0);
+    expect(res).toMatchObject({ tripped: true, updated: 0, exitCode: 1 });
+    expect(record).toHaveBeenCalledTimes(1);
+    expect(record).toHaveBeenCalledWith("regulation-seed", { status: "failure", ok: 0, fail: 0, skip: 52, errorMessage: BREAKER_51 });
+  });
+
+  it("50곳이면 update 50회(바뀔 행만) · success 기록 · exitCode 0", async () => {
+    const { sb, calls } = makeSb();
+    const record = vi.fn(async () => {});
+    const res = await runRegulationSeed({ sb, apts: makeApts(50), regulated, prefixRules: [], rpt: makeRpt(), record });
+    expect(calls).toHaveLength(50);
+    expect(calls.every((c) => c.values.table === "apartments" && c.values.is_regulated === true)).toBe(true);
+    expect(calls.map((c) => c.id)).not.toContain("keep");
+    expect(res).toMatchObject({ tripped: false, updated: 50, exitCode: 0 });
+    expect(record).toHaveBeenCalledWith("regulation-seed", expect.objectContaining({ ok: 50, fail: 0, skip: 1, status: "success" }));
+  });
+
+  it("51행이지만 같은 단지 묶음으로 30곳이면 update 51회 · exitCode 0", async () => {
+    const { sb, calls } = makeSb();
+    const apts = makeApts(51).map((a, i) => (a.id === "keep" ? a : { ...a, complex_key: `k${i % 30}` }));
+    const res = await runRegulationSeed({ sb, apts, regulated, prefixRules: [], rpt: makeRpt(), record: vi.fn(async () => {}) });
+    expect(calls).toHaveLength(51);
+    expect(res).toMatchObject({ tripped: false, exitCode: 0 });
+  });
+
+  it("51곳 + force 면 update 51회 · exitCode 0", async () => {
+    const { sb, calls } = makeSb();
+    const res = await runRegulationSeed({ sb, apts: makeApts(51), regulated, prefixRules: [], rpt: makeRpt(), force: true, record: vi.fn(async () => {}) });
+    expect(calls).toHaveLength(51);
+    expect(res).toMatchObject({ tripped: false, updated: 51, exitCode: 0 });
+  });
+
+  it("dry-run 은 걸려도 update 0회 · 기록 0 · exitCode 0", async () => {
+    const { sb, calls } = makeSb();
+    const record = vi.fn(async () => {});
+    const res = await runRegulationSeed({ sb, apts: makeApts(51), regulated, prefixRules: [], rpt: makeRpt(), dry: true, record });
+    expect(calls).toHaveLength(0);
+    expect(record).not.toHaveBeenCalled();
+    expect(res).toMatchObject({ tripped: true, exitCode: 0 });
+  });
+
+  it("'강제 통과' 로그는 상한을 넘었을 때만 · 상한 안이면 '영향 없음'", async () => {
+    const shared = await import("./_shared.mjs");
+    const logMock = /** @type {import('vitest').Mock} */ (/** @type {unknown} */ (shared.log));
+    /** @param {number} n */
+    const lines = async (n) => {
+      logMock.mockClear();
+      await runRegulationSeed({ sb: makeSb().sb, apts: makeApts(n), regulated, prefixRules: [], rpt: makeRpt(), force: true, record: vi.fn(async () => {}) });
+      return logMock.mock.calls.map((c) => String(c[1]));
+    };
+    const over = await lines(51);
+    expect(over.some((l) => l.startsWith("강제 통과(--force) — 바뀔 단지 51곳이 상한 50곳을 넘지만"))).toBe(true);
+    const under = await lines(10);
+    expect(under.some((l) => l.startsWith("강제 통과(--force)"))).toBe(false);
+    expect(under.some((l) => l.includes("상한 안(10곳 ≤ 50곳)이라 영향 없음"))).toBe(true);
+  });
+});
+
+describe("main — 인자 읽기 · exitCode 전달(DB·표 주입)", () => {
+  const zones = { 투기과열지구: ["서울"] };
+  /**
+   * @param {string[]} extra
+   * @param {number} n
+   */
+  const runMain = async (extra, n) => {
+    const { sb, calls } = makeSb();
+    const record = vi.fn(async () => {});
+    const before = process.exitCode;
+    process.exitCode = undefined;
+    try {
+      const code = await main({ argv: ["node", "regulation-seed.mjs", ...extra], sb, zones, apts: makeApts(n), rpt: makeRpt(), record });
+      return { code, exitCode: process.exitCode, calls, record };
+    } finally {
+      process.exitCode = before;
+    }
+  };
+
+  it("인자 없이 51곳 → update 0회 · process.exitCode 1", async () => {
+    const r = await runMain([], 51);
+    expect(r.calls).toHaveLength(0);
+    expect(r.code).toBe(1);
+    expect(r.exitCode).toBe(1);
+  });
+
+  it("--force 로 51곳 → update 51회 · process.exitCode 그대로(설정 안 함)", async () => {
+    const r = await runMain(["--force"], 51);
+    expect(r.calls).toHaveLength(51);
+    expect(r.code).toBe(0);
+    expect(r.exitCode).toBeUndefined();
+  });
+
+  it("운영 조회는 차단기가 단지를 셀 complex_key 를 함께 읽는다(위 시험은 apts 를 주입해 이 줄을 안 지난다)", () => {
+    const src = readFileSync(resolve(ROOT, "scripts/collectors/regulation-seed.mjs"), "utf8");
+    expect(src).toContain('s.from("apartments").select("id, complex_key, region, gu, dong, bjd_code, is_regulated"), sb, "id")');
+  });
+
+  it("daily-deploy 의 강제 통과 배선 — env 는 입력 그대로(기본값 대체 없음) · 조건은 정확히 \"true\" · else 쪽엔 --force 없음", () => {
+    const yml = readFileSync(resolve(ROOT, ".github/workflows/daily-deploy.yml"), "utf8").replace(/\r\n/g, "\n");
+    const envLines = yml.split("\n").filter((l) => /^\s*REG_FORCE:/.test(l));
+    expect(envLines).toEqual(["          REG_FORCE: ${{ inputs.regulation_force }}"]);
+    const block = [
+      '          if [ "$REG_FORCE" = "true" ]; then',
+      "            node scripts/collectors/regulation-seed.mjs --force",
+      "          else",
+      "            node scripts/collectors/regulation-seed.mjs",
+      "          fi",
+    ].join("\n");
+    expect(yml).toContain(block);
+    expect(yml.split("\n").filter((l) => l.includes("$REG_FORCE"))).toEqual(['          if [ "$REG_FORCE" = "true" ]; then']);
+  });
+
+  it("--dry-run 으로 51곳 → update 0회 · 기록 0 · process.exitCode 그대로", async () => {
+    const r = await runMain(["--dry-run"], 51);
+    expect(r.calls).toHaveLength(0);
+    expect(r.record).not.toHaveBeenCalled();
+    expect(r.exitCode).toBeUndefined();
+  });
+});
