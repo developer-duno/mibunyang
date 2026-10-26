@@ -83,6 +83,41 @@ describe("checkFailedRuns — ① 실패/취소", () => {
     ]);
     expect(issues).toHaveLength(1);
   });
+
+  it("maxAgeHours 주면 그보다 오래된 실패는 건너뜀 — 시각 없는 run 은 남김 (세션663)", () => {
+    const now = new Date("2026-10-25T00:00:00Z"); // KST 09:00 스윕
+    const issues = checkFailedRuns(
+      [
+        { name: "OLD", status: "completed", conclusion: "failure", created_at: "2026-10-22T10:00:00Z" },
+        { name: "EDGE_OUT", status: "completed", conclusion: "failure", created_at: "2026-10-23T21:59:59Z" },
+        { name: "EDGE_IN", status: "completed", conclusion: "failure", created_at: "2026-10-23T22:00:00Z" },
+        { name: "NEW", status: "completed", conclusion: "cancelled", created_at: "2026-10-24T19:00:00Z" },
+        { name: "NOTIME", status: "completed", conclusion: "failure" },
+        // 재실행 — 만든 시각은 사흘 전이어도 오늘 다시 돌아 실패했으면 잡는다(at 은 created_at 그대로)
+        { name: "RERUN", status: "completed", conclusion: "failure", created_at: "2026-10-22T10:00:00Z", updated_at: "2026-10-24T20:00:00Z" },
+        // 반대 — 갱신 시각이 창 밖이면 created_at 이 없어도 건너뜀
+        { name: "OLD_UPD", status: "completed", conclusion: "failure", updated_at: "2026-10-22T10:00:00Z" },
+      ],
+      undefined,
+      { maxAgeHours: 26, now },
+    );
+    expect(issues.map((i) => i.collector)).toEqual(["EDGE_IN", "NEW", "NOTIME", "RERUN"]);
+    expect(issues.find((i) => i.collector === "RERUN")?.at).toBe("2026-10-22T10:00:00Z");
+  });
+
+  it("daily 스윕 호출이 26시간 창을 넘긴다 — 인자를 빼면 사흘 전 실패 재알림이 돌아온다 (세션663)", () => {
+    const src = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "monitor-collectors.mjs"), "utf8");
+    expect(src).toMatch(
+      /^[ \t]*issues\s*=\s*issues\.concat\(checkFailedRuns\(runs,\s*monitoredNames,\s*\{\s*maxAgeHours:\s*26\s*\}\)\)/m,
+    );
+  });
+
+  it("maxAgeHours 미지정이면 나이 무관 전부 (하위호환)", () => {
+    const issues = checkFailedRuns([
+      { name: "OLD", status: "completed", conclusion: "failure", created_at: "2020-01-01T00:00:00Z" },
+    ]);
+    expect(issues).toHaveLength(1);
+  });
 });
 
 describe("checkEmptyRuns — ② 데이터 0건", () => {

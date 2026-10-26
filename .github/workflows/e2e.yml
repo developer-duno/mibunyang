@@ -21,7 +21,8 @@ concurrency:
 jobs:
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    # 세션663: 15 → 20 — 설치 재시도(최대 5분×2)가 들어가도 시험(평소 2분 40초)이 돌 자리를 남긴다.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
 
@@ -45,8 +46,25 @@ jobs:
 
       # ⚠️ `--with-deps` 유지 필수 — 설치 70초 중 53초가 apt(시스템 라이브러리)이고 캐시 대상이 아니다.
       #    빼면 webkit 이 실행되지 않는다.
+      # 세션663: 러너의 apt 서버가 느린 날(10/26 두 번 — 119MB 를 138kB/s 로 14분 24초)엔 이 단계가
+      #   잡 제한 15분을 다 먹고 끊겼다(재실행하면 1분). 한 번에 5분까지만 기다리고 한 번 더 시도한다.
+      #   sudo 아래 apt 는 timeout 신호가 안 닿을 수 있어 이름을 정확히 짚어 치운다(-f apt-get 은 pkill 자신도 맞음)
+      #   · dpkg 정리도 60초 한도. 단계 14분 = (5분 + 끊기 유예 15초) × 2 + 정리 · 잡 20분 안.
       - name: Install Playwright browsers
-        run: npx playwright install --with-deps chromium webkit
+        timeout-minutes: 14
+        run: |
+          for i in 1 2; do
+            timeout -k 15 300 npx playwright install --with-deps chromium webkit && exit 0
+            [ "$i" = 2 ] && break
+            echo "::warning::Playwright 설치 1번째 시도가 5분 안에 안 끝났거나 실패(apt 서버 지연 의심) — 남은 apt 를 치우고 다시"
+            sudo pkill -9 -x apt-get || true
+            sudo pkill -9 -x dpkg || true
+            sudo pkill -9 -f '^/usr/lib/apt/methods/' || true
+            sleep 2
+            sudo timeout 60 dpkg --configure -a || true
+          done
+          echo "::error::Playwright 설치 2회 모두 실패 — Actions 에서 이 잡만 다시 실행"
+          exit 1
 
       # 세션598: VITE_SUPABASE_URL·ANON_KEY 주입을 뺐다 — src/·e2e/ 에 읽는 코드 0곳
       # (USE_SUPABASE=true 면 /api/supabase/apartments 를 vite 프록시로 부를 뿐). 로봇 PR 은 비밀값을 못 받아도 같다.
