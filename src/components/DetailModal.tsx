@@ -8,6 +8,7 @@ import { orderedCatEntries } from "@/constants/catOrder";
 import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { PricePositionBox } from "./detail/PricePositionBox";
+import { AreaTradeTable } from "./detail/AreaTradeTable";
 import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
@@ -166,6 +167,9 @@ export const DetailModal = memo(function DetailModal({
   // 상세 필드 lazy fetch (apartments-detail-16-N.json 버킷 1개, 세션 468) — DetailModal 첫 열림 시
   // id 해시 버킷 1개만 fetch(br ~69KB) + 버킷 단위 Map 캐시. 가격배열 + 학교/어린이집/혜택 + full catsCache 통합.
   const [detail, setDetail] = useState<AptDetailFields | null>(null);
+  // 지금 detail 이 어느 단지의 버킷인가 — 버킷 행은 id 를 떼고 온다(staticDataApi loadDetailBucketOnce).
+  // 창을 닫지 않고 단지를 바꾸면 새 버킷이 올 때까지 옛 detail 이 남으므로, 평형별 표는 이 값으로 가른다(세션662).
+  const [detailForId, setDetailForId] = useState<string | null>(null);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
   useEffect(() => {
@@ -228,6 +232,7 @@ export const DetailModal = memo(function DetailModal({
   useEffect(() => {
     if (!item) {
       setDetail(null);
+      setDetailForId(null);
       setPricesError(null);
       setPricesLoading(false);
       return;
@@ -243,6 +248,7 @@ export const DetailModal = memo(function DetailModal({
     if (priceByArea !== undefined) {
       // null/배열/미래 타입 모두 fetch skip — 이미 응답 받은 상태
       setDetail(null);
+      setDetailForId(null);
       setPricesError(null);
       return;
     }
@@ -253,6 +259,7 @@ export const DetailModal = memo(function DetailModal({
       .then((d) => {
         if (!cancelled) {
           setDetail(d);
+          setDetailForId(aptId);
           setPricesLoading(false);
         }
       })
@@ -689,6 +696,11 @@ export const DetailModal = memo(function DetailModal({
                   범위(cmpScope)·게이트(`fairPrice > 0`)의 근거는 `detail/PricePositionBox` 머리 주석.
                   전부 점수가 아니라 값이라 비로그인에게도 공개다. 옛 PSR 줄은 PSR 축 삭제(세션607 다)와 함께 지웠다. */}
                 <PricePositionBox priceCat={res.cats.price} apt={mergedApt ?? apt} />
+                {/* 이 단지 평형별 실거래 표(세션662 👤 B안 — 평형대로 묶기). 자료(complexTable)는 상세 버킷 전용이라 mergedApt 에서 읽는다.
+                  ⚠️ 창을 닫지 않고 단지를 바꾸면 새 버킷이 올 때까지(실패하면 계속) 옛 detail 이 남아 mergedApt 에 붙는다
+                  (위 effect 의 fetch 경로는 setDetail(null) 을 하지 않는다) — 이 표는 그 버킷이 지금 단지 것(detailForId)일 때만 상세 칸을 쓴다.
+                  버킷 행은 id 를 떼고 오므로 detail.id 로는 가를 수 없다. */}
+                <AreaTradeTable apt={detail && detailForId === apt.id ? (mergedApt ?? apt) : apt} />
                 {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
                   유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
                 <AreaPriceScatter
