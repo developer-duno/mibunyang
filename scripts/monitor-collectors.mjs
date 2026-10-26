@@ -529,18 +529,26 @@ export function filterUnsent(issues, sentKeys) {
 
 /**
  * ① GitHub Actions run 목록에서 실패/취소를 찾는다.
- * @param {Array<{ name?: string, conclusion?: string|null, status?: string, html_url?: string, created_at?: string }>} runs
+ * @param {Array<{ name?: string, conclusion?: string|null, status?: string, html_url?: string, created_at?: string, updated_at?: string }>} runs
  * @param {string[]} [allowedNames] 주면 이 목록(monitor.yml 감시 대상)에 든
  *   워크플로만 점검 — CI 등 비-수집기 실패를 "수집기 실패" 로 오인하지 않음.
  *   미지정 시 전체 점검 (하위호환).
+ * @param {{ maxAgeHours?: number, now?: Date }} [opts]
+ *   maxAgeHours 주면 마지막 갱신 시각(updated_at, 없으면 created_at)이 그보다 오래된 run 은 건너뜀
+ *   (시각 없는 run 은 남김). 재실행·긴 run 은 created_at 이 옛 값이라 updated_at 으로 잰다 · dedup 키 at 은 created_at 그대로.
+ *   세션663: daily 스윕이 "최근 run 100개"를 날짜 없이 훑어 사흘 전 실패를 매일 다시 알리던 것 차단.
  * @returns {Issue[]}
  */
-export function checkFailedRuns(runs, allowedNames) {
+export function checkFailedRuns(runs, allowedNames, opts = {}) {
+  const { maxAgeHours, now = new Date() } = opts;
+  const minTime = maxAgeHours != null ? now.getTime() - maxAgeHours * 3600 * 1000 : null;
   /** @type {Issue[]} */
   const issues = [];
   const allowSet = allowedNames ? new Set(allowedNames) : null;
   for (const run of runs) {
     if (run.status !== "completed") continue;
+    const lastAt = run.updated_at ?? run.created_at;
+    if (minTime != null && lastAt && Date.parse(lastAt) < minTime) continue;
     if (!run.conclusion || !BAD_CONCLUSIONS.includes(run.conclusion)) continue;
     if (allowSet && !(run.name && allowSet.has(run.name))) continue;
     issues.push({
@@ -4306,7 +4314,8 @@ async function main() {
       // monitor.yml 감시 대상 — ① 실패 알림을 이 목록 워크플로로 한정 (CI 등 비-수집기 제외).
       const monitoredNames = await fetchMonitoredWorkflowNames();
       const runs = await fetchRecentRuns(100); // 50→100: ①탐지 폭 + ③시각 병합 모수 확대
-      issues = issues.concat(checkFailedRuns(runs, monitoredNames));
+      // 26h = 매일 09:00 스윕 간격 24h + 예약 실행 지연 여유. 그보다 오래된 실패는 그날 즉시 알림(workflow_run)과 전날 스윕이 이미 알렸다.
+      issues = issues.concat(checkFailedRuns(runs, monitoredNames, { maxAgeHours: 26 }));
 
       // ③ 미발화 — monitor.yml workflows 배열(점검 대상 전체) 기준.
       // 최근 run 에 흔적이 없는 워크플로(=오래 죽은 월간 cron)는 개별 조회로 보충.
