@@ -56,4 +56,16 @@ describe("useApartmentData", () => {
     expect(result.current.loading).toBe(true);
     expect(result.current.apartments).toEqual([]);
   });
+
+  // 세션664: 효과의 AbortSignal 을 fetchStaticApartments 에 넘겨야 정리 때 HTTP 요청까지 끊긴다
+  // (안 넘기면 StrictMode 의 버린 첫 요청이 살아 남아 목록 응답이 두 번 오고 첫 카드가 두 배 늦다).
+  it("효과의 AbortSignal 을 넘기고, 언마운트하면 그 신호가 끊긴다", () => {
+    /** @type {import('vitest').Mock} */ (fetchStaticApartments).mockReturnValue(new Promise(() => {}));
+    const { unmount } = renderHook(() => useApartmentData());
+    const signal = /** @type {import('vitest').Mock} */ (fetchStaticApartments).mock.calls.at(-1)?.[0];
+    expect(signal).toBeInstanceOf(AbortSignal);
+    expect(signal.aborted).toBe(false);
+    unmount();
+    expect(signal.aborted).toBe(true);
+  });
 });

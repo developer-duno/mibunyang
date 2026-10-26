@@ -1,5 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
-import { stubApartments } from "./helpers";
+import { stubApartments, stubProxyApis } from "./helpers";
+
+// 세션664 B1: 운영 프록시 호출 0 — 이 파일의 다른 가로채기보다 먼저 등록해야 시험 쪽 route 가 이긴다(helpers.ts stubProxyApis).
+test.beforeEach(async ({ page }) => {
+  await stubProxyApis(page);
+});
 
 // 금융 탭 금리 블록 E2E (세션593 D7).
 //

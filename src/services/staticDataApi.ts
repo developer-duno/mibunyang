@@ -17,21 +17,26 @@ export interface StaticApartmentsResponse {
   dataUpdatedAt: string | null;
 }
 
-export async function fetchStaticApartments(): Promise<StaticApartmentsResponse> {
+/**
+ * @param signal 효과가 정리될 때(StrictMode 의 첫 실행 포함) HTTP 요청 자체를 끊는다 — 세션664.
+ *   안 넘기면 버린 요청이 살아 남아 같은 주소의 둘째 요청이 첫째가 끝날 때까지 기다린다(첫 카드 11~14초 실측).
+ */
+export async function fetchStaticApartments(signal?: AbortSignal): Promise<StaticApartmentsResponse> {
   if (USE_SUPABASE) {
     try {
-      return await fetchFromSupabase();
+      return await fetchFromSupabase(signal);
     } catch (err) {
+      if (signal?.aborted) throw err; // 끊긴 요청은 폴백하지 않는다
       const msg = err instanceof Error ? err.message : String(err);
       if (import.meta.env.DEV) console.warn("Supabase 실패, 정적 JSON 폴백:", msg);
-      return await fetchFromJson();
+      return await fetchFromJson(signal);
     }
   }
-  return await fetchFromJson();
+  return await fetchFromJson(signal);
 }
 
-async function fetchFromSupabase(): Promise<StaticApartmentsResponse> {
-  const res = await fetch("/api/supabase/apartments");
+async function fetchFromSupabase(signal?: AbortSignal): Promise<StaticApartmentsResponse> {
+  const res = await fetch("/api/supabase/apartments", { signal });
   if (!res.ok) {
     if (res.status === 429) throw new Error("요청이 너무 많습니다. 잠시 후 새로고침하세요");
     throw new Error(`Supabase API failed: ${res.status}`);
@@ -41,8 +46,8 @@ async function fetchFromSupabase(): Promise<StaticApartmentsResponse> {
   return json;
 }
 
-async function fetchFromJson(): Promise<StaticApartmentsResponse> {
-  const res = await fetch("/data/apartments-list.json");
+async function fetchFromJson(signal?: AbortSignal): Promise<StaticApartmentsResponse> {
+  const res = await fetch("/data/apartments-list.json", { signal });
   if (!res.ok) throw new Error(`Static data fetch failed: ${res.status}`);
   // 정적 JSON 은 양쪽 키 동시 박힘 (`fetchedAt` + `dataUpdatedAt` 동일값, 세션 292 이후).
   // fallback 은 과거 JSON CDN 캐시 + Supabase 분기 응답 호환 위함 — 미래에도 보존.

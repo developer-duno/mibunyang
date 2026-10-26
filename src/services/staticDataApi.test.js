@@ -30,7 +30,29 @@ describe("fetchStaticApartments", () => {
       );
       const result = await fetchStaticApartments();
       expect(result).toEqual(mockData);
-      expect(fetch).toHaveBeenCalledWith("/api/supabase/apartments");
+      expect(fetch).toHaveBeenCalledWith("/api/supabase/apartments", { signal: undefined });
+    });
+
+    // 세션664: 효과 정리(StrictMode 첫 실행 포함) 때 HTTP 요청 자체를 끊으려면 signal 이 fetch 까지 가야 한다.
+    it("signal 을 fetch 까지 넘긴다", async () => {
+      const mockData = { ok: true, data: [{ id: 1 }], dataUpdatedAt: "2026-01-01" };
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: () => Promise.resolve(mockData) }));
+      const ac = new AbortController();
+      await fetchStaticApartments(ac.signal);
+      expect(fetch).toHaveBeenCalledWith("/api/supabase/apartments", { signal: ac.signal });
+    });
+
+    it("끊긴 요청은 정적 JSON 폴백을 부르지 않고 그대로 던진다", async () => {
+      const ac = new AbortController();
+      vi.stubGlobal(
+        "fetch",
+        vi.fn().mockImplementation(() => {
+          ac.abort();
+          return Promise.reject(new DOMException("aborted", "AbortError"));
+        })
+      );
+      await expect(fetchStaticApartments(ac.signal)).rejects.toThrow("aborted");
+      expect(fetch).toHaveBeenCalledTimes(1);
     });
 
     it("Supabase 실패 → JSON 폴백", async () => {
@@ -133,7 +155,7 @@ describe("fetchStaticApartments", () => {
       const result = await fetchStaticApartments();
       // fetchFromJson 매핑: dataUpdatedAt 없으면 null 채움 (Supabase 분기와 키 정합)
       expect(result).toEqual({ ...mockData, dataUpdatedAt: null });
-      expect(fetch).toHaveBeenCalledWith("/data/apartments-list.json");
+      expect(fetch).toHaveBeenCalledWith("/data/apartments-list.json", { signal: undefined });
     });
 
     it("JSON fetchedAt → dataUpdatedAt 매핑 (collect-data.mjs 응답)", async () => {

@@ -1,4 +1,10 @@
 import { test, expect } from "@playwright/test";
+import { stubCiApartments } from "./helpers";
+
+// 세션664 B1: 운영 프록시 호출 0 — 이 파일의 다른 가로채기보다 먼저 등록해야 시험 쪽 route 가 이긴다(helpers.ts stubCiApartments).
+test.beforeEach(async ({ page }) => {
+  await stubCiApartments(page);
+});
 
 // 문의 창구 통합 (세션 577 A-12) — 메뉴 "문의" = 문의 모달(의견 보내기 · 🏢 업체 문의 탭).
 // 비로그인 손님: 의견 탭은 로그인 안내 버튼만, 업체 문의 탭은 로그인 없이 제출된다.
