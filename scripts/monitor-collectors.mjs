@@ -1618,6 +1618,13 @@ export const RUN_STALE_LABELS = {
     why: "준공월 되돌리기(assign-completion)는 매일 굽기 앞(열쇠 단계 바로 뒤)에서 돌아야 합니다 — 안 돌면 새 재공고 행이 1~3년 새것처럼 보입니다. 열쇠 단계가 실패한 날은 일부러 건너뜁니다.",
     step: "Assign completion",
   },
+  // 세션662: 규제 시드 차단기(바뀔 단지 50곳 초과면 안 씀 · failure REG_BREAKER) — 걸린 날이 이어지거나 조회 단계에서 통째로 죽으면
+  // 성공 기록이 끊긴다. ⑬ 은 failure 행만 보므로 "행이 안 남은 날"은 이 점검이 잡는다.
+  "regulation-seed": {
+    what: "규제지역 반영",
+    why: "규제지역 반영(regulation-seed)은 매일 굽기 앞에서 돌아야 합니다 — 안 돌면 새 단지가 규제지역인데도 비규제(대출 한도 70%)로 보입니다. 하루 50곳(단지) 넘게 바뀌어 차단기에 걸린 날이 이어져도 여기서 알립니다 — 규제지역 표를 실제로 바꾼 날이면 Actions 「daily-deploy」 수동 실행에서 regulation_force 를 켜세요.",
+    step: "Apply regulation zones",
+  },
 };
 
 /**
@@ -1680,8 +1687,9 @@ async function fetchComplexKeyHealth() {
 
 /**
  * ⑭ 운영 재료 — 묶음 열쇠 재료(위 함수, 본문 지문으로 잠겨 있어 그대로 부른다) + 준공월 되돌리기(assign-completion)의
- * 가장 최근 success 행(세션624). `runDailyGuardedChecks` 의 fetchKeyHealth 기본값이다.
- * @returns {Promise<{ gapRows: Array<Record<string, any>>, latestSuccess: Record<string, any> | null, completionSuccess: Record<string, any> | null }>}
+ * 가장 최근 success 행(세션624) + 규제지역 반영(regulation-seed)의 가장 최근 success 행(세션662).
+ * `runDailyGuardedChecks` 의 fetchKeyHealth 기본값이다.
+ * @returns {Promise<{ gapRows: Array<Record<string, any>>, latestSuccess: Record<string, any> | null, completionSuccess: Record<string, any> | null, regulationSuccess: Record<string, any> | null }>}
  */
 async function fetchKeyAndCompletionHealth() {
   const base = await fetchComplexKeyHealth();
@@ -1694,7 +1702,15 @@ async function fetchKeyAndCompletionHealth() {
     .order("finished_at", { ascending: false })
     .limit(1);
   if (error) throw new Error(`collector_runs(assign-completion) 조회 실패: ${error.message}`);
-  return { ...base, completionSuccess: runs?.[0] ?? null };
+  const { data: regRuns, error: regError } = await sb
+    .from("collector_runs")
+    .select("finished_at")
+    .eq("collector", "regulation-seed")
+    .eq("status", "success")
+    .order("finished_at", { ascending: false })
+    .limit(1);
+  if (regError) throw new Error(`collector_runs(regulation-seed) 조회 실패: ${regError.message}`);
+  return { ...base, completionSuccess: runs?.[0] ?? null, regulationSuccess: regRuns?.[0] ?? null };
 }
 
 // ── ⑯ trade_deals 건전성 (세션589 — 시세 비교 범위 좁히기 가) ──────────────
@@ -3476,7 +3492,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchRegionRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
  *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
- *   fetchKeyHealth?: () => Promise<{ gapRows: Array<Record<string, any>>, latestSuccess: Record<string, any> | null, completionSuccess?: Record<string, any> | null }>,
+ *   fetchKeyHealth?: () => Promise<{ gapRows: Array<Record<string, any>>, latestSuccess: Record<string, any> | null, completionSuccess?: Record<string, any> | null, regulationSuccess?: Record<string, any> | null }>,
  *   fetchKaptWindowRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchTradeDeals?: () => ReturnType<typeof fetchTradeDealsHealth>,
  *   fetchTradeLinks?: () => ReturnType<typeof fetchTradeLinksHealth>,
@@ -3580,8 +3596,10 @@ export async function runDailyGuardedChecks(deps = {}) {
     const gapIssues = checkComplexKeyGaps(gapRows).concat(checkComplexKeyRunStale(latestSuccess));
     // 준공월 되돌리기(세션624) — 운영 조회는 늘 이 칸을 준다. 칸이 없는 옛 꼴 주입(다른 감시의 시험)만 건너뛴다.
     const cmpIssues = "completionSuccess" in health ? checkComplexKeyRunStale(health.completionSuccess, { collector: "assign-completion" }) : [];
-    console.log(`[monitor] ⑭ 묶음 열쇠 칸 점검: 빈 행 ${gapRows.length}건 · 마지막 성공 ${latestSuccess?.finished_at ?? "없음"} · 준공월 마지막 성공 ${health.completionSuccess?.finished_at ?? "없음"} → 이상 ${gapIssues.length + cmpIssues.length}건`);
-    return gapIssues.concat(cmpIssues);
+    // 규제지역 반영(세션662) — 같은 방식: 칸이 없는 옛 꼴 주입만 건너뛴다.
+    const regIssues = "regulationSuccess" in health ? checkComplexKeyRunStale(health.regulationSuccess, { collector: "regulation-seed" }) : [];
+    console.log(`[monitor] ⑭ 묶음 열쇠 칸 점검: 빈 행 ${gapRows.length}건 · 마지막 성공 ${latestSuccess?.finished_at ?? "없음"} · 준공월 마지막 성공 ${health.completionSuccess?.finished_at ?? "없음"} · 규제지역 마지막 성공 ${health.regulationSuccess?.finished_at ?? "없음"} → 이상 ${gapIssues.length + cmpIssues.length + regIssues.length}건`);
+    return gapIssues.concat(cmpIssues, regIssues);
   }));
 
   // ⑮ 2u K-apt 창 건너뜀 — 창 때문에 건너뛴·멈춘 회차는 success·skip 이라 ②⑤ 가 침묵했다(세션589 보완 B2).
