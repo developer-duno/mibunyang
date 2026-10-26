@@ -131,6 +131,7 @@ describe("runDailyGuardedChecks 배선", () => {
     fetchSgisMapRun: async () => [], // ⑱(세션614) — 같은 이유: 없으면 운영 조회로 새어 check-failed 가 하나 더 생긴다
     fetchNoticeRuns: async () => ({}), // ㉑(세션632) — 같은 이유
     fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }), // ㉒(세션648) — 같은 이유
+    fetchSeoThin: async () => ({ status: 200, text: '{"count":0,"ids":[],"names":[],"applied":true,"cap":15}' }), // ㉓(세션668) — 운영 GET 이 나가지 않게
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
   /** @param {any[]} issues */

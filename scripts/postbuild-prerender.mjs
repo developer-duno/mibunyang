@@ -23,6 +23,7 @@ const DIST = resolve(__dirname, "..", "dist");
 const DIST_INDEX = resolve(DIST, "index.html");
 const DIST_LIST = resolve(DIST, "data", "apartments-list.json");
 const DIST_SITEMAP = resolve(DIST, "sitemap.xml");
+const DIST_SEO_THIN = resolve(DIST, "data", "seo-thin.json");
 
 /** 운영 도메인 (index.html 의 canonical·og:url 과 같아야 한다) */
 const ORIGIN = "https://www.xn--hg3bi2ac4o1ig57cnoa.com";
@@ -158,14 +159,78 @@ export function aptFacts(a) {
   return out;
 }
 
+// ── 얇은 단지 검색 제외 (세션668 PR-S1 · 결정 28·29·32) ────────────────────
+//
+// 주변 시세·병원·분양가 중 둘 이상이 빈 단지 페이지는 글이 거의 없어 "얇은 대량 페이지"로 보일 수 있다.
+// 그런 장은 noindex,follow(링크는 따라가게)로 검색에서 빼고 sitemap 에서도 뺀다 — 페이지 자체는 계속 만든다.
+// 안전선: 얇은 수가 SEO_THIN_CAP 을 넘으면 수집 사고(칸이 통째로 빈 날)로 보고 그날은 하나도 적용하지 않는다
+// (사고 하루에 수백 장이 검색에서 빠지는 것을 막는다). 매 빌드 dist/data/seo-thin.json 에 기록 → 감시 ㉓ 가 본다.
+
+/** 얇은 단지 검색 제외 안전선 — 이보다 많으면 그날은 적용 안 함(결정 32). */
+export const SEO_THIN_CAP = 15;
+
+/**
+ * 얇은 단지 = `[nearbyMedian, hospital, price]` 중 비어 있는(`== null`) 칸이 2개 이상. 0 은 빈칸이 아니다.
+ * @param {Record<string, any>} a
+ * @returns {boolean}
+ */
+export function isThinApt(a) {
+  if (!a) return false;
+  return [a.nearbyMedian, a.hospital, a.price].filter((v) => v == null).length >= 2;
+}
+
+/**
+ * 유효 단지(id+name) 중 얇은 단지 명단과 적용 여부. 안전선 이하면 applied:true, 넘으면 false(ids 는 기록용으로 그대로).
+ * @param {Array<Record<string, any>>} list
+ * names = ids 와 같은 순서의 단지 이름(아침 브리핑 한 줄 · 결정 35).
+ * @returns {{ count: number, ids: string[], names: string[], applied: boolean, cap: number }}
+ */
+export function planThin(list) {
+  const thin = list.filter((a) => a && a.id && a.name && isThinApt(a));
+  const ids = thin.map((a) => String(a.id));
+  const names = thin.map((a) => String(a.name));
+  return { count: ids.length, ids, names, applied: ids.length <= SEO_THIN_CAP, cap: SEO_THIN_CAP };
+}
+
+/**
+ * 단지 페이지들 + sitemap 에 넣을 id + 얇은 단지 기록을 한 번에 만든다(main 이 파일로 쓴다).
+ * applied 일 때만 얇은 단지에 noindex 를 달고 sitemap 에서 뺀다. 단지 HTML 은 얇아도 만든다(링크로 닿게).
+ * @param {string} template dist/index.html 원본 (프리렌더 주입 전)
+ * @param {Array<Record<string, any>>} list
+ * @returns {{ pages: Array<{ id: string, html: string }>, sitemapIds: string[], thin: { count: number, ids: string[], names: string[], applied: boolean, cap: number } }}
+ */
+export function buildAptPages(template, list) {
+  const thin = planThin(list);
+  const noindexIds = new Set(thin.applied ? thin.ids : []);
+  /** @type {Array<{ id: string, html: string }>} */
+  const pages = [];
+  /** @type {string[]} */
+  const sitemapIds = [];
+  for (const a of list) {
+    if (!a || !a.id || !a.name) continue;
+    const id = String(a.id);
+    const noindex = noindexIds.has(id);
+    pages.push({ id, html: buildAptHtml(template, a, { noindex }) });
+    if (!noindex) sitemapIds.push(id);
+  }
+  return { pages, sitemapIds, thin };
+}
+
+/** 템플릿에 robots 메타가 이미 있는지 — 있으면 단지 장에 둘이 생기거나 전 장에 퍼진다. */
+const ROBOTS_META_RE = /<meta\b[^>]*\bname\s*=\s*["']?robots\b/i;
+
 /**
  * 단지 페이지 HTML 생성. 홈 index.html 을 틀로 삼아 head 5곳 + #root 를 바꾼다.
  *
  * @param {string} template dist/index.html 원본 (프리렌더 주입 **전**)
  * @param {Record<string, any>} a 단지 1건
+ * @param {{ noindex?: boolean }} [opts] noindex = 얇은 단지 검색 제외(세션668)
  * @returns {string}
  */
-export function buildAptHtml(template, a) {
+export function buildAptHtml(template, a, opts = {}) {
+  if (ROBOTS_META_RE.test(template)) {
+    throw new Error('[postbuild-prerender] 템플릿(index.html)에 이미 name="robots" 메타가 있습니다 — 단지 장 noindex 와 겹칩니다');
+  }
   const where = [a.region, a.gu].filter(Boolean).join(" ");
   // 제목은 화면(DetailModal.tsx:200)이 만드는 것과 **글자 그대로 같아야** 한다.
   // 다르면 검색결과 제목과 실제 페이지 제목이 어긋난다.
@@ -199,7 +264,8 @@ export function buildAptHtml(template, a) {
     throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
   }
   const ld = `<script type="application/ld+json">${buildAptJsonLd(a, url)}</script>`;
-  html = html.replace("</head>", () => `${ld}\n</head>`);
+  const robots = opts.noindex ? `<meta name="robots" content="noindex,follow" />\n` : "";
+  html = html.replace("</head>", () => `${ld}\n${robots}</head>`);
   return html;
 }
 
@@ -342,24 +408,27 @@ function main() {
 
   // ── 단지별 정적 페이지 + sitemap (세션 504) ──
 
-  /** @type {string[]} */
-  const ids = [];
-  for (const a of list) {
-    if (!a || !a.id || !a.name) continue;
-    const dir = join(DIST, "apt", String(a.id));
+  const { pages, sitemapIds, thin } = buildAptPages(template, list);
+  for (const p of pages) {
+    const dir = join(DIST, "apt", p.id);
     mkdirSync(dir, { recursive: true });
-    writeFileSync(join(dir, "index.html"), buildAptHtml(template, a), "utf-8");
-    ids.push(String(a.id));
+    writeFileSync(join(dir, "index.html"), p.html, "utf-8");
   }
 
-  if (ids.length === 0) {
+  if (pages.length === 0) {
     console.error("[postbuild-prerender] 유효한 단지(id+name)가 0건 — sitemap 을 쓰지 않고 중단합니다.");
     process.exit(1);
   }
 
-  writeFileSync(DIST_SITEMAP, buildSitemap(ids), "utf-8");
+  // 얇은 단지 기록 — 매 빌드 쓴다(감시 ㉓ 가 운영에서 읽는다 · 세션668).
+  writeFileSync(DIST_SEO_THIN, JSON.stringify(thin), "utf-8");
   console.log(
-    `[postbuild-prerender] 단지 페이지 ${ids.length}개 생성 (dist/apt/{id}/index.html) + sitemap ${ids.length + 2}개 URL`,
+    `[postbuild-prerender] 얇은 단지 ${thin.count}곳 · applied=${thin.applied} (안전선 ${thin.cap}) · ${thin.ids.join(",") || "없음"}`,
+  );
+
+  writeFileSync(DIST_SITEMAP, buildSitemap(sitemapIds), "utf-8");
+  console.log(
+    `[postbuild-prerender] 단지 페이지 ${pages.length}개 생성 (dist/apt/{id}/index.html) + sitemap ${sitemapIds.length + 2}개 URL`,
   );
 }
 

@@ -124,6 +124,8 @@ export function extractInfraMissingRuns(runs24h) {
  * @param {string[]} [input.staleCollectors] 장기 미발화(⑤ stale) 판정된 collector 목록
  * @param {Array<{ collector: string, steps: string[] }>} [input.warnRuns] 경고 단계가 있던 완주(extractWarnRuns, 세션571)
  * @param {Array<{ collector: string, n: number }>} [input.infraMissingRuns] infra 행 없음(extractInfraMissingRuns, 세션605)
+ * @param {{ count: number, ids: string[], names: string[], applied: boolean, cap: number } | null} [input.seoThin]
+ *   검색 제외 기록(결정 35 · 세션668) — null = 못 읽음("확인 못 함"), 생략 = 줄 없음(옛 호출)
  * @param {string} [input.nowIso] 기준 시각 ISO (표시용, 미지정 시 생략)
  * @returns {string} 텔레그램 HTML 메시지
  */
@@ -137,6 +139,7 @@ export function buildBriefing(input) {
     staleCollectors = [],
     warnRuns = [],
     infraMissingRuns = [],
+    seoThin,
     nowIso,
   } = input;
 
@@ -191,5 +194,32 @@ export function buildBriefing(input) {
     );
   }
 
+  // ⑦ 검색 제외 한 줄(결정 35 · 세션668) — 경보 아님, 안내. 생략(undefined)이면 줄 없음.
+  if (seoThin !== undefined) out.push(seoThinBriefLine(seoThin));
+
   return out.join("\n");
+}
+
+/** 브리핑에 펼칠 검색 제외 단지 이름 수 — 나머지는 "외 N곳". */
+const SEO_THIN_BRIEF_MAX = 10;
+
+/**
+ * 검색 제외 한 줄. 던지지 않는다 — 이상한 값이면 "확인 못 함".
+ * 단지 이름은 손님 글이라 텔레그램 HTML 로 깨지지 않게 `& < >` 를 바꾼다.
+ * @param {{ count: number, ids: string[], names: string[], applied: boolean, cap: number } | null} rec
+ * @returns {string}
+ */
+export function seoThinBriefLine(rec) {
+  try {
+    if (!rec) return "🔎 검색 제외: 확인 못 함";
+    if (rec.applied !== true) return `🔎 검색 제외 미적용 — 얇은 단지 ${rec.count}곳 > 안전선 ${rec.cap}`;
+    if (rec.count === 0) return "🔎 검색 제외 0곳";
+    /** @param {unknown} s */
+    const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const shown = rec.names.slice(0, SEO_THIN_BRIEF_MAX).map(esc);
+    const rest = rec.count - shown.length;
+    return `🔎 검색 제외 ${rec.count}곳: ${shown.join(" · ")}${rest > 0 ? ` 외 ${rest}곳` : ""}`;
+  } catch {
+    return "🔎 검색 제외: 확인 못 함";
+  }
 }
