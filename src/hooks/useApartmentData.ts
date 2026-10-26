@@ -18,7 +18,7 @@ export function useApartmentData(): UseApartmentDataReturn {
     setError(null);
     for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
       try {
-        const { data, dataUpdatedAt: updAt } = await fetchStaticApartments();
+        const { data, dataUpdatedAt: updAt } = await fetchStaticApartments(signal);
         if (signal?.aborted) return;
         const normalized: Apt[] = data.map((a: Apt) =>
           a.region && a.region.includes(",") ? { ...a, region: a.region.split(",")[0].trim() } : a

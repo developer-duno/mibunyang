@@ -1,6 +1,11 @@
 import { readFileSync } from "node:fs";
 import { test, expect, type Page } from "@playwright/test";
-import { stubApartmentsWith } from "./helpers";
+import { stubApartmentsWith, stubProxyApis } from "./helpers";
+
+// 세션664 B1: 운영 프록시 호출 0 — 이 파일의 다른 가로채기보다 먼저 등록해야 시험 쪽 route 가 이긴다(helpers.ts stubProxyApis).
+test.beforeEach(async ({ page }) => {
+  await stubProxyApis(page);
+});
 
 // 면적 빈칸 단지(D2)·주차 추정(D5-b)이 화면에 실제로 그려지는지 지키는 e2e (검사관 C 6a, 세션577).
 //

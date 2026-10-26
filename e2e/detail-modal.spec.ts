@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { stubCiApartments } from "./helpers";
 
 // 로그인 상태로 만든다.
 //
@@ -35,6 +36,7 @@ function firstCard(page: Page) {
 test.describe("상세 모달", () => {
   test.beforeEach(async ({ page }) => {
     await loginViaToken(page); // goto 이전 등록 필수 (addInitScript)
+    await stubCiApartments(page); // CI 공용 픽스처(goto 전) — 세션664
     await page.goto("/");
 
     // role "user" = 일반 손님 → 초기 탭이 곧 목록/홈 (세션 405 — 구 전문가 대시보드 자동 진입·소비자뷰 전환 불필요).
@@ -49,10 +51,7 @@ test.describe("상세 모달", () => {
       .waitFor({ state: "visible", timeout: 15000 })
       .then(() => true)
       .catch(() => false);
-    if (!hasCards) {
-      test.skip(true, "카드 데이터 없음 — 빈 DB");
-      return;
-    }
+    expect(hasCards, "픽스처인데 카드 0 — 픽스처·가로채기 깨짐").toBe(true);
   });
 
   test("카드 클릭 시 모달 열림", async ({ page }) => {
@@ -111,24 +110,15 @@ test.describe("상세 모달", () => {
     // non-skip 가드: 시세 탭 패널은 데이터 유무와 무관하게 마운트·가시 (탭 전환 자체의 회귀 가드)
     await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
 
-    // 가격 데이터가 있는 단지일 때만 PriceTable 행이 표시. 데이터 없으면 skip.
-    // isVisible({timeout}) 은 timeout 무시·즉시 평가라 오스킵 함정(파일 헤더) — waitFor 패턴 사용.
+    // 세션664: CI 공용 픽스처는 전 단지가 priceByArea 를 가진다 → 첫 단지에 행이 없으면 실패(옛 skip 삭제).
     const row = modal.locator('[data-testid="price-table-row"]').first();
-    const visible = await row
-      .waitFor({ state: "visible", timeout: 15000 })
-      .then(() => true)
-      .catch(() => false);
-    if (!visible) {
-      test.skip(true, "첫 단지에 가격 데이터 없음");
-      return;
-    }
-    await expect(row).toBeVisible();
+    await expect(row, "픽스처 첫 단지는 가격 표가 있어야 한다 — 픽스처·가격 표 깨짐").toBeVisible({ timeout: 15000 });
   });
 
   // 세션661 실거래 범위(설계서 v2 §4-3) — 시세 탭 비교 상자 범위 줄·가운데 값·막대 + 목록 카드 범위 칩.
   // 세션663: 첫 카드에 범위가 없으면 통째로 skip 하던 꼴 → 범위 칩이 있는 카드를 골라 연다.
   //   칩이 있는 단지면 상세 범위 줄도 반드시 있어야 한다(없으면 실패). 칩이 하나도 없으면 로컬은 skip,
-  //   CI 는 실패 — CI 는 vite 프록시(vite.config.ts /api)로 운영 데이터를 읽으므로 칩 0 = 운영 범위 표시가 사라진 날.
+  //   CI 는 실패 — 세션664부터 beforeEach 가 CI 공용 픽스처(전 단지 범위 칩 보유)를 쓰므로 칩 0 = 칩 그리기·픽스처가 깨진 날.
   test("시세 탭 범위 줄 — [data-row=range] ' ~ ' · 가운데 값 · 막대, 카드 범위 칩 정규식 (세션661)", async ({ page }) => {
     const chipText = /실거래 \d+(\.\d)?억(~\d+(\.\d)?억)? \(\d+건·\d+개월/;
     const rangeChip = page.getByText(chipText).first();
@@ -137,7 +127,7 @@ test.describe("상세 모달", () => {
       .then(() => true)
       .catch(() => false);
     if (!hasChip) {
-      expect(!process.env.CI, "CI(운영 데이터)인데 범위 칩이 있는 카드가 0개 — 운영 범위 표시 확인").toBe(true);
+      expect(!process.env.CI, "CI(공용 픽스처)인데 범위 칩이 있는 카드가 0개 — 범위 칩 그리기·픽스처 확인").toBe(true);
       test.skip(true, "범위 칩이 있는 카드 없음(로컬 데이터에 범위 값 없음)");
       return;
     }

@@ -1,4 +1,15 @@
 import { test, expect } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import { stubProxyApis } from "./helpers";
+
+// 세션664 B1: 운영 프록시 호출 0 — 이 파일의 다른 가로채기보다 먼저 등록해야 시험 쪽 route 가 이긴다(helpers.ts stubProxyApis).
+test.beforeEach(async ({ page }) => {
+  await stubProxyApis(page);
+});
+
+const CI_LIST = JSON.parse(readFileSync(new URL("./fixtures/apartments-ci.json", import.meta.url), "utf8")) as {
+  data: Array<Record<string, unknown>>;
+} & Record<string, unknown>;
 
 /**
  * 세션 280 커밋 B (0557e1a) 회귀 가드:
@@ -27,35 +38,23 @@ test.describe("DetailModal Supabase 가드 회귀", () => {
     // 한 단지가 빈 배열 priceByArea 보유.
     // 앱은 VITE_USE_SUPABASE 에 따라 `/api/supabase/apartments` 또는 `/data/apartments-list.json`
     // 을 부르므로 **둘 다** 가로챈다(helpers.ts stubApartments 관행 답습 — 플래그 무관 동작).
+    // 세션664: 옛 손 행은 칸 이름이 실제 응답과 달라(`unsoldCount` — 실제는 `unsold`) 기본 필터에 걸려
+    //   카드가 0 이었고, skip 이 그것을 8/4부터 가렸다. 이제 CI 공용 픽스처(운영 응답 그대로)의 첫 행을 쓰고
+    //   가드가 보는 가격 배열 4칸만 빈 배열로 바꾼다.
+    const real = CI_LIST.data[0];
     const body = JSON.stringify({
-      ok: true,
+      ...CI_LIST,
       count: 1,
-      fetchedAt: new Date().toISOString(),
-      dataUpdatedAt: new Date().toISOString(),
-      data: [{
-        id: "ah-test-supabase-guard",
-        name: "Supabase 가드 회귀 테스트 단지",
-        region: "서울",
-        gu: "강남구",
-        dong: "역삼동",
-        address: "테스트 1-1",
-        builder: "테스트사",
-        buildingCount: 1,
-        totalUnits: 100,
-        unsoldCount: 5,
-        unsoldRate: 5,
-        supplyPriceMin: 50000,
-        supplyPriceMax: 60000,
-        psr: 1.2,
-        pir: 5.5,
-        moveInDate: "2026-12-01",
-        cats: { transport: 80, school: 70, eco: 60, safety: 70, growth: 60, value: 70 },
-        // 핵심 가드 발동 자리: 빈 배열 (가드가 fetch skip 해야 함)
-        priceByArea: [],
-        rentByArea: [],
-        jeonseByArea: [],
-        priceByFloor: [],
-      }],
+      data: [
+        {
+          ...real,
+          // 핵심 가드 발동 자리: 빈 배열 (가드가 fetch skip 해야 함)
+          priceByArea: [],
+          rentByArea: [],
+          jeonseByArea: [],
+          priceByFloor: [],
+        },
+      ],
     });
     for (const pattern of ["**/api/supabase/apartments", "**/data/apartments-list.json"]) {
       await page.route(pattern, route =>
@@ -67,11 +66,12 @@ test.describe("DetailModal Supabase 가드 회귀", () => {
 
     // 카드 클릭 → DetailModal 열기
     const card = page.locator('[role="button"]').first();
-    const hasCard = await card.isVisible({ timeout: 15000 }).catch(() => false);
-    if (!hasCard) {
-      test.skip(true, "카드 데이터 없음 — mock 응답 형식 오류 가능");
-      return;
-    }
+    // 세션664: 이 시험은 자기 손 픽스처(priceByArea: [])가 핵심이라 공용 픽스처를 쓰지 않는다. 카드 0 이면 실패.
+    const hasCard = await card
+      .waitFor({ state: "visible", timeout: 15000 })
+      .then(() => true)
+      .catch(() => false);
+    expect(hasCard, "가짜 응답인데 카드 0 — mock 응답 형식·가로채기 깨짐").toBe(true);
     await card.click();
 
     const modal = page.locator('[role="dialog"]');

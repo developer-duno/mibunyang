@@ -1,4 +1,10 @@
 import { test, expect, Page } from "@playwright/test";
+import { stubCiApartments } from "./helpers";
+
+// 세션664 B1: 운영 프록시 호출 0 — 이 파일의 다른 가로채기보다 먼저 등록해야 시험 쪽 route 가 이긴다(helpers.ts stubCiApartments).
+test.beforeEach(async ({ page }) => {
+  await stubCiApartments(page);
+});
 
 // /upcoming 페이지 E2E — /api/upcoming HTTP 500 회귀 방지 핵심
 // 전제: dev 서버에 VITE_FEATURE_UPCOMING=true 로 띄워야 /upcoming 라우트 진입 가능

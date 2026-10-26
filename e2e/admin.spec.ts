@@ -1,4 +1,10 @@
 import { test, expect, Page } from "@playwright/test";
+import { stubCiApartments } from "./helpers";
+
+// 세션664 B1: 운영 프록시 호출 0 — 이 파일의 다른 가로채기보다 먼저 등록해야 시험 쪽 route 가 이긴다(helpers.ts stubCiApartments).
+test.beforeEach(async ({ page }) => {
+  await stubCiApartments(page);
+});
 
 // 관리자 대시보드 E2E 테스트 — API 모킹 기반 (실제 Vercel KV 불필요)
 
