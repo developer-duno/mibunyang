@@ -16,7 +16,7 @@ vi.mock("@/hooks/useRentLoanRates", () => ({
   })),
 }));
 
-// 주담대 은행권 금리 — LoanAnalysis 가 한 번 받아 "한 달에 갚을 돈"·은행 막대가 같이 쓴다(세션593 D2·D3).
+// 주담대 은행권 금리 — LoanAnalysis 가 한 번 받아 "한 달에 갚을 돈"·은행 범위 줄이 같이 쓴다(세션593 D2·D3 · 세션665).
 // 아파트·분할상환 4.2% 하나만 두면 월 상환액 줄 "대출 X · 30년 …" 에서 대출액(= 위 대출 막대와 같은 값)을 읽을 수 있다.
 vi.mock("@/hooks/useLoanRates", () => ({
   useLoanRates: vi.fn(() => ({
@@ -170,16 +170,16 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("비규제지역")).toBeTruthy();
   });
 
-  // price가 0인 경우 — 대출액이 0 이라 월 상환액 블록을 그리지 않는다(은행 막대는 단지와 무관하게 그린다)
+  // price가 0인 경우 — 대출액이 0 이라 월 상환액 블록을 그리지 않는다(은행 금리 범위는 단지와 무관하게 그린다)
   it("price가 0이면 한 달에 갚을 돈을 그리지 않는다", () => {
     const apt = /** @type {any} */ (makeApt({ price: 0 }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     expect(screen.queryByText("한 달에 갚을 돈")).toBeNull();
-    expect(screen.getByText("은행별 금리")).toBeTruthy();
+    expect(screen.getByText("은행 주택담보대출 금리")).toBeTruthy();
   });
 
-  // 세션593 D2 — 한 달에 갚을 돈이 본문(맨 위)에 있고 은행 막대가 그 아래
-  it("한 달에 갚을 돈과 은행별 금리가 접힘 없이 본문에 있다 (대출 5억 비규제 = 3.5억 · 4.2%)", () => {
+  // 세션593 D2 — 한 달에 갚을 돈이 본문(맨 위)에 있고 은행 금리 범위가 그 아래
+  it("한 달에 갚을 돈과 은행 금리 범위가 접힘 없이 본문에 있다 (대출 5억 비규제 = 3.5억 · 4.2%)", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false }));
     const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     const block = screen.getByTestId("monthly-payment");
@@ -189,6 +189,8 @@ describe("LoanAnalysis", () => {
     const order = [...container.querySelectorAll("[data-testid]")].map((e) => e.getAttribute("data-testid"));
     expect(order.indexOf("monthly-payment")).toBeLessThan(order.indexOf("bank-rate-bars"));
     expect(order.indexOf("bank-rate-bars")).toBeLessThan(order.indexOf("loan-rates-section"));
+    // 세션665 — 금융 탭 어디에도 은행 이름이 없다
+    expect(container.textContent).not.toContain("아이엠뱅크");
   });
 
   // D2·D3 같은 응답 공유 — 주담대 은행권 훅은 한 번(권역 020000)만 부른다

@@ -1,19 +1,17 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice } from "@/lib/format";
-import {
-  pickMonthlyRate,
-  calcMonthlyPayment,
-  groupBankRanges,
-  displayBankName,
-  fmtDisclosureMonth,
-} from "@/lib/loanRates";
+import { pickMonthlyRate, calcMonthlyPayment, summarizeRateRange, fmtDisclosureMonth } from "@/lib/loanRates";
 import { RangeBarRow } from "@/components/charts/RangeBarRow";
 import type { FinlifeRate } from "@/hooks/useFinlifeRates";
 
 /**
  * 금융 탭 본문의 은행권 금리 두 블록 (세션593 D2·D3) — 옛 "은행별 금리 비교" 접힘 안에 숨어 있던
- * 월 상환액 시뮬레이션과 은행 표를 본문으로 올렸다.
+ * 월 상환액 시뮬레이션과 은행 금리를 본문으로 올렸다.
+ *
+ * ⚠️ 금융 탭에는 금융회사 이름·상품 이름·금리 순위를 쓰지 않는다(세션665 사장님 결정) — 미등록 상태에서
+ * "금융사 이름 + 금리"·순위 목록은 금소법상 중개·광고로 볼 위험이 있다. 은행 금리는 "N개 은행 최저 ~ 최고"
+ * 범위 한 줄(`RateRangeSummary`)로만 보여 주고, 회사별 금리는 금감원 비교공시로 넘긴다. 2금융 탭도 같은 부품을 쓴다.
  *
  * 두 블록은 **같은 주담대 은행권 응답 하나**를 받는다(부모 `LoanAnalysis` 가 한 번 부른다) —
  * 우리 API 호출 수가 옛날(전세·주담대 은행권 2회)보다 늘지 않는다.
@@ -23,8 +21,11 @@ import type { FinlifeRate } from "@/hooks/useFinlifeRates";
 /** 월 상환액 계산 기간 — 옛 시뮬레이션과 같은 30년 원리금균등 */
 const LOAN_YEARS = 30;
 
-/** 은행 이름 칸 폭 — "아이엠뱅크"·"중소기업은행"(12px 글자 6자)이 한 줄에 들어가는 폭 */
-const BANK_LABEL_W = 72;
+/** 범위 줄 이름 칸 폭 — "22개 저축은행"·"13개 여신전문사"(12px 글자)가 한 줄에 들어가는 폭 */
+const RANGE_LABEL_W = 96;
+
+/** 회사별 금리를 보는 곳 — 특정 금융사가 아니라 금감원 비교공시 */
+const FINLIFE_URL = "https://finlife.fss.or.kr";
 
 const boxStyle = {
   background: C.bg,
@@ -58,7 +59,7 @@ export const MonthlyPaymentBlock = memo(function MonthlyPaymentBlock({
       <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>한 달에 갚을 돈</div>
       <div style={{ fontSize: 22, fontWeight: 800, color: C.blue, marginTop: 2 }}>{fmtPrice(pay)} 원/월</div>
       <div style={{ fontSize: F.micro, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>
-        {/* 소수 둘째 자리 — 아래 은행 막대("4.20%")와 같은 자릿수(세션593 후속 F4) */}
+        {/* 소수 둘째 자리 — 아래 은행 범위 줄("4.20%")과 같은 자릿수(세션593 후속 F4) */}
         {`대출 ${fmtPrice(loan)} · ${LOAN_YEARS}년 · 아파트·분할상환 최저 금리 ${rate.toFixed(2)}% 기준`}
         {month && ` · ${month}`}
       </div>
@@ -67,9 +68,81 @@ export const MonthlyPaymentBlock = memo(function MonthlyPaymentBlock({
 });
 
 /**
- * 은행별 금리 범위 막대 — 아파트·분할상환 상품만 은행별로 묶어 최저~최고 한 줄씩, 최저 낮은 순 5줄.
- * 평균 선은 그리지 않는다(응답에 은행 평균이 없다 — 최저~최고 중간값을 평균으로 그리지 않는다).
- * 0줄이면 블록을 그리지 않는다.
+ * 금리 범위 한 덩어리 — 큰 글자 "최저% ~ 최고%" · 범위 막대 한 줄("N개 은행") · 작은 글자(기준·공시월·출처) · 금감원 비교공시 링크.
+ * 은행 블록과 2금융 탭(`LoanRatesSection`)이 이 부품 하나를 같이 쓴다(세션665).
+ *
+ * ⚠️ 회사 이름·상품 이름은 어디에도 그리지 않는다 — 글자·aria-label·title 전부(이름 0 가드 시험이 본다).
+ * 쓸 상품(`isUsableMortgageRate`)이 없으면 null — 빈 자리 문구는 부르는 쪽이 정한다.
+ */
+export const RateRangeSummary = memo(function RateRangeSummary({
+  rates,
+  unit,
+  disclosureMonth,
+  linkText,
+  rowTestId,
+}: {
+  rates: readonly FinlifeRate[];
+  /** 회사 수 뒤 낱말 — "은행"·"저축은행"·"여신전문사"·"보험사" */
+  unit: string;
+  disclosureMonth: string | null;
+  /** 금감원 비교공시 링크 글 */
+  linkText: string;
+  rowTestId?: string;
+}) {
+  const range = useMemo(() => summarizeRateRange(rates), [rates]);
+  if (range == null) return null;
+  // 눈금 = 최저 내림 ~ 최고 올림(정수 %). 같으면 +1 — 띠가 눈금 밖으로 나가지 않게.
+  const scaleMin = Math.floor(range.min);
+  const ceilMax = Math.ceil(range.max);
+  const scaleMax = ceilMax > scaleMin ? ceilMax : scaleMin + 1;
+  const minText = `${range.min.toFixed(2)}%`;
+  const maxText = `${range.max.toFixed(2)}%`;
+  const label = `${range.companyCount}개 ${unit}`;
+  const month = fmtDisclosureMonth(disclosureMonth);
+  return (
+    <>
+      <div style={{ fontSize: 22, fontWeight: 800, color: C.blue }}>{`${minText} ~ ${maxText}`}</div>
+      <div role="list" aria-label={`${unit} 주택담보대출 금리 범위`} style={{ marginTop: 4 }}>
+        <RangeBarRow
+          label={label}
+          labelWidth={RANGE_LABEL_W}
+          bands={[
+            { key: "rate", min: range.min, max: range.max, minText, maxText, color: C.blue, bandColor: C.blueBorder },
+          ]}
+          scaleMin={scaleMin}
+          scaleMax={scaleMax}
+          ariaLabel={`${label} ${minText} ~ ${maxText}`}
+          testId={rowTestId}
+        />
+      </div>
+      <div style={{ fontSize: F.micro, color: C.muted, marginTop: 6, lineHeight: 1.5 }}>
+        {`공시한 ${label}의 가장 낮은 금리 ~ 가장 높은 금리 · 아파트·분할상환 상품`}
+        {month && ` · ${month}`}
+        {" · 출처: 금융감독원 금융상품통합비교공시"}
+      </div>
+      <a
+        href={FINLIFE_URL}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "inline-block",
+          marginTop: 6,
+          fontSize: F.xs,
+          fontWeight: 600,
+          color: C.blue,
+          textDecoration: "none",
+        }}
+      >
+        {linkText}
+      </a>
+    </>
+  );
+});
+
+/**
+ * 은행 주택담보대출 금리 — 아파트·분할상환 상품 전체의 최저 ~ 최고 범위 한 줄과 공시한 은행 수(세션665).
+ * 은행 이름·은행별 줄·순위는 없다(옛 "최저 낮은 순 5줄"은 세션665 에 뺐다). 평균 선도 그리지 않는다(응답에 평균이 없다).
+ * 쓸 상품이 0건이면 블록을 그리지 않는다.
  */
 export const BankRateBars = memo(function BankRateBars({
   rates,
@@ -78,42 +151,18 @@ export const BankRateBars = memo(function BankRateBars({
   rates: readonly FinlifeRate[];
   disclosureMonth: string | null;
 }) {
-  const ranges = useMemo(() => groupBankRanges(rates), [rates]);
-  if (ranges.length === 0) return null;
-  // 눈금 = 5줄 최저 내림 ~ 최고 올림(정수 %). 같은 묶음의 모든 줄이 같은 눈금을 받는다.
-  const scaleMin = Math.floor(Math.min(...ranges.map((r) => r.min)));
-  const ceilMax = Math.ceil(Math.max(...ranges.map((r) => r.max)));
-  const scaleMax = ceilMax > scaleMin ? ceilMax : scaleMin + 1;
-  const month = fmtDisclosureMonth(disclosureMonth);
+  const hasRange = useMemo(() => summarizeRateRange(rates) != null, [rates]);
+  if (!hasRange) return null;
   return (
     <div data-testid="bank-rate-bars" style={boxStyle}>
-      <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 }}>은행별 금리</div>
-      <div role="list" aria-label="은행별 주택담보대출 금리">
-        {ranges.map((r) => {
-          const name = displayBankName(r.bank);
-          const minText = `${r.min.toFixed(2)}%`;
-          const maxText = `${r.max.toFixed(2)}%`;
-          return (
-            <RangeBarRow
-              key={r.bank}
-              label={name}
-              labelWidth={BANK_LABEL_W}
-              bands={[
-                { key: "rate", min: r.min, max: r.max, minText, maxText, color: C.blue, bandColor: C.blueBorder },
-              ]}
-              scaleMin={scaleMin}
-              scaleMax={scaleMax}
-              ariaLabel={`${name} ${minText} ~ ${maxText}`}
-              testId="bank-rate-row"
-            />
-          );
-        })}
-      </div>
-      <div style={{ fontSize: F.micro, color: C.muted, marginTop: 6 }}>
-        {"아파트·분할상환 상품"}
-        {month && ` · ${month}`}
-        {" · 출처: 금융감독원 금융상품통합비교공시"}
-      </div>
+      <div style={{ fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 4 }}>은행 주택담보대출 금리</div>
+      <RateRangeSummary
+        rates={rates}
+        unit="은행"
+        disclosureMonth={disclosureMonth}
+        linkText="은행별 금리는 금감원 비교공시에서 보기 →"
+        rowTestId="bank-rate-row"
+      />
     </div>
   );
 });

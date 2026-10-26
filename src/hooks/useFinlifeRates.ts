@@ -51,6 +51,7 @@ export function useFinlifeRates<R extends MutableRefObject<unknown>>(
       if (cached) {
         setRates(cached.data);
         setDisclosureMonth(cached.disclosureMonth);
+        setError(null); // 앞 권역이 실패했어도 캐시된 권역으로 돌아오면 오류를 지운다(세션666 검사관 🟠)
         return;
       }
       setLoading(true);
