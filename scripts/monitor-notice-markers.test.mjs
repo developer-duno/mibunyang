@@ -162,6 +162,7 @@ describe("㉑ 배선", () => {
     fetchTradeLinks: async () => ({ links: /** @type {Array<Record<string, any>>} */ ([]), apts: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: null }),
     fetchSgisMapRun: async () => [],
     fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }), // ㉒(세션648) — 운영 조회로 새지 않게
+    fetchSeoThin: async () => ({ status: 200, text: '{"count":0,"ids":[],"names":[],"applied":true,"cap":15}' }), // ㉓(세션668) — 운영 GET 이 나가지 않게
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
 

@@ -20,6 +20,7 @@
  *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(모든 묶음이 판정 파일 active 일 때만 제외 · KST 월요일 · 세션630)
  *   ㉑ 청약홈 공고 정리 경고 표식 — applyhome-detail 최신 실행의 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING(매일 · dedup · 세션632)
  *   ㉒ 시세 이력 바닥 — complex_price_history 의 2u 삭제 조건 밖 조각(A 8글자 옛 줄 · B 6글자 A1 area_no 있음)이 바닥 밑으로(매일 · 세션648)
+ *   ㉓ 검색 제외 안전선 — 운영 /data/seo-thin.json 이 JSON·모양 맞음·applied=true 가 아니면(얇은 단지 > 안전선 15 · 파일 없음 · HTML 응답)(매일 · 세션668)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -279,7 +280,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1253,6 +1254,111 @@ export async function fetchPriceHistorySliceCounts(sb = getSupabase()) {
     out[f.key] = { count: count ?? null, error: error ?? null };
   }
   return /** @type {Record<"A" | "B", { count: number | null, error: unknown }>} */ (out);
+}
+
+// ── ㉓ 검색 제외 안전선 (세션668 PR-S1) ─────────────────────────────────────
+/** ㉓ 운영 기록 파일 — postbuild-prerender 가 매 빌드 dist/data/seo-thin.json 에 쓴다. */
+export const SEO_THIN_URL = "https://www.xn--hg3bi2ac4o1ig57cnoa.com/data/seo-thin.json";
+/** ㉓ 이슈 collector — 기록을 쓰는 빌드 단계 이름. */
+const SEO_THIN_COLLECTOR = "postbuild-prerender";
+
+/** ㉓ 알림에 펼칠 단지 명단 수 — 나머지는 "외 N곳". */
+const SEO_THIN_LIST_MAX = 20;
+
+/** @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number }} SeoThinRecord */
+
+/**
+ * 단지 명단 한 줄 — 앞 max 개 `id 이름`, 넘으면 "외 N곳".
+ * @param {SeoThinRecord} rec
+ * @param {number} [max]
+ * @returns {string}
+ */
+export function formatSeoThinList(rec, max = SEO_THIN_LIST_MAX) {
+  const shown = rec.ids.slice(0, max).map((id, i) => `${id} ${rec.names[i] ?? ""}`.trim());
+  const rest = rec.ids.length - shown.length;
+  return `명단 ${rec.ids.length}곳: ${shown.join(" · ") || "없음"}${rest > 0 ? ` 외 ${rest}곳` : ""}`;
+}
+
+/**
+ * ㉓·아침 브리핑 공용 — 운영 `seo-thin.json` 응답을 읽어 모양·내부 일관성까지 맞으면 기록을, 아니면 이유를 준다.
+ * 상태 코드만으로 정상 판정하지 않는다: vercel.json 의 catch-all rewrite 때문에 파일이 없으면 404 가 아니라
+ * 200 + index.html 이 온다. 던지지 않는다.
+ * @param {number} status
+ * @param {string} bodyText
+ * @returns {{ ok: true, rec: SeoThinRecord } | { ok: false, detail: string, rec?: SeoThinRecord }}
+ */
+export function parseSeoThin(status, bodyText) {
+  if (status !== 200) return { ok: false, detail: `검색 제외 기록 응답 ${status} — 오늘 빌드가 기록을 못 올렸거나 배포가 깨졌을 수 있음` };
+  /** @type {any} */
+  let j;
+  try {
+    j = JSON.parse(String(bodyText ?? ""));
+  } catch {
+    const head = String(bodyText ?? "").trim().slice(0, 40);
+    return { ok: false, detail: `검색 제외 기록이 JSON 이 아님(${head.startsWith("<") ? "HTML 이 옴 — 파일이 배포에 없음" : "파싱 실패"})` };
+  }
+  const shapeOk = j !== null && typeof j === "object" && !Array.isArray(j)
+    && typeof j.applied === "boolean" && Number.isInteger(j.count) && Array.isArray(j.ids)
+    && Array.isArray(j.names) && j.names.length === j.ids.length
+    && typeof j.cap === "number" && Number.isFinite(j.cap);
+  if (!shapeOk) return { ok: false, detail: "검색 제외 기록 모양이 다름(count 정수·ids 배열·names 배열(ids 와 같은 길이)·applied 참거짓·cap 수 중 하나가 틀림)" };
+  /** @type {SeoThinRecord} */
+  const rec = { count: j.count, ids: j.ids.map(String), names: j.names.map(String), applied: j.applied, cap: j.cap };
+  // 내부 일관성(세션668 보완 F4) — 모양만 맞고 숫자가 서로 어긋난 기록을 정상으로 넘기지 않는다.
+  const consistent = rec.count >= 0 && rec.cap >= 1 && rec.count === rec.ids.length && (rec.count <= rec.cap) === rec.applied;
+  if (!consistent) {
+    return { ok: false, rec, detail: `검색 제외 기록 숫자가 서로 안 맞음(count ${rec.count} · ids ${rec.ids.length}개 · cap ${rec.cap} · applied ${rec.applied})` };
+  }
+  return { ok: true, rec };
+}
+
+/**
+ * ㉓ 판정 — 기록이 JSON·모양·내부 일관성이 맞고 applied===true 일 때만 정상([]).
+ * 그 밖(200 아님·파싱 실패·HTML·모양 틀림·숫자 어긋남·applied:false)은 전부 알림 1건 — 기록을 읽었으면 단지 명단도 싣는다.
+ * @param {number} status
+ * @param {string} bodyText
+ * @returns {Issue[]}
+ */
+export function checkSeoThin(status, bodyText) {
+  /** @param {string} detail @param {SeoThinRecord} [rec] @returns {Issue[]} */
+  const one = (detail, rec) => [{
+    kind: "seo-thin",
+    collector: SEO_THIN_COLLECTOR,
+    detail,
+    lines: rec ? [formatSeoThinList(rec), `주소: ${SEO_THIN_URL}`] : [`주소: ${SEO_THIN_URL}`],
+  }];
+  const p = parseSeoThin(status, bodyText);
+  if (!p.ok) return one(p.detail, p.rec);
+  if (p.rec.applied !== true) {
+    return one(`얇은 단지 ${p.rec.count}곳 > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec);
+  }
+  return [];
+}
+
+/**
+ * ㉓ 재료 — 운영 기록 파일 GET 1회(본문은 글자로 받아 판정이 JSON 여부를 본다). 예외는 runFailOpenCheck 가 check-failed 로.
+ * @returns {Promise<{ status: number, text: string }>}
+ */
+export async function fetchSeoThinLive() {
+  const res = await fetch(SEO_THIN_URL, { signal: AbortSignal.timeout(20000) });
+  return { status: res.status, text: await res.text() };
+}
+
+/**
+ * 아침 브리핑용 기록(결정 35) — 조회가 던지거나 기록이 틀리면 null(브리핑은 "확인 못 함" 한 줄 · ㉓ 알림이 따로 감).
+ * 절대 던지지 않는다 — 브리핑을 죽이지 않게.
+ * @param {() => Promise<{ status: number, text: string }>} [fetchFn] 시험 주입용 — 생략하면 운영 GET 1회
+ * @returns {Promise<SeoThinRecord | null>}
+ */
+export async function loadSeoThinForBriefing(fetchFn = fetchSeoThinLive) {
+  try {
+    const r = await fetchFn();
+    const p = parseSeoThin(r.status, r.text);
+    return p.ok ? p.rec : null;
+  } catch (err) {
+    console.log(`[monitor] 브리핑 검색 제외 기록 조회 실패(브리핑은 계속): ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
 }
 
 /**
@@ -3489,7 +3595,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒ → ㉓, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648 + ㉓ 세션668)을 돌려 이슈를 합친다.
  * ⑲(소유권 정본 대조, 세션617)는 KST 월요일에만 돌아 이 열 밖 `runOwnershipCheck` 로 main 이 바로 뒤에 부른다
  * (이 열에 넣으면 요일에 따라 이 열의 시험 결과가 달라진다).
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
@@ -3507,6 +3613,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchSgisMapRun?: () => ReturnType<typeof fetchSgisMapLatestRun>,
  *   fetchNoticeRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchPriceHistoryCounts?: () => Promise<Partial<Record<"A" | "B", { count: number | null | undefined, error?: unknown }>>>,
+ *   fetchSeoThin?: () => Promise<{ status: number, text: string }>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  * }} [deps]
  * @returns {Promise<Issue[]>}
@@ -3527,6 +3634,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   // ㉑ 도 ⑪ 과 같은 조회(수집기 이름별 최근 REGION_UNRESOLVED_RUN_WINDOW 행) — 이름만 다르다(세션632).
   const fetchNoticeRuns = deps.fetchNoticeRuns ?? fetchRegionUnresolvedRuns;
   const fetchPriceHistoryCounts = deps.fetchPriceHistoryCounts ?? fetchPriceHistorySliceCounts;
+  const fetchSeoThin = deps.fetchSeoThin ?? fetchSeoThinLive;
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -3673,6 +3781,15 @@ export async function runDailyGuardedChecks(deps = {}) {
     const shown = PRICE_HISTORY_FLOORS.map((f) => `${f.key} ${counts[f.key]?.count ?? "?"}/${f.floor}`).join(" · ");
     console.log(`[monitor] ㉒ 시세 이력 바닥 점검: ${shown} → 이상 ${floorIssues.length}건`);
     return floorIssues;
+  }));
+
+  // ㉓ 검색 제외 안전선 — 얇은 단지가 안전선을 넘어 그날 noindex 를 하나도 안 단 날·기록 파일이 배포에 없는 날(세션668).
+  //    운영 GET 1회(작은 JSON). 상태 코드만 보지 않는다 — 없는 파일도 rewrite 로 200 + index.html 이 온다.
+  issues = issues.concat(await runFailOpenCheck("㉓ 검색 제외 안전선", async () => {
+    const { status, text } = await fetchSeoThin();
+    const thinIssues = checkSeoThin(status, text);
+    console.log(`[monitor] ㉓ 검색 제외 안전선: 응답 ${status} → 이상 ${thinIssues.length}건`);
+    return thinIssues;
   }));
 
   return issues;
@@ -4165,6 +4282,8 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
     const idempotent = idempotentCollectorSet();
     // 24h 정상 수집 합 — buildBriefing 과 같은 splitRuns 로 1회만 계산(스냅샷 collected_24h 에 재사용).
     const { totalOk } = splitRuns(runs24h ?? [], idempotent);
+    // 검색 제외 한 줄(결정 35 · 세션668) — 운영 GET 1회(㉓ 와 합쳐 하루 2회) · 실패해도 던지지 않고 null.
+    const seoThin = await loadSeoThinForBriefing();
 
     const text = buildBriefing({
       runs24h: runs24h ?? [],
@@ -4175,6 +4294,7 @@ async function sendDailyBriefing({ audit, externalStaleIssues, issueCount }) {
       staleCollectors,
       warnRuns: extractWarnRuns(runs24h ?? []),
       infraMissingRuns: extractInfraMissingRuns(runs24h ?? []),
+      seoThin,
       nowIso: now.toISOString(),
     });
 
@@ -4379,7 +4499,7 @@ async function main() {
       return scopeIssues;
     }));
 
-    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ㉒ 시세 이력 바닥 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
+    // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ㉒ 시세 이력 바닥 · ㉓ 검색 제외 안전선 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());

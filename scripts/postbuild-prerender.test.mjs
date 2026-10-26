@@ -12,7 +12,8 @@
  * 이 테스트는 그 셋이 되돌아오는 것을 막는다.
  */
 import { describe, it, expect } from "vitest";
-import { esc, aptFacts, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap } from "./postbuild-prerender.mjs";
+import { readFileSync } from "node:fs";
+import { esc, aptFacts, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP } from "./postbuild-prerender.mjs";
 
 /** index.html 의 관련 태그만 추린 최소 틀 (실제 파일과 같은 형태) */
 const TEMPLATE = [
@@ -350,5 +351,136 @@ describe("aptFacts — 역 이름 없으면 지하철 줄 없음(화면과 같�
   });
   it("이름과 정상 거리가 있으면 이름 + 거리", () => {
     expect(aptFacts({ id: 1, name: "n", subwayName: "강남역", subwayDist: 499.6 })).toContain("지하철: 강남역 500m");
+  });
+});
+
+// ── 얇은 단지 검색 제외 (세션668 PR-S1 · 결정 28·29·32) ─────────────────────
+// 기대값 출처 = 운영 목록 사본(2026-10-26T18:13Z, 1,678행) 실측: [nearbyMedian, hospital, price] 빈칸 2개 이상 = 5곳.
+// 그 5곳 모양(주변 시세·병원 비고 분양가만 있거나 셋 다 빔)을 본뜬 작은 픽스처 — 저장소 밖 파일은 쓰지 않는다.
+
+/** @param {string} id @param {Record<string, any>} [o] */
+const full = (id, o = {}) => ({ id, name: `단지${id}`, region: "경기", gu: "화성시", nearbyMedian: 1200, hospital: 3, price: 50000, ...o });
+/** @param {string} id */
+const thin = (id) => full(id, { nearbyMedian: null, hospital: null });
+const NOINDEX = '<meta name="robots" content="noindex,follow" />';
+/** @param {string} s @param {string} sub */
+const countOf = (s, sub) => s.split(sub).length - 1;
+/** @param {string} xml */
+const locs = (xml) => [...xml.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+
+describe("isThinApt — 세 칸 중 빈칸 2개 이상", () => {
+  it("빈칸 2개·3개 → true, 1개·0개 → false, 0 은 빈칸이 아니다", () => {
+    expect(isThinApt({ nearbyMedian: null, hospital: null, price: 5 })).toBe(true);
+    expect(isThinApt({ nearbyMedian: null, hospital: 0, price: null })).toBe(true);
+    expect(isThinApt({ nearbyMedian: null, hospital: null, price: null })).toBe(true);
+    expect(isThinApt({})).toBe(true); // 칸 자체가 없음(undefined) 도 빈칸
+    expect(isThinApt({ nearbyMedian: null, hospital: 0, price: 5 })).toBe(false);
+    expect(isThinApt({ nearbyMedian: 0, hospital: 0, price: 0 })).toBe(false);
+    expect(isThinApt({ nearbyMedian: 1, hospital: 1, price: 1 })).toBe(false);
+  });
+});
+
+describe("planThin — 안전선 15", () => {
+  it("안전선 값은 15 (결정 32)", () => {
+    expect(SEO_THIN_CAP).toBe(15);
+  });
+  it("얇은 5곳 → applied:true · 명단 그대로", () => {
+    const list = [full("a1"), thin("t1"), thin("t2"), full("a2"), thin("t3"), thin("t4"), thin("t5")];
+    expect(planThin(list)).toEqual({
+      count: 5, ids: ["t1", "t2", "t3", "t4", "t5"], names: ["단지t1", "단지t2", "단지t3", "단지t4", "단지t5"], applied: true, cap: 15,
+    });
+  });
+  it("경계: 15곳 → applied:true, 16곳 → applied:false(ids 는 기록용으로 그대로)", () => {
+    const at15 = Array.from({ length: 15 }, (_, i) => thin(`t${i}`));
+    expect(planThin(at15).applied).toBe(true);
+    const at16 = Array.from({ length: 16 }, (_, i) => thin(`t${i}`));
+    const p = planThin(at16);
+    expect(p).toMatchObject({ count: 16, applied: false, cap: 15 });
+    expect(p.ids).toHaveLength(16);
+  });
+  it("id·name 없는 행은 세지 않는다", () => {
+    expect(planThin([{ ...thin("x"), name: "" }, { ...thin("y"), id: "" }, thin("z")]).ids).toEqual(["z"]);
+  });
+});
+
+describe("buildAptHtml — noindex 메타", () => {
+  it("noindex 이면 </head> 앞에 정확히 1개, JSON-LD 뒤", () => {
+    const html = buildAptHtml(TEMPLATE, APT, { noindex: true });
+    expect(countOf(html, NOINDEX)).toBe(1);
+    expect(countOf(html, 'name="robots"')).toBe(1);
+    const head = html.split("</head>")[0];
+    expect(head.includes(NOINDEX)).toBe(true);
+    expect(head.indexOf("application/ld+json")).toBeLessThan(head.indexOf(NOINDEX));
+  });
+  it("noindex 아니면(기본값 포함) robots 메타 0개", () => {
+    expect(countOf(buildAptHtml(TEMPLATE, APT), 'name="robots"')).toBe(0);
+    expect(countOf(buildAptHtml(TEMPLATE, APT, { noindex: false }), 'name="robots"')).toBe(0);
+  });
+  it("템플릿에 이미 robots 메타가 있으면 throw(빌드 빨강) — 따옴표·대소문자 무관", () => {
+    const withRobots = TEMPLATE.replace("</head>", '<meta name="robots" content="index,follow" />\n</head>');
+    expect(() => buildAptHtml(withRobots, APT)).toThrow(/robots/);
+    expect(() => buildAptHtml(withRobots, APT, { noindex: true })).toThrow(/robots/);
+    expect(() => buildAptHtml(TEMPLATE.replace("</head>", "<META content=x NAME=ROBOTS>\n</head>"), APT)).toThrow(/robots/);
+  });
+  it("실제 index.html 에는 robots 메타가 없다(있으면 빌드가 멈춘다)", () => {
+    const real = readFileSync(new URL("../index.html", import.meta.url), "utf-8");
+    expect(/<meta\b[^>]*\bname\s*=\s*["']?robots\b/i.test(real)).toBe(false);
+  });
+});
+
+describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계속 만든다", () => {
+  const list = [full("a1"), thin("t1"), full("a2"), thin("t2"), thin("t3"), full("a3"), thin("t4"), thin("t5")];
+  const r = buildAptPages(TEMPLATE, list);
+  it("단지 장은 8개 전부 만든다(링크로 닿게)", () => {
+    expect(r.pages.map((p) => p.id)).toEqual(["a1", "t1", "a2", "t2", "t3", "a3", "t4", "t5"]);
+  });
+  it("얇은 장 5개만 noindex 1개, 보통 장은 0개", () => {
+    for (const p of r.pages) {
+      expect(countOf(p.html, 'name="robots"')).toBe(p.id.startsWith("t") ? 1 : 0);
+    }
+  });
+  it("sitemap 에는 보통 장만 — noindex 장 id 는 없다 · lastmod 없음", () => {
+    expect(r.sitemapIds).toEqual(["a1", "a2", "a3"]);
+    const xml = buildSitemap(r.sitemapIds);
+    const urls = locs(xml);
+    expect(urls).toHaveLength(5); // 홈 + /upcoming + 3
+    for (const t of ["t1", "t2", "t3", "t4", "t5"]) expect(urls.some((u) => u.endsWith(`/apt/${t}`))).toBe(false);
+    expect(xml.includes("lastmod")).toBe(false);
+  });
+  it("seo-thin 기록 모양 = {count, ids, applied, cap}", () => {
+    expect(JSON.parse(JSON.stringify(r.thin))).toEqual({
+      count: 5, ids: ["t1", "t2", "t3", "t4", "t5"], names: ["단지t1", "단지t2", "단지t3", "단지t4", "단지t5"], applied: true, cap: 15,
+    });
+    expect(Object.keys(r.thin)).toEqual(["count", "ids", "names", "applied", "cap"]);
+  });
+  it("names 는 ids 와 같은 순서·같은 길이(안전선 초과 날도)", () => {
+    const many = Array.from({ length: 16 }, (_, i) => thin(`t${i}`));
+    const p = planThin(many);
+    expect(p.names).toHaveLength(p.ids.length);
+    expect(p.names[3]).toBe("단지t3");
+  });
+  it("main() 연결부 — 사이트맵은 buildAptPages 가 준 sitemapIds 로, 기록 파일은 applied 와 무관하게 늘 쓴다(세션668 보완 F3)", () => {
+    const src = readFileSync(new URL("./postbuild-prerender.mjs", import.meta.url), "utf-8");
+    const start = src.indexOf("function main() {");
+    const end = src.indexOf("// CLI 로 직접 실행");
+    expect(start).toBeGreaterThan(0);
+    expect(end).toBeGreaterThan(start);
+    const body = src.slice(start, end);
+    expect(body).toMatch(/const \{ pages, sitemapIds, thin \} = buildAptPages\(template, list\);/);
+    // 사이트맵 쓰기는 얇은 장을 뺀 목록만 — 전 장(pages·list)을 넘기면 빨강
+    expect(body).toMatch(/writeFileSync\(DIST_SITEMAP, buildSitemap\(sitemapIds\), "utf-8"\);/);
+    expect((body.match(/buildSitemap\(/g) ?? []).length).toBe(1);
+    // 기록 파일 쓰기는 main 맨 바깥 줄(들여쓰기 2칸)에 — 조건 한 줄(`if (…) writeFileSync`)이면 빨강
+    expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(thin\), "utf-8"\);\r?\n/);
+    // 조건 블록 안으로 들어가면 그 앞까지 중괄호가 안 맞는다 — buildAptPages 부터 기록 쓰기까지 { 와 } 개수가 같아야 한다
+    const between = body.slice(body.indexOf("buildAptPages(template, list)"), body.indexOf("writeFileSync(DIST_SEO_THIN"));
+    expect((between.match(/\{/g) ?? []).length).toBe((between.match(/\}/g) ?? []).length);
+  });
+  it("얇은 수가 16이면(안전선 초과) robots 메타 0개 · sitemap 전부", () => {
+    const many = [full("a1"), ...Array.from({ length: 16 }, (_, i) => thin(`t${i}`))];
+    const big = buildAptPages(TEMPLATE, many);
+    expect(big.thin.applied).toBe(false);
+    expect(big.pages.every((p) => countOf(p.html, 'name="robots"') === 0)).toBe(true);
+    expect(big.sitemapIds).toHaveLength(17);
   });
 });
