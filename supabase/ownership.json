@@ -473,7 +473,7 @@
       "readers": [
         "2u"
       ],
-      "note": "2u 읽는 칸: complex_jeonse_rate·complex_jeonse_n·complex_sale_n(10/18~, 2u 미분양 상세 '전세율(이 단지)' · 같은 평수 = 전용면적 소수 둘째 반올림 일치(부동산원 정의 — 미분양 세션651, 적정가도 같은 판정)) · complex_area = 그 전세가율·적정가를 계산한 대표 전용면적 ㎡, 소수 넷째, 표기(84/85㎡)는 2u 가 정함, complex_jeonse_rate 가 null 이면 라벨에 쓰지 않음(미분양 세션650) + 옛 칸 그대로 · jeonse_rate 는 미분양 세션648 폐지(늘 null, 2u 화면은 10/18 부터 안 읽음) · ⚠ jeonse_rate·psr 칸을 지우는 정리 PR 전에 2u ORM(backend/db/mb_models.py:218 · routers/mb_serializers.py:157)에서 먼저 빼기 — 안 빼면 2u 단지 상세 500"
+      "note": "2u 읽는 칸: complex_jeonse_rate·complex_jeonse_n·complex_sale_n(10/18~, 2u 미분양 상세 '전세율(이 단지)' · 같은 평수 = 전용면적 소수 둘째 반올림 일치(부동산원 정의 — 미분양 세션651, 적정가도 같은 판정)) · complex_area = 그 전세가율·적정가를 계산한 대표 전용면적 ㎡, 소수 넷째, 표기(84/85㎡)는 2u 가 정함, complex_jeonse_rate 가 null 이면 라벨에 쓰지 않음(미분양 세션650) + 옛 칸 그대로 · jeonse_rate 는 미분양 세션648 폐지(늘 null, 2u 화면은 10/18 부터 안 읽음) · ⚠ jeonse_rate·psr 칸을 지우는 정리 PR 전에 2u ORM(backend/db/mb_models.py:218 · routers/mb_serializers.py:157)에서 먼저 빼기 — 안 빼면 2u 단지 상세 500 · 범위 4칸 cmp_min·cmp_max·complex_jeonse_min·complex_jeonse_max(10/26~, 미분양 범위 표시 · 적정가·전세가율과 같은 거래 집합의 최저·최고 · 2u 는 아직 안 읽음 — 읽기로 하면 이 note 갱신)"
     },
     "trades": {
       "owner": "mibunyang",
@@ -515,7 +515,7 @@
       "readers": [
         "2u"
       ],
-      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261013000000_view_one_card_bundle.sql(묶음당 1행, 되돌림 _rollbacks/20261013000001)"
+      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261026000002_view_add_range_cols.sql(세션661 범위 4칸 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax 추가 · 184칸, 되돌림 _rollbacks/20261026000003) — 묶음당 1행 구조는 20261013000000_view_one_card_bundle.sql 부터"
     },
     "api_quota_daily": {
       "owner": "mibunyang",
