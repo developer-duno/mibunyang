@@ -2,11 +2,9 @@ import { describe, it, expect } from "vitest";
 import {
   pickMonthlyRate,
   calcMonthlyPayment,
-  groupBankRanges,
+  summarizeRateRange,
   isUsableMortgageRate,
-  displayBankName,
   fmtDisclosureMonth,
-  BANK_RANGE_LIMIT,
 } from "./loanRates";
 
 /** 10/02 은행권(020000) 응답 사본(세션589 logs, ap-6028162)에서 뽑은 줄 — 값은 그대로 */
@@ -63,55 +61,61 @@ describe("calcMonthlyPayment — D2 예시값", () => {
   });
 });
 
-describe("groupBankRanges — 은행 범위 막대 재료 (세션593 D3)", () => {
-  // ⚠️ 변이 대상: 은행별 묶기를 빼면(상품마다 한 줄) 아이엠뱅크가 두 줄이 되어 빨강.
-  it("같은 은행 여러 상품 → 한 줄, 최저 rateMin 최솟값 ~ 최고 rateMax 최댓값", () => {
-    const out = groupBankRanges(COPY_ROWS);
-    expect(out.filter((r) => r.bank === "아이엠뱅크")).toEqual([{ bank: "아이엠뱅크", min: 4.2, max: 6.51 }]);
+describe("summarizeRateRange — 금리 범위 줄 재료 (세션665)", () => {
+  // ⚠️ 변이 대상: 아파트·분할상환 거름을 빼면 경남은행(아파트외·만기일시 3.7%)이 최저로 와서 빨강.
+  it("아파트·분할상환 상품만 — 10/02 사본 → 4.2 ~ 6.51 · 2개 은행", () => {
+    expect(summarizeRateRange(COPY_ROWS)).toEqual({ min: 4.2, max: 6.51, companyCount: 2 });
   });
 
-  // ⚠️ 변이 대상: 아파트·분할상환 거름을 빼면 경남은행(아파트외·만기일시 3.7%)이 맨 위에 와서 빨강.
-  it("아파트외·만기일시 상품은 뺀다", () => {
-    const out = groupBankRanges(COPY_ROWS);
-    expect(out.map((r) => r.bank)).toEqual(["아이엠뱅크", "신한은행"]);
+  // ⚠️ 변이 대상: 회사 수를 상품 수로 세면 아이엠뱅크 두 상품이 2로 세져 빨강.
+  it("회사 수 = 서로 다른 bank 값 수 — 같은 은행 여러 상품은 1 · 빈 이름은 안 센다(범위엔 든다)", () => {
+    const base = { mortgageType: "아파트", repayType: "분할상환방식" };
+    expect(
+      summarizeRateRange([
+        { ...base, bank: "가", rateMin: 4.5, rateMax: 6 },
+        { ...base, bank: "가", rateMin: 4.4, rateMax: 7 },
+        { ...base, bank: "", rateMin: 4.1, rateMax: 5 },
+        { ...base, bank: null, rateMin: 4.3, rateMax: 8 },
+        { ...base, bank: "나", rateMin: 5, rateMax: 6 },
+      ])
+    ).toEqual({ min: 4.1, max: 8, companyCount: 2 });
   });
 
-  // ⚠️ 변이 대상: 5줄 상한을 빼면 7줄이 되어 빨강.
-  it("최저 낮은 순 5줄 상한", () => {
-    const rows = [5.1, 4.1, 4.9, 4.3, 4.7, 4.5, 4.2].map((v, i) => ({
+  it("정렬·자르기 없음 — 상품이 많아도 전부 센다", () => {
+    const rows = Array.from({ length: 12 }, (_, i) => ({
       bank: `은행${i}`,
       mortgageType: "아파트",
       repayType: "분할상환방식",
-      rateMin: v,
-      rateMax: v + 1,
+      rateMin: 4 + i / 10,
+      rateMax: 6 + i / 10,
     }));
-    const out = groupBankRanges(rows);
-    expect(BANK_RANGE_LIMIT).toBe(5);
-    expect(out).toHaveLength(5);
-    expect(out.map((r) => r.min)).toEqual([4.1, 4.2, 4.3, 4.5, 4.7]);
+    const out = summarizeRateRange(rows);
+    expect(out?.companyCount).toBe(12);
+    expect(out?.min).toBeCloseTo(4, 10);
+    expect(out?.max).toBeCloseTo(7.1, 10);
   });
 
-  it("5개 미만이면 있는 만큼, 0개면 빈 배열", () => {
-    expect(groupBankRanges(COPY_ROWS)).toHaveLength(2);
-    expect(groupBankRanges([])).toEqual([]);
-    expect(groupBankRanges(COPY_ROWS.filter((r) => r.mortgageType === "아파트외"))).toEqual([]);
+  it("쓸 상품이 0건이면 null", () => {
+    expect(summarizeRateRange([])).toBeNull();
+    expect(summarizeRateRange(COPY_ROWS.filter((r) => r.mortgageType === "아파트외"))).toBeNull();
+    expect(summarizeRateRange([{ bank: "가", rateMin: 5.5, rateMax: 7.2 }])).toBeNull();
   });
 
-  // 세션593 후속 F1 — 최저·최고 중 하나라도 0·NaN·빈 값인 **상품**은 통째로 뺀다(옛 판은 은행 안에서 반쪽씩 모았다).
-  it("0·NaN·빈 금리가 섞인 상품은 통째로 빼고, 남는 상품이 없는 은행은 줄을 만들지 않는다", () => {
+  // 세션593 후속 F1 — 최저·최고 중 하나라도 0·NaN·빈 값인 **상품**은 통째로 뺀다.
+  it("0·NaN·빈 금리가 섞인 상품은 통째로 뺀다", () => {
     const base = { mortgageType: "아파트", repayType: "분할상환방식" };
-    const out = groupBankRanges([
+    const out = summarizeRateRange([
       { ...base, bank: "가", rateMin: 0, rateMax: 6 },
       { ...base, bank: "가", rateMin: 4.4, rateMax: Number.NaN },
       { ...base, bank: "나", rateMin: null, rateMax: 6 },
       { ...base, bank: "다", rateMin: 4.6, rateMax: null },
       { ...base, bank: "라", rateMin: 4.7, rateMax: 6.2 },
     ]);
-    expect(out).toEqual([{ bank: "라", min: 4.7, max: 6.2 }]);
+    expect(out).toEqual({ min: 4.7, max: 6.2, companyCount: 1 });
   });
 });
 
-describe("isUsableMortgageRate — 월 상환액·은행 막대 공통 거름 (세션593 후속 F1)", () => {
+describe("isUsableMortgageRate — 월 상환액·금리 범위 공통 거름 (세션593 후속 F1)", () => {
   const base = { mortgageType: "아파트", repayType: "분할상환방식" };
 
   it("아파트·분할상환 + 최저·최고 둘 다 유효 + 최저 ≤ 최고 일 때만 통과", () => {
@@ -125,36 +129,36 @@ describe("isUsableMortgageRate — 월 상환액·은행 막대 공통 거름 (�
   });
 
   // ⚠️ 변이 대상: pickMonthlyRate 를 옛 거름(최고 금리 안 봄)으로 되돌리면 큰 숫자가 4.1 이 되어 빨강.
-  it("최고 금리가 빈 4.1% 상품은 큰 숫자에서도 빠진다 — 큰 숫자 = 막대 맨 위 최저 = 4.2", () => {
+  it("최고 금리가 빈 4.1% 상품은 큰 숫자에서도 빠진다 — 큰 숫자 = 범위 최저 = 4.2", () => {
     const rows = [
       { ...base, bank: "가은행", rateMin: 4.1, rateMax: null },
       { ...base, bank: "나은행", rateMin: 4.2, rateMax: 6.5 },
     ];
     expect(pickMonthlyRate(rows)).toBe(4.2);
-    expect(groupBankRanges(rows)).toEqual([{ bank: "나은행", min: 4.2, max: 6.5 }]);
-    expect(pickMonthlyRate(rows)).toBe(groupBankRanges(rows)[0].min);
+    expect(summarizeRateRange(rows)).toEqual({ min: 4.2, max: 6.5, companyCount: 1 });
+    expect(pickMonthlyRate(rows)).toBe(summarizeRateRange(rows)?.min);
   });
 
-  it("같은 은행 {5.0, 빈 값} + {빈 값, 4.0} → 그 은행 줄 없음(거꾸로 '5.00% ~ 4.00%'가 생기지 않는다)", () => {
+  it("같은 은행 {5.0, 빈 값} + {빈 값, 4.0} → 범위 없음(거꾸로 '5.00% ~ 4.00%'가 생기지 않는다)", () => {
     const rows = [
       { ...base, bank: "가은행", rateMin: 5.0, rateMax: null },
       { ...base, bank: "가은행", rateMin: null, rateMax: 4.0 },
     ];
-    expect(groupBankRanges(rows)).toEqual([]);
+    expect(summarizeRateRange(rows)).toBeNull();
     expect(pickMonthlyRate(rows)).toBeNull();
   });
 
-  // ⚠️ 변이 대상: 거름에서 "최저 ≤ 최고"를 빼면 거꾸로 된 3.9~3.5 상품이 큰 숫자·막대 맨 위로 올라와 빨강.
+  // ⚠️ 변이 대상: 거름에서 "최저 ≤ 최고"를 빼면 거꾸로 된 3.9~3.5 상품이 큰 숫자·범위 최저로 올라와 빨강.
   it("최저 > 최고 로 거꾸로 적힌 상품은 뺀다", () => {
     const rows = [
       { ...base, bank: "가은행", rateMin: 3.9, rateMax: 3.5 },
       { ...base, bank: "나은행", rateMin: 4.2, rateMax: 6.5 },
     ];
     expect(pickMonthlyRate(rows)).toBe(4.2);
-    expect(groupBankRanges(rows)).toEqual([{ bank: "나은행", min: 4.2, max: 6.5 }]);
+    expect(summarizeRateRange(rows)).toEqual({ min: 4.2, max: 6.5, companyCount: 1 });
   });
 
-  it("어떤 섞인 응답이든 은행 줄은 최저 ≤ 최고, 큰 숫자 = 맨 위 줄 최저", () => {
+  it("어떤 섞인 응답이든 범위는 최저 ≤ 최고, 큰 숫자 = 범위 최저", () => {
     const rows = [
       ...COPY_ROWS,
       { ...base, bank: "다은행", rateMin: 3.8, rateMax: null },
@@ -162,22 +166,11 @@ describe("isUsableMortgageRate — 월 상환액·은행 막대 공통 거름 (�
       { ...base, bank: "라은행", rateMin: null, rateMax: 4.0 },
       { ...base, bank: "마은행", rateMin: 3.6, rateMax: 3.1 },
     ];
-    const out = groupBankRanges(rows);
-    expect(out.length).toBeGreaterThan(0);
-    expect(out.every((r) => r.min <= r.max)).toBe(true);
-    expect(pickMonthlyRate(rows)).toBe(out[0].min);
+    const out = summarizeRateRange(rows);
+    expect(out).not.toBeNull();
+    expect((out?.min ?? 0) <= (out?.max ?? -1)).toBe(true);
+    expect(pickMonthlyRate(rows)).toBe(out?.min);
     expect(pickMonthlyRate(rows)).toBe(4.2); // 10/02 사본 대표 단지 금리 그대로
-  });
-});
-
-describe("displayBankName — 법인 표기만 뗀다 (메인 결정 세션593)", () => {
-  it("'주식회사'(앞·뒤)와 남는 공백만 떼고 다른 글자는 그대로", () => {
-    expect(displayBankName("농협은행주식회사")).toBe("농협은행");
-    expect(displayBankName("주식회사 하나은행")).toBe("하나은행");
-    expect(displayBankName("주식회사 카카오뱅크")).toBe("카카오뱅크");
-    expect(displayBankName("한국스탠다드차타드은행")).toBe("한국스탠다드차타드은행");
-    expect(displayBankName("아이엠뱅크")).toBe("아이엠뱅크");
-    expect(displayBankName("주식회사")).toBe("주식회사");
   });
 });
 

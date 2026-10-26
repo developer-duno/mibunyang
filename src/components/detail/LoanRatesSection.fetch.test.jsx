@@ -14,6 +14,12 @@ import { LoanRatesSection } from "./LoanRatesSection";
 /** 펼침 단추 이름 — 끝에 "▼" 가 붙어 읽히므로 앞부분으로 찾는다 */
 const LABEL = /^저축은행 · 여신전문 · 보험 금리 보기/;
 
+/** 권역 → 가짜 최저 금리. 화면 큰 글자 "5.50% ~ 7.20%" 로 어느 권역이 그려졌는지 본다 */
+/** @type {Record<string, number>} */
+const RATE_MIN = { "030300": 5.5, "050000": 4.73 };
+/** @param {string} grp */
+const rangeText = (grp) => `${(RATE_MIN[grp] ?? 5.0).toFixed(2)}% ~ 7.20%`;
+
 /** @type {import('vitest').Mock} */
 let fetchMock;
 
@@ -25,7 +31,17 @@ beforeEach(() => {
       json: async () => ({
         ok: true,
         disclosureMonth: "202609",
-        data: [{ bank: `가짜${grp}`, product: "상품", rateMin: 5.5, rateMax: 7.2 }],
+        // 권역마다 최저를 달리해 화면 글자로 권역을 가른다(세션665 — 회사 이름은 화면에 없다)
+        data: [
+          {
+            bank: `가짜${grp}`,
+            product: "상품",
+            mortgageType: "아파트",
+            repayType: "분할상환방식",
+            rateMin: RATE_MIN[grp] ?? 5.0,
+            rateMax: 7.2,
+          },
+        ],
       }),
     };
   });
@@ -48,7 +64,7 @@ describe("LoanRatesSection — 접었다 펼쳐도 다시 부르지 않는다 (�
     const toggle = screen.getByRole("button", { name: LABEL });
 
     fireEvent.click(toggle);
-    expect(await screen.findByText("가짜030300")).toBeTruthy();
+    expect(await screen.findByText(rangeText("030300"))).toBeTruthy();
     expect(callsFor("030300")).toBe(1);
 
     fireEvent.click(toggle); // 접음
@@ -56,7 +72,7 @@ describe("LoanRatesSection — 접었다 펼쳐도 다시 부르지 않는다 (�
 
     fireEvent.click(toggle); // 다시 펼침
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(await screen.findByText("가짜030300")).toBeTruthy();
+    expect(await screen.findByText(rangeText("030300"))).toBeTruthy();
     expect(callsFor("030300")).toBe(1);
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
@@ -65,9 +81,9 @@ describe("LoanRatesSection — 접었다 펼쳐도 다시 부르지 않는다 (�
     render(<LoanRatesSection />);
     const toggle = screen.getByRole("button", { name: LABEL });
     fireEvent.click(toggle);
-    await screen.findByText("가짜030300");
+    await screen.findByText(rangeText("030300"));
     fireEvent.click(screen.getByRole("tab", { name: "보험" }));
-    await screen.findByText("가짜050000");
+    await screen.findByText(rangeText("050000"));
 
     fireEvent.click(toggle); // 접음
     expect(screen.queryAllByRole("tab")).toHaveLength(0);
@@ -78,5 +94,55 @@ describe("LoanRatesSection — 접었다 펼쳐도 다시 부르지 않는다 (�
     expect(screen.getByRole("tab", { name: "보험" }).getAttribute("aria-selected")).toBe("true");
     expect(callsFor("030300")).toBe(1);
     expect(callsFor("050000")).toBe(1);
+  });
+
+  // ⚠️ 변이 대상: 범위 조건에서 `!ratesError` 를 빼면 저축은행 숫자가 "1개 보험사" 이름표로 남아 빨강(세션665 검사관 🟠).
+  it("권역을 바꿨는데 조회가 실패하면 앞 권역 숫자를 새 이름표로 남기지 않는다", async () => {
+    const okImpl = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (/** @type {string} */ url) =>
+      String(url).includes("topFinGrpNo=050000") ? { ok: false, status: 500, json: async () => ({}) } : okImpl?.(url)
+    );
+    render(<LoanRatesSection />);
+    fireEvent.click(screen.getByRole("button", { name: LABEL }));
+    await screen.findByText(rangeText("030300"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "보험" }));
+    expect(await screen.findByText(/금리 정보를 불러올 수 없습니다/)).toBeTruthy();
+    expect(screen.queryByText(rangeText("030300"))).toBeNull();
+    expect(screen.queryByTestId("group-rate-row")).toBeNull();
+  });
+
+  // ⚠️ 변이 대상: 훅 캐시 분기의 `setError(null)` 을 빼면 오류 문구가 남고 범위 줄이 안 나와 빨강(세션666 검사관 🟠).
+  it("조회가 실패한 뒤 캐시된 권역으로 돌아가면 오류를 지우고 그 권역 숫자를 다시 그린다", async () => {
+    const okImpl = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (/** @type {string} */ url) =>
+      String(url).includes("topFinGrpNo=050000") ? { ok: false, status: 500, json: async () => ({}) } : okImpl?.(url)
+    );
+    render(<LoanRatesSection />);
+    fireEvent.click(screen.getByRole("button", { name: LABEL }));
+    await screen.findByText(rangeText("030300"));
+
+    fireEvent.click(screen.getByRole("tab", { name: "보험" }));
+    await screen.findByText(/금리 정보를 불러올 수 없습니다/);
+
+    fireEvent.click(screen.getByRole("tab", { name: "저축은행" }));
+    expect(await screen.findByText(rangeText("030300"))).toBeTruthy();
+    expect(screen.queryByText(/금리 정보를 불러올 수 없습니다/)).toBeNull();
+    expect(callsFor("030300")).toBe(1); // 캐시에서 꺼냈다 — 다시 부르지 않는다
+  });
+
+  // ⚠️ 변이 대상: 훅 조회 분기의 `setError(null)` 을 빼면 성공한 권역에도 오류 문구가 남아 빨강.
+  it("조회가 실패한 뒤 다른 권역 조회가 성공하면 오류를 지운다", async () => {
+    const okImpl = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation(async (/** @type {string} */ url) =>
+      String(url).includes("topFinGrpNo=030300") ? { ok: false, status: 500, json: async () => ({}) } : okImpl?.(url)
+    );
+    render(<LoanRatesSection />);
+    fireEvent.click(screen.getByRole("button", { name: LABEL }));
+    await screen.findByText(/금리 정보를 불러올 수 없습니다/);
+
+    fireEvent.click(screen.getByRole("tab", { name: "보험" }));
+    expect(await screen.findByText(rangeText("050000"))).toBeTruthy();
+    expect(screen.queryByText(/금리 정보를 불러올 수 없습니다/)).toBeNull();
   });
 });

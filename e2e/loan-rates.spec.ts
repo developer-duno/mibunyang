@@ -41,14 +41,23 @@ async function stubRates(page: Page, calls: string[]) {
         : {
             ok: true,
             disclosureMonth: "202609",
-            data: [{ bank: `가짜${grp}`, product: "상품", rateMin: 5.5, rateMax: 7.2 }],
+            data: [
+              {
+                bank: `가짜${grp}`,
+                product: "상품",
+                mortgageType: "아파트",
+                repayType: "분할상환방식",
+                rateMin: 5.5,
+                rateMax: 7.2,
+              },
+            ],
           };
     return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
   });
 }
 
 test.describe("금융 탭 금리 블록", () => {
-  test("한 달에 갚을 돈 · 은행 5줄 · 다른 금융권은 펼칠 때만 부른다", async ({ page }) => {
+  test("한 달에 갚을 돈 · 은행 범위 1줄(이름 0) · 다른 금융권은 펼칠 때만 부른다", async ({ page }) => {
     const calls: string[] = [];
     await stubApartments(page);
     await stubRates(page, calls);
@@ -65,8 +74,11 @@ test.describe("금융 탭 금리 블록", () => {
     const panel = modal.locator("#sec-finance");
     await expect(panel.getByText("한 달에 갚을 돈", { exact: true })).toBeVisible({ timeout: 10000 });
     await expect(panel.getByText(/아파트·분할상환 최저 금리 4\.20% 기준 · 2026년 9월 공시/)).toBeVisible();
-    await expect(panel.getByTestId("bank-rate-row")).toHaveCount(5);
-    await expect(panel.getByTestId("bank-rate-row").nth(3)).toHaveAttribute("aria-label", "농협은행 4.49% ~ 7.71%");
+    // 세션665 — 은행 이름 없이 범위 한 줄. 가짜 응답의 아파트·분할상환 6개 은행: 최저 4.20(아이엠뱅크) ~ 최고 7.71(농협)
+    await expect(panel.getByTestId("bank-rate-row")).toHaveCount(1);
+    await expect(panel.getByTestId("bank-rate-row")).toHaveAttribute("aria-label", "6개 은행 4.20% ~ 7.71%");
+    await expect(panel.getByTestId("bank-rate-bars")).not.toContainText("농협");
+    await expect(panel.getByTestId("bank-rate-bars")).not.toContainText("아이엠뱅크");
     await expect(panel.getByText("은행별 금리 비교")).toHaveCount(0);
 
     // 닫힌 채로는 다른 권역을 부르지 않는다 — 첫 진입 = 전세 1 + 주담대 은행권 1
@@ -80,10 +92,12 @@ test.describe("금융 탭 금리 블록", () => {
     // 권역 탭 — StickyJumpNav 도 role=tablist 라 aria-label="금융권역" 으로 좁힌다(세션 410 D3).
     const tabs = panel.getByRole("tablist", { name: "금융권역" }).getByRole("tab");
     await expect(tabs).toHaveText(["저축은행", "여신전문", "보험"]);
-    await expect(panel.getByText("가짜030300")).toBeVisible();
+    await expect(panel.getByTestId("group-rate-row")).toHaveAttribute("aria-label", "1개 저축은행 5.50% ~ 7.20%");
+    await expect(panel.getByText("가짜030300")).toHaveCount(0);
     await tabs.nth(2).click();
     await expect(tabs.nth(2)).toHaveAttribute("aria-selected", "true");
-    await expect(panel.getByText("가짜050000")).toBeVisible();
+    await expect(panel.getByTestId("group-rate-row")).toHaveAttribute("aria-label", "1개 보험사 5.50% ~ 7.20%");
+    await expect(panel.getByText("가짜050000")).toHaveCount(0);
     expect(calls).toContain("mortgage:030300");
     expect(calls).toContain("mortgage:050000");
   });

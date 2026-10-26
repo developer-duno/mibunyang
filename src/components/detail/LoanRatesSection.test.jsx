@@ -6,6 +6,7 @@ import { useLoanRates } from "@/hooks/useLoanRates";
 
 /**
  * 다른 금융권 금리 "더 보기" (세션593 D6) — 은행권은 본문으로 올라갔고 여기엔 저축은행·여신전문·보험만.
+ * 세션665 — 회사·상품 이름 표를 빼고 "N개 저축은행 최저 ~ 최고" 범위 한 줄(은행 블록과 같은 부품)로 바꿨다.
  * 월 상환액·금리 고르기 시험은 `src/lib/loanRates.test.ts`·`BankLoanBlocks.test.tsx` 로 옮겼다.
  */
 
@@ -30,6 +31,8 @@ vi.mock("@/hooks/useLoanRates", () => ({
 }));
 
 const LABEL = "저축은행 · 여신전문 · 보험 금리 보기";
+/** 위 가짜 훅의 기본 동작 — 한 시험이 바꾼 뒤 되돌리는 데 쓴다 */
+const DEFAULT_IMPL = /** @type {any} */ (vi.mocked(useLoanRates).getMockImplementation());
 
 describe("LoanRatesSection — 다른 금융권 더 보기", () => {
   beforeEach(() => {
@@ -75,13 +78,59 @@ describe("LoanRatesSection — 다른 금융권 더 보기", () => {
     expect(vi.mocked(useLoanRates).mock.calls.map((c) => c[0])).toContain("050000");
   });
 
-  it("표에 은행 이름·금리·상품 구별 글씨를 보여 준다", () => {
+  it("저축은행 탭 = 범위 한 줄 '1개 저축은행 5.50% ~ 7.20%' · 공시월 · 회사별 금리 링크", () => {
     render(<LoanRatesSection />);
     fireEvent.click(screen.getByText(LABEL));
-    expect(screen.getByText("테스트저축은행")).toBeTruthy();
-    expect(screen.getByText("5.5%")).toBeTruthy();
-    expect(screen.getByText("아파트 · 분할상환방식 · 변동금리")).toBeTruthy();
+    expect(document.body.textContent).toContain("5.50% ~ 7.20%");
+    const rows = screen.getAllByTestId("group-rate-row");
+    expect(rows).toHaveLength(1);
+    // 아파트·분할상환이 아닌 '샘플캐피탈' 상품은 범위에도 회사 수에도 안 든다
+    expect(rows[0].getAttribute("aria-label")).toBe("1개 저축은행 5.50% ~ 7.20%");
+    expect(document.body.textContent).toContain("공시한 1개 저축은행의 가장 낮은 금리 ~ 가장 높은 금리");
+    expect(document.body.textContent).toContain("2026년 9월 공시");
+    const a = screen.getByRole("link", { name: "회사별 금리는 금감원 비교공시에서 보기 →" });
+    expect(a.getAttribute("href")).toBe("https://finlife.fss.or.kr");
+    expect(document.querySelector("table")).toBeNull();
+    expect(document.body.textContent).not.toContain("1시간 캐싱");
     expect(document.body.textContent).not.toContain("undefined");
+  });
+
+  // ⚠️ 변이 대상(세션665): 부품이 회사·상품 이름을 하나라도 그리면(글자·aria-label·title) 빨강.
+  it("이름 0 가드 — 픽스처의 회사·상품 이름이 글자·aria-label·title 어디에도 없다", () => {
+    render(<LoanRatesSection />);
+    fireEvent.click(screen.getByText(LABEL));
+    const attrs = [...document.body.querySelectorAll("[aria-label],[title]")]
+      .map((e) => `${e.getAttribute("aria-label") ?? ""} ${e.getAttribute("title") ?? ""}`)
+      .join(" ");
+    const shown = `${document.body.textContent ?? ""} ${attrs}`;
+    const names = ["테스트저축은행", "주담대A", "샘플캐피탈", "주담대B"];
+    expect(names.filter((n) => shown.includes(n))).toEqual([]);
+  });
+
+  it("권역마다 단위 낱말 — 여신전문 '여신전문사' · 보험 '보험사'", () => {
+    render(<LoanRatesSection />);
+    fireEvent.click(screen.getByText(LABEL));
+    fireEvent.click(screen.getByRole("tab", { name: "여신전문" }));
+    expect(screen.getByTestId("group-rate-row").getAttribute("aria-label")).toBe("1개 여신전문사 5.50% ~ 7.20%");
+    fireEvent.click(screen.getByRole("tab", { name: "보험" }));
+    expect(screen.getByTestId("group-rate-row").getAttribute("aria-label")).toBe("1개 보험사 5.50% ~ 7.20%");
+  });
+
+  it("아파트·분할상환 상품이 0건이면 '금리 정보가 없습니다'", () => {
+    vi.mocked(useLoanRates).mockImplementation(() => ({
+      rates: [{ bank: "샘플캐피탈", product: "주담대B", rateMin: 6.1, rateMax: 8.0 }],
+      disclosureMonth: "202609",
+      loading: false,
+      error: null,
+    }));
+    try {
+      render(<LoanRatesSection />);
+      fireEvent.click(screen.getByText(LABEL));
+      expect(screen.getByText("금리 정보가 없습니다")).toBeTruthy();
+      expect(screen.queryByTestId("group-rate-row")).toBeNull();
+    } finally {
+      vi.mocked(useLoanRates).mockImplementation(DEFAULT_IMPL);
+    }
   });
 
   it("Enter 키로 펼칠 수 있고 aria-expanded 가 바뀐다", () => {
