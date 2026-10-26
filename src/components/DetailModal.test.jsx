@@ -456,6 +456,30 @@ describe("DetailModal StickyJumpNav", () => {
     expect(price.querySelector('[data-testid="dong-fact-line"]')?.textContent).toContain("1996~2004년에 지은 집");
   });
 
+  // 세션662 — 평형별 실거래 표가 비교 상자 바로 아래에 붙는다(문장·묶기는 `detail/AreaTradeTable.test.tsx` 가 잠근다).
+  it("면적별 표(complexTable)가 있으면 시세 탭에 평형별 실거래 표가 비교 상자 바로 뒤에 보인다 (배선)", () => {
+    const price = openPriceTab({
+      area: 84.99,
+      cmpScope: "complex",
+      cmpFairPrice: 73000,
+      cmpN: 31,
+      cmpMonths: 12,
+      cmpAreaMode: "same_area",
+      cmpSrc: "sale",
+      complexTable: [
+        { area: 59.99, n: 13, min: 58000, median: 61000, max: 64200, last_month: "202609" },
+        { area: 84.99, n: 6, min: 74000, median: 77000, max: 80000, last_month: "202608" },
+      ],
+      complexJeonseTable: [],
+    });
+    const table = price.querySelector('[data-testid="area-trade-table"]');
+    expect(table).not.toBeNull();
+    expect(table?.querySelector('[data-base="true"]')?.getAttribute("data-area-group")).toBe("84");
+    // 위치 — 비교 상자(머리 줄을 품은 상자)의 다음 형제
+    const box = price.querySelector('[data-testid="price-scope-head"]')?.parentElement;
+    expect(box?.nextElementSibling).toBe(table);
+  });
+
   it("시세 탭에 네이버 매물 현황 한 줄이 보이고 두 출처 대조표는 없다 (V10)", () => {
     const price = openPriceTab();
     expect(price.textContent).toContain("네이버 매물 현황");
