@@ -1,7 +1,9 @@
 // @ts-check
 import { describe, it, expect, vi } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, renderHook, act } from "@testing-library/react";
+import { useState } from "react";
 import { MarketSummaryWidget, buildRegionBars, buildBudgetBuckets } from "./MarketSummaryWidget";
+import { useRegionHubExit } from "@/hooks/useRegionHubExit";
 
 /**
  * @param {string} id
@@ -62,6 +64,42 @@ describe("buildBudgetBuckets — 가격대별 단지 수 (중위값을 내지 �
     const buckets = buildBudgetBuckets(scored);
     expect(buckets.reduce((s, b) => s + b.count, 0)).toBe(scored.length);
     expect(buckets.map((b) => b.count)).toEqual([1, 1, 1, 1, 1]);
+  });
+});
+
+describe("지역 허브를 떠난 뒤 홈 = 숨김 켜짐 모집단 (세션669 결정 33)", () => {
+  it("허브(숨김 꺼짐)에서 떠나면 숨김이 다시 켜지고, 위젯 수 = 숨김 켜진 목록 수", () => {
+    // 허브 진입 = 숨김 꺼짐(App.tsx). 떠남(탭을 홈으로) → useRegionHubExit 가 다시 켠다.
+    const { result, rerender } = renderHook(
+      (/** @type {{ tab: string }} */ p) => {
+        const [regionHub, setRegionHub] = useState(/** @type {any} */ ({ region: "경기", gu: null }));
+        const [hideNoUnsold, setHideNoUnsold] = useState(false);
+        useRegionHubExit({
+          regionHub,
+          setRegionHub,
+          setHideNoUnsold,
+          filterRegion: "경기",
+          filterGu: "전체",
+          tab: p.tab,
+        });
+        return hideNoUnsold;
+      },
+      { initialProps: { tab: "list" } }
+    );
+    expect(result.current).toBe(false);
+    act(() => rerender({ tab: "home" }));
+    expect(result.current).toBe(true);
+    // 목록(useDataPipeline)의 숨김 거르기와 같은 식 — 경계값을 피한 가격으로 겹침 없이
+    const scored = [
+      mk("1", 20000, 5),
+      mk("2", 40000, 5, { unsold: 0 }),
+      mk("3", 60000, 5),
+      mk("4", 80000, 5, { unsold: null }),
+    ];
+    const visible = result.current ? scored.filter((x) => Number(x.apt.unsold ?? 0) > 0) : scored;
+    const widgetTotal = buildBudgetBuckets(scored).reduce((s, b) => s + b.count, 0);
+    expect(widgetTotal).toBe(visible.length);
+    expect(widgetTotal).toBe(2); // 숨김이 안 켜졌다면 목록은 4곳 — 위젯(2)과 어긋난다
   });
 });
 

@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect, useMemo, useRef, useTransition } from
 import { VALID_SORT_KEYS } from "@/constants/sortOptions";
 import { MOVEIN_VALUES, TIER_VALUES } from "@/lib/classify";
 import { trackEvent } from "@/lib/analytics";
+import { buildRegionPath, isOnRegionHub, isRegionPath, type RegionHub } from "@/lib/regionPath";
 import type { SortKey, UseFilterSortArgs, UseFilterSortReturn, FilterPreset } from "@/types/hooks";
 
 const URL_SYNC_DEBOUNCE_MS = 300;
@@ -135,24 +136,43 @@ function deserializeFromURL(): Partial<FilterState> | null {
   }
 }
 
-/** 필터 상태를 URL 쿼리스트링으로 직렬화 (비기본값만) */
-function serializeToURL(state: FilterState): string {
+/**
+ * 필터 상태를 URL 쿼리스트링으로 직렬화 (비기본값만).
+ * 지역 허브(세션669)에 머무는 동안은 경로 `/region/…` 를 지키고 지역·구는 쿼리에서 뺀다(경로가 말한다).
+ * 허브를 떠났는데 주소가 아직 `/region/…` 이면 `/` 로 — 앱 필터는 `/region` 주소를 만들지 않는다(결정 37).
+ * 상세가 열려 주소가 `/apt/…` 인 동안은 경로를 건드리지 않는다(상세 주소를 덮지 않게).
+ */
+function serializeToURL(state: FilterState, hub: RegionHub | null = null): string {
   const params = new URLSearchParams(window.location.search);
   for (const [stateKey, urlKey, defaultVal, parserName] of FILTER_URL_MAP) {
     const val = state[stateKey as keyof FilterState] as string | boolean;
     const serializer = parserName === "bool" ? SERIALIZERS.bool : SERIALIZERS._default;
     serializer(val, urlKey, params, defaultVal);
   }
+  const path = window.location.pathname;
+  const onHub = isOnRegionHub(hub, state.filterRegion, state.filterGu);
+  if (onHub) {
+    params.delete("region");
+    params.delete("gu");
+  }
   const search = params.toString();
-  return search ? `?${search}` : window.location.pathname;
+  if (onHub && hub && !path.startsWith("/apt/")) {
+    const hubPath = buildRegionPath(hub.region, hub.gu);
+    return search ? `${hubPath}?${search}` : hubPath;
+  }
+  if (!onHub && isRegionPath(path)) return search ? `/?${search}` : "/";
+  return search ? `?${search}` : path;
 }
 
-export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterSortReturn {
+export function useFilterSort({ onFilterChange, regionHub = null }: UseFilterSortArgs): UseFilterSortReturn {
   // URL에서 초기값 읽기 (lazy — 1회만)
   const [urlInit] = useState<Partial<FilterState> | null>(() => deserializeFromURL());
 
-  const [filterRegion, setFilterRegion] = useState<string>(() => urlInit?.filterRegion ?? "전체");
-  const [filterGu, setFilterGu] = useState<string>(() => urlInit?.filterGu ?? "전체");
+  // 지역 허브 주소로 들어오면 지역·구는 경로 값이 이긴다(세션669 결정 30 — 쿼리 region/gu 보다 우선)
+  const [filterRegion, setFilterRegion] = useState<string>(() => regionHub?.region ?? urlInit?.filterRegion ?? "전체");
+  const [filterGu, setFilterGu] = useState<string>(() =>
+    regionHub ? (regionHub.gu ?? "전체") : (urlInit?.filterGu ?? "전체")
+  );
   const [sortKey, setSortKeyRaw] = useState<SortKey>(() => {
     if (urlInit?.sortKey) return urlInit.sortKey;
     try {
@@ -207,6 +227,13 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
   // 단지명·지역 검색어 — URL/undo/preset 미참여(일시적 탐색), resetFilters 만 비움
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  // 허브 값은 ref 로 읽는다 — 허브를 떠나는 것(App 이 null 로 바꿈)만으로 주소 쓰기가 다시 돌면
+  // 이미 /upcoming 으로 옮긴 주소에 ?region= 이 붙는다. 주소를 다시 쓰는 건 필터가 바뀐 때뿐이다.
+  const regionHubRef = useRef<RegionHub | null>(regionHub);
+  useEffect(() => {
+    regionHubRef.current = regionHub;
+  }, [regionHub]);
+
   // URL 동기화 (debounce 300ms, replaceState)
   const isInitialLoad = useRef<boolean>(true);
   useEffect(() => {
@@ -240,8 +267,11 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
     };
     const timer = setTimeout(() => {
       try {
-        const newUrl = serializeToURL(state);
-        const currentUrl = window.location.search || window.location.pathname;
+        const newUrl = serializeToURL(state, regionHubRef.current);
+        // 경로까지 정하는 주소("/region/…?…"·"/?…")는 경로+쿼리와, 쿼리만이면 예전처럼 비교한다
+        const currentUrl = newUrl.startsWith("?")
+          ? window.location.search || window.location.pathname
+          : window.location.pathname + window.location.search;
         if (newUrl !== currentUrl) {
           window.history.replaceState(null, "", newUrl);
           const active = Object.values(state).filter((v) => v !== "" && v !== "전체" && v !== false).length;
@@ -500,9 +530,12 @@ export function useFilterSort({ onFilterChange }: UseFilterSortArgs): UseFilterS
       unitsMax,
       moveInFilter,
     };
-    const search = serializeToURL(state);
-    return `${window.location.origin}${window.location.pathname}${search.startsWith("?") ? search : ""}`;
+    const search = serializeToURL(state, regionHub);
+    // 쿼리만이면 지금 경로 뒤에, 경로까지 정한 주소(허브 "/region/…" · 허브를 떠난 "/?…")면 그대로
+    if (search.startsWith("?")) return `${window.location.origin}${window.location.pathname}${search}`;
+    return `${window.location.origin}${search}`;
   }, [
+    regionHub,
     filterRegion,
     filterGu,
     sortKey,

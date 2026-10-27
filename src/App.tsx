@@ -40,6 +40,8 @@ import { useKeyboardShortcuts } from "@/hooks/useKeyboardShortcuts";
 import { useFeedback, buildFeedbackContext, feedbackContextLabel } from "@/hooks/useFeedback";
 import { useBizInquiry } from "@/hooks/useBizInquiry";
 import { useDirectDetailEntry } from "@/hooks/useDirectDetailEntry";
+import { useRegionHubExit } from "@/hooks/useRegionHubExit";
+import { buildRegionPath, isOnRegionHub, parseRegionPath, type RegionHub } from "@/lib/regionPath";
 
 import { ShareSheet } from "@/components/ShareSheet";
 import { LoginPromptModal } from "@/components/LoginPromptModal";
@@ -92,7 +94,10 @@ export default function App() {
       /* noop: localStorage 쿼터/접근 실패 무시 */
     }
   }, []);
-  const [hideNoUnsold, setHideNoUnsold] = useState(true);
+  // 지역 허브 `/region/{시도}[/{구}]` 로 들어온 손님(세션669 결정 30·33) — 정적 허브 장과 같은 목록을 보도록
+  // 숨김을 끄고 시작한다. 떠나면(useRegionHubExit) 허브를 지우고 숨김을 다시 켠다.
+  const [regionHub, setRegionHub] = useState<RegionHub | null>(() => parseRegionPath(window.location.pathname));
+  const [hideNoUnsold, setHideNoUnsold] = useState(() => regionHub == null);
   const toggleHideNoUnsold = useCallback(() => setHideNoUnsold((v) => !v), []);
   // useToast 박힘 자리: useState 직후 + 다른 hook 호출보다 위 (L67 useEffect 의 showToast 참조 TDZ 방지)
   const { toast, showToast } = useToast();
@@ -226,7 +231,7 @@ export default function App() {
     canUndo,
     canRedo,
     isSortPending,
-  } = useFilterSort({ onFilterChange: closeDetail });
+  } = useFilterSort({ onFilterChange: closeDetail, regionHub });
   const { compIds, setCompIds, showComp, showCompOpen, setShowCompOpen, toggleComp } = useComparison(showToast);
   const auth = useAuth(showToast);
   const kakao = useKakaoAuth(showToast);
@@ -427,6 +432,13 @@ export default function App() {
     };
   }, []);
 
+  // ── 지역 허브를 떠나는 순간(지역·구를 바꿈·탭을 바꿈) — 허브 지움 + 숨김 다시 켬 + 주소 `/` (세션669) ──
+  useRegionHubExit({ regionHub, setRegionHub, setHideNoUnsold, filterRegion, filterGu, tab });
+  const regionHubPath =
+    regionHub && isOnRegionHub(regionHub, filterRegion, filterGu)
+      ? buildRegionPath(regionHub.region, regionHub.gu)
+      : null;
+
   // ── 독립 useEffect 3개 (URL 동기화 + dedup 정리) — useUrlSync 추출 (세션 485) ──
   useUrlSync({
     tab,
@@ -443,6 +455,7 @@ export default function App() {
     setFavoriteIds,
     showToast,
     idAlias,
+    regionHubPath,
   });
 
   // 단지 주소로 바로 들어오면 단지 상세만 — 뒤 화면(필터 막대·탭 내용)을 안 그린다(세션641 「단지 페이지만」)

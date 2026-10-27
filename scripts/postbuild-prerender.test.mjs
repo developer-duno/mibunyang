@@ -250,24 +250,24 @@ describe("buildHomeSkeleton — 홈에서 지역별 단지로 건너갈 링크",
   });
 
   it("지역마다 묶고 지역 이름·곳 수를 적는다", () => {
-    expect(html).toContain("<h3>서울 (10곳)</h3>");
-    expect(html).toContain("<h3>경기 (3곳)</h3>");
+    expect(html).toContain('<h3><a href="/region/%EC%84%9C%EC%9A%B8">서울</a> (10곳)</h3>');
+    expect(html).toContain('<h3><a href="/region/%EA%B2%BD%EA%B8%B0">경기</a> (3곳)</h3>');
     expect(html).toContain("<h3>기타 (1곳)</h3>");
   });
 
   it("지역 순서 = 단지 수 많은 순, 같으면 이름순 (region 빈 단지는 '기타')", () => {
-    const order = [...html.matchAll(/<h3>([^ ]+) \(/g)].map((m) => m[1]);
+    const order = [...html.matchAll(/<h3>(?:<a [^>]*>)?([^ <]+)(?:<\/a>)? \(/g)].map((m) => m[1]);
     expect(order).toEqual(["서울", "경기", "인천", "기타", "부산"]);
   });
 
   it("지역마다 목록 순서대로 앞 8곳만 링크하고 나머지는 '외 N곳'(링크 아님)", () => {
-    const seoul = html.split("<h3>서울 (10곳)</h3>")[1].split("<h3>")[0];
+    const seoul = html.split('<h3><a href="/region/%EC%84%9C%EC%9A%B8">서울</a> (10곳)</h3>')[1].split("<h3>")[0];
     expect((seoul.match(/<a href=/g) ?? [])).toHaveLength(8);
     expect(seoul).toContain('<a href="/apt/p-%EC%84%9C%EC%9A%B8-1">');
     expect(seoul).toContain("<li>외 2곳</li>");
     expect(seoul).not.toContain("서울단지9");
     expect(seoul.indexOf("서울단지1<")).toBeLessThan(seoul.indexOf("서울단지2<"));
-    const busan = html.split("<h3>부산 (1곳)</h3>")[1].split("<h3>")[0];
+    const busan = html.split('<h3><a href="/region/%EB%B6%80%EC%82%B0">부산</a> (1곳)</h3>')[1].split("<h3>")[0];
     expect(busan).not.toContain("외 ");
   });
 
@@ -278,7 +278,7 @@ describe("buildHomeSkeleton — 홈에서 지역별 단지로 건너갈 링크",
 
   it("id/name 없는 항목은 건너뛴다", () => {
     const h = buildHomeSkeleton(/** @type {any[]} */ ([null, { id: "a" }, { name: "n" }, { id: "ok", name: "정상", region: "서울" }]));
-    expect(h).toContain("<h3>서울 (1곳)</h3>");
+    expect(h).toContain('<h3><a href="/region/%EC%84%9C%EC%9A%B8">서울</a> (1곳)</h3>');
     expect(h).not.toContain("기타");
   });
 });
@@ -468,7 +468,7 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
     const body = src.slice(start, end);
     expect(body).toMatch(/const \{ pages, sitemapIds, thin \} = buildAptPages\(template, list\);/);
     // 사이트맵 쓰기는 얇은 장을 뺀 목록만 — 전 장(pages·list)을 넘기면 빨강
-    expect(body).toMatch(/writeFileSync\(DIST_SITEMAP, buildSitemap\(sitemapIds\), "utf-8"\);/);
+    expect(body).toMatch(/writeFileSync\(DIST_SITEMAP, buildSitemap\(sitemapIds, region\.sitemapEntries\), "utf-8"\);/);
     expect((body.match(/buildSitemap\(/g) ?? []).length).toBe(1);
     // 기록 파일 쓰기는 main 맨 바깥 줄(들여쓰기 2칸)에 — 조건 한 줄(`if (…) writeFileSync`)이면 빨강
     expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(thin\), "utf-8"\);\r?\n/);
