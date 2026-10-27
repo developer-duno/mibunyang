@@ -66,7 +66,9 @@ export function buildHomeSkeleton(list) {
         .join("");
       const more =
         apts.length > HOME_LINKS_PER_REGION ? `<li>외 ${apts.length - HOME_LINKS_PER_REGION}곳</li>` : "";
-      return `<h3>${esc(r)} (${apts.length}곳)</h3><ul>${items}${more}</ul>`;
+      // 시도 17종이면 제목이 시도 허브 링크(세션669 결정 37) — "기타"·밖 값은 링크 없음
+      const head = SIDO_SET.has(r) ? `<a href="${esc(regionHubPath(r))}">${esc(r)}</a>` : esc(r);
+      return `<h3>${head} (${apts.length}곳)</h3><ul>${items}${more}</ul>`;
     })
     .join("");
   return (
@@ -291,10 +293,17 @@ export function buildAptJsonLd(a, url) {
   }
   const units = Number(a.units);
   if (a.units != null && Number.isFinite(units) && units > 0) ld.numberOfAccommodationUnits = units;
-  // 스크립트 블록 탈출·HTML 파싱 오해를 막는 문자는 모두 유니코드 이스케이프(결과 문자열이 백슬래시+u+4자리)로.
-  /** @type {Record<string, string>} */
-  const ESCAPES = { "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" };
-  return JSON.stringify(ld).replace(/[<>&\u2028\u2029]/g, (c) => ESCAPES[c]);
+  return ldStringify(ld);
+}
+
+// 스크립트 블록 탈출·HTML 파싱 오해를 막는 문자는 모두 유니코드 이스케이프(결과 문자열이 백슬래시+u+4자리)로.
+// 단지 장·허브 장(세션669)이 같이 쓴다.
+/** @type {Record<string, string>} */
+const ESCAPES = { "<": "\\u003c", ">": "\\u003e", "&": "\\u0026", "\u2028": "\\u2028", "\u2029": "\\u2029" };
+
+/** @param {unknown} obj @returns {string} */
+function ldStringify(obj) {
+  return JSON.stringify(obj).replace(/[<>&\u2028\u2029]/g, (c) => ESCAPES[c]);
 }
 
 /**
@@ -338,15 +347,17 @@ export function buildUpcomingHtml(template) {
 }
 
 /**
- * sitemap.xml 생성. 고정 경로 + 단지 전량.
+ * sitemap.xml 생성. 고정 경로 + 색인할 지역 허브(세션669) + 단지 전량.
  * `<lastmod>` 는 쓰지 않는다 — 실제 변경일을 모르는데 빌드 날짜를 넣으면 매일 전 페이지가 "오늘 바뀜"이 된다(구글 지침).
  * @param {string[]} ids
+ * @param {Array<{ loc: string, pri: string }>} [hubs] 절대 주소(인코딩됨)·우선순위 — buildRegionPages 의 sitemapEntries
  * @returns {string}
  */
-export function buildSitemap(ids) {
+export function buildSitemap(ids, hubs = []) {
   const urls = [
     { loc: `${ORIGIN}/`, pri: "1.0" },
     { loc: `${ORIGIN}/upcoming`, pri: "0.8" },
+    ...hubs,
     ...ids.map((id) => ({ loc: `${ORIGIN}/apt/${encodeURIComponent(id)}`, pri: "0.6" })),
   ];
   return (
@@ -360,6 +371,338 @@ export function buildSitemap(ids) {
       .join("\n") +
     `\n</urlset>\n`
   );
+}
+
+// ── 지역 허브 정적 장 (세션669 PR-S2 · 결정 26·27·30·31·34·36·37) ────────────────────
+//
+// 단지 1,678장이 홈 한 장에만 매달린 모양을 풀려고 시도 17장 + 구 189장의 중간 장을 만든다.
+// `dist/region/{시도}/index.html` · `dist/region/{시도}/{구}/index.html` (폴더 이름 = 원문 그대로, 공백 포함).
+// 주소·canonical 은 encodeURIComponent(결정 26) — 앱 `src/lib/regionPath.ts` buildRegionPath 와 같은 문자열(짝 시험).
+//
+// ⚠️ cloaking 회피: 구 허브는 그 구 단지 **전부**(미분양 0·모름 포함, 결정 30) — 앱도 이 주소로 들어오면
+// "미분양 없는 단지 숨김"을 끄고 같은 단지 집합을 보여 준다. 순서만 다르다(앱은 점수순, 여기는 점수를 싣지 않으려
+// 미분양 남은 단지 먼저 → 총 세대수 많은 순 → 이름순). 값 표기는 화면 함수의 사본이고 같음 시험이 붙어 있다.
+// 점수·등급·금융회사 이름은 싣지 않는다(결정 27).
+
+/**
+ * 시도 17종 — 정본 `scripts/collectors/_shared.mjs` VALID_REGIONS · 앱 `src/lib/regionPath.ts` SIDO_LIST.
+ * 이 파일은 Vercel 빌드에서 돌고 `.vercelignore` 가 _shared.mjs 를 막으므로 import 하지 않고 같은 값을 둔다(같음 시험).
+ */
+export const SIDO_LIST = [
+  "서울", "부산", "대구", "인천", "광주", "대전", "울산", "세종",
+  "경기", "강원", "충북", "충남", "전북", "전남", "경북", "경남", "제주",
+];
+const SIDO_SET = new Set(SIDO_LIST);
+
+/** 단지 수가 이 값 이하인 구 허브는 noindex,follow + 사이트맵 제외(결정 31). 시도 허브는 늘 색인. */
+export const HUB_NOINDEX_MAX = 2;
+
+/**
+ * 허브 경로 — 앱 buildRegionPath 와 같은 문자열이어야 한다.
+ * @param {string} sido @param {string | null} [gu] @returns {string}
+ */
+export function regionHubPath(sido, gu) {
+  return `/region/${encodeURIComponent(sido)}${gu ? `/${encodeURIComponent(gu)}` : ""}`;
+}
+
+/**
+ * 만원 → "2억 4,675만". 화면 `src/lib/format.ts` fmtPrice 사본(같음 시험).
+ * @param {unknown} v @returns {string}
+ */
+export function fmtPriceNode(v) {
+  if (v == null) return "-";
+  const n = Number(v);
+  if (!(n > 0)) return "-";
+  const eok = Math.floor(n / 10000);
+  const man = n % 10000;
+  if (eok > 0 && man > 0) return `${eok}억 ${man.toLocaleString()}만`;
+  if (eok > 0) return `${eok}억`;
+  return `${man.toLocaleString()}만`;
+}
+
+/**
+ * 입주 표시값. 화면 `src/lib/format.ts` fmtMoveIn 사본(같음 시험).
+ * @param {unknown} completion @param {unknown} presaleMoveIn @returns {string}
+ */
+export function fmtMoveInNode(completion, presaleMoveIn) {
+  if (completion && /^\d{6}$/.test(String(completion))) return fmtCompletion(completion);
+  const raw = typeof presaleMoveIn === "string" ? presaleMoveIn.trim() : "";
+  if (raw) return raw;
+  const stored = typeof completion === "string" ? completion.trim() : "";
+  return stored || "-";
+}
+
+/**
+ * 미분양 표시 — 남음이면 화면 상세(FIELD_META unsold)와 같은 "미분양 29세대", 0 이면 사장님이 시안
+ * (`.omc/artifacts/session668/hub-mockup.html`)에서 확인한 말 "미분양 0 (분양 완료)", 모르면 화면처럼 "미분양 —".
+ * @param {unknown} v @returns {string}
+ */
+export function hubUnsoldText(v) {
+  if (v == null) return "미분양 —";
+  const n = Number(v);
+  if (n > 0) return `미분양 ${n.toLocaleString("ko-KR")}세대`;
+  if (n === 0) return "미분양 0 (분양 완료)";
+  return "미분양 —";
+}
+
+/**
+ * 총 세대 표시 — 화면 FIELD_META units fmt 사본(같음 시험): 모르거나 1 이하·미분양보다 작으면 "정보 없음".
+ * @param {unknown} units @param {unknown} unsold @returns {string}
+ */
+export function hubUnitsText(units, unsold) {
+  if (units == null) return "정보 없음";
+  const n = Number(units);
+  if (!(n > 1)) return "정보 없음";
+  if (unsold != null && Number(unsold) > n) return "정보 없음";
+  return `${n.toLocaleString("ko-KR")}세대`;
+}
+
+/** @param {Record<string, any>} a @returns {boolean} */
+const hasUnsold = (a) => Number(a.unsold) > 0;
+
+/**
+ * 단지 줄 순서 — 미분양 남은 단지 먼저 → 총 세대수 많은 순(모름은 뒤) → 이름순.
+ * @param {Record<string, any>} x @param {Record<string, any>} y @returns {number}
+ */
+export function hubAptOrder(x, y) {
+  const ux = hasUnsold(x) ? 1 : 0;
+  const uy = hasUnsold(y) ? 1 : 0;
+  if (ux !== uy) return uy - ux;
+  const nx = Number.isFinite(Number(x.units)) && x.units != null ? Number(x.units) : -1;
+  const ny = Number.isFinite(Number(y.units)) && y.units != null ? Number(y.units) : -1;
+  if (nx !== ny) return ny - nx;
+  const a = String(x.name);
+  const b = String(y.name);
+  return a < b ? -1 : a > b ? 1 : 0;
+}
+
+/**
+ * 단지 한 줄 HTML.
+ * @param {Record<string, any>} a @returns {string}
+ */
+export function hubAptLine(a) {
+  const parts = [
+    `분양가 ${fmtPriceNode(a.price)}`,
+    `${hubUnsoldText(a.unsold)} / 총 ${hubUnitsText(a.units, a.unsold)}`,
+    `입주 ${fmtMoveInNode(a.completion, a.presaleMoveIn)}`,
+  ];
+  return `<li><a href="/apt/${encodeURIComponent(a.id)}">${esc(a.name)}</a> · ${esc(parts.join(" · "))}</li>`;
+}
+
+/**
+ * 시도 통계 한 줄 — 화면 RegionStats 가 시도 이름을 붙여 그리는 두 칸(주택보급률·인구 증감)만, 그 시도 단지들이
+ * **값 하나로 같을 때만**(시도 단위 값임을 이 자리에서 다시 확인 — 갈리면 그 칸을 뺀다). 구 단위 칸은 싣지 않는다.
+ * @param {string} sido @param {Array<Record<string, any>>} apts 그 시도 단지 전부 @returns {string}
+ */
+export function sidoStatLine(sido, apts) {
+  /** @param {string} f @returns {number | null} */
+  const one = (f) => {
+    const vals = new Set(apts.map((a) => a[f]).filter((v) => v != null && Number.isFinite(Number(v))).map(Number));
+    return vals.size === 1 ? [...vals][0] : null;
+  };
+  /** @type {string[]} */
+  const parts = [];
+  const h = one("housingSupplyLevel");
+  if (h != null) parts.push(`${sido} 주택보급률 ${h}%`);
+  const p = one("popGrowth");
+  if (p != null) parts.push(`${sido} 인구 증감 ${p > 0 ? "+" : ""}${p}%`);
+  return parts.join(" · ");
+}
+
+/**
+ * 구 통계 — 화면 RegionStats 가 구 이름을 붙여 그리는 합계출산율(시·군·구 단위, 표기 = FIELD_META `${v}명`)을
+ * 그 구 단지들이 **값 하나로 같을 때만**. 최근 6개월 거래는 같은 구 안에서도 갈려 싣지 않는다(보완 F3).
+ * @param {string} gu @param {Array<Record<string, any>>} apts 그 구 단지 전부 @returns {string}
+ */
+export function guStatLine(gu, apts) {
+  const vals = new Set(apts.map((a) => a.fertilityRate).filter((v) => v != null && Number.isFinite(Number(v))).map(Number));
+  return vals.size === 1 ? `${gu} 합계출산율 ${[...vals][0]}명` : "";
+}
+
+/** 허브 제목 꼴(결정 34) @param {string} place @param {number} n @param {number} m */
+const hubTitle = (place, n, m) => `${place} 분양·미분양 아파트 ${n}곳 (미분양 남음 ${m}곳)`;
+
+/**
+ * 폴더 이름으로 못 쓰는 이름 — `/`·`\`·`..` 가 들거나 앞뒤 공백.
+ * @param {string} s @returns {boolean}
+ */
+const badDirName = (s) => s.includes("/") || s.includes("\\") || s.includes("..") || s !== s.trim();
+
+/**
+ * 허브 장 HTML — 틀(index.html 원본)의 head 를 단지 장과 같은 치환 꼴로 바꾼다.
+ * @param {string} template
+ * @param {{ url: string, title: string, desc: string, body: string, crumbs: Array<{ name: string, url: string }>, noindex: boolean }} o
+ * @returns {string}
+ */
+function buildHubHtml(template, o) {
+  if (ROBOTS_META_RE.test(template)) {
+    throw new Error('[postbuild-prerender] 템플릿(index.html)에 이미 name="robots" 메타가 있습니다 — 허브 장 noindex 와 겹칩니다');
+  }
+  let html = template;
+  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(o.url)}" />`);
+  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(o.url)}" />`);
+  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(o.title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(o.desc)}" />`);
+  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(o.title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(o.desc)}" />`);
+  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(o.desc)}" />`);
+  html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(o.title)}</title>`);
+  html = html.replace(ROOT_RE, () => o.body);
+  if (html.split("</head>").length !== 2) {
+    throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — 허브 JSON-LD 를 넣을 자리를 못 정함");
+  }
+  const ld = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: o.crumbs.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: c.url })),
+  };
+  const robots = o.noindex ? `<meta name="robots" content="noindex,follow" />\n` : "";
+  html = html.replace("</head>", () => `<script type="application/ld+json">${ldStringify(ld)}</script>\n${robots}</head>`);
+  return html;
+}
+
+/** @param {string} inner @returns {string} */
+const hubBody = (inner) =>
+  `<div id="root" class="notranslate">` +
+  `<main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif">` +
+  inner +
+  `<p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p>` +
+  `</main></div>`;
+
+/**
+ * 지역 허브 장 전부 + 사이트맵에 넣을 허브 주소.
+ * - 시도가 17종 밖이면 건너뜀(skipped.notSido) · 구 이름이 폴더로 못 쓰는 꼴이면 그 구 허브만 안 만듦(skipped.badName — 단지 수)
+ * - 구가 빈 단지(세종)·폴더로 못 쓰는 구의 단지는 시도 허브에 단지 줄로 직접 싣는다
+ * - 구 허브 제목은 "{시도} {구} …"(결정 38 — 이름 같은 구가 여러 시도에 있다)
+ * - 구 허브 단지 수(얇은 단지 포함) ≤ HUB_NOINDEX_MAX 면 noindex,follow + 사이트맵 제외
+ * @param {string} template dist/index.html 원본 (프리렌더 주입 전)
+ * @param {Array<Record<string, any>>} list
+ * @returns {{ pages: Array<{ segments: string[], path: string, html: string, noindex: boolean }>, sitemapEntries: Array<{ loc: string, pri: string }>, skipped: { notSido: number, badName: number } }}
+ */
+export function buildRegionPages(template, list) {
+  const skipped = { notSido: 0, badName: 0 };
+  /** @type {Map<string, { all: Array<Record<string, any>>, noGu: Array<Record<string, any>>, byGu: Map<string, Array<Record<string, any>>> }>} */
+  const bySido = new Map();
+  for (const a of list) {
+    if (!a || !a.id || !a.name) continue;
+    const sido = typeof a.region === "string" ? a.region : "";
+    if (!SIDO_SET.has(sido)) {
+      skipped.notSido++;
+      continue;
+    }
+    let gu = typeof a.gu === "string" && a.gu.trim() ? a.gu : "";
+    // 폴더로 못 쓰는 구 이름은 구 허브만 안 만든다 — 그 단지는 시도 허브의 수에 세고 단지 줄로 직접 싣는다(보완 F4)
+    if (gu && badDirName(gu)) {
+      skipped.badName++;
+      gu = "";
+    }
+    let s = bySido.get(sido);
+    if (!s) {
+      s = { all: [], noGu: [], byGu: new Map() };
+      bySido.set(sido, s);
+    }
+    s.all.push(a);
+    if (!gu) s.noGu.push(a);
+    else {
+      const arr = s.byGu.get(gu);
+      if (arr) arr.push(a);
+      else s.byGu.set(gu, [a]);
+    }
+  }
+
+  /** @type {Array<{ segments: string[], path: string, html: string, noindex: boolean }>} */
+  const pages = [];
+  /** @type {Array<{ loc: string, pri: string }>} */
+  const sidoEntries = [];
+  /** @type {Array<{ loc: string, pri: string }>} */
+  const guEntries = [];
+  /** @param {string} a @param {string} b */
+  const byName = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+  const sidos = [...bySido.keys()].sort((x, y) => SIDO_LIST.indexOf(x) - SIDO_LIST.indexOf(y));
+
+  for (const sido of sidos) {
+    const s = /** @type {NonNullable<ReturnType<typeof bySido.get>>} */ (bySido.get(sido));
+    const sidoPath = regionHubPath(sido);
+    const sidoUrl = `${ORIGIN}${sidoPath}`;
+    const stat = sidoStatLine(sido, s.all);
+    const statHtml = stat ? `<p>${esc(stat)}</p>` : "";
+
+    // ── 구 허브 ──
+    const gus = [...s.byGu.entries()].sort((x, y) => y[1].length - x[1].length || byName(x[0], y[0]));
+    for (const [gu, apts] of gus) {
+      const sorted = [...apts].sort(hubAptOrder);
+      const n = sorted.length;
+      const m = sorted.filter(hasUnsold).length;
+      // 결정 38 — 구 허브 제목엔 시도를 붙인다(중구·동구 같은 이름이 여러 시도에 있다)
+      const title = hubTitle(`${sido} ${gu}`, n, m);
+      const guStat = [stat, guStatLine(gu, apts)].filter(Boolean).join(" · ");
+      const path = regionHubPath(sido, gu);
+      const url = `${ORIGIN}${path}`;
+      const names = sorted.slice(0, 3).map((a) => String(a.name));
+      const desc = `${title} — ${names.join("·")}${n > 3 ? " 등" : ""} 단지별 분양가·미분양 세대·입주 시기.`;
+      const noindex = n <= HUB_NOINDEX_MAX;
+      const body = hubBody(
+        `<nav aria-label="breadcrumb"><a href="/">전국</a> › <a href="${esc(sidoPath)}">${esc(sido)}</a> › ${esc(gu)}</nav>` +
+          `<h1>${esc(title)}</h1>` +
+          (guStat ? `<p>${esc(guStat)}</p>` : "") +
+          `<ul>${sorted.map(hubAptLine).join("")}</ul>` +
+          `<p><a href="${esc(sidoPath)}">${esc(sido)} 전체 보기 ›</a></p>` +
+          `<p><a href="/">전국 목록으로 ›</a></p>`,
+      );
+      const html = buildHubHtml(template, {
+        url,
+        title: `${title} | 미분양 비교`,
+        desc,
+        body,
+        crumbs: [
+          { name: "전국", url: `${ORIGIN}/` },
+          { name: sido, url: sidoUrl },
+          { name: gu, url },
+        ],
+        noindex,
+      });
+      pages.push({ segments: [sido, gu], path, html, noindex });
+      if (!noindex) guEntries.push({ loc: url, pri: "0.6" });
+    }
+
+    // ── 시도 허브(늘 색인) — 구 목록 + 단지 수, 구가 빈 단지는 단지 줄로 직접 ──
+    const n = s.all.length;
+    const m = s.all.filter(hasUnsold).length;
+    const title = hubTitle(sido, n, m);
+    const guItems = gus
+      .map(([gu, apts]) => {
+        const gm = apts.filter(hasUnsold).length;
+        return `<li><a href="${esc(regionHubPath(sido, gu))}">${esc(gu)}</a> ${apts.length}곳 (미분양 남음 ${gm}곳)</li>`;
+      })
+      .join("");
+    const noGuSorted = [...s.noGu].sort(hubAptOrder);
+    const lead = gus.length > 0 ? gus.slice(0, 3).map(([gu]) => gu) : noGuSorted.slice(0, 3).map((a) => String(a.name));
+    const leadMore = (gus.length > 0 ? gus.length : noGuSorted.length) > 3 ? " 등" : "";
+    const desc = `${title} — ${lead.join("·")}${leadMore} ${gus.length > 0 ? "시군구별 단지 수와 목록" : "단지별 분양가·미분양 세대·입주 시기"}.`;
+    const body = hubBody(
+      `<nav aria-label="breadcrumb"><a href="/">전국</a> › ${esc(sido)}</nav>` +
+        `<h1>${esc(title)}</h1>` +
+        statHtml +
+        (gus.length > 0 ? `<h2>시군구</h2><ul>${guItems}</ul>` : "") +
+        (noGuSorted.length > 0 ? `<h2>${esc(sido)} 단지</h2><ul>${noGuSorted.map(hubAptLine).join("")}</ul>` : "") +
+        `<p><a href="/">전국 목록으로 ›</a></p>`,
+    );
+    const html = buildHubHtml(template, {
+      url: sidoUrl,
+      title: `${title} | 미분양 비교`,
+      desc,
+      body,
+      crumbs: [
+        { name: "전국", url: `${ORIGIN}/` },
+        { name: sido, url: sidoUrl },
+      ],
+      noindex: false,
+    });
+    pages.push({ segments: [sido], path: sidoPath, html, noindex: false });
+    sidoEntries.push({ loc: sidoUrl, pri: "0.7" });
+  }
+
+  return { pages, sitemapEntries: [...sidoEntries, ...guEntries], skipped };
 }
 
 function main() {
@@ -426,9 +769,21 @@ function main() {
     `[postbuild-prerender] 얇은 단지 ${thin.count}곳 · applied=${thin.applied} (안전선 ${thin.cap}) · ${thin.ids.join(",") || "없음"}`,
   );
 
-  writeFileSync(DIST_SITEMAP, buildSitemap(sitemapIds), "utf-8");
+  // ── 지역 허브 정적 장 (세션669) ──
+  const region = buildRegionPages(template, list);
+  for (const p of region.pages) {
+    const dir = join(DIST, "region", ...p.segments);
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(join(dir, "index.html"), p.html, "utf-8");
+  }
+  const hubNoindex = region.pages.filter((p) => p.noindex).length;
   console.log(
-    `[postbuild-prerender] 단지 페이지 ${pages.length}개 생성 (dist/apt/{id}/index.html) + sitemap ${sitemapIds.length + 2}개 URL`,
+    `[postbuild-prerender] 지역 허브 ${region.pages.length}장 (시도 ${region.pages.filter((p) => p.segments.length === 1).length} · 구 ${region.pages.filter((p) => p.segments.length === 2).length} · noindex ${hubNoindex}) · 건너뜀: 시도 밖 ${region.skipped.notSido} · 구 허브 못 만든 구 이름 ${region.skipped.badName}(그 단지는 시도 허브에)`,
+  );
+
+  writeFileSync(DIST_SITEMAP, buildSitemap(sitemapIds, region.sitemapEntries), "utf-8");
+  console.log(
+    `[postbuild-prerender] 단지 페이지 ${pages.length}개 생성 (dist/apt/{id}/index.html) + sitemap ${sitemapIds.length + region.sitemapEntries.length + 2}개 URL`,
   );
 }
 

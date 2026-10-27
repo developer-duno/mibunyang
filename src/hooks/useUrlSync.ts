@@ -3,6 +3,7 @@ import { PROFILES } from "@/constants/profiles";
 import { isFeatureHome } from "@/constants/featureFlags";
 import { MAX_COMPARE } from "@/hooks/useComparison";
 import { resolveAptId } from "@/lib/dedup";
+import { isRegionPath, parseRegionPath } from "@/lib/regionPath";
 import type { Apt, Profile } from "@/types/scoring";
 
 interface UseUrlSyncArgs {
@@ -22,6 +23,8 @@ interface UseUrlSyncArgs {
   showToast: (_msg: string) => void;
   /** 구성원 id → 카드 id(useApartmentData — 세션635 다). 옛 카드 id 를 지우지 않고 대표로 넘긴다. */
   idAlias: Map<string, string>;
+  /** 지역 허브에 머무는 중이면 그 경로(`/region/…`) — 상세를 닫으면 `/` 대신 여기로(세션669). 없으면 null */
+  regionHubPath?: string | null;
 }
 
 /**
@@ -48,6 +51,7 @@ export function useUrlSync({
   setFavoriteIds,
   showToast,
   idAlias,
+  regionHubPath = null,
 }: UseUrlSyncArgs): void {
   // ── 독립 useEffect: tab="upcoming" ↔ URL "/upcoming" 동기화 ──
   useEffect(() => {
@@ -96,12 +100,12 @@ export function useUrlSync({
     }
     if (window.location.pathname.startsWith("/apt/")) {
       try {
-        window.history.pushState(null, "", tab === "upcoming" ? "/upcoming" : "/");
+        window.history.pushState(null, "", tab === "upcoming" ? "/upcoming" : (regionHubPath ?? "/"));
       } catch {
         /* noop */
       }
     }
-  }, [detailAptId, tab]);
+  }, [detailAptId, tab, regionHubPath]);
 
   // ── 독립 useEffect: 뒤로/앞으로 가기 ↔ 상세 열림 (세션 503) ──
   // pushState 로 만든 항목은 뒤로가기 때 popstate 만 오고 화면은 그대로다. 주소를 보고 맞춰준다.
@@ -118,6 +122,14 @@ export function useUrlSync({
 
   // ── 독립 useEffect: URL 딥링크 복원 ──
   useEffect(() => {
+    // `/region/…` 인데 허브로 못 읽는 주소(17종 밖 시도·깨진 인코딩)는 `/` 로 — 쿼리는 그대로(세션669)
+    if (isRegionPath(window.location.pathname) && !parseRegionPath(window.location.pathname)) {
+      try {
+        window.history.replaceState(null, "", `/${window.location.search}`);
+      } catch {
+        /* noop */
+      }
+    }
     const params = new URLSearchParams(window.location.search);
     // 경로형 `/apt/{id}` 가 1순위, 없으면 옛 `?detail=` (세션 503 — 기존 공유 링크 하위호환)
     const pathId = window.location.pathname.match(/^\/apt\/([^/]+)/)?.[1];

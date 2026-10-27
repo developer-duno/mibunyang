@@ -291,6 +291,8 @@ export interface UseKakaoAuthReturn {
  */
 export interface UseFilterSortArgs {
   onFilterChange?: () => void;
+  /** `/region/…` 주소로 들어와 허브에 머무는 중이면 그 허브(세션669) — 첫 지역·구와 주소 경로를 정한다 */
+  regionHub?: import("@/lib/regionPath").RegionHub | null;
 }
 
 /**

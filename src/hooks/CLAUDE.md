@@ -5,7 +5,8 @@
 ## Hook 호출 순서 (App.tsx)
 
 ```
-useState (7개: profile, customWeights, hideNoUnsold, upcomingData, upcomingError, upcomingRetryTick, tab) + useTransition (1개)
+useState (8개: profile, customWeights, regionHub, hideNoUnsold, upcomingData, upcomingError, upcomingRetryTick, tab) + useTransition (1개)
+  ⚠️ regionHub 는 hideNoUnsold **앞** — 숨김 첫 값이 "지역 허브 주소로 들어왔나"로 정해진다(세션669)
   ⚠️ 셀 때 `grep -c 'useState('` 는 제네릭 꼴(`useState<Profile>(`)을 놓친다 — `grep -cE 'useState(<[^>]*>)?\('` 로 (세션 548)
   → useCallback (setProfile, saveCustomWeights, toggleHideNoUnsold, closeDetail)
   → 커스텀 훅 13개 (useResponsive → useToast → ... → useShare)
@@ -17,7 +18,8 @@ useState (7개: profile, customWeights, hideNoUnsold, upcomingData, upcomingErro
   → useShareCallbacks (callback 3개 + scoredMapRef 내부 관리)
   → useKeyboardShortcuts (void, 데스크톱 가드)
   → 독립 useEffect (print CSS)
-  → useUrlSync (void, URL 동기화 5종 — 세션 485 추출 + 503 상세 URL 2종)
+  → useRegionHubExit (void, 지역 허브를 떠나면 허브 지움·숨김 다시 켬·주소 `/` — 세션669. 목록↔지도는 머묾(결정 39) · 지역·구로 떠날 땐 주소를 useFilterSort 가 써 filter_change 1건. useFilterSort 의 지역·구와 tab 을 받으므로 그 뒤, 상세 닫기 주소를 정하는 useUrlSync 앞)
+  → useUrlSync (void, URL 동기화 5종 — 세션 485 추출 + 503 상세 URL 2종 · 세션669 `regionHubPath` 받으면 상세 닫을 때 허브 경로로)
   → useDirectDetailEntry (boolean, 단지 주소 직접 진입이면 뒤 화면을 안 그림 — 세션641)
   → JSX
 ```

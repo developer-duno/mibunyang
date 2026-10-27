@@ -53,3 +53,37 @@ describe("useUrlSync — 옛 id 넘김(세션635 다)", () => {
     window.history.replaceState(null, "", "/");
   });
 });
+
+describe("useUrlSync — 지역 허브(세션669)", () => {
+  const GURO = "/region/%EC%84%9C%EC%9A%B8/%EA%B5%AC%EB%A1%9C%EA%B5%AC";
+  it("허브에 머무는 중 상세를 열면 /apt/{id}, 닫으면 / 가 아니라 그 허브 경로로", () => {
+    window.history.replaceState(null, "", GURO);
+    const p = { ...base(), tab: "list", regionHubPath: GURO };
+    const { rerender } = renderHook((props) => useUrlSync(props), { initialProps: p });
+    rerender({ ...p, detailAptId: "ah-1" });
+    expect(window.location.pathname).toBe("/apt/ah-1");
+    rerender({ ...p, detailAptId: null });
+    expect(window.location.pathname).toBe(GURO);
+    window.history.replaceState(null, "", "/");
+  });
+  it("허브가 아니면(regionHubPath null) 상세를 닫으면 예전대로 /", () => {
+    window.history.replaceState(null, "", "/");
+    const p = { ...base(), tab: "list", regionHubPath: null };
+    const { rerender } = renderHook((props) => useUrlSync(props), { initialProps: p });
+    rerender({ ...p, detailAptId: "ah-1" });
+    rerender({ ...p, detailAptId: null });
+    expect(window.location.pathname).toBe("/");
+  });
+  it("17종 밖 시도의 /region 주소는 / 로 바꾸고 쿼리는 남긴다", () => {
+    window.history.replaceState(null, "", "/region/%EC%95%88%EC%8B%AC%EB%89%B4%ED%83%80%EC%9A%B4?sort=price");
+    renderHook(() => useUrlSync({ ...base(), tab: "list" }));
+    expect(window.location.pathname + window.location.search).toBe("/?sort=price");
+    window.history.replaceState(null, "", "/");
+  });
+  it("올바른 허브 주소는 그대로 둔다", () => {
+    window.history.replaceState(null, "", GURO);
+    renderHook(() => useUrlSync({ ...base(), tab: "list", regionHubPath: GURO }));
+    expect(window.location.pathname).toBe(GURO);
+    window.history.replaceState(null, "", "/");
+  });
+});

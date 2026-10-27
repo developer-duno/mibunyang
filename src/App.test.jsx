@@ -444,6 +444,39 @@ describe("App 통합 테스트", () => {
     });
   });
 
+  // 지역 허브 주소로 들어오면 그 지역·구 단지 전부(미분양 0 포함) — 정적 허브 장과 같은 목록(세션669 결정 30)
+  describe("지역 허브 진입 (세션669)", () => {
+    const data = () => [
+      ...makeTestApartments(),
+      { ...makeTestApartments()[0], id: "apt3", name: "완판아파트", unsoldRate: 0, unsold: 0 },
+    ];
+    afterEach(() => window.history.replaceState(null, "", "/"));
+
+    it("/region/경기/수원시 → 경기·수원시만, 미분양 0 단지도 보이고(숨김 꺼짐) 주소는 허브 그대로", async () => {
+      mockFetch.mockResolvedValue({ data: data(), dataUpdatedAt: null });
+      const hubPath = `/region/${encodeURIComponent("경기")}/${encodeURIComponent("수원시")}`;
+      window.history.replaceState(null, "", hubPath);
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText(/완판아파트/)).toBeInTheDocument();
+      });
+      expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+      expect(screen.queryByText(/힐스테이트강남/)).not.toBeInTheDocument();
+      expect(window.location.pathname).toBe(hubPath);
+    });
+
+    it("17종 밖 시도(/region/평택) → 무시: 주소 /, 숨김 켜짐(미분양 0 단지 안 보임)", async () => {
+      mockFetch.mockResolvedValue({ data: data(), dataUpdatedAt: null });
+      window.history.replaceState(null, "", `/region/${encodeURIComponent("평택")}?sort=price`);
+      render(<App />);
+      await waitFor(() => {
+        expect(screen.getByText(/테스트파크1차/)).toBeInTheDocument();
+      });
+      expect(screen.queryByText(/완판아파트/)).not.toBeInTheDocument();
+      expect(window.location.pathname + window.location.search).toBe("/?sort=price");
+    });
+  });
+
   // 8. 통합 홈 (VITE_FEATURE_HOME ON) — OFF 경로는 위 기존 테스트 전체가 회귀 가드
   describe("VITE_FEATURE_HOME flag ON", () => {
     beforeEach(() => {
