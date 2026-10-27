@@ -105,6 +105,7 @@
 - DB 변경과 API 변경은 **다른 단계**에서
 - 한 단계에 "타입 + API + 컴포넌트" 동시 생성 금지
 - 플랜 필수 포함: 파일 목록+참조처(grep 결과) / 실행 순서+의존 / 영향 범위 / 롤백 / 테스트 / 단계별 예상 줄 수
+- **계획서 행마다 BACKLOG 의 보류(`⏸`) 결정과 맞댄다** — `grep -n "⏸" .claude/BACKLOG.md` 로 걸리는 결정 번호를 그 행에 적는다(세션670 맹점 🟠: 스팸 회피 계획 PR-S4 본문에 결정 23 ⏸ 「정적 단지 페이지 자금 줄 = 법령해석 답 뒤」와 부딪히는 대출 절이 들어 있었는데 계획 검토 두 바퀴가 못 봤다).
 - **화면 결함(문구·빈칸·단위)은 "그 문구를 누가 그리나"를 확정한 뒤에만 표적 file:line 을 적는다** — ① `grep -rn "<문구>" src/components src/lib src/constants` 로 후보 부품 전부 ② 라이브 DOM(또는 로컬 vite) 텍스트에서 그 문구가 실제로 어느 부품의 것인지 1회 확인 ③ 그 부품을 표적으로. 조사 보고서의 "종합 탭 '미수집'" 같은 **탭 이름만 보고** 표적을 고르면 폴백이 관리자 화면에만 닿는다(세션576 D5 → D5-b 재작업: `fieldMeta` 표는 `tabExtraFields` 가 편차 필드를 빼서 손님에겐 안 그려짐, 손님이 본 "미수집"은 `DeviationStrip`).
 
 ## 의존 분할 순서
@@ -134,6 +135,9 @@ DB 스키마 → 타입 → API → 훅/유틸 → 하위 컴포넌트 → 메�
 - **워크트리엔 `.env` 를 `cp` 도 못 한다(deny)** — DB·KOSIS 를 읽는 재시뮬·탐침은 합친 뒤 **본 폴더**에서(러너 창 04:30~06:30 밖). 지시서엔 "재시뮬은 메인이 한다" 로 적어 작업반이 시도하지 않게(세션577). ⚠️ 수집기 로직 PR 은 **pull 한 순간부터 러너가 새 코드를 돌린다** — pull 뒤 다음 러너 회차 전에 재시뮬·전이표 승인을 끝내고, 못 하면 pull 을 보류한다(검사관 C).
 - **새 e2e spec 은 워크트리에서 1회 로컬 실행**한 뒤 올린다 — `cd <워크트리> && PATH="/f/mibunyang/node_modules/.bin:$PATH" node ../../../node_modules/@playwright/test/cli.js test e2e/<spec>.ts --project=chromium`(dev 서버는 playwright 가 띄움 — `reuseExistingServer` 라 **시작 전에도** 5173 리스너 0 을 확인하고, 작업반 병렬이면 `PW_BASE_URL` 로 포트를 나눈다; 끝나면 5173 리스너 0 확인). 세션577 A-12 는 CI 가 첫 실행이라 `getByLabel` strict-mode 로 1 failed 났다.
 - **수집기를 바꾸면 "자기 출력 위에서 2회차 실행" 시험을 둔다** — 세션567 미분양 수리는 뮤테이션 8종·검사관 2회를 통과했지만, 자기가 쓴 값이 다음 회차에 "보존"으로 분류돼 동결되는 것을 못 봤다(검사관 3).
+- **`main` 에 합치는 순간 운영 반영이다** — Vercel 이 main 을 빌드하고 postbuild 가 정적 단지·허브 페이지·사이트맵까지 새로 굽는다. 전/후 캡처 "진행" · 시험 배포 확인 · 명단 전이표 승인은 전부 합치기 **전에** 끝낸다(세션668 맹점 🔴).
+- **명단·개수·캡처 대상은 운영 목록에서 고른다** — 로컬 `public/data/apartments-list.json` 은 git 무시 파일이라 마지막 로컬 빌드 때 사본이다(10/27 기준 9/21 판 1,694행 vs 운영 1,678행). 운영 `/data/apartments-list.json` 을 받아(예 `F:/tmp/live-list.json`, `fetchedAt` 함께 적기) 그 사본으로 세거나, git 이 추적해 매일 갱신되는 `public/data/apartments.json` 을 pull 한 뒤 쓴다(10/27 기준 둘 다 1,678행 · 같은 `fetchedAt`)(세션666·669·670).
+- **Vercel 시험 배포(미리보기)는 로그인 보호라 그냥 `curl` 은 막힌다** — `MSYS_NO_PATHCONV=1 vercel curl <경로> --deployment <미리보기 URL>`(Git Bash 는 이 변수가 없으면 `/region/…` 을 윈도우 경로로 바꾼다). 없는 파일도 200 + index.html 이 오므로(`vercel.json` rewrite) 판정은 상태 코드가 아니라 본문(`<title>`·JSON 모양)으로(세션668·669).
 
 ## Review (커밋 전 자동 수행)
 1. **simplify** 스킬 — 변경 코드 재사용성/품질/효율 리뷰
