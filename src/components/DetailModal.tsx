@@ -43,6 +43,7 @@ import { PriceChart } from "./detail/PriceChart";
 import { UnsoldChart } from "./detail/UnsoldChart";
 import { NaverListingLine } from "./detail/NaverListingLine";
 import { RegionStats } from "./detail/RegionStats";
+import { NearbyBlock } from "./detail/NearbyBlock";
 import { HelpHint } from "./HelpHint";
 import { StickyJumpNav, type JumpSection } from "./detail/StickyJumpNav";
 import { IconClose } from "./icons";
@@ -153,6 +154,8 @@ export const DetailModal = memo(function DetailModal({
   regionStats = null,
   isLoggedIn = true,
   onRequestLogin,
+  nearbyIndex = null,
+  onOpenApt,
 }: DetailModalProps) {
   // 비로그인 점수 블라인드 (단계 2-A). 세션 503(2-B)이 상세 게이트를 없애면서 이 분기가 실제로
   // 켜졌다 — 이제 비로그인·검색엔진이 여기까지 도달한다(그 전까지는 도달 자체가 불가능했다).
@@ -168,7 +171,7 @@ export const DetailModal = memo(function DetailModal({
   // id 해시 버킷 1개만 fetch(br ~69KB) + 버킷 단위 Map 캐시. 가격배열 + 학교/어린이집/혜택 + full catsCache 통합.
   const [detail, setDetail] = useState<AptDetailFields | null>(null);
   // 지금 detail 이 어느 단지의 버킷인가 — 버킷 행은 id 를 떼고 온다(staticDataApi loadDetailBucketOnce).
-  // 창을 닫지 않고 단지를 바꾸면 새 버킷이 올 때까지 옛 detail 이 남으므로, 평형별 표는 이 값으로 가른다(세션662).
+  // 세션671 부터 App 이 key=단지 id 로 단지를 바꿀 때마다 창을 새로 띄워(옛 detail 이 안 남는다) 이 값은 이중 안전장치다 — 평형별 표는 이 값으로 가른다(세션662).
   const [detailForId, setDetailForId] = useState<string | null>(null);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
@@ -942,6 +945,11 @@ export const DetailModal = memo(function DetailModal({
                 <AdminDataAudit apt={mergedApt ?? apt} profile={profile} />
               </section>
             )}
+
+            {/* 세션671 PR-S3(결정 40) — 모든 탭 공통 맨 아래: 경로 줄 + 같은 구 가까운 단지 칩. 탭 패널(관리자 포함) 뒤,
+                문의 여백·CTA 바 앞. 휴대폰은 아래 CTA 바가, PC 는 오른쪽 레일이 DOM 상 뒤에 오므로 이 블록의 링크는
+                마지막 포커서블이 아니다(아래 포커스 트랩 불변식 유지 — 시험 DetailModal.nearby.test.jsx). */}
+            {nearbyIndex && <NearbyBlock apt={apt} index={nearbyIndex} isDesktop={isDesktop} onOpenApt={onOpenApt} />}
 
             {/* CTA 공통 영역 — 탭 무관 항상 노출 + sticky bottom (사장님 결정 2026-06-13 ×2).
             sticky 기본 동작 = 콘텐츠가 화면보다 길면 하단에 반투명으로 겹쳐 떠 있고, 짧으면 콘텐츠 끝

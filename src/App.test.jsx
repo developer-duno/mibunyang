@@ -784,4 +784,75 @@ describe("App 통합 테스트", () => {
       });
     });
   });
+
+  // 세션671 PR-S3 — 상세 맨 아래 같은 구 가까운 단지 칩.
+  //  - 후보 = 필터 전 전체 목록(미분양 0 이라 목록에서 숨은 단지도 칩에 나온다 · 허브와 같은 목록)
+  //  - 칩으로 다른 단지로 바꾸면 창을 새로 띄운 것과 같은 상태(종합 탭·스크롤 맨 위) + 주소 /apt/B · 뒤로 = A → 목록
+  describe("상세 맨 아래 가까운 단지 칩 (세션671)", () => {
+    afterEach(() => {
+      window.history.replaceState(null, "", "/");
+    });
+
+    const withNeighbor = () => {
+      const [a1, a2] = makeTestApartments();
+      return [
+        { ...a1, lat: 37.26, lng: 127.03 },
+        a2,
+        { ...a1, id: "apt9", name: "옆동네완판", unsold: 0, unsoldRate: 0, lat: 37.27, lng: 127.03 },
+      ];
+    };
+
+    it("필터로 숨은 단지(미분양 0)도 칩 후보 · 칩으로 바꾸면 종합 탭·맨 위 · 뒤로 1번 A, 2번 목록", async () => {
+      mockFetch.mockResolvedValue({ data: withNeighbor(), dataUpdatedAt: null });
+      render(<App />);
+      await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0));
+      // 기본 '미분양 없는 단지 숨김' — 목록 카드에는 없다
+      expect(screen.queryByText("옆동네완판")).toBeNull();
+      const card = /** @type {HTMLElement} */ (
+        screen
+          .getAllByTestId("apt-card")
+          .find((c) => c.textContent?.includes("테스트파크1차"))
+          ?.querySelector('[role="button"]')
+      );
+      await act(async () => {
+        card.click();
+      });
+      await waitFor(() => expect(screen.getByRole("dialog", { name: /테스트파크1차 상세 분석/ })).toBeInTheDocument(), {
+        timeout: 5000,
+      });
+      expect(window.location.pathname).toBe("/apt/apt1");
+      const chip = await screen.findByRole("link", { name: /옆동네완판/ });
+      expect(chip.textContent).toBe("옆동네완판1.1km · 분양 완료");
+
+      // 점수 탭으로 옮기고 스크롤을 내린 뒤 칩을 누른다
+      await act(async () => {
+        screen.getByRole("tab", { name: /점수/ }).click();
+      });
+      expect(screen.getByRole("tab", { name: /점수/ }).getAttribute("aria-selected")).toBe("true");
+      const oldBody = screen.getByTestId("detail-scroll-body");
+      oldBody.scrollTop = 300;
+      await act(async () => {
+        screen.getByRole("link", { name: /옆동네완판/ }).click();
+      });
+      await waitFor(() => expect(screen.getByRole("dialog", { name: /옆동네완판 상세 분석/ })).toBeInTheDocument());
+      expect(window.location.pathname).toBe("/apt/apt9");
+      expect(screen.getByRole("tab", { name: /종합/ }).getAttribute("aria-selected")).toBe("true");
+      const newBody = screen.getByTestId("detail-scroll-body");
+      expect(newBody).not.toBe(oldBody); // 창을 새로 띄운 것과 같다(스크롤·펼침 상태가 안 남음)
+      expect(newBody.scrollTop).toBe(0);
+      expect(document.querySelectorAll('[role="dialog"][aria-label$="상세 분석"]')).toHaveLength(1);
+
+      // 뒤로 1번 = A 상세, 2번 = 목록
+      await act(async () => {
+        window.history.back();
+      });
+      await waitFor(() => expect(screen.getByRole("dialog", { name: /테스트파크1차 상세 분석/ })).toBeInTheDocument());
+      expect(window.location.pathname).toBe("/apt/apt1");
+      await act(async () => {
+        window.history.back();
+      });
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: /상세 분석/ })).toBeNull());
+      expect(window.location.pathname).toBe("/");
+    }, 20000);
+  });
 });
