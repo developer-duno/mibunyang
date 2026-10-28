@@ -19,6 +19,19 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
 // 경로 줄 + 같은 구 가까운 단지(세션671 PR-S3) — 앱 DetailModal 과 같은 구현을 쓴다(복사 금지, 결정 27).
 import { badDirName, buildNearbyBlock, createNearbyIndex } from "../src/utils/nearbyComplexes.mjs";
+// 단지 장 본문(세션672 PR-S4) — 상세 창 탭 값을 화면과 같은 글자로(사본 + 같음 시험은 그 파일 쪽).
+// 허브 장이 쓰던 표기 사본 3개(fmtPriceNode·fmtMoveInNode·hubUnitsText)도 그 파일로 옮겼다 — 여기서 다시 내보낸다.
+import {
+  SOURCE_TEXT,
+  basicLinesNode,
+  buildAptSections,
+  fmtMoveInNode,
+  fmtPriceNode,
+  hubUnitsText,
+} from "../src/utils/aptStaticBody.mjs";
+import { DETAIL_BUCKET_COUNT, detailBucketName } from "../src/utils/bucketHash.mjs";
+
+export { fmtMoveInNode, fmtPriceNode, hubUnitsText };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, "..", "dist");
@@ -115,54 +128,6 @@ export function esc(s) {
     .replace(/"/g, "&quot;");
 }
 
-/**
- * subwayDist 센티널("10km 안에 역 없음" 표시값). 정본 = src/constants/sentinels.ts `SENTINEL.subwayDist`
- * (.ts 라 node 빌드 스크립트에서 import 하지 않고 같은 값을 둔다 — 바꾸면 양쪽을 같이).
- * `>=` 로 본다(isSentinel 과 같음).
- */
-const SUBWAY_SENTINEL = 9999;
-
-/**
- * YYYYMM(6자리 숫자) → "YYYY년 MM월", 아니면 원문 그대로. 화면 `src/lib/format.ts` fmtCompletion 과 같은 규칙.
- * @param {unknown} v
- * @returns {string}
- */
-function fmtCompletion(v) {
-  const s = String(v);
-  if (!/^\d{6}$/.test(s)) return s;
-  return `${s.slice(0, 4)}년 ${s.slice(4, 6)}월`;
-}
-
-/**
- * 단지 1건의 사람이 읽는 요약 문장. 화면(AptCard)에 나오는 값만 쓴다.
- * 교통 줄은 화면 `TransportCard.tsx` transportFacts 와 같은 규칙 — 좌표 공유(coordShared)면 교통 줄 전체 생략,
- * 지하철 거리가 센티널·비정상이면 거리는 쓰지 않는다.
- * @param {Record<string, any>} a
- * @returns {string[]}
- */
-export function aptFacts(a) {
-  /** @type {string[]} */
-  const out = [];
-  const where = [a.region, a.gu, a.dong].filter(Boolean).join(" ");
-  if (where) out.push(`위치: ${where}`);
-  if (a.price != null) out.push(`분양가: ${Number(a.price).toLocaleString()}만원`);
-  if (a.area != null) out.push(`전용면적: ${a.area}㎡`);
-  if (a.builder) out.push(`시공사: ${a.builder}`);
-  if (a.units != null) out.push(`총 세대수: ${Number(a.units).toLocaleString()}세대`);
-  if (a.unsold != null) out.push(`미분양: ${Number(a.unsold).toLocaleString()}세대`);
-  if (a.coordShared !== true) {
-    const name = typeof a.subwayName === "string" ? a.subwayName.trim() : "";
-    const d = Number(a.subwayDist);
-    const distOk = a.subwayDist != null && Number.isFinite(d) && d >= 0 && d < SUBWAY_SENTINEL;
-    // 화면(TransportCard transportFacts)은 역 이름이 있을 때만 지하철 줄을 만든다 — 이름 없이 거리만은 쓰지 않는다
-    if (name) out.push(`지하철: ${name}${distOk ? ` ${Math.round(d)}m` : ""}`);
-    const bus = Number(a.busRoutes);
-    if (a.busRoutes != null && Number.isFinite(bus) && bus > 0) out.push(`버스: ${Math.round(bus)}개 노선`);
-  }
-  if (a.completion) out.push(`준공: ${fmtCompletion(a.completion)}`);
-  return out;
-}
-
 // ── 얇은 단지 검색 제외 (세션668 PR-S1 · 결정 28·29·32) ────────────────────
 //
 // 주변 시세·병원·분양가 중 둘 이상이 빈 단지 페이지는 글이 거의 없어 "얇은 대량 페이지"로 보일 수 있다.
@@ -199,11 +164,16 @@ export function planThin(list) {
 /**
  * 단지 페이지들 + sitemap 에 넣을 id + 얇은 단지 기록을 한 번에 만든다(main 이 파일로 쓴다).
  * applied 일 때만 얇은 단지에 noindex 를 달고 sitemap 에서 뺀다. 단지 HTML 은 얇아도 만든다(링크로 닿게).
+ * 얇은 판정·허브·칩 후보는 목록만 본다 — 꾸러미(details)는 단지 장 본문에만 쓴다(세션672).
  * @param {string} template dist/index.html 원본 (프리렌더 주입 전)
  * @param {Array<Record<string, any>>} list
+ * @param {Map<string, Record<string, any>>} details 상세 꾸러미 id → 행(loadDetailMap) — 빠지면 던진다
  * @returns {{ pages: Array<{ id: string, html: string }>, sitemapIds: string[], thin: { count: number, ids: string[], names: string[], applied: boolean, cap: number } }}
  */
-export function buildAptPages(template, list) {
+export function buildAptPages(template, list, details) {
+  if (!(details instanceof Map)) {
+    throw new Error("[postbuild-prerender] buildAptPages 에 상세 꾸러미 지도(details)가 없습니다 — 단지 장 본문을 만들 수 없음");
+  }
   const thin = planThin(list);
   const noindexIds = new Set(thin.applied ? thin.ids : []);
   // 같은 구 가까운 단지 칩의 후보 = 목록 전체(허브와 같은 목록 · 세션671)
@@ -216,7 +186,7 @@ export function buildAptPages(template, list) {
     if (!a || !a.id || !a.name) continue;
     const id = String(a.id);
     const noindex = noindexIds.has(id);
-    pages.push({ id, html: buildAptHtml(template, a, { noindex, nearby }) });
+    pages.push({ id, html: buildAptHtml(template, a, { noindex, nearby, details }) });
     if (!noindex) sitemapIds.push(id);
   }
   return { pages, sitemapIds, thin };
@@ -226,36 +196,74 @@ export function buildAptPages(template, list) {
 const ROBOTS_META_RE = /<meta\b[^>]*\bname\s*=\s*["']?robots\b/i;
 
 /**
+ * 본문 절 HTML — 절 제목 h2 · 평형 표 제목 h3 · 줄은 ul>li(h3 앞뒤로 ul 을 나눈다).
+ * @param {import("../src/utils/aptStaticBody.mjs").BodySection[]} sections @returns {string}
+ */
+export function aptSectionsHtml(sections) {
+  let html = "";
+  for (const s of sections) {
+    html += `<h2>${esc(s.title)}</h2>`;
+    let open = false;
+    for (const l of s.lines) {
+      if (l.h3) {
+        if (open) html += "</ul>";
+        open = false;
+        html += `<h3>${esc(l.text)}</h3>`;
+        continue;
+      }
+      if (!open) html += "<ul>";
+      open = true;
+      html += `<li>${esc(l.text)}</li>`;
+    }
+    if (open) html += "</ul>";
+  }
+  return html;
+}
+
+/**
  * 단지 페이지 HTML 생성. 홈 index.html 을 틀로 삼아 head 5곳 + #root 를 바꾼다.
+ * 본문 = h1 · 요약 p · 상세 창 탭 값 절(세션672 PR-S4 — 결정 47 순서) · 경로 줄·가까운 단지(S3) · 출처 한 줄.
+ * 본문 값은 **목록 행 ∪ 꾸러미 행**(앱 상세 창 병합과 같은 방향 — 꾸러미 칸이 덮음)에서 읽는다.
  *
  * @param {string} template dist/index.html 원본 (프리렌더 주입 **전**)
- * @param {Record<string, any>} a 단지 1건
- * @param {{ noindex?: boolean, nearby?: import("../src/utils/nearbyComplexes.mjs").NearbyIndex }} [opts]
- *   noindex = 얇은 단지 검색 제외(세션668) · nearby = 같은 구 가까운 단지 색인(세션671 — 없으면 이 단지 하나뿐인 색인 → 경로 줄만)
+ * @param {Record<string, any>} a 단지 1건(목록 행)
+ * @param {{ noindex?: boolean, nearby?: import("../src/utils/nearbyComplexes.mjs").NearbyIndex, details?: Map<string, Record<string, any>>, now?: Date }} opts
+ *   noindex = 얇은 단지 검색 제외(세션668) · nearby = 같은 구 가까운 단지 색인(세션671 — 없으면 이 단지 하나뿐인 색인 → 경로 줄만) ·
+ *   details = 상세 꾸러미 지도(**필수** — 없거나 이 단지 행이 없으면 던진다: 조용히 얇은 장을 만들지 않게) · now = 입주 시기 지남 판정 시각(시험용)
  * @returns {string}
  */
-export function buildAptHtml(template, a, opts = {}) {
+export function buildAptHtml(template, a, opts) {
   if (ROBOTS_META_RE.test(template)) {
     throw new Error('[postbuild-prerender] 템플릿(index.html)에 이미 name="robots" 메타가 있습니다 — 단지 장 noindex 와 겹칩니다');
   }
+  const details = opts?.details;
+  if (!(details instanceof Map)) {
+    throw new Error("[postbuild-prerender] buildAptHtml 에 상세 꾸러미 지도(details)가 없습니다");
+  }
+  const detail = details.get(String(a.id));
+  if (!detail) {
+    throw new Error(`[postbuild-prerender] 상세 꾸러미에 단지 ${String(a.id)} 행이 없습니다`);
+  }
+  const m = { ...a, ...detail };
   const where = [a.region, a.gu].filter(Boolean).join(" ");
   // 제목은 화면(DetailModal.tsx:200)이 만드는 것과 **글자 그대로 같아야** 한다.
   // 다르면 검색결과 제목과 실제 페이지 제목이 어긋난다.
   const title = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 | 미분양 비교`;
-  const facts = aptFacts(a);
-  const desc = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 정보. ${facts.slice(0, 4).join(" · ")}`;
+  const sections = buildAptSections(m, { now: opts.now });
+  // 요약 = 기본 정보 앞 4줄(세션672 ③10 — 옛 aptFacts 꼴 대체) · meta·og·twitter description 도 같은 글
+  const desc = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 정보. ${basicLinesNode(m).slice(0, 4).join(" · ")}`;
   const url = `${ORIGIN}/apt/${encodeURIComponent(a.id)}`;
   const block = buildNearbyBlock(a, opts.nearby ?? createNearbyIndex([a]), NEARBY_HUB_RULES);
 
+  // 꼬리 두 줄(「전국 미분양 아파트 비교 목록으로」 = 경로 줄 '전국' 과 같은 곳 · JavaScript 안내)은 단지 장에서 뺐다(세션672 ③9)
   const body =
     `<div id="root" class="notranslate">` +
     `<main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif">` +
     `<h1>${esc(a.name)}</h1>` +
     `<p>${esc(desc)}</p>` +
-    `<h2>단지 정보</h2><ul>${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` +
+    aptSectionsHtml(sections) +
     nearbyBlockHtml(block) +
-    `<p><a href="/">전국 미분양 아파트 비교 목록으로</a></p>` +
-    `<p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p>` +
+    `<p>${esc(SOURCE_TEXT)}</p>` +
     `</main></div>`;
 
   let html = template;
@@ -268,7 +276,7 @@ export function buildAptHtml(template, a, opts = {}) {
   html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(desc)}" />`);
   html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(desc)}" />`);
   html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
-  html = html.replace(ROOT_RE, body);
+  html = html.replace(ROOT_RE, () => body);
   if (html.split("</head>").length !== 2) {
     throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
   }
@@ -291,7 +299,7 @@ const NEARBY_HUB_RULES = {
 };
 
 /**
- * 블록 HTML — 사실 ul 뒤·전국 목록 링크 앞에 들어간다. 칩 0개면 경로 줄만.
+ * 블록 HTML — 본문 마지막 절 뒤·출처 줄 앞에 들어간다(세션672). 칩 0개면 경로 줄만.
  * @param {import("../src/utils/nearbyComplexes.mjs").NearbyBlock} b @returns {string}
  */
 export function nearbyBlockHtml(b) {
@@ -453,32 +461,7 @@ export function regionHubPath(sido, gu) {
   return `/region/${encodeURIComponent(sido)}${gu ? `/${encodeURIComponent(gu)}` : ""}`;
 }
 
-/**
- * 만원 → "2억 4,675만". 화면 `src/lib/format.ts` fmtPrice 사본(같음 시험).
- * @param {unknown} v @returns {string}
- */
-export function fmtPriceNode(v) {
-  if (v == null) return "-";
-  const n = Number(v);
-  if (!(n > 0)) return "-";
-  const eok = Math.floor(n / 10000);
-  const man = n % 10000;
-  if (eok > 0 && man > 0) return `${eok}억 ${man.toLocaleString()}만`;
-  if (eok > 0) return `${eok}억`;
-  return `${man.toLocaleString()}만`;
-}
-
-/**
- * 입주 표시값. 화면 `src/lib/format.ts` fmtMoveIn 사본(같음 시험).
- * @param {unknown} completion @param {unknown} presaleMoveIn @returns {string}
- */
-export function fmtMoveInNode(completion, presaleMoveIn) {
-  if (completion && /^\d{6}$/.test(String(completion))) return fmtCompletion(completion);
-  const raw = typeof presaleMoveIn === "string" ? presaleMoveIn.trim() : "";
-  if (raw) return raw;
-  const stored = typeof completion === "string" ? completion.trim() : "";
-  return stored || "-";
-}
+// fmtPriceNode·fmtMoveInNode·hubUnitsText(화면 표기 사본)는 세션672 에 src/utils/aptStaticBody.mjs 로 옮겼다(위 import · 다시 내보냄).
 
 /**
  * 미분양 표시 — 남음이면 화면 상세(FIELD_META unsold)와 같은 "미분양 29세대", 0 이면 사장님이 시안
@@ -491,18 +474,6 @@ export function hubUnsoldText(v) {
   if (n > 0) return `미분양 ${n.toLocaleString("ko-KR")}세대`;
   if (n === 0) return "미분양 0 (분양 완료)";
   return "미분양 —";
-}
-
-/**
- * 총 세대 표시 — 화면 FIELD_META units fmt 사본(같음 시험): 모르거나 1 이하·미분양보다 작으면 "정보 없음".
- * @param {unknown} units @param {unknown} unsold @returns {string}
- */
-export function hubUnitsText(units, unsold) {
-  if (units == null) return "정보 없음";
-  const n = Number(units);
-  if (!(n > 1)) return "정보 없음";
-  if (unsold != null && Number(unsold) > n) return "정보 없음";
-  return `${n.toLocaleString("ko-KR")}세대`;
 }
 
 /** @param {Record<string, any>} a @returns {boolean} */
@@ -750,6 +721,42 @@ export function buildRegionPages(template, list) {
   return { pages, sitemapEntries: [...sidoEntries, ...guEntries], skipped };
 }
 
+/**
+ * 상세 꾸러미(`apartments-detail-16-N.json`, scripts/static-outputs.mjs buildDetailBuckets)를 전부 읽어 id → 행 지도.
+ * 단지 장 본문의 꾸러미 칸(학교·평형 표·동네 사실·전세 범위·공고명)이 여기서 온다(세션672 PR-S4).
+ * 파일이 하나라도 없거나 · 모양이 틀리거나 · 행 합이 목록 유효 행(id+name) 수와 다르거나 · 목록 단지가 꾸러미에 없으면 던진다
+ * (main 이 목록이 없을 때처럼 빌드를 빨갛게 — 꾸러미 없이 조용히 얇은 장 1,678장을 내보내지 않게).
+ * @param {string} dir 꾸러미가 있는 폴더(dist/data)
+ * @param {Array<Record<string, any>>} list 목록 행
+ * @param {number} [n] 꾸러미 수
+ * @returns {Map<string, Record<string, any>>}
+ */
+export function loadDetailMap(dir, list, n = DETAIL_BUCKET_COUNT) {
+  /** @type {Map<string, Record<string, any>>} */
+  const map = new Map();
+  let rows = 0;
+  for (let i = 0; i < n; i++) {
+    const file = join(dir, detailBucketName(i, n));
+    if (!existsSync(file)) throw new Error(`상세 꾸러미 ${detailBucketName(i, n)} 없음 — 단지 장 본문을 만들 수 없습니다`);
+    const parsed = JSON.parse(readFileSync(file, "utf-8"));
+    const data = Array.isArray(parsed) ? parsed : parsed?.data;
+    if (!Array.isArray(data)) throw new Error(`상세 꾸러미 ${detailBucketName(i, n)} 의 data 가 배열이 아닙니다`);
+    for (const r of data) {
+      rows++;
+      if (r && r.id != null) map.set(String(r.id), r);
+    }
+  }
+  const valid = list.filter((a) => a && a.id && a.name);
+  if (rows !== valid.length) {
+    throw new Error(`상세 꾸러미 행 합 ${rows} ≠ 목록 유효 단지 ${valid.length} — 목록과 꾸러미가 다른 회차입니다`);
+  }
+  const missing = valid.filter((a) => !map.has(String(a.id))).map((a) => String(a.id));
+  if (missing.length > 0) {
+    throw new Error(`상세 꾸러미에 없는 단지 ${missing.length}곳 (${missing.slice(0, 5).join(",")}…)`);
+  }
+  return map;
+}
+
 function main() {
   if (!existsSync(DIST_INDEX)) {
     console.error(`[postbuild-prerender] dist/index.html 없음: ${DIST_INDEX}`);
@@ -784,6 +791,16 @@ function main() {
     process.exit(1);
   }
 
+  // 상세 꾸러미(세션672) — 없거나 목록과 어긋나면 목록이 없을 때처럼 아무것도 쓰지 않고 중단.
+  /** @type {Map<string, Record<string, any>>} */
+  let details;
+  try {
+    details = loadDetailMap(join(DIST, "data"), list);
+  } catch (e) {
+    console.error(`[postbuild-prerender] ${e instanceof Error ? e.message : String(e)}`);
+    process.exit(1);
+  }
+
   const out = html.replace(ROOT_RE, () => buildHomeSkeleton(list));
   writeFileSync(DIST_INDEX, out, "utf-8");
   console.log("[postbuild-prerender] dist/index.html #root 에 검색봇용 골격 주입 완료");
@@ -796,7 +813,7 @@ function main() {
 
   // ── 단지별 정적 페이지 + sitemap (세션 504) ──
 
-  const { pages, sitemapIds, thin } = buildAptPages(template, list);
+  const { pages, sitemapIds, thin } = buildAptPages(template, list, details);
   for (const p of pages) {
     const dir = join(DIST, "apt", p.id);
     mkdirSync(dir, { recursive: true });
@@ -833,7 +850,7 @@ function main() {
 }
 
 // CLI 로 직접 실행할 때만 돈다 (세션 504).
-// 이 파일은 이제 순수 함수(buildAptHtml·buildSitemap·aptFacts·esc)를 export 하는데,
+// 이 파일은 이제 순수 함수(buildAptHtml·buildSitemap·loadDetailMap·esc)를 export 하는데,
 // 가드가 없으면 테스트가 import 하는 순간 main() 이 돌아 dist 를 건드린다.
 // scripts/CLAUDE.md 의 isCLI 패턴 답습.
 const argv1 = process.argv[1];

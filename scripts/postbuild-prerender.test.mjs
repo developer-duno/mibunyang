@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { esc, aptFacts, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP } from "./postbuild-prerender.mjs";
+import { esc, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP } from "./postbuild-prerender.mjs";
 
 /** index.html 의 관련 태그만 추린 최소 틀 (실제 파일과 같은 형태) */
 const TEMPLATE = [
@@ -45,6 +45,10 @@ const APT = {
   busRoutes: 18,
 };
 
+/** 상세 꾸러미 지도(세션672 — buildAptHtml·buildAptPages 필수 인자). 꾸러미 칸 없는 빈 행 = 목록 칸만으로 본문 */
+/** @param {Array<Record<string, any>>} rows */
+const D = (...rows) => new Map(rows.map((a) => [String(a.id), { id: a.id }]));
+
 describe("esc — HTML 이스케이프", () => {
   it("꺾쇠·따옴표·앰퍼샌드를 막는다 (단지명에 섞여도 마크업이 깨지지 않게)", () => {
     expect(esc(`<b>"A"&B</b>`)).toBe("&lt;b&gt;&quot;A&quot;&amp;B&lt;/b&gt;");
@@ -56,59 +60,8 @@ describe("esc — HTML 이스케이프", () => {
   });
 });
 
-describe("aptFacts — 화면에 실제 나오는 값만 문장으로", () => {
-  it("있는 값만 담는다", () => {
-    const facts = aptFacts(APT);
-    expect(facts.join(" | ")).toMatch(/위치: 서울 강서구 화곡6동/);
-    expect(facts.join(" | ")).toMatch(/분양가: 24,400만원/);
-    expect(facts.join(" | ")).toMatch(/지하철: 우장산역 1173m/);
-  });
-
-  it("없는 값은 문장을 만들지 않는다 (빈칸·null 을 '정보 있음' 처럼 보이게 하지 않기)", () => {
-    const facts = aptFacts({ id: "x", name: "이름만", region: null, price: null, builder: null });
-    expect(facts.some((f) => f.includes("분양가"))).toBe(false);
-    expect(facts.some((f) => f.includes("시공사"))).toBe(false);
-  });
-
-  it("지하철 9999(10km 안에 역 없음)는 거리를 쓰지 않는다 — 이름만 남거나 줄이 없다", () => {
-    const withName = aptFacts({ id: "x", name: "n", subwayDist: 9999, subwayName: "우장산역" });
-    expect(withName).toContain("지하철: 우장산역");
-    expect(withName.join(" | ")).not.toContain("9999");
-    const noName = aptFacts({ id: "x", name: "n", subwayDist: 9999 });
-    expect(noName.some((f) => f.includes("지하철"))).toBe(false);
-    expect(noName.join(" | ")).not.toContain("9999");
-  });
-
-  it("지하철 거리가 숫자가 아니거나 음수여도 거리는 쓰지 않는다", () => {
-    expect(aptFacts({ id: "x", name: "n", subwayDist: "abc", subwayName: "A역" })).toContain("지하철: A역");
-    expect(aptFacts({ id: "x", name: "n", subwayDist: -5 }).some((f) => f.includes("지하철"))).toBe(false);
-  });
-
-  it("좌표 공유(coordShared)면 지하철·버스 줄이 없다", () => {
-    const facts = aptFacts({ ...APT, coordShared: true });
-    expect(facts.some((f) => f.includes("지하철"))).toBe(false);
-    expect(facts.some((f) => f.includes("버스"))).toBe(false);
-  });
-
-  it("버스는 노선 수 — 0 이면 줄이 없고 12 면 '버스: 12개 노선'", () => {
-    expect(aptFacts({ id: "x", name: "n", busRoutes: 0 }).some((f) => f.includes("버스"))).toBe(false);
-    expect(aptFacts({ id: "x", name: "n", busRoutes: 12 })).toContain("버스: 12개 노선");
-    expect(aptFacts({ id: "x", name: "n", busRoutes: 12 }).join(" ")).not.toContain("정류장");
-  });
-
-  it("준공은 화면(fmtCompletion)과 같은 말 — 6자리면 'YYYY년 MM월', 아니면 원문", () => {
-    expect(aptFacts({ id: "x", name: "n", completion: "202007" })).toContain("준공: 2020년 07월");
-    expect(aptFacts({ id: "x", name: "n", completion: "2029 미" })).toContain("준공: 2029 미");
-  });
-
-  it("0 은 값이다 — 미분양 0세대를 빠뜨리지 않는다", () => {
-    const facts = aptFacts({ id: "x", name: "n", unsold: 0 });
-    expect(facts.some((f) => f === "미분양: 0세대")).toBe(true);
-  });
-});
-
 describe("buildAptHtml — 단지마다 제 canonical·제목·본문", () => {
-  const html = buildAptHtml(TEMPLATE, APT);
+  const html = buildAptHtml(TEMPLATE, APT, { details: D(APT) });
 
   it("canonical 이 그 단지 주소다 (루트가 아니라)", () => {
     expect(html).toContain(
@@ -135,8 +88,9 @@ describe("buildAptHtml — 단지마다 제 canonical·제목·본문", () => {
   });
 
   it("본문에 단지 정보가 실려 있다 (JS 안 도는 봇이 읽을 것)", () => {
-    expect(html).toMatch(/분양가: 24,400만원/);
-    expect(html).toMatch(/시공사: 강서크라운팰리스/);
+    // 세션672: 화면(상세 창 머리글) 표기 — 옛 aptFacts 의 "24,400만원" 이 아니라 fmtPrice "2억 4,400만"
+    expect(html).toContain("<li>분양가: 2억 4,400만 (전용 20.11㎡)</li>");
+    expect(html).toContain("<li>시공사: 강서크라운팰리스</li>");
     expect(html).not.toMatch(/<div id="root"[^>]*>\s*<\/div>/); // 빈 root 가 남으면 안 된다
   });
 
@@ -205,7 +159,7 @@ describe("buildSitemap — 단지를 구글이 발견할 수 있게", () => {
 
   it("단지 주소가 buildAptHtml 의 canonical 과 정확히 같다", () => {
     // 다르면 구글이 "sitemap 과 canonical 이 어긋난다" 고 본다 (공식 문서 경고).
-    const html = buildAptHtml(TEMPLATE, { ...APT, id: "ah-1" });
+    const html = buildAptHtml(TEMPLATE, { ...APT, id: "ah-1" }, { details: D({ id: "ah-1" }) });
     const canonical = html.match(/rel="canonical" href="([^"]+)"/)?.[1];
     expect(canonical).toBeTruthy();
     expect(xml).toContain(`<loc>${canonical}</loc>`);
@@ -292,7 +246,7 @@ describe("buildAptHtml — JSON-LD", () => {
   };
 
   it("</head> 바로 앞에 JSON-LD 둘(단지 + 경로 줄 · 세션671), 첫째는 파싱 가능하고 화면 값만 담는다", () => {
-    const html = buildAptHtml(TEMPLATE, APT);
+    const html = buildAptHtml(TEMPLATE, APT, { details: D(APT) });
     expect((html.match(/application\/ld\+json/g) ?? [])).toHaveLength(2);
     expect(html).toMatch(/<\/script>\s*<\/head>/);
     const ld = ldOf(html);
@@ -311,9 +265,9 @@ describe("buildAptHtml — JSON-LD", () => {
   });
 
   it("값이 없으면 키를 뺀다 (units 0·null, 주소 없음)", () => {
-    const zero = ldOf(buildAptHtml(TEMPLATE, { ...APT, units: 0 }));
+    const zero = ldOf(buildAptHtml(TEMPLATE, { ...APT, units: 0 }, { details: D(APT) }));
     expect("numberOfAccommodationUnits" in zero).toBe(false);
-    const bare = ldOf(buildAptHtml(TEMPLATE, { id: "x", name: "이름만", region: null, gu: "", dong: "  ", units: null }));
+    const bare = ldOf(buildAptHtml(TEMPLATE, { id: "x", name: "이름만", region: null, gu: "", dong: "  ", units: null }, { details: D({ id: "x" }) }));
     expect("numberOfAccommodationUnits" in bare).toBe(false);
     expect("address" in bare).toBe(false);
     const partial = buildAptJsonLd({ id: "x", name: "n", region: "서울" }, "u");
@@ -321,7 +275,7 @@ describe("buildAptHtml — JSON-LD", () => {
   });
 
   it("이름에 </script> 가 들어 있어도 스크립트가 끊기지 않는다", () => {
-    const html = buildAptHtml(TEMPLATE, { ...APT, name: 'A</script><img src=x onerror=alert(1)>' });
+    const html = buildAptHtml(TEMPLATE, { ...APT, name: 'A</script><img src=x onerror=alert(1)>' }, { details: D(APT) });
     const block = (html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/) ?? [""])[0];
     expect(block.slice(block.indexOf(">") + 1, -"</script>".length)).not.toContain("<");
     expect(ldOf(html).name).toBe('A</script><img src=x onerror=alert(1)>');
@@ -334,7 +288,7 @@ describe("buildAptHtml — JSON-LD", () => {
 
   it("이름이 </script><script>alert(1)</script> 여도 블록 안에 <, >, & 가 날것으로 없고 JSON.parse 하면 원래 이름이 나온다", () => {
     const evil = "</script><script>alert(1)</script> & x" + String.fromCharCode(0x2028);
-    const html = buildAptHtml(TEMPLATE, { ...APT, name: evil });
+    const html = buildAptHtml(TEMPLATE, { ...APT, name: evil }, { details: D(APT) });
     const block = (html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/) ?? [""])[0];
     const inner = block.slice(block.indexOf(">") + 1, -"</script>".length);
     expect(inner).not.toMatch(/[<>&\u2028\u2029]/);
@@ -344,17 +298,8 @@ describe("buildAptHtml — JSON-LD", () => {
   });
 
   it("템플릿에 </head> 가 정확히 1개가 아니면 throw", () => {
-    expect(() => buildAptHtml(TEMPLATE.replace("</head>", ""), APT)).toThrow();
-    expect(() => buildAptHtml(TEMPLATE + "</head>", APT)).toThrow();
-  });
-});
-
-describe("aptFacts — 역 이름 없으면 지하철 줄 없음(화면과 같게)", () => {
-  it("이름 없이 거리만 있으면 줄을 만들지 않는다", () => {
-    expect(aptFacts({ id: 1, name: "n", subwayDist: 500 }).some((f) => f.startsWith("지하철"))).toBe(false);
-  });
-  it("이름과 정상 거리가 있으면 이름 + 거리", () => {
-    expect(aptFacts({ id: 1, name: "n", subwayName: "강남역", subwayDist: 499.6 })).toContain("지하철: 강남역 500m");
+    expect(() => buildAptHtml(TEMPLATE.replace("</head>", ""), APT, { details: D(APT) })).toThrow();
+    expect(() => buildAptHtml(TEMPLATE + "</head>", APT, { details: D(APT) })).toThrow();
   });
 });
 
@@ -409,7 +354,7 @@ describe("planThin — 안전선 15", () => {
 
 describe("buildAptHtml — noindex 메타", () => {
   it("noindex 이면 </head> 앞에 정확히 1개, JSON-LD 뒤", () => {
-    const html = buildAptHtml(TEMPLATE, APT, { noindex: true });
+    const html = buildAptHtml(TEMPLATE, APT, { noindex: true, details: D(APT) });
     expect(countOf(html, NOINDEX)).toBe(1);
     expect(countOf(html, 'name="robots"')).toBe(1);
     const head = html.split("</head>")[0];
@@ -417,14 +362,14 @@ describe("buildAptHtml — noindex 메타", () => {
     expect(head.indexOf("application/ld+json")).toBeLessThan(head.indexOf(NOINDEX));
   });
   it("noindex 아니면(기본값 포함) robots 메타 0개", () => {
-    expect(countOf(buildAptHtml(TEMPLATE, APT), 'name="robots"')).toBe(0);
-    expect(countOf(buildAptHtml(TEMPLATE, APT, { noindex: false }), 'name="robots"')).toBe(0);
+    expect(countOf(buildAptHtml(TEMPLATE, APT, { details: D(APT) }), 'name="robots"')).toBe(0);
+    expect(countOf(buildAptHtml(TEMPLATE, APT, { noindex: false, details: D(APT) }), 'name="robots"')).toBe(0);
   });
   it("템플릿에 이미 robots 메타가 있으면 throw(빌드 빨강) — 따옴표·대소문자 무관", () => {
     const withRobots = TEMPLATE.replace("</head>", '<meta name="robots" content="index,follow" />\n</head>');
-    expect(() => buildAptHtml(withRobots, APT)).toThrow(/robots/);
-    expect(() => buildAptHtml(withRobots, APT, { noindex: true })).toThrow(/robots/);
-    expect(() => buildAptHtml(TEMPLATE.replace("</head>", "<META content=x NAME=ROBOTS>\n</head>"), APT)).toThrow(/robots/);
+    expect(() => buildAptHtml(withRobots, APT, { details: D(APT) })).toThrow(/robots/);
+    expect(() => buildAptHtml(withRobots, APT, { noindex: true, details: D(APT) })).toThrow(/robots/);
+    expect(() => buildAptHtml(TEMPLATE.replace("</head>", "<META content=x NAME=ROBOTS>\n</head>"), APT, { details: D(APT) })).toThrow(/robots/);
   });
   it("실제 index.html 에는 robots 메타가 없다(있으면 빌드가 멈춘다)", () => {
     const real = readFileSync(new URL("../index.html", import.meta.url), "utf-8");
@@ -434,7 +379,7 @@ describe("buildAptHtml — noindex 메타", () => {
 
 describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계속 만든다", () => {
   const list = [full("a1"), thin("t1"), full("a2"), thin("t2"), thin("t3"), full("a3"), thin("t4"), thin("t5")];
-  const r = buildAptPages(TEMPLATE, list);
+  const r = buildAptPages(TEMPLATE, list, D(...list));
   it("단지 장은 8개 전부 만든다(링크로 닿게)", () => {
     expect(r.pages.map((p) => p.id)).toEqual(["a1", "t1", "a2", "t2", "t3", "a3", "t4", "t5"]);
   });
@@ -470,19 +415,19 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
     const body = src.slice(start, end);
-    expect(body).toMatch(/const \{ pages, sitemapIds, thin \} = buildAptPages\(template, list\);/);
+    expect(body).toMatch(/const \{ pages, sitemapIds, thin \} = buildAptPages\(template, list, details\);/);
     // 사이트맵 쓰기는 얇은 장을 뺀 목록만 — 전 장(pages·list)을 넘기면 빨강
     expect(body).toMatch(/writeFileSync\(DIST_SITEMAP, buildSitemap\(sitemapIds, region\.sitemapEntries\), "utf-8"\);/);
     expect((body.match(/buildSitemap\(/g) ?? []).length).toBe(1);
     // 기록 파일 쓰기는 main 맨 바깥 줄(들여쓰기 2칸)에 — 조건 한 줄(`if (…) writeFileSync`)이면 빨강
     expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(thin\), "utf-8"\);\r?\n/);
     // 조건 블록 안으로 들어가면 그 앞까지 중괄호가 안 맞는다 — buildAptPages 부터 기록 쓰기까지 { 와 } 개수가 같아야 한다
-    const between = body.slice(body.indexOf("buildAptPages(template, list)"), body.indexOf("writeFileSync(DIST_SEO_THIN"));
+    const between = body.slice(body.indexOf("buildAptPages(template, list, details)"), body.indexOf("writeFileSync(DIST_SEO_THIN"));
     expect((between.match(/\{/g) ?? []).length).toBe((between.match(/\}/g) ?? []).length);
   });
   it("얇은 수가 16이면(안전선 초과) robots 메타 0개 · sitemap 전부", () => {
     const many = [full("a1"), ...Array.from({ length: 16 }, (_, i) => thin(`t${i}`))];
-    const big = buildAptPages(TEMPLATE, many);
+    const big = buildAptPages(TEMPLATE, many, D(...many));
     expect(big.thin.applied).toBe(false);
     expect(big.pages.every((p) => countOf(p.html, 'name="robots"') === 0)).toBe(true);
     expect(big.sitemapIds).toHaveLength(17);
