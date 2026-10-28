@@ -17,6 +17,8 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve, join } from "node:path";
+// 경로 줄 + 같은 구 가까운 단지(세션671 PR-S3) — 앱 DetailModal 과 같은 구현을 쓴다(복사 금지, 결정 27).
+import { badDirName, buildNearbyBlock, createNearbyIndex } from "../src/utils/nearbyComplexes.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, "..", "dist");
@@ -204,6 +206,8 @@ export function planThin(list) {
 export function buildAptPages(template, list) {
   const thin = planThin(list);
   const noindexIds = new Set(thin.applied ? thin.ids : []);
+  // 같은 구 가까운 단지 칩의 후보 = 목록 전체(허브와 같은 목록 · 세션671)
+  const nearby = createNearbyIndex(list);
   /** @type {Array<{ id: string, html: string }>} */
   const pages = [];
   /** @type {string[]} */
@@ -212,7 +216,7 @@ export function buildAptPages(template, list) {
     if (!a || !a.id || !a.name) continue;
     const id = String(a.id);
     const noindex = noindexIds.has(id);
-    pages.push({ id, html: buildAptHtml(template, a, { noindex }) });
+    pages.push({ id, html: buildAptHtml(template, a, { noindex, nearby }) });
     if (!noindex) sitemapIds.push(id);
   }
   return { pages, sitemapIds, thin };
@@ -226,7 +230,8 @@ const ROBOTS_META_RE = /<meta\b[^>]*\bname\s*=\s*["']?robots\b/i;
  *
  * @param {string} template dist/index.html 원본 (프리렌더 주입 **전**)
  * @param {Record<string, any>} a 단지 1건
- * @param {{ noindex?: boolean }} [opts] noindex = 얇은 단지 검색 제외(세션668)
+ * @param {{ noindex?: boolean, nearby?: import("../src/utils/nearbyComplexes.mjs").NearbyIndex }} [opts]
+ *   noindex = 얇은 단지 검색 제외(세션668) · nearby = 같은 구 가까운 단지 색인(세션671 — 없으면 이 단지 하나뿐인 색인 → 경로 줄만)
  * @returns {string}
  */
 export function buildAptHtml(template, a, opts = {}) {
@@ -240,6 +245,7 @@ export function buildAptHtml(template, a, opts = {}) {
   const facts = aptFacts(a);
   const desc = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 정보. ${facts.slice(0, 4).join(" · ")}`;
   const url = `${ORIGIN}/apt/${encodeURIComponent(a.id)}`;
+  const block = buildNearbyBlock(a, opts.nearby ?? createNearbyIndex([a]), NEARBY_HUB_RULES);
 
   const body =
     `<div id="root" class="notranslate">` +
@@ -247,6 +253,7 @@ export function buildAptHtml(template, a, opts = {}) {
     `<h1>${esc(a.name)}</h1>` +
     `<p>${esc(desc)}</p>` +
     `<h2>단지 정보</h2><ul>${facts.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` +
+    nearbyBlockHtml(block) +
     `<p><a href="/">전국 미분양 아파트 비교 목록으로</a></p>` +
     `<p>화면이 보이지 않으면 JavaScript 를 활성화해 주세요.</p>` +
     `</main></div>`;
@@ -266,9 +273,50 @@ export function buildAptHtml(template, a, opts = {}) {
     throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
   }
   const ld = `<script type="application/ld+json">${buildAptJsonLd(a, url)}</script>`;
+  // 경로 줄 구조화 정보는 두 번째 스크립트로(허브 장과 같은 꼴 · 링크 있는 칸 + 단지 canonical)
+  const crumbLd = `<script type="application/ld+json">${buildAptBreadcrumbLd(block, url)}</script>`;
   const robots = opts.noindex ? `<meta name="robots" content="noindex,follow" />\n` : "";
-  html = html.replace("</head>", () => `${ld}\n${robots}</head>`);
+  html = html.replace("</head>", () => `${ld}\n${crumbLd}\n${robots}</head>`);
   return html;
+}
+
+// ── 단지 장 경로 줄 + 같은 구 가까운 단지 (세션671 PR-S3 · 결정 40~43) ────────────────────
+// 계산은 src/utils/nearbyComplexes.mjs 한 곳 — 앱 상세 창과 같은 단지·같은 순서·같은 글자(cloaking 회피, 결정 27).
+
+/** 허브 판정·주소 — 허브 생성기(buildRegionPages)와 같은 규칙 */
+const NEARBY_HUB_RULES = {
+  /** @param {string} s */
+  isSido: (s) => SIDO_SET.has(s),
+  hubPath: regionHubPath,
+};
+
+/**
+ * 블록 HTML — 사실 ul 뒤·전국 목록 링크 앞에 들어간다. 칩 0개면 경로 줄만.
+ * @param {import("../src/utils/nearbyComplexes.mjs").NearbyBlock} b @returns {string}
+ */
+export function nearbyBlockHtml(b) {
+  const crumbs = b.crumbs.map((c) => (c.href ? `<a href="${esc(c.href)}">${esc(c.name)}</a>` : esc(c.name))).join(" › ");
+  let html = `<nav aria-label="breadcrumb">${crumbs}</nav>`;
+  if (b.chips.length === 0) return html;
+  html +=
+    `<h2>${esc(b.heading)} (직선거리)</h2>` +
+    `<ul>${b.chips.map((c) => `<li><a href="${esc(c.href)}">${esc(c.name)}</a> — ${esc(c.meta)}</li>`).join("")}</ul>`;
+  if (b.all) html += `<p><a href="${esc(b.all.href)}">${esc(b.all.label)}</a></p>`;
+  return html;
+}
+
+/**
+ * 단지 장 BreadcrumbList JSON-LD — 링크 있는 칸(전국·시도·구) + 단지(canonical). 절대 주소.
+ * @param {import("../src/utils/nearbyComplexes.mjs").NearbyBlock} b @param {string} url canonical @returns {string}
+ */
+export function buildAptBreadcrumbLd(b, url) {
+  const items = b.crumbs.filter((c) => c.href).map((c) => ({ name: c.name, item: `${ORIGIN}${c.href}` }));
+  items.push({ name: b.crumbs[b.crumbs.length - 1].name, item: url });
+  return ldStringify({
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: items.map((c, i) => ({ "@type": "ListItem", position: i + 1, name: c.name, item: c.item })),
+  });
 }
 
 /**
@@ -522,11 +570,8 @@ export function guStatLine(gu, apts) {
 /** 허브 제목 꼴(결정 34) @param {string} place @param {number} n @param {number} m */
 const hubTitle = (place, n, m) => `${place} 분양·미분양 아파트 ${n}곳 (미분양 남음 ${m}곳)`;
 
-/**
- * 폴더 이름으로 못 쓰는 이름 — `/`·`\`·`..` 가 들거나 앞뒤 공백.
- * @param {string} s @returns {boolean}
- */
-const badDirName = (s) => s.includes("/") || s.includes("\\") || s.includes("..") || s !== s.trim();
+// 폴더 이름으로 못 쓰는 구 이름 판정(badDirName)은 src/utils/nearbyComplexes.mjs 에서 가져온다 —
+// 단지 장 경로 줄이 "그 구 허브가 있나"를 같은 함수로 판정해야 한다(세션671).
 
 /**
  * 허브 장 HTML — 틀(index.html 원본)의 head 를 단지 장과 같은 치환 꼴로 바꾼다.

@@ -29,6 +29,7 @@ import { useShare } from "@/hooks/useShare";
 import { useResponsive } from "@/hooks/useResponsive";
 import { useDataPipeline, VISIBLE_PAGE_SIZE } from "@/hooks/useDataPipeline";
 import { useRegionalStats } from "@/hooks/useRegionalStats";
+import { createNearbyIndex } from "@/utils/nearbyComplexes.mjs";
 import { useAppNavigation } from "@/hooks/useAppNavigation";
 import { useKakaoAuth } from "@/hooks/useKakaoAuth";
 import { useLoginGate } from "@/hooks/useLoginGate";
@@ -250,6 +251,9 @@ export default function App() {
   // 편차 스트립용 지역 분포 (세션 487) — useDataPipeline 의 needsFallback 게이트와 무관하게 상시 계산.
   // 운영에선 catsCache 가 다 차 있어 그 게이트가 거의 안 열린다.
   const regionStats = useRegionalStats(apartments);
+  // 상세 창 맨 아래 "같은 구 가까운 단지" 후보 색인(세션671 PR-S3) — 필터·정렬·프로필 전의 전체 목록으로 한 번만.
+  // 목록(apartments)이 바뀔 때만 다시 만든다 → 손님이 필터를 바꿔도 칩은 그대로(허브·정적 장과 같은 목록).
+  const nearbyIndex = useMemo(() => createNearbyIndex(apartments), [apartments]);
   const { openShareSheet, closeShareSheet, shareKakao, shareSMS, shareCopy, shareSheetOpen, isMobile } =
     useShare(showToast);
 
@@ -869,7 +873,10 @@ export default function App() {
           if (!item || !detail.detailAptId) return directEntry ? detailSkeleton : null;
           return (
             <Suspense fallback={detailSkeleton}>
+              {/* key = 단지 id(세션671 PR-S3) — 맨 아래 칩으로 다른 단지로 바꾸면 창을 새로 띄운 것과 같은 상태
+                  (종합 탭·스크롤 맨 위·펼침 닫힘·상세 자료 새로 받기)가 되게 한다. 주소는 useUrlSync 가 그대로 push. */}
               <DetailModal
+                key={detail.detailAptId}
                 item={item}
                 onClose={detail.handleCloseDetail}
                 isComp={compIds.includes(detail.detailAptId)}
@@ -888,6 +895,8 @@ export default function App() {
                 // 지금 보고 있는 단지를 적어둔 채 로그인 모달을 연다 — 카카오는 전체 페이지
                 // 리다이렉트라 여기서 안 적으면 돌아왔을 때 이 단지로 못 돌아온다.
                 onRequestLogin={() => requestLoginForDetail(item.apt.id as string)}
+                nearbyIndex={nearbyIndex}
+                onOpenApt={detail.handleOpenDetail}
               />
             </Suspense>
           );

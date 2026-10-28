@@ -291,9 +291,9 @@ describe("buildAptHtml — JSON-LD", () => {
     return JSON.parse(m ? m[1] : "null");
   };
 
-  it("</head> 바로 앞에 JSON-LD 하나, 파싱 가능하고 화면 값만 담는다", () => {
+  it("</head> 바로 앞에 JSON-LD 둘(단지 + 경로 줄 · 세션671), 첫째는 파싱 가능하고 화면 값만 담는다", () => {
     const html = buildAptHtml(TEMPLATE, APT);
-    expect((html.match(/application\/ld\+json/g) ?? [])).toHaveLength(1);
+    expect((html.match(/application\/ld\+json/g) ?? [])).toHaveLength(2);
     expect(html).toMatch(/<\/script>\s*<\/head>/);
     const ld = ldOf(html);
     expect(ld["@context"]).toBe("https://schema.org");
@@ -325,7 +325,11 @@ describe("buildAptHtml — JSON-LD", () => {
     const block = (html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/) ?? [""])[0];
     expect(block.slice(block.indexOf(">") + 1, -"</script>".length)).not.toContain("<");
     expect(ldOf(html).name).toBe('A</script><img src=x onerror=alert(1)>');
-    expect((html.match(/<\/script>/g) ?? [])).toHaveLength(1);
+    // 세션671: 경로 줄 BreadcrumbList 가 두 번째 스크립트 — 그 안에도 이름이 들어가지만 날것 < 는 없다
+    expect((html.match(/<\/script>/g) ?? [])).toHaveLength(2);
+    for (const b of html.match(/<script type="application\/ld\+json">[\s\S]*?<\/script>/g) ?? []) {
+      expect(b.slice(b.indexOf(">") + 1, -"</script>".length)).not.toContain("<");
+    }
   });
 
   it("이름이 </script><script>alert(1)</script> 여도 블록 안에 <, >, & 가 날것으로 없고 JSON.parse 하면 원래 이름이 나온다", () => {

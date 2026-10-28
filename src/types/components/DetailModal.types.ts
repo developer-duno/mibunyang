@@ -8,6 +8,7 @@
 import type { CompareItem, CloseHandler, ResponsiveProps } from "@/types/components";
 import type { Profile } from "@/types/scoring";
 import type { RegionalStats } from "@/scoring/regionalStats";
+import type { NearbyIndex } from "@/utils/nearbyComplexes.mjs";
 
 export interface DetailModalProps extends ResponsiveProps {
   item: CompareItem | null;
@@ -47,4 +48,11 @@ export interface DetailModalProps extends ResponsiveProps {
    * 빈 칸을 둬 맨 아래 줄 글자가 버튼 밑에 깔리지 않게 한다. 기본 false = 변화 0.
    */
   fabOverlaps?: boolean;
+  /**
+   * 맨 아래 "같은 구 가까운 단지" 칩의 후보 색인(세션671 PR-S3) — App 이 **필터 전 전체 목록**으로 useMemo 해 넘긴다
+   * (손님 필터·정렬·프로필로 칩이 바뀌면 안 된다 · 허브와 같은 목록). 없으면 블록을 그리지 않는다.
+   */
+  nearbyIndex?: NearbyIndex | null;
+  /** 칩 그냥 클릭 — 화면 안에서 그 단지 상세 열기(App 은 handleOpenDetail). 없으면 칩은 보통 링크로 이동 */
+  onOpenApt?: (_id: string) => void;
 }

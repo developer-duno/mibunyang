@@ -67,6 +67,15 @@ export function buildRegionPath(region: string, gu?: string | null): string {
   return `/region/${encodeURIComponent(region)}${gu ? `/${encodeURIComponent(gu)}` : ""}`;
 }
 
+/**
+ * 상세 창 경로 줄·같은 구 가까운 단지 블록(세션671 PR-S3)이 쓰는 앱 쪽 허브 규칙 — 시도 17종이면 허브, 주소는 buildRegionPath.
+ * `detail/NearbyBlock.tsx` 가 이 객체를 그대로 쓰고, 짝 시험(`scripts/postbuild-prerender.nearby.test.mjs`)이 정적 규칙과 맞댄다.
+ */
+export const REGION_HUB_RULES = {
+  isSido: (s: string): boolean => SIDO_SET.has(s),
+  hubPath: buildRegionPath,
+};
+
 /** 지금 필터가 그 허브와 같은가 — 지역·구가 경로 값과 같을 때만 "허브에 머무는 중" */
 export function isOnRegionHub(hub: RegionHub | null | undefined, filterRegion: string, filterGu: string): boolean {
   return !!hub && filterRegion === hub.region && filterGu === (hub.gu ?? "전체");
