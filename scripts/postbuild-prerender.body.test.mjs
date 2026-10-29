@@ -126,6 +126,26 @@ describe("요약 p = meta description = og·twitter description (새 꼴) · tit
     expect(html).toContain("<title>고척 푸르지오 힐스테이트 (서울 구로구) 분양가·미분양 | 미분양 비교</title>");
     expect(countOf(html, "application/ld+json")).toBe(2);
   });
+  // 👤 결정 50(세션673): 요약에서 도로명 줄만 빼고 앞 4줄 · 본문 기본 정보 절의 도로명 줄은 그대로
+  it("도로명 있는 단지 — 요약·세 description 에 도로명 없음 · 다음 줄이 당겨 4줄 · 본문엔 도로명 줄 그대로", () => {
+    const h = pageOf("ah-2020910001");
+    const w =
+      "강서　크라운팰리스（서울） (서울 강서구) 분양가·미분양 정보. 주소: 서울 강서구 화곡동 998-5 · 분양가: 2억 4,400만 (전용 20.11㎡) · 총 50세대 · 미분양 2세대 · 입주: 2020년 02월";
+    expect(h).toContain(`<p>${w}</p>`);
+    expect(h).toContain(`<meta name="description" content="${w}" />`);
+    expect(h).toContain(`<meta property="og:description" content="${w}" />`);
+    expect(h).toContain(`<meta name="twitter:description" content="${w}" />`);
+    expect(rootOf(h)).toContain("<li>도로명: 서울특별시 강서구 화곡로 305</li>");
+  });
+  it("장마다 요약에 「도로명: 」 없음 · 도로명 있는 픽스처 단지는 본문에 도로명 줄", () => {
+    const withRoad = LIST.filter((a) => a.roadAddress);
+    expect(withRoad.length).toBeGreaterThan(0);
+    for (const p of pages) {
+      const desc = /<meta name="description" content="([^"]*)" \/>/.exec(p.html)?.[1] ?? "";
+      expect(desc).not.toContain("도로명: ");
+    }
+    for (const a of withRoad) expect(rootOf(pageOf(String(a.id)))).toContain("<li>도로명: ");
+  });
 });
 
 describe("꾸러미 지도는 필수 — 빠지면 던짐(빌드 빨강)", () => {
@@ -137,12 +157,13 @@ describe("꾸러미 지도는 필수 — 빠지면 던짐(빌드 빨강)", () =>
     expect(() => buildAptHtml(TEMPLATE, a, { details: new Map() })).toThrow(/꾸러미/);
   });
 
-  /** @param {(dir: string) => void} fn */
-  const withDir = (fn) => {
+  /** @param {(dir: string) => void} fn @param {object[]} [extra] 꾸러미 0번에 덧붙일 행 */
+  const withDir = (fn, extra = []) => {
     const dir = mkdtempSync(join(tmpdir(), "s672-buckets-"));
     try {
       for (const b of BUCKETS) {
-        writeFileSync(join(dir, detailBucketName(b.bucket)), JSON.stringify({ ok: true, n: 16, bucket: b.bucket, data: b.data }));
+        const data = b.bucket === 0 ? [...b.data, ...extra] : b.data;
+        writeFileSync(join(dir, detailBucketName(b.bucket)), JSON.stringify({ ok: true, n: 16, bucket: b.bucket, data }));
       }
       fn(dir);
     } finally {
@@ -166,6 +187,25 @@ describe("꾸러미 지도는 필수 — 빠지면 던짐(빌드 빨강)", () =>
     withDir((dir) => {
       expect(() => loadDetailMap(dir, [...LIST, { id: "new-1", name: "새 단지" }])).toThrow(/행 합/);
     });
+  });
+  it("loadDetailMap — 목록·꾸러미에 이름 빈 같은 행이 섞여도 던지지 않고, 그 행은 장을 만들지 않는다(세션673)", () => {
+    // 꾸러미 행엔 name 칸이 없다(buildDetailBuckets) — 양쪽을 id 있는 행으로 센다
+    expect(BUCKETS[0].data.some((r) => "name" in /** @type {any} */ (r))).toBe(false);
+    const list2 = [...LIST, { id: "zz-noname", name: "" }];
+    withDir(
+      (dir) => {
+        /** @type {Map<string, Record<string, any>>} */
+        let m = new Map();
+        expect(() => {
+          m = loadDetailMap(dir, list2);
+        }).not.toThrow();
+        expect(m.size).toBe(LIST.length + 1);
+        const ids = buildAptPages(TEMPLATE, list2, m).pages.map((p) => p.id);
+        expect(ids).not.toContain("zz-noname");
+        expect(ids).toHaveLength(LIST.length);
+      },
+      [{ id: "zz-noname" }]
+    );
   });
   it("loadDetailMap — 수는 같아도 목록 단지가 꾸러미에 없으면 던진다", () => {
     withDir((dir) => {

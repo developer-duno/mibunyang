@@ -128,17 +128,17 @@ function refTrade(m) {
   const out = [];
   const box = draw(<PricePositionBox priceCat={m.catsCache?.price ?? null} apt={m} />);
   const head = txt(box.querySelector('[data-testid="price-scope-head"]'));
-  if (head !== "비교할 실거래가 아직 없어요") {
-    if (head) out.push(head);
-    for (const row of box.querySelectorAll("[data-row]")) {
-      const [l, v] = [...row.children].map(txt);
-      if (l === "분양가") continue;
-      const sub = txt(box.querySelector(`[data-row-sub="${row.getAttribute("data-row")}"]`));
-      out.push(`${l} ${v}${sub ? ` (${sub})` : ""}`);
-    }
-    const fact = txt(box.querySelector('[data-testid="dong-fact-line"]'));
-    if (fact) out.push(fact);
+  if (head && head !== "비교할 실거래가 아직 없어요") out.push(head);
+  // 비교 표 줄은 범위와 무관하게 부품이 그리면 싣는다(세션673 — none 에서도 「전세가율」 줄을 그린다)
+  for (const row of box.querySelectorAll('[data-testid="price-compare-table"] [data-row]')) {
+    const [l, v] = [...row.children].map(txt);
+    if (l === "분양가") continue;
+    const sub = txt(box.querySelector(`[data-row-sub="${row.getAttribute("data-row")}"]`));
+    out.push(`${l} ${v}${sub ? ` (${sub})` : ""}`);
   }
+  // 동네 사실 줄은 범위와 무관하게 부품이 그리면 싣는다(세션673 — 비교 없는 장도 화면 상자가 이 줄을 그린다)
+  const fact = txt(box.querySelector('[data-testid="dong-fact-line"]'));
+  if (fact) out.push(fact);
   cleanup();
   const tb = draw(<AreaTradeTable apt={m} />);
   const table = tb.querySelector('[data-testid="area-trade-table"]');
@@ -404,14 +404,37 @@ describe("규칙 — 빈 줄·빈 절·빈칸 글자", () => {
   it("평형 표 제목(h3)만 남고 줄이 없으면 그 절도 빠진다", () => {
     const m = { ...base, cmpScope: "none", complexTable: [], complexJeonseTable: [], naverSellCount: null };
     Object.assign(m, { naverJeonseCount: null, naverWolseCount: null, naverBuildYear: null, complexJeonseRate: null });
+    m.dongFact = null; // none 에서도 동네 사실 줄은 실리므로(세션673) 이 시험은 그 줄도 비운다
     expect(sec(m, "실거래 비교")).toBeUndefined();
   });
-  it("비교 범위 none(「비교할 실거래가 아직 없어요」) → 상자 줄 통째로 빠짐(전세가율·동네 사실 포함)", () => {
+  it("비교 범위 none(「비교할 실거래가 아직 없어요」) → 머리 문장만 빠지고 「전세가율」 줄·동네 사실 줄은 실린다(세션673)", () => {
     const m = { ...base, cmpScope: "none", complexJeonseRate: 66.5, dongFact: { n: 3, min: 50000, max: 60000 } };
     const t = all(m);
     expect(t).not.toContain("비교할 실거래가 아직 없어요");
-    expect(t).not.toContain("전세가율");
-    expect(t).not.toContain("같은 동·같은 평수");
+    const trade = (sec(m, "실거래 비교")?.lines ?? []).map((l) => l.text);
+    // 전세가율 줄 = 화면 부품이 그린 글자 그대로(complexJeonseText) · none 이면 비교 줄은 이 한 줄뿐
+    const jt = complexJeonseText(/** @type {any} */ (m));
+    expect(jt).toBeTruthy();
+    expect(trade.slice(0, 2)).toEqual([`전세가율 ${jt}`, "같은 동·같은 평수 실거래 3건 · 최저 5억 ~ 최고 6억"]);
+    // 같음 시험 — 화면 부품 DOM 으로 만든 절과 그대로 같다
+    expect(N.buildAptSections(m, { tzOffsetMin: LOCAL_TZ })).toEqual(refSections(m));
+    // 범위 칸이 없으면(effectiveScope null) 화면처럼 동네 사실도 없다
+    const n = { ...m, cmpScope: null };
+    expect(all(n)).not.toContain("같은 동·같은 평수");
+  });
+  it("미분양 0 단지 — 「총 N세대」 줄에 미분양 글자 없음(화면 「—」) · 입주 6자리 → 「입주: YYYY년 MM월」", () => {
+    const z = /** @type {Record<string, any>} */ (APTS.find((a) => a.id === "ah-2020910014"));
+    expect(z.unsold).toBe(0);
+    expect(String(z.completion)).toBe("202308");
+    const b = N.basicLinesNode(z);
+    expect(b).toContain("총 1,218세대");
+    expect(b.join("\n")).not.toContain("미분양");
+    expect(b).toContain("입주: 2023년 08월");
+    // 픽스처 한 행의 칸만 바꿔 경계 확인 — 미분양 0 이면 다른 단지도 같은 꼴 · 6자리 입주 다른 달
+    const c = { ...base, unsold: 0, completion: "202311", presaleMoveIn: null };
+    const cb = N.basicLinesNode(c);
+    expect(cb.find((l) => l.startsWith("총 "))).not.toContain("미분양");
+    expect(cb).toContain("입주: 2023년 11월");
   });
   it("「추가 모집 —」 은 안 나온다(횟수 0 · ap-)", () => {
     expect(all({ ...base, unsoldEventCount: 0 })).not.toContain("추가 모집");

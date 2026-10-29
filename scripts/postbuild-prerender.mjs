@@ -251,7 +251,12 @@ export function buildAptHtml(template, a, opts) {
   const title = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 | 미분양 비교`;
   const sections = buildAptSections(m, { now: opts.now });
   // 요약 = 기본 정보 앞 4줄(세션672 ③10 — 옛 aptFacts 꼴 대체) · meta·og·twitter description 도 같은 글
-  const desc = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 정보. ${basicLinesNode(m).slice(0, 4).join(" · ")}`;
+  // 도로명 줄은 요약에서만 뺀다(👤 결정 50 — 본문 기본 정보 절에는 그대로)
+  const summary = basicLinesNode(m)
+    .filter((l) => !l.startsWith("도로명: "))
+    .slice(0, 4)
+    .join(" · ");
+  const desc = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 정보. ${summary}`;
   const url = `${ORIGIN}/apt/${encodeURIComponent(a.id)}`;
   const block = buildNearbyBlock(a, opts.nearby ?? createNearbyIndex([a]), NEARBY_HUB_RULES);
 
@@ -724,7 +729,7 @@ export function buildRegionPages(template, list) {
 /**
  * 상세 꾸러미(`apartments-detail-16-N.json`, scripts/static-outputs.mjs buildDetailBuckets)를 전부 읽어 id → 행 지도.
  * 단지 장 본문의 꾸러미 칸(학교·평형 표·동네 사실·전세 범위·공고명)이 여기서 온다(세션672 PR-S4).
- * 파일이 하나라도 없거나 · 모양이 틀리거나 · 행 합이 목록 유효 행(id+name) 수와 다르거나 · 목록 단지가 꾸러미에 없으면 던진다
+ * 파일이 하나라도 없거나 · 모양이 틀리거나 · id 있는 행 합이 목록의 id 있는 행 수와 다르거나 · 목록 단지가 꾸러미에 없으면 던진다
  * (main 이 목록이 없을 때처럼 빌드를 빨갛게 — 꾸러미 없이 조용히 얇은 장 1,678장을 내보내지 않게).
  * @param {string} dir 꾸러미가 있는 폴더(dist/data)
  * @param {Array<Record<string, any>>} list 목록 행
@@ -742,14 +747,19 @@ export function loadDetailMap(dir, list, n = DETAIL_BUCKET_COUNT) {
     const data = Array.isArray(parsed) ? parsed : parsed?.data;
     if (!Array.isArray(data)) throw new Error(`상세 꾸러미 ${detailBucketName(i, n)} 의 data 가 배열이 아닙니다`);
     for (const r of data) {
-      rows++;
-      if (r && r.id != null) map.set(String(r.id), r);
+      if (r && r.id) {
+        rows++;
+        map.set(String(r.id), r);
+      }
     }
   }
-  const valid = list.filter((a) => a && a.id && a.name);
-  if (rows !== valid.length) {
-    throw new Error(`상세 꾸러미 행 합 ${rows} ≠ 목록 유효 단지 ${valid.length} — 목록과 꾸러미가 다른 회차입니다`);
+  // 행 합은 양쪽 같은 기준(id 있는 행)으로 센다 — 꾸러미 행엔 name 칸이 없어(static-outputs buildDetailBuckets)
+  // 이름으로 거르면 이름 빈 목록 행 하나로 빌드 전체가 빨개진다(세션673). 장은 아래 valid(id+name)만 만든다.
+  const listRows = list.filter((a) => a && a.id).length;
+  if (rows !== listRows) {
+    throw new Error(`상세 꾸러미 행 합 ${rows} ≠ 목록 단지 ${listRows} — 목록과 꾸러미가 다른 회차입니다`);
   }
+  const valid = list.filter((a) => a && a.id && a.name);
   const missing = valid.filter((a) => !map.has(String(a.id))).map((a) => String(a.id));
   if (missing.length > 0) {
     throw new Error(`상세 꾸러미에 없는 단지 ${missing.length}곳 (${missing.slice(0, 5).join(",")}…)`);

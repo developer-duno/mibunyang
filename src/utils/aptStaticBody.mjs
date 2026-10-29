@@ -943,19 +943,19 @@ export function buildAptSections(a, opts = {}) {
   const basic = basicLinesNode(a);
   add(SECTION_TITLES[0], basic);
 
-  // 실거래 비교 — 시세 탭 비교 상자(「비교할 실거래가 아직 없어요」면 상자 줄 통째로 뺌) · 평형 표 · 네이버 줄
+  // 실거래 비교 — 시세 탭 비교 상자(「비교할 실거래가 아직 없어요」 머리 문장만 뺌) · 평형 표 · 네이버 줄
   /** @type {Array<string | BodyLine>} */
   const trade = [];
   const head = scopeHeadTextNode(a);
-  if (effectiveScopeNode(a) !== "none") {
-    if (head) trade.push(head);
-    for (const r of compareRowsNode(a, a.catsCache?.price ?? null)) {
-      if (r.label === "분양가") continue; // 기본 정보 분양가와 같은 값
-      trade.push(`${r.label} ${r.value}${r.sub ? ` (${r.sub})` : ""}`);
-    }
-    const df = dongFactPartsNode(a);
-    if (df) trade.push([df.count, df.price, df.year].filter(Boolean).join(" · "));
+  if (head && effectiveScopeNode(a) !== "none") trade.push(head);
+  // 비교 줄은 범위와 무관하게 — none 이면 compareRows 가 내는 줄은 「전세가율」 하나뿐(화면 PricePositionBox.tsx:196~197 과 같음, 세션673)
+  for (const r of compareRowsNode(a, a.catsCache?.price ?? null)) {
+    if (r.label === "분양가") continue; // 기본 정보 분양가와 같은 값
+    trade.push(`${r.label} ${r.value}${r.sub ? ` (${r.sub})` : ""}`);
   }
+  // 동네 사실 줄은 범위가 none 이어도 싣는다 — 화면 상자(PricePositionBox.tsx:328)도 none 에서 이 줄을 그린다(세션673)
+  const df = dongFactPartsNode(a);
+  if (df) trade.push([df.count, df.price, df.year].filter(Boolean).join(" · "));
   const ar = areaTableRowsNode(a);
   if (ar.length > 0) {
     const h = areaTableHeadNode(a);
