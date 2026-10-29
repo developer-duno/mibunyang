@@ -22,6 +22,12 @@ mibunyang 은 **Vercel git 자동 배포**라 main 머지 = production 배포 �
 - **production 도메인**: `미분양아파트.com`(xn--hg3bi2ac4o1ig57cnoa.com) — 카카오 OAuth 는 **이 도메인에서만** 검증 가능(`mibunyang-peach.vercel.app` 은 redirect URI 미등록 = 로그인 불가, 세션 416 박제).
 - **prebuild**: Vercel 에서 `split-apartments-json.mjs` 만 실행(collect 스킵). `public/data/*.json` 은 산출물 — 커밋 금지(guard hook 차단).
 
+## 함정 (세션674 2단 추가 — S3·S4 출하에서 배운 것)
+
+- **시험 배포 빌드 로그** = `vercel inspect --logs <미리보기 주소>` — 시각은 **UTC**(KST −9). 정적 장이 꾸러미를 읽는지 `[postbuild-prerender]` 줄 + `vercel curl /apt/<id>` 로.
+- **운영 정적 장 전/후 비교 캡처**는 JS 를 끈 `page.setContent(html)` 에 `<base href="https://www.xn--hg3bi2ac4o1ig57cnoa.com/">` 를 넣어 두 판을 같은 조건으로(그래야 CSS·이미지 경로가 같다).
+- **화면 부품 원본 파일**(`PricePositionBox`·`PresaleInfo` 등 `aptStaticBody.mjs` 가 베낀 것)이 바뀐 PR 은 머지 전 **1,678장 화면 글자 대조를 1회** 돌린다 — 같음 시험은 픽스처 44곳만 보고, 원본 쪽엔 "사본이 있다"는 표시가 없다(세션674 맹점 🟡1).
+
 ## 절차
 
 ### 1. 머지·배포 상태 확인

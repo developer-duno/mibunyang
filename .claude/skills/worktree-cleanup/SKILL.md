@@ -25,7 +25,7 @@ git worktree list                      # git 이 추적하는 worktree
 ls .claude/worktrees/                   # 실제 디렉토리
 cat .git/worktrees/*/gitdir 2>/dev/null # 메타 등록 여부
 ```
-- `git worktree list` 에 **있으면** = 진짜 worktree → `git worktree remove <경로>` 사용.
+- `git worktree list` 에 **있으면** = 진짜 worktree → `git worktree remove <절대경로>` 사용 — **한 호출에 하나 · 절대경로 · `2>`·`|`·`&&` 같은 돌림 글자 없이**(가드 훅이 명령 글자를 경로로 읽는다 — 세션671·673 재발).
 - `git worktree list` 에 **없는데 디렉토리만 있으면** = 고아 디렉토리(메타 prune됨/수동 복사) → 일반 삭제 대상.
 
 ### 2. 미머지·uncommitted 손실 위험 점검
