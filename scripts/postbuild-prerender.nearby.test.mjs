@@ -46,6 +46,10 @@ const apt = (id, km, o = {}) => ({
   ...o,
 });
 
+/** 상세 꾸러미 지도(세션672 필수) — 빈 행 */
+/** @param {Array<Record<string, any>>} rows */
+const D = (rows) => new Map(rows.map((a) => [String(a.id), { id: a.id }]));
+
 const LIST = [
   apt("s", 0, { name: "신영지웰" }),
   apt("a", 0.91, { unsold: 29 }),
@@ -74,15 +78,16 @@ const rootOf = (html) => html.slice(html.indexOf('<div id="root"'), html.indexOf
 
 describe("정적 단지 장 — 블록 자리·글자", () => {
   const idx = createNearbyIndex(LIST);
-  const html = buildAptHtml(TEMPLATE, LIST[0], { nearby: idx });
+  const html = buildAptHtml(TEMPLATE, LIST[0], { nearby: idx, details: D(LIST) });
   const root = rootOf(html);
 
-  it("사실 ul 뒤 · 전국 목록 링크 앞에 경로 줄 → 머리글 → ul → 전체 보기", () => {
-    const iFacts = root.indexOf("<h2>단지 정보</h2>");
+  // 세션672: 블록 자리 = 본문 마지막 절 뒤 · 출처 줄 앞(옛 「사실 ul 뒤 · 전국 목록 링크 앞」 — 단지 정보 절·전국 링크가 없어짐)
+  it("본문 마지막 절 뒤 · 출처 줄 앞에 경로 줄 → 머리글 → ul → 전체 보기", () => {
+    const iFacts = root.lastIndexOf("</ul>", root.indexOf('<nav aria-label="breadcrumb">'));
     const iNav = root.indexOf('<nav aria-label="breadcrumb">');
     const iHead = root.indexOf("<h2>구로구 가까운 단지 (직선거리)</h2>");
     const iAll = root.indexOf("구로구 분양·미분양 6곳 전체 보기 ›");
-    const iHome = root.indexOf('<p><a href="/">전국 미분양 아파트 비교 목록으로</a></p>');
+    const iHome = root.indexOf("<p>출처: 청약홈(국토교통부)");
     expect(iFacts).toBeGreaterThan(-1);
     expect(iFacts).toBeLessThan(iNav);
     expect(iNav).toBeLessThan(iHead);
@@ -108,26 +113,26 @@ describe("정적 단지 장 — 블록 자리·글자", () => {
   });
 
   it("칩 0개(구에 혼자)면 경로 줄만 — 머리글·ul·전체 보기 없음", () => {
-    const lone = rootOf(buildAptHtml(TEMPLATE, LIST[5], { nearby: idx }));
+    const lone = rootOf(buildAptHtml(TEMPLATE, LIST[5], { nearby: idx, details: D(LIST) }));
     expect(lone).toContain('<nav aria-label="breadcrumb">');
     expect(lone).not.toContain("가까운 단지");
     expect(lone).not.toContain("전체 보기");
-    expect(lone.match(/<ul>/g)).toHaveLength(1); // 사실 ul 하나뿐
+    expect(lone.match(/<ul>/g)).toHaveLength(1); // 기본 정보 ul 하나뿐(이 픽스처는 다른 절 값이 없다)
   });
 
   it("세종: 시도 허브로 · 폴더로 못 쓰는 구: 구 칸 링크 없음·전체 보기 없음", () => {
-    const sj = rootOf(buildAptHtml(TEMPLATE, LIST[6], { nearby: idx }));
+    const sj = rootOf(buildAptHtml(TEMPLATE, LIST[6], { nearby: idx, details: D(LIST) }));
     expect(sj).toContain(`<nav aria-label="breadcrumb"><a href="/">전국</a> › <a href="/region/%EC%84%B8%EC%A2%85">세종</a> › 단지sj1</nav>`);
     expect(sj).toContain("<h2>세종 가까운 단지 (직선거리)</h2>");
     expect(sj).toContain('<p><a href="/region/%EC%84%B8%EC%A2%85">세종 분양·미분양 2곳 전체 보기 ›</a></p>');
-    const bad = rootOf(buildAptHtml(TEMPLATE, LIST[8], { nearby: idx }));
+    const bad = rootOf(buildAptHtml(TEMPLATE, LIST[8], { nearby: idx, details: D(LIST) }));
     expect(bad).toContain(" › 가/나구 › 단지bad1</nav>");
     expect(bad).toContain("<h2>가/나구 가까운 단지 (직선거리)</h2>");
     expect(bad).not.toContain("전체 보기");
   });
 
   it("색인을 안 넘기면 이 단지 하나뿐 → 경로 줄만", () => {
-    const solo = rootOf(buildAptHtml(TEMPLATE, LIST[0]));
+    const solo = rootOf(buildAptHtml(TEMPLATE, LIST[0], { details: D(LIST) }));
     expect(solo).toContain('<nav aria-label="breadcrumb">');
     expect(solo).not.toContain("가까운 단지");
   });
@@ -135,7 +140,7 @@ describe("정적 단지 장 — 블록 자리·글자", () => {
 
 describe("정적 단지 장 — BreadcrumbList JSON-LD(두 번째 스크립트)", () => {
   it("첫째 = 단지(ApartmentComplex) 그대로, 둘째 = 경로 줄 · 절대 주소 · 마지막 = canonical", () => {
-    const html = buildAptHtml(TEMPLATE, LIST[0], { nearby: createNearbyIndex(LIST) });
+    const html = buildAptHtml(TEMPLATE, LIST[0], { nearby: createNearbyIndex(LIST), details: D(LIST) });
     const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)].map((m) => JSON.parse(m[1]));
     expect(blocks).toHaveLength(2);
     expect(blocks[0]["@type"]).toBe("ApartmentComplex");
@@ -152,7 +157,7 @@ describe("정적 단지 장 — BreadcrumbList JSON-LD(두 번째 스크립트)"
   });
 
   it("링크 없는 칸(폴더로 못 쓰는 구)은 목록에서 빠진다", () => {
-    const html = buildAptHtml(TEMPLATE, LIST[8], { nearby: createNearbyIndex(LIST) });
+    const html = buildAptHtml(TEMPLATE, LIST[8], { nearby: createNearbyIndex(LIST), details: D(LIST) });
     const ld = JSON.parse([...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)][1][1]);
     expect(ld.itemListElement.map((/** @type {any} */ x) => x.name)).toEqual(["전국", "서울", "단지bad1"]);
   });
@@ -160,7 +165,7 @@ describe("정적 단지 장 — BreadcrumbList JSON-LD(두 번째 스크립트)"
 
 describe("buildAptPages — 목록 전체 색인 · noindex 장에도 블록", () => {
   it("모든 장이 같은 목록에서 칩을 고르고, 얇은 단지(noindex) 장에도 블록이 있다", () => {
-    const { pages, thin } = buildAptPages(TEMPLATE, LIST);
+    const { pages, thin } = buildAptPages(TEMPLATE, LIST, D(LIST));
     expect(thin.ids).toEqual(["thin"]);
     const thinPage = /** @type {{ html: string }} */ (pages.find((p) => p.id === "thin"));
     expect(thinPage.html).toContain('<meta name="robots" content="noindex,follow" />');
@@ -180,7 +185,7 @@ describe("앱 ↔ 정적 짝 — 같은 블록 · 허브 h1 N 과 같은 수", (
 
   it("정적 장 블록 HTML = 같은 블록을 그린 것(다른 계산 경로 없음)", () => {
     const idx = createNearbyIndex(LIST);
-    const html = buildAptHtml(TEMPLATE, LIST[0], { nearby: idx });
+    const html = buildAptHtml(TEMPLATE, LIST[0], { nearby: idx, details: D(LIST) });
     expect(html).toContain(nearbyBlockHtml(buildNearbyBlock(LIST[0], idx, APP_RULES)));
   });
 
