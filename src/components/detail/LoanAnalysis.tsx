@@ -9,37 +9,33 @@ import {
   REGULATED_LTV_RATE,
   METRO_LOAN_CAP,
 } from "@/constants/regulations";
-import { fmtPrice } from "@/lib/format";
-import { hasKnownArea } from "@/lib/area";
-import { thStyle, tdStyle } from "./tableStyles";
-import { useRentLoanRates } from "@/hooks/useRentLoanRates";
 import { useLoanRates } from "@/hooks/useLoanRates";
+import { useUnitChoice } from "@/hooks/useUnitChoice";
 import { DEFAULT_GROUP } from "@/constants/loanGroups";
+import { LoanStack } from "@/components/charts/LoanStack";
 import { LoanRatesSection } from "./LoanRatesSection";
 import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
-import { FundingPlanner } from "./FundingPlanner";
+import { FundingPlanner, UnitChips, unitBasisLabel } from "./FundingPlanner";
 import { LOAN_RULES_BASIS, grandfatherRule } from "@/constants/loanRules";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
-import type { PriceAreaRow } from "@/types/detail";
 
 /**
- * 거래 건수가 이보다 적으면 "이 시세를 그대로 믿기 어렵다"고 알린다.
- * 근거 = 실측 분포(2026-09-21, apartments_flat 2,458행 / 면적구간 72,595개): 1건 8.8% · 5건 미만 21.4%.
- * 다섯 칸 중 한 칸꼴로 경고가 붙는다 — 전부 붙지도, 아무 데도 안 붙지도 않는 자리.
- * ⚠️ 옛 주석은 "형제 화면(PriceTable)의 ±5 와 같은 자릿수"라 했으나 그 ±5 는 **면적(㎡) 차이**이지
- * 건수가 아니다(`PriceTable.tsx:165`). 서로 다른 단위라 근거가 될 수 없어 지웠다(세션555).
+ * 금융 탭 본문 — 위에서부터 평수 단추 · 대출 막대 · 잔금 카드 · 한 달에 갚을 돈 · 은행 금리 · 지역 대출 규칙 · 법률 접힘 · 2금융 접힘.
+ *
+ * 평수 단추(세션675 결정 나): 고른 평수 값 하나(`useUnitChoice`)로 막대·잔금 카드·한 달 상환이 같이 계산한다 —
+ * 옛날엔 막대·한 달 상환은 대표 분양가, 카드는 평수 값이라 한 화면에 대출 금액이 둘이었다.
+ * 그래서 막대(`LoanStack`)를 DetailModal 에서 이 부품 맨 위로 옮겼다(셋의 공통 부모가 여기).
+ *
+ * 면적별 「매매/대출 분석」 표(최저매매·전세평균·LTV한도·월이자·거래)는 세션675 결정 다 「3개 다 지우기」로 지웠다 —
+ * 이 단지가 아니라 시·군·구 전체 시세였다. 그 표만 쓰던 전세대출 금리 조회도 같이 지웠다(첫 진입 호출 = 주담대 은행권 1).
  */
-const FEW_TRADES_MAX = 5;
-
-export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }: LoanAnalysisProps) {
+export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProps) {
   const [showLegal, setShowLegal] = useState(false);
-  const { rates: rentRates, loading: rentLoading } = useRentLoanRates() as {
-    rates: Array<{ rateMin?: number | null }>;
-    loading: boolean;
-  };
-  // 주담대 은행권 금리 — 여기서 한 번 받아 "한 달에 갚을 돈"·은행 범위 막대가 같이 쓴다(세션593 D2·D3).
-  // 다른 금융권은 아래 접힘을 펼칠 때만 부른다(D6) → 첫 진입 호출 = 전세 1 + 주담대 은행권 1.
+  // 주담대 은행권 금리 — 여기서 한 번 받아 잔금 카드·"한 달에 갚을 돈"·은행 범위 막대가 같이 쓴다(세션593 D2·D3).
+  // 다른 금융권은 아래 접힘을 펼칠 때만 부른다(D6).
   const { rates: bankRates, disclosureMonth } = useLoanRates(DEFAULT_GROUP);
+  // 평수 단추 — 평형표 조회는 이 훅 한 번뿐(잔금 카드는 값을 받기만 한다)
+  const unit = useUnitChoice(apt);
 
   // DB 규제 표시 우선(zoneOf) — 점수·대출 막대와 같은 판정.
   const zone = zoneOf({
@@ -69,41 +65,24 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
   // 다시 갈라지는 날 여기서 3단을 복원한다(regulations.ts:10 주석과 짝).
   // const zoneColor = zone === "speculative" ? C.red : zone === "overheated" ? C.amber : C.green;
   const zoneColor = zone === "normal" ? C.green : C.red;
-  const aptPrice = Number(apt.price ?? 0);
-  // 면적을 모르면 면적별 표를 거르지 않는다 — 0㎡ 로 두면 "0㎡ ±20㎡" 에 걸리는 행이 없어 표가 통째로 사라진다(세션576 D2).
-  const areaKnown = hasKnownArea(apt.area);
-  const aptArea = areaKnown ? Number(apt.area) : 0;
-  // 대출액 — 위 대출 막대(LoanStack)와 같은 계산·같은 행(DetailModal 이 둘 다 mergedApt ?? apt 를 넘긴다)
-  const ltvBase = calcLTV(aptPrice, zone, apt.region);
-  const allLoan = (apt.priceByArea as PriceAreaRow[] | undefined) ?? [];
-  const narrowLoan = allLoan.filter((p) => Math.abs(p.area - aptArea) <= 10);
-  const loanSrc = !areaKnown
-    ? allLoan
-    : narrowLoan.length >= 3
-      ? narrowLoan
-      : allLoan.filter((p) => Math.abs(p.area - aptArea) <= 20);
-  const hasDetail = loanSrc.length > 0;
-  const rentMinRate = rentRates[0]?.rateMin ?? null;
-  const allRent = (apt.rentByArea as PriceAreaRow[] | undefined) ?? [];
-  const hasRentData = allRent.length > 0;
-  const rows = hasDetail
-    ? loanSrc.map((p) => {
-        const rent = allRent.find((r) => r.area === p.area);
-        // 월이자 = (최저매매 − 전세평균) × 전세대출 최저 금리 ÷ 12. 그 차액 칸("갭투자액")은 세션593 D5 에 표에서 뺐다
-        // (사장님 결정 — 칸만 빼고 월이자는 그대로). 두 값 나란히 보여 주기는 시세 범위 좁히기 뒤로.
-        const diff = rent ? p.min - rent.avg : null;
-        const ltv = calcLTV(p.min, zone, apt.region);
-        const monthlyInterest =
-          diff != null && diff > 0 && rentMinRate ? Math.round((diff * rentMinRate) / 100 / 12) : null;
-        return { area: p.area, min: p.min, rentAvg: rent?.avg, ltv, monthlyInterest, count: p.count };
-      })
-    : [];
+  // 대출액 — 위 막대·잔금 카드와 같은 평수 값(unit.price)·같은 계산(calcLTV)
+  const ltvBase = calcLTV(unit.price, zone, apt.region);
 
   return (
     <>
-      {/* 잔금 계획(세션659) — 금융 탭 맨 위 대출 막대(LoanStack) 바로 아래 자리. 여기서 그리면 위에서 받은
-        은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다(따로 부르면 같은 금리를 두 번 받는다). */}
-      <FundingPlanner apt={apt} rates={bankRates} />
+      {/* 평수 단추 → 막대 → 잔금 카드 → 한 달 상환 — 셋 다 고른 평수 값 하나(unit.price)로(세션675 결정 나).
+        막대에 넘기는 시도·구·DB 규제 표시·DSR 은 DetailModal 이 넘긴 병합본(mergedApt ?? apt) 그대로(세션593 D1). */}
+      <UnitChips aptId={apt.id} unit={unit} />
+      <LoanStack
+        price={unit.price}
+        region={apt.region as string | null}
+        gu={apt.gu as string | null}
+        isRegulated={apt.isRegulated as boolean | null}
+        dsr40pass={apt.dsr40pass as boolean | null}
+        basisLabel={unit.hasPrice ? unitBasisLabel(unit) : null}
+      />
+      {/* 잔금 계획(세션659) — 위에서 받은 은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다 */}
+      <FundingPlanner apt={apt} rates={bankRates} unit={unit} />
       <MonthlyPaymentBlock loan={ltvBase} rates={bankRates} disclosureMonth={disclosureMonth} />
       <BankRateBars rates={bankRates} disclosureMonth={disclosureMonth} />
       <div
@@ -116,7 +95,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
         }}
       >
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>매매/대출 분석</span>
+          <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>지역 대출 규칙</span>
           <span
             style={{
               fontSize: F.xs,
@@ -140,77 +119,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
             <div style={{ marginTop: 2 }}>{grandfatherLine}</div>
           </div>
         )}
-        {/* 옛 숫자 3칸(분양가·LTV 대출한도·필요 자기자본)은 세션593 D1 에 위 대출 막대로 합쳤다 — 같은 금액이 두 번 나왔다. */}
-        {!hasDetail && isLoading && (
-          <div style={{ fontSize: F.xs, color: C.muted, marginTop: 4 }}>가격 정보를 불러오는 중…</div>
-        )}
-        {!hasDetail && !isLoading && error && (
-          <div style={{ fontSize: F.xs, color: C.red, marginTop: 4 }}>
-            가격 정보를 불러오지 못했습니다. 새로고침해 주세요.
-          </div>
-        )}
-        {hasDetail && (
-          <>
-            <table style={{ width: "100%", borderCollapse: "collapse" }}>
-              <thead>
-                <tr>
-                  <th style={thStyle}>면적</th>
-                  <th style={thStyle}>최저매매</th>
-                  <th style={thStyle}>전세평균</th>
-                  <th style={thStyle}>월이자</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>거래</th>
-                  <th style={{ ...thStyle, textAlign: "right" }}>LTV한도</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows.map((r, i) => (
-                  <tr key={i}>
-                    <td style={{ ...tdStyle, fontWeight: 600 }}>{r.area}㎡</td>
-                    <td style={tdStyle}>{fmtPrice(r.min)}</td>
-                    <td style={tdStyle}>{r.rentAvg ? fmtPrice(r.rentAvg) : "-"}</td>
-                    <td style={{ ...tdStyle, color: r.monthlyInterest != null ? C.amber : C.muted }}>
-                      {r.monthlyInterest != null ? `${fmtPrice(r.monthlyInterest)}/월` : rentLoading ? "…" : "-"}
-                    </td>
-                    {/* 거래 건수 — 위 최저매매·월이자가 "몇 건으로 낸 값"인지 말해 준다.
-                        실측(2026-09-21, apartments_flat 2,458행): 8.8%가 1건, 21.4%가 5건 미만이라
-                        건수를 숨기면 한 건짜리 시세가 확정값처럼 보인다. 형제 표(PriceTable)와 같은 표기.
-                        FEW_TRADES_MAX 미만은 경고색 — 색만으로 뜻이 갈리지 않게 title 도 함께 둔다. */}
-                    <td
-                      data-testid={`loan-trade-count-${r.area}`}
-                      data-few={r.count != null && r.count < FEW_TRADES_MAX ? "true" : "false"}
-                      title={
-                        r.count != null && r.count < FEW_TRADES_MAX
-                          ? `거래 ${r.count}건뿐이라 시세를 그대로 믿기 어렵습니다`
-                          : undefined
-                      }
-                      style={{
-                        ...tdStyle,
-                        textAlign: "right",
-                        color: r.count != null && r.count < FEW_TRADES_MAX ? C.amber : C.muted,
-                        fontWeight: r.count != null && r.count < FEW_TRADES_MAX ? 700 : 400,
-                      }}
-                    >
-                      {r.count != null ? `${r.count}건` : "-"}
-                    </td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: 700, color: C.blue }}>
-                      {fmtPrice(r.ltv)}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {rentMinRate != null && hasRentData && (
-              <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4 }}>
-                전세대출 최저 {rentMinRate}% 기준 (만기일시상환, 이자만 납부)
-              </div>
-            )}
-            {!hasRentData && (
-              <div style={{ fontSize: F.micro, color: C.muted, marginTop: 4 }}>
-                전세 시세 데이터가 없어 월이자를 계산할 수 없습니다
-              </div>
-            )}
-          </>
-        )}
+        {/* 옛 숫자 3칸(세션593 D1)과 면적별 매매/대출 표(세션675 결정 다)는 지웠다 — 금액은 위 막대·잔금 카드 하나로. */}
       </div>
 
       <div
@@ -263,17 +172,15 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt, isLoading, error }
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 부부합산 연소득 6천만원 이하
               (생애최초·2자녀 이상 7천만원, 신혼 8.5천만원), 주택가격 5억 이하(신혼·2자녀 이상 6억), 최대 2억 (생애최초
-              2.4억, 신혼·2자녀 이상 3.2억), 금리 연 2.85~4.15%
+              2.4억, 신혼·2자녀 이상 3.2억), 금리 연 2.85~4.15% (주택도시기금 누리집 · 2026년 10월 확인)
             </div>
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하(신혼
-              8.5천만원), 주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리
+              8.5천만원), 주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리 (한국주택금융공사 누리집 · 2026년 10월
+              확인)
             </div>
             <div style={{ marginBottom: 6 }}>
               자세한 조건은 주택도시기금·한국주택금융공사 누리집에서 확인할 수 있어요.
-            </div>
-            <div style={{ color: C.red, fontSize: F.xs, fontWeight: 600, marginTop: 8 }}>
-              본 정보는 참고용이며 실제 대출 조건은 금융기관에 확인하세요. 규제지역 지정·해제는 수시 변경될 수 있습니다.
             </div>
           </div>
         )}

@@ -39,13 +39,17 @@ export const LoanStack = memo(function LoanStack({
   gu,
   isRegulated,
   dsr40pass,
+  basisLabel,
 }: {
+  /** 계산에 쓸 분양가 — 금융 탭에서 손님이 고른 평수 값(세션675 결정 나 · 단추가 없으면 대표 분양가) */
   price?: number | null;
   region?: string | null;
   gu?: string | null;
   /** DB 규제 표시 — 참/거짓이면 이름 조회보다 먼저 본다(`zoneOf`). 화성시 동탄구는 이름으로 못 가른다. */
   isRegulated?: boolean | null;
   dsr40pass?: boolean | null;
+  /** 제목 옆 배지 — "59B 기준"·"대표 분양가 기준". 없으면 배지를 안 그린다 */
+  basisLabel?: string | null;
 }) {
   const calc = useMemo(() => {
     if (price == null || !Number.isFinite(price) || price <= 0) return null;
@@ -76,6 +80,24 @@ export const LoanStack = memo(function LoanStack({
       empty={!calc}
       emptyReason="분양가를 아직 모으지 못해 자금 구성을 계산할 수 없어요"
       height={106}
+      titleAside={
+        basisLabel ? (
+          <span
+            data-testid="loan-stack-basis"
+            style={{
+              marginLeft: 6,
+              fontSize: F.xs,
+              fontWeight: 700,
+              padding: "2px 8px",
+              borderRadius: 4,
+              background: C.blueLight,
+              color: C.blue,
+            }}
+          >
+            {basisLabel}
+          </span>
+        ) : null
+      }
     >
       {calc && (
         <div>
@@ -99,7 +121,8 @@ export const LoanStack = memo(function LoanStack({
             <div
               style={{
                 flex: 1,
-                background: C.amber,
+                // 흰 글자가 올라가므로 진한 주황(흰 글자 대비 5.02:1 · 세션675 「주황 글자 진하게」)
+                background: C.amberText,
                 color: C.white,
                 fontSize: F.micro,
                 fontWeight: 700,
@@ -115,7 +138,7 @@ export const LoanStack = memo(function LoanStack({
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: F.xs }}>
             <span style={{ color: C.blue, fontWeight: 700 }}>빌릴 수 있는 돈 {fmtPrice(calc.loan)}</span>
-            <span style={{ color: C.amber, fontWeight: 700 }}>직접 준비할 돈 {fmtPrice(calc.own)}</span>
+            <span style={{ color: C.amberText, fontWeight: 700 }}>직접 준비할 돈 {fmtPrice(calc.own)}</span>
           </div>
           <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
             {`분양가 ${fmtPrice(price as number)} · `}
@@ -126,7 +149,9 @@ export const LoanStack = memo(function LoanStack({
               <span style={{ color: C.green }}> 소득 대비 상환 부담(DSR) 기준도 통과할 만해요.</span>
             )}
             {dsr40pass === false && (
-              <span style={{ color: C.amber }}> 다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요.</span>
+              <span style={{ color: C.amberText }}>
+                {" 다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요. 연소득을 넣으면 아래 카드에서 볼 수 있어요."}
+              </span>
             )}
           </div>
         </div>

@@ -6,8 +6,10 @@ import { makeApt } from "@/__tests__/factories";
 import { useLoanRates } from "@/hooks/useLoanRates";
 import { FundingPlanner } from "./FundingPlanner";
 import { LOAN_RULES_BASIS } from "@/constants/loanRules";
+import { useRentLoanRates } from "@/hooks/useRentLoanRates";
+import { usePresaleDetail } from "@/hooks/usePresaleDetail";
 
-// useRentLoanRates 모킹
+// 전세대출 금리 — 세션675 에 면적별 표(월이자)와 함께 지웠다. 모킹은 "이제 안 부른다"를 재려고 남긴다.
 vi.mock("@/hooks/useRentLoanRates", () => ({
   useRentLoanRates: vi.fn(() => ({
     rates: [{ bank: "테스트은행", product: "전세대출A", rateMin: 3.8, rateMax: 4.5 }],
@@ -37,8 +39,16 @@ vi.mock("@/hooks/useLoanRates", () => ({
 }));
 
 // 잔금 계획 카드(세션659) 모킹 — 자기 시험(FundingPlanner.test.tsx)이 따로 있다. 여기선 받은 값만 본다.
-vi.mock("./FundingPlanner", () => ({
+// 평수 단추(UnitChips)·배지 글자는 진짜를 쓴다 — 단추를 눌러 막대·한 달 상환이 같이 바뀌는지 본다(세션675).
+vi.mock("./FundingPlanner", async (importOriginal) => ({
+  .../** @type {any} */ (await importOriginal()),
   FundingPlanner: vi.fn(() => <div data-testid="funding-planner" />),
+}));
+
+// 평형표 — 기본은 없음(jsdom 에서 fetch 대신). 시험마다 갈아 끼운다.
+const NO_UNITS = { schedule: null, units: [], firstRecruitDate: null, loading: false, error: null };
+vi.mock("@/hooks/usePresaleDetail", () => ({
+  usePresaleDetail: vi.fn(() => NO_UNITS),
 }));
 
 // LoanRatesSection 모킹 (단위 테스트 격리)
@@ -161,6 +171,12 @@ describe("LoanAnalysis", () => {
     expect(text).toContain("주택가격 6억 이하");
     expect(text).not.toContain("9억 이하 70%");
     expect(text).not.toContain("전 금융권 40%");
+    // 세션675 라 「숫자 유지 + 기준일·출처」 · 「빨간 '참고용' 문장 지우기」
+    expect(text).toContain("금리 연 2.85~4.15% (주택도시기금 누리집 · 2026년 10월 확인)");
+    expect(text).toContain("고정금리 (한국주택금융공사 누리집 · 2026년 10월 확인)");
+    expect(text.split("2026년 10월 확인").length - 1).toBe(2);
+    expect(text).not.toContain("참고용");
+    expect(text).not.toContain("금융기관에 확인하세요");
   });
 
   // region/gu가 null인 경우 — getZone은 normal 폴백
@@ -183,8 +199,9 @@ describe("LoanAnalysis", () => {
     const apt = /** @type {any} */ (makeApt({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false }));
     const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     const block = screen.getByTestId("monthly-payment");
-    // 35,000만 · 4.2% · 30년 원리금균등 = 171.15 → "171만"
-    expect(block.textContent).toContain("171만 원/월");
+    // 세션675 「한 달 상환에 금리 2개」 — 35,000만 · 30년 원리금균등 · 4.2% = 171.15 → "171만" / 6.51% = 221.4 → "221만"
+    expect(screen.getByTestId("monthly-payment-amount").textContent).toBe("171만 ~ 221만 원/월");
+    expect(block.textContent).toContain("아파트·분할상환 은행 금리 4.20% ~ 6.51% 기준");
     expect(block.textContent).toContain("2026년 9월 공시");
     const order = [...container.querySelectorAll("[data-testid]")].map((e) => e.getAttribute("data-testid"));
     expect(order.indexOf("monthly-payment")).toBeLessThan(order.indexOf("bank-rate-bars"));
@@ -223,9 +240,10 @@ describe("LoanAnalysis", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
-  // priceByArea가 있으면 상세 테이블 표시 (월이자 열 포함) — 세션593 D5: 갭투자액 칸은 뺐다(6칸)
-  // ⚠️ 변이 대상: 갭투자액 칸을 되살리면 빨강.
-  it("priceByArea가 있으면 면적별 표 6칸(면적·최저매매·전세평균·월이자·거래·LTV한도), 갭투자액 칸 없음", () => {
+  // 세션675 결정 다 「3개 다 지우기」 — 면적별 매매/대출 표(시·군·구 전체 시세)와 그 표만 쓰던 전세 금리 조회를 지웠다.
+  // ⚠️ 변이 대상: 표나 전세 금리 조회를 되살리면 빨강.
+  it("면적별 표·월이자·전세 금리 조회가 없다 — 상자 제목은 '지역 대출 규칙'", () => {
+    vi.mocked(useRentLoanRates).mockClear();
     const apt = makeApt({
       price: 50000,
       area: 84,
@@ -233,49 +251,12 @@ describe("LoanAnalysis", () => {
       rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
     });
     const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    const heads = [...container.querySelectorAll("th")].map((th) => th.textContent);
-    expect(heads).toEqual(["면적", "최저매매", "전세평균", "월이자", "거래", "LTV한도"]);
-    expect(screen.queryByText("갭투자액")).toBeNull();
-    expect(container.querySelectorAll("tbody tr td")).toHaveLength(6);
-    expect(container.textContent).not.toContain("갭투자");
-    // 옛 갭 칸 값(48,000−25,000 = +2억 3,000만)이 줄에 남지 않는다
-    expect(container.textContent).not.toContain("+2억 3,000만");
-  });
-
-  // 거래 건수 노출 (세션554) — 월이자는 이 건수 위에서 계산된다.
-  // 실측(2026-09-21, apartments_flat 2,458행): 면적 구간의 8.8%가 거래 1건, 21.4%가 5건 미만.
-  // 형제 화면 PriceTable 은 이미 "건수" 열을 보여주는데 여기만 숨겨 한 모달이 서로 다른 말을 했다.
-  it("면적별 표에 거래 건수를 함께 보여준다", () => {
-    const apt = makeApt({
-      price: 50000,
-      area: 84,
-      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 3 }],
-      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("거래")).toBeTruthy();
-    expect(screen.getByText("3건")).toBeTruthy();
-  });
-
-  // 건수가 적으면 눈에 띄게 — 5건 미만은 경고색으로 "믿을 만한가"를 말해 준다.
-  it("거래 5건 미만이면 주의 표시를 함께 준다", () => {
-    const apt = makeApt({
-      price: 50000,
-      area: 84,
-      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 1 }],
-      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    const cell = screen.getByTestId("loan-trade-count-84");
-    expect(cell.textContent).toContain("1건");
-    expect(cell.getAttribute("data-few")).toBe("true");
-  });
-
-  // priceByArea가 null이면 상세 테이블 미표시
-  it("priceByArea가 null이면 상세 테이블을 표시하지 않는다", () => {
-    const apt = /** @type {any} */ (makeApt({ price: 50000, priceByArea: null }));
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.queryByText("최저매매")).toBeNull();
+    expect(container.querySelectorAll("table")).toHaveLength(0);
+    for (const w of ["월이자", "최저매매", "전세평균", "LTV한도", "매매/대출 분석", "84㎡"]) {
+      expect(container.textContent).not.toContain(w);
+    }
+    expect(screen.getByText("지역 대출 규칙")).toBeTruthy();
+    expect(vi.mocked(useRentLoanRates)).not.toHaveBeenCalled();
   });
 
   // 키보드 접근성 — Enter 키로 토글
@@ -294,78 +275,9 @@ describe("LoanAnalysis", () => {
     expect(screen.getByTestId("loan-rates-section")).toBeTruthy();
   });
 
-  // 전세대출 데이터 없으면 안내 메시지 표시
-  it("전세 데이터 없으면 안내 메시지를 표시한다", () => {
-    const apt = makeApt({
-      price: 50000,
-      area: 84,
-      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
-      rentByArea: null,
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("전세 시세 데이터가 없어 월이자를 계산할 수 없습니다")).toBeTruthy();
-  });
-
-  // 최저매매 − 전세평균이 양수이고 전세대출 금리가 있으면 월이자 계산
-  it("최저매매가 전세평균보다 높고 전세대출 금리가 있으면 월이자를 계산한다", () => {
-    // 차액 = 48000 - 25000 = 23000만원, rate = 3.8%
-    // 월이자 = 23000 * 3.8 / 100 / 12 = 72.8 → 73만원
-    const apt = makeApt({
-      price: 50000,
-      area: 84,
-      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
-      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("73만/월")).toBeTruthy();
-  });
-
-  // 세션576 D2 — 면적이 없는(null) 단지도 면적별 표가 뜬다. 옛 코드는 null 을 0㎡ 로 바꿔
-  // "0㎡ ±20㎡" 에 걸리는 행이 없어 표가 통째로 사라졌다.
-  it("면적이 없어도 면적별 매매/대출 표를 거르지 않는다 (D2)", () => {
-    const apt = makeApt({
-      price: 50000,
-      area: null,
-      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
-      rentByArea: [{ area: 84, min: 23000, avg: 25000, max: 27000 }],
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("84㎡")).toBeTruthy();
-    expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
-  });
-
-  it("면적이 0 이어도 면적별 매매/대출 표를 거르지 않는다 (D2 경계)", () => {
-    const apt = makeApt({
-      price: 50000,
-      area: 0,
-      priceByArea: [{ area: 84, min: 48000, avg: 50000, max: 52000, count: 5 }],
-      rentByArea: [{ area: 84, min: 23000, avg: 25000, max: 27000 }],
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    expect(screen.getByText("84㎡")).toBeTruthy();
-    expect(screen.getByTestId("loan-trade-count-84")).toBeTruthy();
-  });
-
-  // 세션592 보완 F1 — 면적별 표의 줄마다 대출 한도도 같은 규칙(수도권 최대 6억)을 쓴다.
-  // ⚠️ 변이 대상: 줄 계산 `calcLTV(p.min, zone, apt.region)` 에서 시도를 빼면 이 줄이 7억이 되어 빨강.
-  it("면적별 표 — 경기 비규제·그 면적 최저가 10억이면 그 줄 대출 한도는 6억", () => {
-    const apt = makeApt({
-      price: 50000,
-      area: 84,
-      region: "경기",
-      gu: "평택시",
-      isRegulated: false,
-      priceByArea: [{ area: 84, min: 100000, avg: 100000, max: 100000, count: 5 }],
-      rentByArea: [{ area: 84, min: 20000, avg: 25000, max: 30000 }],
-    });
-    render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
-    const row = screen.getByTestId("loan-trade-count-84").closest("tr");
-    const cells = [...(row?.querySelectorAll("td") ?? [])];
-    expect(cells[cells.length - 1]?.textContent).toBe("6억");
-  });
   // 세션659 — 잔금 계획 카드는 이 부품이 받은 은행권 금리 응답을 그대로 받는다(새 호출 0).
   // ⚠️ 변이 대상: rates 를 [] 로 넘기거나 카드를 지우면 빨강.
-  it("잔금 계획 카드를 맨 위에 그리고 같은 apt·같은 은행권 금리 응답을 넘긴다", () => {
+  it("순서 = 평수 단추 → 막대 → 잔금 카드 → 한 달 상환 · 카드는 같은 apt·같은 은행권 금리 응답을 받는다", () => {
     vi.mocked(FundingPlanner).mockClear();
     const apt = /** @type {any} */ (makeApt({ price: 50000 }));
     const { container } = render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
@@ -373,6 +285,59 @@ describe("LoanAnalysis", () => {
     expect(props.apt).toBe(apt);
     expect(props.rates).toEqual(vi.mocked(useLoanRates).mock.results[0]?.value.rates);
     expect(props.rates.length).toBeGreaterThan(0);
-    expect(container.firstElementChild?.getAttribute("data-testid")).toBe("funding-planner");
+    expect(container.firstElementChild?.getAttribute("data-testid")).toBe("fp-unit-chips");
+    const order = [...container.querySelectorAll("[data-testid]")].map((e) => e.getAttribute("data-testid"));
+    const at = (/** @type {string} */ id) => order.indexOf(id);
+    expect(at("fp-unit-chips")).toBeLessThan(at("loan-stack-basis"));
+    expect(at("loan-stack-basis")).toBeLessThan(at("funding-planner"));
+    expect(at("funding-planner")).toBeLessThan(at("monthly-payment"));
+    // 평형표가 없으면 대표 분양가 한 줄 + "대표 분양가 기준"
+    expect(screen.getByTestId("fp-unit-chips").textContent).toContain("(대표 분양가)");
+    expect(screen.getByTestId("loan-stack-basis").textContent).toBe("대표 분양가 기준");
+  });
+
+  // 세션675 결정 나 「막대도 손님이 누른 평수로」 — 단추 하나로 막대·잔금 카드·한 달 상환이 같은 값.
+  // ⚠️ 변이 대상: 막대(LoanStack price)나 한 달 상환(calcLTV)이 unit.price 대신 대표 분양가를 쓰면 빨강
+  //    (대표 4억 5,000만 → 70% 3억 1,500만 · 84A 4억 6,000만 → 3억 2,200만 · 59A 3억 9,800만 → 2억 7,860만).
+  it("평수 단추 — 첫 값은 대표 분양가와 가장 가까운 평수, 누르면 막대·카드·한 달 상환이 그 평수 값으로", () => {
+    vi.mocked(usePresaleDetail).mockReturnValue({
+      ...NO_UNITS,
+      units: /** @type {any} */ ([
+        { house_manage_no: "H1", model_no: "01", house_ty: "059.9847A", top_amount: 39800 },
+        { house_manage_no: "H1", model_no: "02", house_ty: "084.9916A", top_amount: 46000 },
+      ]),
+    });
+    vi.mocked(FundingPlanner).mockClear();
+    const apt = /** @type {any} */ (
+      makeApt({ id: "ah-9", price: 45000, region: "부산", gu: "해운대구", isRegulated: false })
+    );
+    const { container } = render(<LoanAnalysis apt={apt} />);
+    const lastUnit = () => vi.mocked(FundingPlanner).mock.calls.at(-1)?.[0]?.unit;
+
+    expect(screen.getByRole("button", { name: "84A · 4억 6,000만" }).getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("loan-stack-basis").textContent).toBe("84A 기준");
+    expect(container.textContent).toContain("대출 3억 2,200만");
+    expect(container.textContent).toContain("분양가 4억 6,000만 · ");
+    expect(loanLine("3억 2,200만")).toBeTruthy();
+    expect(lastUnit().price).toBe(46000);
+    expect(container.textContent).not.toContain("3억 1,500만");
+
+    fireEvent.click(screen.getByRole("button", { name: "59A · 3억 9,800만" }));
+    expect(screen.getByTestId("loan-stack-basis").textContent).toBe("59A 기준");
+    expect(container.textContent).toContain("대출 2억 7,860만");
+    expect(loanLine("2억 7,860만")).toBeTruthy();
+    expect(lastUnit().price).toBe(39800);
+    expect(lastUnit().unitLabel).toBe("59A");
+    // 평형표는 이 부품에서 한 번만 부른다(잔금 카드는 값을 받기만 한다)
+    expect(new Set(vi.mocked(usePresaleDetail).mock.calls.map((c) => c[0]))).toEqual(new Set(["ah-9"]));
+    vi.mocked(usePresaleDetail).mockImplementation(() => NO_UNITS);
+  });
+
+  it("분양가가 없으면 평형표를 부르지 않고 단추 줄도 없다", () => {
+    vi.mocked(usePresaleDetail).mockClear();
+    render(<LoanAnalysis apt={/** @type {any} */ (makeApt({ price: null }))} />);
+    expect(vi.mocked(usePresaleDetail)).toHaveBeenCalledWith(null);
+    expect(screen.queryByTestId("fp-unit-chips")).toBeNull();
+    expect(screen.queryByTestId("loan-stack-basis")).toBeNull();
   });
 });

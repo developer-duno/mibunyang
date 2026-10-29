@@ -171,10 +171,16 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
   const CARD_SOURCE: Record<string, Array<{ file: string; re: RegExp; why: string }>> = {
     schoolGrade: [{ file: "../components/detail/SchoolInfo.tsx", re: /apt\)?\.schoolGrade\b/, why: "등급 배지" }],
     dsr40pass: [
+      // 세션675 — 대출 그림은 LoanAnalysis 맨 위로 옮겼다(평수 단추와 같은 값). 사슬 = DetailModal → LoanAnalysis → LoanStack
       {
         file: "../components/DetailModal.tsx",
-        re: /dsr40pass=\{\(mergedApt \?\? apt\)\.dsr40pass\b/,
-        why: "금융 탭이 대출 그림에 넘긴다",
+        re: /<LoanAnalysis apt=\{mergedApt \?\? apt\}/,
+        why: "금융 탭이 병합본을 LoanAnalysis 에 넘긴다",
+      },
+      {
+        file: "../components/detail/LoanAnalysis.tsx",
+        re: /dsr40pass=\{apt\.dsr40pass\b/,
+        why: "LoanAnalysis 가 대출 그림에 넘긴다",
       },
       {
         file: "../components/charts/LoanStack.tsx",

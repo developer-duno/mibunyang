@@ -38,24 +38,33 @@ function everythingShown(root: HTMLElement): string {
 
 describe("MonthlyPaymentBlock — 한 달에 갚을 돈 (세션593 D2)", () => {
   // ⚠️ 변이 대상(세션593 후속 F4): toFixed(2) 를 빼면 "4.2%" 가 되어 빨강 — 은행 범위 줄 "4.20%"와 자릿수를 맞춘다.
-  it("대표 단지 대출 2억 1,208만 · 사본 → 104만 원/월 · 4.20% · 공시월", () => {
+  // 세션675 「한 달 상환에 금리 2개」 — 가장 낮은 금리·가장 높은 금리 두 값(은행 범위 줄과 같은 최저·최고)
+  // 21,208만 · 30년 원리금균등: 4.20% = 103.7 → "104만" / 7.71% = 151.4 → "151만"
+  it("대표 단지 대출 2억 1,208만 · 사본 → 104만 ~ 151만 원/월 · 4.20% ~ 7.71% · 공시월", () => {
     render(<MonthlyPaymentBlock loan={21208} rates={RATES} disclosureMonth="202609" />);
     const block = screen.getByTestId("monthly-payment");
     expect(block.textContent).toContain("한 달에 갚을 돈");
-    expect(block.textContent).toContain("104만 원/월");
+    expect(screen.getByTestId("monthly-payment-amount").textContent).toBe("104만 ~ 151만 원/월");
     expect(block.textContent).toContain(
-      "대출 2억 1,208만 · 30년 · 아파트·분할상환 최저 금리 4.20% 기준 · 2026년 9월 공시"
+      "대출 2억 1,208만 · 30년 · 아파트·분할상환 은행 금리 4.20% ~ 7.71% 기준 · 2026년 9월 공시"
     );
     expect(block.textContent).not.toContain("3.7%");
+  });
+
+  it("쓸 상품이 하나뿐이고 최저 = 최고면 금리·금액 하나", () => {
+    const ONE = [{ ...base, bank: "가", rateMin: 4.2, rateMax: 4.2 }];
+    render(<MonthlyPaymentBlock loan={21208} rates={ONE} disclosureMonth={null} />);
+    expect(screen.getByTestId("monthly-payment-amount").textContent).toBe("104만 원/월");
+    expect(screen.getByTestId("monthly-payment").textContent).toContain("아파트·분할상환 은행 금리 4.20% 기준");
   });
 
   // ⚠️ 변이 대상: 공시월 전달을 빼면 "2026년 9월 공시"가 사라져 빨강.
   it("공시월이 없으면 그 글자만 뺀다", () => {
     render(<MonthlyPaymentBlock loan={21208} rates={RATES} disclosureMonth={null} />);
     const t = screen.getByTestId("monthly-payment").textContent ?? "";
-    expect(t).toContain("104만 원/월");
+    expect(t).toContain("104만 ~ 151만 원/월");
     expect(t).not.toContain("공시");
-    expect(t.endsWith("4.20% 기준")).toBe(true);
+    expect(t.endsWith("4.20% ~ 7.71% 기준")).toBe(true);
   });
 
   it("아파트·분할상환 상품이 없거나 응답이 비면 그리지 않는다", () => {
@@ -190,14 +199,14 @@ describe("큰 숫자 금리 = 은행 범위 줄의 최저 (세션593 후속 F1)"
       </>
     );
     const big = screen.getByTestId("monthly-payment").textContent ?? "";
-    expect(big).toContain("최저 금리 4.20% 기준");
+    expect(big).toContain("은행 금리 4.20% ~ 6.50% 기준");
     expect(big).not.toContain("4.10%");
     const rows = screen.getAllByTestId("bank-rate-row");
     expect(rows).toHaveLength(1);
     expect(rows[0].getAttribute("aria-label")).toBe("1개 은행 4.20% ~ 6.50%");
     const first = rows[0].querySelector('[data-band="rate"]')?.firstElementChild?.textContent;
     expect(first).toBe("4.20%");
-    expect(big).toContain(`최저 금리 ${first} 기준`);
+    expect(big).toContain(`은행 금리 ${first} ~ `);
   });
 
   it("10/02 사본 전체 — 큰 숫자 = 범위 줄 최저 = 4.20%", () => {
@@ -210,6 +219,17 @@ describe("큰 숫자 금리 = 은행 범위 줄의 최저 (세션593 후속 F1)"
     const row = screen.getByTestId("bank-rate-row");
     const first = row.querySelector('[data-band="rate"]')?.firstElementChild?.textContent;
     expect(first).toBe("4.20%");
-    expect(screen.getByTestId("monthly-payment").textContent).toContain(`최저 금리 ${first} 기준`);
+    const last = row.querySelector('[data-band="rate"]')?.lastElementChild?.textContent;
+    expect(last).toBe("7.71%");
+    // 한 달 상환의 두 금리 = 범위 줄 양 끝(세션675)
+    expect(screen.getByTestId("monthly-payment").textContent).toContain(`은행 금리 ${first} ~ ${last} 기준`);
+  });
+
+  // 세션675 「은행 금리 막대 진하게」 — 띠는 진한 파랑(#2563EB, 트랙 slate100 #F1F5F9 대비 4.72:1).
+  // ⚠️ 변이 대상: 옛 연한 파랑(blueBorder #C3D6FD, 1.34:1)으로 되돌리면 빨강.
+  it("범위 띠 색은 진한 파랑 C.blue", () => {
+    render(<BankRateBars rates={RATES} disclosureMonth="202609" />);
+    const band = screen.getByTestId("bank-rate-row").querySelector('[data-band="rate"] div > div') as HTMLElement;
+    expect(band.style.background).toBe("rgb(37, 99, 235)");
   });
 });

@@ -19,9 +19,16 @@ export const LOAN_RULES_BASIS = "2026년 10월";
 
 /**
  * 은행권 DSR 한도 40% — 연소득 대비 모든 대출의 연 원리금 상환액 비율.
- * 2금융권(저축은행·여신전문·보험)은 50% — 계산기는 은행 기준으로만 계산하고 2금융권은 안내 문장으로만 말한다.
+ * 2금융권(저축은행·여신전문·보험)은 50%(`DSR_LIMIT_NONBANK`) — 계산기는 은행 기준으로만 계산하고 2금융권은 안내 문장으로만 말한다.
  */
 export const DSR_LIMIT_BANK = 0.4;
+
+/**
+ * 2금융권(저축은행·여신전문·보험) DSR 한도 50% — 정부 정책뉴스 2021-10-26 「가계부채 관리 강화 방안」
+ * "제2금융권 기준을 60%에서 50%로 강화" (https://www.korea.kr/news/policyNewsView.do?newsId=148894803).
+ * 계산에는 안 쓰고 잔금 카드의 금융사 종류별 안내 줄에만 쓴다(세션675 결정 가).
+ */
+export const DSR_LIMIT_NONBANK = 0.5;
 
 /** 원리금균등 상환 기간(년) — 금융 탭 "한 달에 갚을 돈"(`BankLoanBlocks.tsx` LOAN_YEARS)과 같은 30년 */
 export const LOAN_TERM_YEARS = 30;

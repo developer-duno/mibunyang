@@ -14,8 +14,12 @@ import { RateRangeSummary } from "./BankLoanBlocks";
  * 은행 블록과 같은 부품(`RateRangeSummary`)으로 "N개 저축은행 최저 ~ 최고" 범위 한 줄만 보여 준다.
  *
  * ⚠️ 처음 펼치기 전에는 금리를 부르지 않는다 — 권역 금리를 부르는 훅은 처음 펼쳐야 마운트되는 `OtherGroupRates`
- * 안에만 있다. 금융 탭 첫 진입 호출 수 = 전세·주담대 은행권 2회(옛날과 같다). 한 번 펼친 뒤 접으면 숨기기만 한다.
+ * 안에만 있다. 금융 탭 첫 진입 호출 수 = 주담대 은행권 1회(세션675 에 전세 금리 조회를 쓰던 면적별 표를 지웠다).
+ * 한 번 펼친 뒤 접으면 숨기기만 한다.
  */
+
+/** 접힘 머리 글자 — 잔금 카드의 금융사 종류별 안내 줄이 이 글자를 그대로 가리킨다(세션675 결정 가) */
+export const NONBANK_RATES_TOGGLE = "저축은행 · 여신전문 · 보험 금리 보기";
 
 /** 은행권(본문에 있음)을 뺀 권역 탭 */
 const OTHER_GROUPS = LOAN_GROUPS.filter((g) => g.code !== DEFAULT_GROUP);
@@ -60,7 +64,7 @@ export const LoanRatesSection = memo(function LoanRatesSection() {
         }}
         style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
       >
-        <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>저축은행 · 여신전문 · 보험 금리 보기</span>
+        <span style={{ fontSize: F.base, fontWeight: 700, color: C.text }}>{NONBANK_RATES_TOGGLE}</span>
         <span
           style={{
             fontSize: F.sm,

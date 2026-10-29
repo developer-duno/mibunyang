@@ -17,6 +17,9 @@ export const C: Record<string, string> = {
   amber: "#D97706",
   amberLight: "#FFF9EB",
   amberBorder: "#FDE68A",
+  // 글자·흰 글자 바탕용 진한 주황 — amber(#D97706)는 흰 바탕 대비 3.19:1 이라 작은 글씨 4.5:1 에 못 미친다.
+  // 이 색은 흰 바탕 5.02:1(세션675 결정 「주황 글자 진하게」). 20px 넘는 큰 글씨는 amber 그대로 둔다.
+  amberText: "#B45309",
   red: "#DC2626",
   redLight: "#FEF2F2",
   redBorder: "#FECACA",

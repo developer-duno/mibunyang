@@ -27,8 +27,11 @@ export const ChartFrame = memo(function ChartFrame({
   emptyReason,
   children,
   height,
+  titleAside,
 }: {
   title: string;
+  /** 제목 줄 오른쪽 작은 배지 등(선택) — 몸통(role="img") 밖이라 글자로 읽힌다 */
+  titleAside?: ReactNode;
   /** 제목 옆 `?` 도움말 (없으면 물음표 자체를 안 그린다) */
   hint?: string;
   /** 차트 전체를 한 문장으로 설명 — 스크린리더가 이것만 읽는다 */
@@ -45,6 +48,7 @@ export const ChartFrame = memo(function ChartFrame({
       <div style={{ display: "flex", alignItems: "center", marginBottom: 6 }}>
         <span style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>{title}</span>
         {hint && <HelpHint text={hint} label={title} />}
+        {titleAside}
       </div>
       {empty ? (
         <div
