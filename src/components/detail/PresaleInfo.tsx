@@ -1,6 +1,13 @@
 import { memo, useState, useEffect, useRef, type CSSProperties } from "react";
 import { C, F } from "@/theme";
-import { fmtPrice, fmtPriceRange, fmtPresaleSchedule, fmtRecruitDate } from "@/lib/format";
+import {
+  fmtPrice,
+  fmtPriceRange,
+  fmtPresaleSchedule,
+  fmtRecruitDate,
+  isPastDateKst,
+  presaleScheduleEnded,
+} from "@/lib/format";
 import { trackEvent } from "@/lib/analytics";
 import { usePresaleDetail, type PresaleScheduleOfficial } from "@/hooks/usePresaleDetail";
 import { isMoveInPast, RENTAL_STAGE } from "../charts/PresaleTimeline";
@@ -19,22 +26,30 @@ interface InfoItem {
   v: string;
 }
 
+/** 지난 일정 표시 글자(세션675 👤 「지난 일정 정리」) — 날짜는 그대로 두고 옆에 붙인다 */
+export const SCHEDULE_ENDED_TEXT = "끝남";
+
 // 청약홈 공식 일정 타임라인 항목 (있는 것만 순서대로 노출)
-function buildTimeline(s: PresaleScheduleOfficial): Array<{ l: string; v: string }> {
+// past = 오늘(KST)보다 지났나 — 기간이 있는 칸(특별공급·1·2순위·계약)은 끝 날짜로 본다(끝 날짜가 없으면 시작 날짜).
+function buildTimeline(s: PresaleScheduleOfficial, now: Date): Array<{ l: string; v: string; past: boolean }> {
   const fmt = (d: string | null) => (d ? d.replace(/-/g, ".").slice(2) : null); // "2026-05-29" → "26.05.29"
-  const rows: Array<{ l: string; v: string }> = [];
-  const push = (l: string, d: string | null) => {
+  const rows: Array<{ l: string; v: string; past: boolean }> = [];
+  const push = (l: string, d: string | null, end?: string | null) => {
     const v = fmt(d);
-    if (v) rows.push({ l, v });
+    if (v) rows.push({ l, v, past: isPastDateKst(end || d, now) });
   };
   push("모집공고", s.recruit_date);
-  push("특별공급", s.special_receipt_bgnde);
-  push("1순위", s.general_rank1_bgnde);
-  push("2순위", s.general_rank2_bgnde);
+  push("특별공급", s.special_receipt_bgnde, s.special_receipt_endde);
+  push("1순위", s.general_rank1_bgnde, s.general_rank1_endde);
+  push("2순위", s.general_rank2_bgnde, s.general_rank2_endde);
   push("당첨발표", s.winner_announce_date);
-  push("계약", s.contract_bgnde);
+  push("계약", s.contract_bgnde, s.contract_endde);
   if (s.move_in_ym && /^\d{6}$/.test(s.move_in_ym)) {
-    rows.push({ l: "입주예정", v: `${s.move_in_ym.slice(0, 4)}.${s.move_in_ym.slice(4)}` });
+    rows.push({
+      l: "입주예정",
+      v: `${s.move_in_ym.slice(0, 4)}.${s.move_in_ym.slice(4)}`,
+      past: isPastDateKst(s.move_in_ym, now),
+    });
   }
   return rows;
 }
@@ -88,8 +103,8 @@ function renderRegulations(s: PresaleScheduleOfficial) {
 
 // 청약홈 공식 일정 타임라인 렌더. 항목이 없으면 null.
 // showInnerHeader=false 면 보조 헤더("청약홈 공식 일정")를 생략 — 일정-only 카드에서 바깥 카드 헤더와 중복 방지.
-function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
-  const timeline = buildTimeline(s);
+function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean, now: Date) {
+  const timeline = buildTimeline(s, now);
   if (timeline.length === 0) return null;
   return (
     <div style={showInnerHeader ? { marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` } : undefined}>
@@ -103,7 +118,13 @@ function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
             style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}
           >
             <span style={{ fontSize: F.xs, color: C.muted }}>{item.l}</span>
-            <span style={{ fontSize: F.xs, fontWeight: 600, color: C.text }}>{item.v}</span>
+            <span
+              data-past={item.past ? "true" : undefined}
+              style={{ fontSize: F.xs, fontWeight: 600, color: item.past ? C.muted : C.text, whiteSpace: "nowrap" }}
+            >
+              {item.v}
+              {item.past && <span style={{ fontWeight: 400 }}> · {SCHEDULE_ENDED_TEXT}</span>}
+            </span>
           </div>
         ))}
       </div>
@@ -124,7 +145,7 @@ function renderTimeline(s: PresaleScheduleOfficial, showInnerHeader: boolean) {
   );
 }
 
-export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) {
+export const PresaleInfo = memo(function PresaleInfo({ apt, now = new Date() }: PresaleInfoProps) {
   const tracked = useRef(false);
   const [imgErr, setImgErr] = useState(false);
   const { schedule } = usePresaleDetail(apt.id);
@@ -141,7 +162,7 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
   // (6/13 cron 적재 ah- 단지: presaleStage 영구 NULL이라 이 분기로만 일정이 보임)
   if (!apt.presaleStage) {
     if (!schedule) return renderNoPresale();
-    const timelineEl = renderTimeline(schedule, false);
+    const timelineEl = renderTimeline(schedule, false, now);
     if (!timelineEl) return renderNoPresale();
     return (
       <div style={SCHEDULE_CARD}>
@@ -278,6 +299,12 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
         <div style={{ marginTop: 6, fontSize: F.xs, color: C.sub }}>
           <span style={{ fontWeight: 600 }}>일정: </span>
           {fmtPresaleSchedule(apt.presaleSchedule)}
+          {presaleScheduleEnded(apt.presaleSchedule, now) && (
+            <span data-past="true" style={{ color: C.muted }}>
+              {" "}
+              · {SCHEDULE_ENDED_TEXT}
+            </span>
+          )}
         </div>
       )}
 
@@ -325,7 +352,7 @@ export const PresaleInfo = memo(function PresaleInfo({ apt }: PresaleInfoProps) 
       )}
 
       {/* 청약홈 공식 일정 타임라인 (presale_schedule_official) */}
-      {schedule && renderTimeline(schedule, true)}
+      {schedule && renderTimeline(schedule, true, now)}
     </div>
   );
 });

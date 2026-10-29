@@ -41,14 +41,22 @@ import {
   fmtPriceRangeEok1,
   fmtPresaleSchedule,
   fmtRecruitDate,
+  isPastDateKst,
+  presaleScheduleEnded,
 } from "@/lib/format";
-import { hasKnownArea } from "@/lib/area";
+import { hasKnownArea, fmtArea } from "@/lib/area";
 import { groupAreaRows } from "@/lib/areaGroups";
 import { schoolsOf } from "@/lib/nearbySchools";
 import { hasRange } from "@/constants/cardChips";
 import { FIELD_META } from "@/constants/fieldMeta";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
-import { SENTINEL, SENTINEL_RADIUS_KM, isSentinel } from "@/constants/sentinels";
+import {
+  SENTINEL,
+  SENTINEL_RADIUS_KM,
+  COUNT_SEARCH_RADIUS_M,
+  KAKAO_INFRA_DIST_FIELDS,
+  isSentinel,
+} from "@/constants/sentinels";
 import {
   TRADE_SCOPE_PEER_YEARS,
   TRADE_SCOPE_PER_M2_TOL_M2,
@@ -88,7 +96,7 @@ function refBasic(m) {
   }
   if (m.roadAddress) out.push(`도로명: ${String(m.roadAddress)}`);
   if (fmtPrice(m.price) !== "-")
-    out.push(`분양가: ${fmtPrice(m.price)}${hasKnownArea(m.area) ? ` (전용 ${m.area}㎡)` : ""}`);
+    out.push(`분양가: ${fmtPrice(m.price)}${hasKnownArea(m.area) ? ` (전용 ${fmtArea(m.area)})` : ""}`);
   const u = FIELD_META.units.fmt(m.units, m);
   const s = FIELD_META.unsold.fmt(m.unsold, m);
   const uu = [u !== "정보 없음" ? `총 ${u}` : null, s !== "—" ? `미분양 ${s}` : null].filter(Boolean);
@@ -110,8 +118,16 @@ function refBasic(m) {
   );
   const rate = [...tl.querySelectorAll("b")].map(txt).find((t) => / : 1$/.test(t));
   if (rate) {
-    const detail = [...tl.querySelectorAll("div")].map(txt).find((t) => /^[\d,]+명 신청 \/ [\d,]+세대 모집$/.test(t));
-    out.push(`청약 경쟁률: ${rate}${detail ? ` (${detail})` : ""}`);
+    const detail = [...tl.querySelectorAll("div")]
+      .map(txt)
+      .find((t) => /^[\d,]+명 신청 \/ 잔여 [\d,]+세대 모집$/.test(t));
+    // 머리 낱말 = 화면 경쟁률 줄의 <b> 앞 글자(「잔여세대 청약 경쟁률」)
+    const head = txt(
+      /** @type {Element} */ ([...tl.querySelectorAll("b")].find((b) => / : 1$/.test(txt(b)))?.parentElement)
+    )
+      .replace(/ ?[\d.,]+ : 1$/, "")
+      .trim();
+    out.push(`${head}: ${rate}${detail ? ` (${detail})` : ""}`);
   }
   cleanup();
   const ue = draw(<UnsoldEventCard apt={m} />);
@@ -350,7 +366,7 @@ describe("목업 예시값 (고척 푸르지오 힐스테이트 ah-2025910101)",
       "총 983세대 · 미분양 29세대",
       "입주: 2028년 08월",
       "시공사: (주)대우건설, 현대엔지니어링(주)",
-      "청약 경쟁률: 90 : 1 (3,502명 신청 / 39세대 모집)",
+      "잔여세대 청약 경쟁률: 90 : 1 (3,502명 신청 / 잔여 39세대 모집)",
       "추가 모집 1회 · 마지막 2025.05",
     ]);
   });
@@ -602,6 +618,12 @@ describe("사본 함수 = 원본 (경계값 + 픽스처 전 행)", () => {
       {},
     ];
     for (const s of sch) expect(N.fmtPresaleScheduleNode(s)).toBe(fmtPresaleSchedule(s));
+    // 세션675 지난 일정 「끝남」 판정 사본
+    const now = new Date("2026-10-29T15:30:00Z");
+    for (const d of ["2023-09-04", "2026-10-29", "2026-10-30", "2026.10.29", "2026-09", "202610", "미정", null])
+      expect(N.isPastDateKstNode(d, now)).toBe(isPastDateKst(d, now));
+    for (const s of [...sch, { dateInfo: "2026-10-28", schdl_info: { end_date: "2026-11-02" } }])
+      expect(N.presaleScheduleEndedNode(s, now)).toBe(presaleScheduleEnded(s, now));
   });
   it("시세 탭 함수(PricePositionBox · AreaTradeTable · areaGroups · cardChips)", () => {
     const strip = (rows) => rows.map(({ small: _s, ...r }) => r);
@@ -612,6 +634,7 @@ describe("사본 함수 = 원본 (경계값 + 픽스처 전 행)", () => {
       expect(N.compareRowsNode(a, a.catsCache?.price)).toEqual(strip(compareRows(a, a.catsCache?.price)));
       expect(N.dongFactPartsNode(a)).toEqual(dongFactParts(a));
       expect(N.complexJeonseTextNode(a)).toBe(complexJeonseText(a));
+      if (hasKnownArea(a.area)) expect(N.fmtAreaNode(a.area)).toBe(fmtArea(a.area));
       expect(N.groupAreaRowsNode(a.complexTable, a.complexJeonseTable, a.area)).toEqual(
         groupAreaRows(a.complexTable, a.complexJeonseTable, a.area)
       );
@@ -627,6 +650,8 @@ describe("사본 함수 = 원본 (경계값 + 픽스처 전 행)", () => {
     expect(N.DISTANCE_AXES).toEqual(DISTANCE_AXES);
     expect(N.SENTINEL).toEqual(SENTINEL);
     expect(N.SENTINEL_RADIUS_KM).toEqual(SENTINEL_RADIUS_KM);
+    expect(N.COUNT_SEARCH_RADIUS_M).toEqual(COUNT_SEARCH_RADIUS_M); // 세션675 B16
+    expect(N.KAKAO_INFRA_DIST_FIELDS).toEqual([...KAKAO_INFRA_DIST_FIELDS]); // 세션675 B16c
     for (const a of APTS) {
       expect(N.transportFactsNode(a)).toBe(transportFacts(a));
       expect(N.busStopsTextNode(a)).toBe(busStopsText(a));

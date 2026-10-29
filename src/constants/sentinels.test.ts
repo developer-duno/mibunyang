@@ -3,7 +3,8 @@
 //   `import.meta.url` 이 http:// 스킴이라 readFileSync 가 못 읽는다.
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { SENTINEL, SENTINEL_RADIUS_KM, isSentinel } from "./sentinels";
+import { SENTINEL, SENTINEL_RADIUS_KM, COUNT_SEARCH_RADIUS_M, KAKAO_INFRA_DIST_FIELDS, isSentinel } from "./sentinels";
+import { DISTANCE_AXES } from "./distanceAxes";
 
 // `process.cwd()` 는 src/ ESLint 설정에 Node 전역이 없어 못 쓴다.
 // `import.meta.url` 은 표준 ESM 이라 그대로 통과하고, 실행 위치와 무관해 더 견고하다.
@@ -54,6 +55,47 @@ describe("SENTINEL_RADIUS_KM — 수집기가 찾아본 반경과 같다 (세션
 
   it("센티널이 있는 필드마다 반경이 있다", () => {
     expect(Object.keys(SENTINEL_RADIUS_KM).sort()).toEqual(Object.keys(SENTINEL).sort());
+  });
+});
+
+// 세션675 B16 — 「{반경} 안에 없음」의 반경은 수집기가 실제로 찾아본 반경이어야 한다(수집기 상수 사본 대조).
+describe("COUNT_SEARCH_RADIUS_M — 수집기가 찾아본 반경과 같다 (세션675 B16)", () => {
+  const read = (f: string) => readFileSync(new URL(`../../scripts/collectors/${f}`, import.meta.url), "utf8");
+
+  it("infra-kakao.mjs CATEGORIES 8종의 radius 와 같다", () => {
+    const src = read("infra-kakao.mjs");
+    const m = src.match(/const\s+CATEGORIES\s*=[^[]*\[([\s\S]*?)\]\s*\)/);
+    expect(m, "infra-kakao.mjs 에서 CATEGORIES 를 찾지 못했습니다").not.toBeNull();
+    const got: Record<string, number> = {};
+    for (const [, key, r] of (m?.[1] ?? "").matchAll(/key:\s*"(\w+)"[^}]*radius:\s*(\d+)/g))
+      got[`${key}Dist`] = Number(r);
+    expect(Object.keys(got).length).toBe(8);
+    for (const [field, r] of Object.entries(got)) expect(COUNT_SEARCH_RADIUS_M[field], field).toBe(r);
+    // B16c — 「8종 전부 빔 = 안 찾아봄」 판정 목록도 같은 8종이다
+    expect([...KAKAO_INFRA_DIST_FIELDS].sort()).toEqual(Object.keys(got).sort());
+  });
+
+  it("collect-childcare.mjs 어린이집·유치원 반경과 같다", () => {
+    const src = read("collect-childcare.mjs");
+    const rs = [...src.matchAll(/searchKakao\(lat,\s*lng,\s*"(?:어린이집|유치원)",\s*(\d+)\)/g)].map((x) =>
+      Number(x[1])
+    );
+    expect(rs.length).toBe(2);
+    for (const r of rs) expect(COUNT_SEARCH_RADIUS_M.childcareDist).toBe(r);
+  });
+
+  it("collect-police.mjs RADIUS 와 같다", () => {
+    const m = read("collect-police.mjs").match(/const\s+RADIUS\s*=\s*(\d+)/);
+    expect(m).not.toBeNull();
+    expect(COUNT_SEARCH_RADIUS_M.policeDist).toBe(Number(m?.[1]));
+  });
+
+  it("개수 칸이 있는 거리 필드 중 응급의료만 반경이 없다(반경 없이 가장 가까운 곳을 잼)", () => {
+    const counted = DISTANCE_AXES.flatMap((a) => a.items)
+      .filter((i) => i.countField)
+      .map((i) => i.field);
+    expect(counted.filter((f) => COUNT_SEARCH_RADIUS_M[f] == null)).toEqual(["emergencyDist"]);
+    expect(Object.keys(COUNT_SEARCH_RADIUS_M).every((f) => counted.includes(f))).toBe(true);
   });
 });
 

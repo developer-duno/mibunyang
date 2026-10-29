@@ -362,8 +362,11 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     //   **산식**을 적는다 — 전세가율이 몇 %면 좋은지는 공공기관이 정한 기준이 없다. 점수 곡선은 그대로다.
     const jn = Number(a.complexJeonseN);
     const sn = Number(a.complexSaleN);
+    // 세션675 👤 「전세가율 설명 고치기」 — 옛 "(전세 N건 ÷ 매매 M건)"은 건수끼리 나눈 것처럼 읽혔다(상세 시세 탭과 같은 꼴로).
     const formula =
-      Number.isFinite(jn) && jn > 0 && Number.isFinite(sn) && sn > 0 ? ` (전세 ${jn}건 ÷ 매매 ${sn}건)` : "";
+      Number.isFinite(jn) && jn > 0 && Number.isFinite(sn) && sn > 0
+        ? ` · 전세 가운데값 ÷ 매매 가운데값 (전세 ${jn}건 · 매매 ${sn}건)`
+        : "";
     out.push({ id: "jeonseRate", text: `전세가율 ${jeonseRate}%${formula}`, tone: "plain", layer: "neutral" });
   }
   const parkingRatio = a.parkingRatio as number | null | undefined;

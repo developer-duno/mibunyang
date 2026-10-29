@@ -319,7 +319,8 @@ export function scorePrice(apt: Apt): Res {
           jr == null
             ? `같은 단지 전세·매매 거래 부족 (중립 ${PRICE_NO_DATA_DEFAULTS.jr}점)`
             : // 세션651(사장님 결정): 판정 토막 "(적정 70~80%, 위험 40%↓, 과열 90%↑)" 삭제 — 산식만. 점수 곡선은 그대로.
-              `${jr}% — 같은 단지 같은 평수 전세 ${apt.complexJeonseN ?? "?"}건 ÷ 매매 ${apt.complexSaleN ?? "?"}건 중앙값`,
+              // 세션675 👤 「전세가율 설명 고치기」 — 건수끼리 나눈 것처럼 읽히지 않게(상세 시세 탭과 같은 꼴). 계산·점수는 그대로.
+              `${jr}% — 같은 단지 같은 평수 전세 가운데값 ÷ 매매 가운데값 (전세 ${apt.complexJeonseN ?? "?"}건 · 매매 ${apt.complexSaleN ?? "?"}건)`,
       },
       {
         name: "PIR",

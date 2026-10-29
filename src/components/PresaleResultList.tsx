@@ -1,6 +1,7 @@
 import { memo, useState } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice, fmtCompetitionRate } from "@/lib/format";
+import { fmtArea } from "@/lib/area";
 import type { ScoredApt } from "@/types/hooks";
 
 type PresaleResultListProps = {
@@ -79,7 +80,7 @@ export const PresaleResultList = memo(function PresaleResultList({ items, onOpen
                 {apt.name}
               </div>
               <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
-                {apt.region} {apt.gu || ""} · 전용 {apt.area != null ? Number(apt.area).toFixed(1) : "-"}㎡ · 분양가{" "}
+                {apt.region} {apt.gu || ""} · 전용 {apt.area != null ? fmtArea(apt.area) : "-㎡"} · 분양가{" "}
                 {fmtPrice(apt.price)}
               </div>
               <div style={{ fontSize: F.sm, fontWeight: 700, color: C.indigo, marginTop: 4 }}>

@@ -40,8 +40,21 @@ export function deviationHelpText(fields: readonly DeviationFieldSpec[]): string
   return HELP_TEXT + ` 단, ${judged.join("·")} 줄은 좋고 나쁨도 함께 적어요(파랑 = 유리 · 주황 = 불리).`;
 }
 
+/**
+ * 막대 색 뜻 한 줄 — 상세 종합 탭(compact=false)에서만 머리 줄 아래에 그린다(세션675 👤 「비교 막대 색 뜻 안내」).
+ * 실제 색 규칙대로: `neutral` 줄은 회색(`DeviationRow` toneColor neutral = C.muted), 판정 줄은 파랑(유리)·주황(불리).
+ * 판정 줄이 없는 목록이면 파랑·주황 절을 빼고, 있으면 그 줄 이름을 든다. 카드는 높이가 줄 수로 고정이라(stripHeight) 그리지 않는다.
+ */
+export function deviationLegendText(fields: readonly DeviationFieldSpec[]): string {
+  const base = "세로선 = 같은 지역 한가운데 값 · 회색 막대 = 이 단지 값이 그보다 크거나 작은 정도";
+  const judged = fields.filter((f) => !f.neutral).map((f) => f.label);
+  if (judged.length === 0) return base;
+  return `${base} · ${judged.join("·")} 줄은 파랑 = 유리 · 주황 = 불리`;
+}
+
 const S = {
   wrap: { marginTop: 10 },
+  legend: { fontSize: F.xs, color: C.sub, lineHeight: 1.5, marginBottom: 6, wordBreak: "keep-all" as const },
   header: {
     display: "flex",
     alignItems: "center",
@@ -118,6 +131,11 @@ export const DeviationStrip = memo(function DeviationStrip({
         {usedNational && <span style={S.badge}>일부 전국 기준</span>}
         <HelpHint text={deviationHelpText(fields)} label="지역 비교" />
       </div>
+      {!compact && (
+        <div style={S.legend} data-testid="deviation-legend">
+          {deviationLegendText(fields)}
+        </div>
+      )}
       <div style={S.rows}>
         {rows.map(({ spec, input, dev }) => (
           <DeviationRow

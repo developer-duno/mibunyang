@@ -147,6 +147,35 @@ export const fmtPresaleSchedule = (schedule: unknown): string => {
   return "—";
 };
 
+/** 오늘 날짜(KST) "YYYY-MM-DD" — 시험은 now 를 밖에서 넣는다 */
+export const todayKst = (now: Date = new Date()): string =>
+  new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+/**
+ * 날짜 글자가 오늘(KST)보다 지났나 — "YYYY-MM-DD"(또는 "YYYY.MM.DD")는 그날이 오늘보다 앞일 때, "YYYY-MM"·"YYYYMM"은 그 달이
+ * 이번 달보다 앞일 때. 그 밖 글자("2026 하반기"·"미정")는 판정하지 않는다(false). 세션675 👤 「지난 일정 정리」.
+ */
+export const isPastDateKst = (d: unknown, now: Date = new Date()): boolean => {
+  if (typeof d !== "string") return false;
+  const today = todayKst(now);
+  const day = /^(\d{4})[-.](\d{2})[-.](\d{2})$/.exec(d.trim());
+  if (day) return `${day[1]}-${day[2]}-${day[3]}` < today;
+  const month = /^(\d{4})-?(\d{2})$/.exec(d.trim());
+  if (month) return `${month[1]}-${month[2]}` < today.slice(0, 7);
+  return false;
+};
+
+/**
+ * 네이버 분양 일정(`presaleSchedule`, 객체 한 건)이 끝났나 — 끝 날짜(`schdl_info.end_date`)가 있으면 그것으로, 없으면 `dateInfo`.
+ * 배열·문자열 꼴은 판정하지 않는다(운영 자료는 전부 객체 한 건 — 세션675 실측).
+ */
+export const presaleScheduleEnded = (schedule: unknown, now: Date = new Date()): boolean => {
+  if (!isScheduleItem(schedule) || Array.isArray(schedule)) return false;
+  const info = (schedule as { schdl_info?: unknown }).schdl_info;
+  const end = isScheduleItem(info) ? (info as { end_date?: unknown }).end_date : null;
+  return isPastDateKst(typeof end === "string" && end ? end : schedule.dateInfo, now);
+};
+
 /** 분양시기 포맷: "2026-03-01" → "2026.03.01" */
 export const fmtRecruitDate = (v: unknown): string => {
   if (!v) return "—";

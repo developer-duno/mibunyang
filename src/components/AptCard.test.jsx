@@ -118,6 +118,41 @@ describe("AptCard", () => {
     expect(screen.queryByText(/총 ?혜택 약/)).toBeNull();
   });
 
+  // 세션675 👤 바 ③ — 「(0.3%)」만으로는 무엇의 몇 %인지 몰랐다 → 「(분양가의 R%)」(rate = 혜택 금액 ÷ 분양가, scoreBenefit)
+  it("혜택 비율은 「(분양가의 R%)」로 적는다", () => {
+    const res = makeRes();
+    const { container } = render(<AptCard {...makeProps({ res })} />);
+    expect(container.textContent).toContain(`만원 (분양가의 ${res.cats.benefit.rate}%)`);
+  });
+
+  // 세션675 👤 바 ① — 제목 옆 「공고 N」(siblingIds 중 ah- 수, 2 이상일 때만 · 상세 창 재공고 배지와 같은 규칙)
+  describe("제목 옆 공고 수 배지", () => {
+    it("ah- 공고가 2개 이상이면 「공고 N」 — 네이버(ap-) 행은 세지 않는다", () => {
+      render(<AptCard {...makeProps({ apt: makeApt({ id: "ah-1", siblingIds: ["ah-1", "ah-2", "ap-9"] }) })} />);
+      expect(screen.getByTestId("card-notice-badge").textContent).toBe("공고 2");
+    });
+
+    it("ah- 공고가 1개뿐이거나 묶음이 없으면 배지 없음", () => {
+      const { unmount } = render(
+        <AptCard {...makeProps({ apt: makeApt({ id: "ah-1", siblingIds: ["ah-1", "ap-9"] }) })} />
+      );
+      expect(screen.queryByTestId("card-notice-badge")).toBeNull();
+      unmount();
+      render(<AptCard {...makeProps({ apt: makeApt({ id: "ah-1" }) })} />);
+      expect(screen.queryByTestId("card-notice-badge")).toBeNull();
+    });
+
+    // ⚠️ 뮤테이션 대상: memo 비교에서 noticeCount 줄을 빼면 옛 숫자를 재사용해 red.
+    it("묶음(siblingIds)만 바뀌어도 카드를 다시 그린다 — 옛 공고 수 재사용 금지", () => {
+      const a = makeApt({ id: "ah-1", siblingIds: ["ah-1", "ah-2"] });
+      const b = makeApt({ id: "ah-1", siblingIds: ["ah-1", "ah-2", "ah-3"] });
+      const { rerender } = render(<AptCard {...makeProps({ apt: a })} />);
+      expect(screen.getByTestId("card-notice-badge").textContent).toBe("공고 2");
+      rerender(<AptCard {...makeProps({ apt: b })} />);
+      expect(screen.getByTestId("card-notice-badge").textContent).toBe("공고 3");
+    });
+  });
+
   it("혜택이 0이면 혜택 영역 미표시", () => {
     const res = makeRes();
     res.cats.benefit.totalWon = 0;
@@ -492,7 +527,9 @@ describe("AptCard", () => {
       const { rerender } = render(<AptCard {...makeProps({ apt: a0 })} />);
       rerender(<AptCard {...makeProps({ apt: a1 })} />);
       fireEvent.click(screen.getByRole("button", { name: /^지표 \d+개 더/ }));
-      expect(screen.getByText("전세가율 72% (전세 6건 ÷ 매매 8건)")).toBeInTheDocument();
+      expect(
+        screen.getByText("전세가율 72% · 전세 가운데값 ÷ 매매 가운데값 (전세 6건 · 매매 8건)")
+      ).toBeInTheDocument();
     });
 
     it.each([

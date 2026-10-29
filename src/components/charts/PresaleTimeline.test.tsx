@@ -67,7 +67,7 @@ describe("PresaleTimeline — 분양 정보 없는 절반은 안 그린다", () 
     expect(screen.queryByText(/분양 정보를 아직 모으지 못했어요/)).toBeNull();
     // fmtRate 는 10 이상을 정수로 반올림한다(34.29 → "34") — 위 fmtRate 단언과 같은 규약.
     expect(screen.getByText(/34 : 1/)).toBeInTheDocument();
-    expect(screen.getByText(/1,749명 신청 \/ 51세대 모집/)).toBeInTheDocument();
+    expect(screen.getByText(/1,749명 신청 \/ 잔여 51세대 모집/)).toBeInTheDocument();
   });
 
   it("단계도 경쟁률도 분양가도 없을 때만 '정보 없음'", () => {
@@ -81,7 +81,17 @@ describe("PresaleTimeline — 분양 정보 없는 절반은 안 그린다", () 
     );
     const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
     expect(label).not.toBe("분양 정보가 없습니다.");
-    expect(label).toContain("청약 경쟁률");
+    expect(label).toContain("잔여세대 청약 경쟁률");
+  });
+
+  // 세션675 👤 「경쟁률 범위」 — 값은 청약홈 잔여세대 경쟁률 API 하나에서 온다(collect-applyhome.mjs). 「1순위」 금지.
+  it("경쟁률 줄은 무엇의 경쟁률인지 밝힌다 — '잔여세대 청약 경쟁률' · '잔여 N세대 모집', '1순위' 없음", () => {
+    const { container } = render(
+      <PresaleTimeline stage={null} competitionRate={90} competitionSupply={39} competitionApplicants={3502} />
+    );
+    expect(screen.getByText(/잔여세대 청약 경쟁률/)).toBeInTheDocument();
+    expect(screen.getByText(/3,502명 신청 \/ 잔여 39세대 모집/)).toBeInTheDocument();
+    expect(container.textContent).not.toMatch(/1순위/);
   });
 });
 
@@ -180,7 +190,7 @@ describe("PresaleTimeline — 신청수·모집세대 병기 (세션508 PR-3c C3
     render(
       <PresaleTimeline stage="청약중" competitionRate={5.2} competitionSupply={300} competitionApplicants={1560} />
     );
-    expect(screen.getByText(/1,560명 신청 \/ 300세대 모집/)).toBeInTheDocument();
+    expect(screen.getByText(/1,560명 신청 \/ 잔여 300세대 모집/)).toBeInTheDocument();
   });
 
   it("모집세대가 없으면 병기 줄 자체를 생략한다 (반쪽 문장 금지)", () => {
@@ -204,7 +214,7 @@ describe("PresaleTimeline — 신청수·모집세대 병기 (세션508 PR-3c C3
     );
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
     expect(label).toContain("1,560명 신청");
-    expect(label).toContain("300세대 모집");
+    expect(label).toContain("잔여 300세대 모집");
   });
 });
 

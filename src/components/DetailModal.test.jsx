@@ -500,12 +500,12 @@ describe("DetailModal StickyJumpNav", () => {
     expect(price.style.paddingTop).toBe("12px");
   });
 
-  it("미분양 추이와 층별 매매가가 한 격자에 들어 있다 (PC 2열 · 좁으면 위아래)", () => {
+  // 세션675 👤 다 「3개 다 지우기」 + 「같이 지우기」 — 시세 탭에 시·군·구 전체 값(표·점 그림·층별 매매가)이 없다
+  it("시세 탭에 시·군·구 전체 값이 없다 — 층별 자료가 있어도 층별 매매가를 안 그린다", () => {
     const price = openPriceTab({ priceByFloor: [{ group: "저층", avg: 50000, count: 3 }] });
-    const grid = /** @type {HTMLElement} */ (price.querySelector('[data-testid="price-two-col"]'));
-    expect(grid).not.toBeNull();
-    expect(grid.style.gridTemplateColumns).toContain("auto-fit");
-    expect(grid.textContent).toContain("층별 매매가");
+    expect(price.textContent).not.toContain("층별 매매가");
+    expect(price.textContent).not.toContain("시·군·구 전체");
+    expect(price.querySelector('[data-testid="price-two-col"]')).toBeNull();
   });
 
   // 세션 507 PR-2 — 지역 통계 7종은 분양 탭으로. 세션591 에 접힘 없는 묶음이 됐다 — 제목 줄이 "이 단지 값이 아니다"를 먼저 말한다
@@ -707,7 +707,7 @@ describe("DetailModal StickyJumpNav", () => {
     const { container } = render(<DetailModal {...makeProps({ item })} />);
     const overview = /** @type {any} */ (container.querySelector("#sec-overview"));
     // ⚠️ 부분 문자열이라 옛 "총 혜택 약 …" 도 통과했다(적대검증). 파생 라벨을 잠그고 옛 것의 부재를 함께 단언.
-    expect(overview.textContent).toContain("관리비 절감 약 1,200만원 (2.4%)");
+    expect(overview.textContent).toContain("관리비 절감 약 1,200만원 (분양가의 2.4%)"); // 세션675 👤 바 ③
     expect(overview.textContent).not.toMatch(/총 ?혜택 약/);
     // 점수 미니카드(5개)와는 분리된 텍스트여야 — 미니카드 라벨 목록에 "혜택"이 없다
     const cards = overview.querySelectorAll('[role="button"][aria-label*="점수 탭에서 상세 보기"]');
@@ -1022,10 +1022,21 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
     const cta = overview.querySelector('[data-testid="score-blind-cta"]');
     expect(cta).not.toBeNull();
     expect(cta.textContent).toContain(CTA_TEXT);
-    expect(cta.textContent).toContain("모든 단지의 점수·순위·내 프로필 맞춤 추천이 열립니다");
+    expect(cta.textContent).toContain("모든 단지의 점수·순위가 열리고, 내 프로필 기준으로 다시 볼 수 있어요");
+    expect(cta.textContent).not.toContain("추천"); // 세션675 👤 라 — 금소법 낱말
     // 키보드 접근 (role=button + tabIndex)
     expect(cta.getAttribute("role")).toBe("button");
     expect(cta.getAttribute("tabindex")).toBe("0");
+  });
+
+  // 세션675 👤 「깨진 글자 2개」 — 출처 줄은 띄어쓰기 자리에서만 줄을 바꿔 「NEIS(교육부)」의 「부)」만 떨어지지 않게
+  it("종합 탭 출처 줄은 word-break: keep-all", () => {
+    const { container } = render(<DetailModal {...makeProps({ isLoggedIn: false })} />);
+    const footer = [...container.querySelectorAll("#sec-overview div")].find((d) =>
+      (d.textContent ?? "").startsWith("출처: 청약홈")
+    );
+    expect(footer).toBeTruthy();
+    expect(/** @type {HTMLElement} */ (footer).style.wordBreak).toBe("keep-all");
   });
 
   it("CTA 클릭 시 onRequestLogin 호출", () => {

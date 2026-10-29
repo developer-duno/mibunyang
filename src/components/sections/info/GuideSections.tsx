@@ -234,7 +234,11 @@ export const GuideSections = memo(function GuideSections() {
           // 카드가 실제로 그리는 건 `res.cats.benefit?.wonSource || "혜택"` 라벨 + 금액 + 혜택률이다
           // (AptCard.tsx). "총 혜택"이라는 말은 세션 512 에 사라졌다 — 금액이 있는 단지는 사실상
           // 관리비 절감 단독인데 "혜택을 다 따져본 총액"으로 읽혔기 때문 (세션 513).
-          { title: "혜택 표시", desc: "혜택이 있는 단지는 주황색 배경으로 혜택 항목과 금액, 혜택률(%)이 표시됩니다." },
+          {
+            title: "혜택 표시",
+            // 세션675 👤 바 ③ — 카드·상세 창이 「(분양가의 R%)」로 적는다(rate = 혜택 금액 ÷ 분양가) — 안내도 같은 뜻으로.
+            desc: "혜택이 있는 단지는 주황색 배경으로 혜택 항목과 금액, 그 금액이 분양가의 몇 %인지가 표시됩니다.",
+          },
         ].map((item, i) => (
           <div key={i} style={guideItem}>
             <div style={guideTitle}>{item.title}</div>

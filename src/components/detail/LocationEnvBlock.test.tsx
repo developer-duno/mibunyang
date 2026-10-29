@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { LocationEnvBlock, crimeDots, airAnnualText, noiseScale, noiseColor, noiseLabel } from "./LocationEnvBlock";
+import {
+  LocationEnvBlock,
+  crimeDots,
+  airAnnualText,
+  noiseScale,
+  noiseColor,
+  noiseLabel,
+  CRIME_DIRECTION_TEXT,
+} from "./LocationEnvBlock";
 import { positionPct } from "@/components/charts/PositionGauge";
 import { C } from "@/theme";
 import { makeApt } from "@/__tests__/factories";
@@ -35,6 +43,18 @@ describe("LocationEnvBlock — 칩 (목업 단지 실값)", () => {
     expect(chip(container, "view")).toBe("조망 블루");
     expect(chip(container, "noxious")).toBe("혐오시설 장례식장·공장 883m");
     expect(container.querySelector("[aria-expanded]")).toBeNull(); // 접힘이 없다
+  });
+
+  // 세션675 👤 「치안 등급 방향」 — 1등급 = 가장 안전(수집기·점수 방향 그대로)
+  it("치안 칩이 있으면 아래에 방향 한 줄, 없으면 그 줄도 없다", () => {
+    render(<LocationEnvBlock apt={apt(MOCKUP)} />);
+    expect(screen.getByTestId("crime-direction").textContent).toBe("치안은 1등급이 가장 안전해요 (1~5등급)");
+    expect(CRIME_DIRECTION_TEXT).toContain("1등급이 가장 안전");
+  });
+
+  it("치안 등급이 없으면 방향 줄도 없다", () => {
+    render(<LocationEnvBlock apt={apt({ ...MOCKUP, crimeSafetyGrade: null })} />);
+    expect(screen.queryByTestId("crime-direction")).toBeNull();
   });
 
   it("점수 낱말을 쓰지 않는다 — '감점'·'점수' 없음 (비로그인 가림 정책)", () => {
@@ -134,7 +154,7 @@ describe("LocationEnvBlock — 소음 게이지 (경계는 NOISE_TIERS 에서)",
   const NOISE_CASES: [number, string, string][] = [
     [40, "소음 40dB · 최고", C.green],
     [50, "소음 50dB · 우수", C.blue],
-    [60, "소음 60dB · 양호", C.amber],
+    [60, "소음 60dB · 양호", C.sub], // 세션675 👤 — 양호는 경고색(주황)이 아니라 중립
     [70, "소음 70dB · 보통", C.red],
     [75, "소음 75dB · 보통", C.red], // 경계 밖(70 초과) → 마지막 칸
   ];
@@ -150,7 +170,8 @@ describe("LocationEnvBlock — 소음 게이지 (경계는 NOISE_TIERS 에서)",
   });
 
   it("noiseColor·noiseLabel 순수 함수 — 네 칸이 서로 다른 색, 경계 밖은 마지막 칸", () => {
-    expect([40, 50, 60, 70].map(noiseColor)).toEqual([C.green, C.blue, C.amber, C.red]);
+    expect([40, 50, 60, 70].map(noiseColor)).toEqual([C.green, C.blue, C.sub, C.red]);
+    expect(noiseColor(60)).not.toBe(C.amber);
     expect([40, 50, 60, 70].map(noiseLabel)).toEqual(["최고", "우수", "양호", "보통"]);
     expect(new Set([40, 50, 60, 70].map(noiseColor)).size).toBe(4);
     expect(noiseColor(75)).toBe(C.red);

@@ -264,7 +264,8 @@ export function complexJeonseText(apt: Apt): string | null {
   const rate = `${Math.round(Number(r) * 10) / 10}%`;
   const jn = Number(apt.complexJeonseN),
     sn = Number(apt.complexSaleN);
-  return jn > 0 && sn > 0 ? `${rate} (전세 ${jn}건 ÷ 매매 ${sn}건)` : rate;
+  // 세션675 👤 「전세가율 설명 고치기」 — 옛 "(전세 5건 ÷ 매매 9건)"은 건수끼리 나눈 것처럼 읽혔다. 무엇을 나눴는지 + 건수는 따로.
+  return jn > 0 && sn > 0 ? `${rate} · 전세 가운데값 ÷ 매매 가운데값 (전세 ${jn}건 · 매매 ${sn}건)` : rate;
 }
 
 export const PricePositionBox = memo(function PricePositionBox({

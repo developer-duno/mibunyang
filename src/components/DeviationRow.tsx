@@ -18,13 +18,19 @@ export const ROW_HEIGHT = 22;
  * 이보다 좁아지면 1 백분위점이 1px 미만이 되어 좌/우 판독이 무너진다.
  */
 const TRACK_MIN_WIDTH = 56;
+/**
+ * 줄 이름 칸 폭 — 카드(compact)는 3글자 이름 3줄뿐이라 40, 상세 종합 탭은 4글자(「소득부담」·「전세가율」)가 있어 52.
+ * 12px 한글 4글자 ≈ 48px 라 40 이면 「소득...」로 잘렸다(세션675 👤 「'소득...' 잘림 고치기」). 한 블록 안에서는 폭이 같아 줄이 어긋나지 않는다.
+ */
+export const LABEL_W_COMPACT = 40;
+export const LABEL_W_WIDE = 52;
 /** 분포 양 끝(상·하위 10%)을 표시하는 캡 */
 const SPARSE_CAP_PCT = 10;
 
 const S = {
   row: { display: "flex", alignItems: "center", gap: 4, height: ROW_HEIGHT },
   label: {
-    width: 40,
+    width: LABEL_W_COMPACT,
     flexShrink: 0,
     fontSize: F.sm,
     color: C.muted,
@@ -104,6 +110,9 @@ export const DeviationRow = memo(function DeviationRow({
   estimated?: boolean;
 }) {
   const shownValue = formatDeviationValue(spec, value, estimated);
+  const labelStyle = compact ? S.label : { ...S.label, width: LABEL_W_WIDE };
+  // 상세(넓은 쪽)는 값 슬롯 끝을 2px 띄운다 — 굵은 끝 글자(「2.7배 멂」의 「멂」)가 창 오른쪽 끝에 붙어 잘려 보였다(세션675).
+  const valueStyle = compact ? S.value : { ...S.value, paddingRight: 2 };
   const aria = deviationAriaLabel(spec, dev, regionLabel, shownValue);
 
   // 팝업에서는 `1,240만 · 12% 낮음` 처럼 실제 값을 앞에 붙인다. "12% 낮음"만으로는 "그래서
@@ -127,7 +136,7 @@ export const DeviationRow = memo(function DeviationRow({
   if (dev.state === "sparse" || dev.state === "uniform" || dev.state === "estimated") {
     return (
       <div style={S.row} role="img" aria-label={aria}>
-        <span style={S.label}>{spec.label}</span>
+        <span style={labelStyle}>{spec.label}</span>
         <span style={{ flex: 1, minWidth: 0, fontSize: F.sm, color: C.muted, ...S.noWrapEllipsis }} aria-hidden="true">
           {dev.text}
         </span>
@@ -137,7 +146,7 @@ export const DeviationRow = memo(function DeviationRow({
 
   return (
     <div style={S.row} role="img" aria-label={aria}>
-      <span style={S.label}>{spec.label}</span>
+      <span style={labelStyle}>{spec.label}</span>
       <span style={S.edge} aria-hidden="true">
         {spec.lowWord}
       </span>
@@ -175,7 +184,7 @@ export const DeviationRow = memo(function DeviationRow({
       <span style={S.edge} aria-hidden="true">
         {spec.highWord}
       </span>
-      <span style={{ ...S.value, color }} aria-hidden="true">
+      <span style={{ ...valueStyle, color }} aria-hidden="true">
         {valueText}
       </span>
     </div>

@@ -72,8 +72,13 @@ function noiseTierIndex(db: number): number {
   return i === -1 ? NOISE_TIERS.length - 1 : i;
 }
 
-/** 칸 번호 순서의 색 — 첫 칸 초록 · 둘째 파랑 · 셋째 주황 (마지막 칸은 칸 수와 무관하게 아래에서 빨강) */
-const NOISE_TIER_COLORS = [C.green, C.blue, C.amber];
+/**
+ * 칸 번호 순서의 색 — 첫 칸 초록 · 둘째 파랑 · 셋째(양호) 중립 회색 (마지막 칸은 칸 수와 무관하게 아래에서 빨강).
+ * 세션675 👤 「'소음 양호' 색」: 셋째 칸이 주황(경고색)이라 「소음 60dB · 양호」가 나쁜 것처럼 보였다 → 판정에 맞게 중립. 경계는 그대로.
+ */
+const NOISE_TIER_COLORS = [C.green, C.blue, C.sub];
+/** 치안 등급 방향 한 줄(세션675 👤 「치안 등급 방향」) — 1등급이 가장 안전(수집기 collect-crime-safety 1~5 · 점수 1등급 > 5등급) */
+export const CRIME_DIRECTION_TEXT = "치안은 1등급이 가장 안전해요 (1~5등급)";
 
 /**
  * 소음 칸 색 — 제목 글자(`noiseLabel`)와 **같은 칸**에서 읽는다(세션595 사장님 결정 D1).
@@ -170,6 +175,11 @@ export const LocationEnvBlock = memo(function LocationEnvBlock({ apt }: { apt: A
               {c.node}
             </span>
           ))}
+        </div>
+      )}
+      {crime && (
+        <div data-testid="crime-direction" style={{ fontSize: F.xs, color: C.sub, marginTop: 6 }}>
+          {CRIME_DIRECTION_TEXT}
         </div>
       )}
       {noise != null && (

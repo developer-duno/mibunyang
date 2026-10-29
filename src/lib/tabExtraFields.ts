@@ -176,11 +176,6 @@ export const FIELDS_SHOWN_IN_DETAIL_CARDS: readonly string[] = [
   "naverFetchedAt",
   // (세션589 에 여기 두었던 `psr`(시세 탭 PSR 게이지 줄)은 세션609 라) 에 줄째 지웠다 — PSR 축 삭제(세션607 다) ·
   //  R4). 필드 정의(`fieldMeta`)도 지워 서랍으로 흘러들 수 없다.)
-  // ── 세션508 PR-3b B3: 시세 탭 층별가 계단 카드(`detail/DataSectionBlock` PriceByFloorBlock)
-  // 가 "평균 거래 층수 N층 · 거래 층 X~Y층" 문장으로 흡수한 2필드. 옛 자리는 각각
-  // SourceComparison 대조표(avgFloor)와 PRICE_SECTIONS.grid(floorRange)였다.
-  "avgFloor",
-  "floorRange",
   // ── 세션508 PR-3c C1: 분양 탭 `detail/UnsoldEventCard`(추가 모집 이력, ah- 단지만) 2필드.
   "unsoldEventCount",
   "lastUnsoldEventAt",
@@ -256,6 +251,11 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   // 카드로 승격) 짝이던 네이버측 값이 혼자 남았다. 비교 상대가 없는 네이버 단독값을
   // 새로 보여줄 자리를 만들 이유가 없어 손님 화면에서 뺐다(관리자 표에는 그대로 있다).
   "naverAvgFloor",
+  // ── 세션675 👤 「같이 지우기」 ── 시세 탭 층별가 계단 카드(시·군·구 전체 실거래)를 지우면서 그 카드가 문장으로
+  // 흡수했던 2필드(평균 거래 층수·거래 층 범위 — 같은 시·군·구 전체 계산)도 손님 화면에서 뺐다. 서랍으로 새로 나오지 않게 여기서 막는다
+  // (관리자 전수 표·DB 는 그대로).
+  "avgFloor",
+  "floorRange",
   // `floors`(층수 범위 문자열)는 한 번 채워지면 갱신되지 않는데 `maxFloor`(숫자)는
   // 월간으로 덮어써져, 종합 탭 "건물 정보" 카드 안에서 "최고층 19층"과 "층수 범위
   // 중층(6~15F)"이 나란히 뜨며 어긋나는 단지가 손님 모수 1,754곳 중 306곳(18.1%)이었다.

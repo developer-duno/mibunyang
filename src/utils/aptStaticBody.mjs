@@ -151,6 +151,11 @@ export function fmtPriceRangeEok1Node(min, max) {
 /** @param {unknown} x @returns {x is Record<string, any>} */
 const isObj = (x) => typeof x === "object" && x !== null;
 
+/** 원본 src/lib/area.ts fmtArea — 소수 둘째 자리 + 「㎡」 @param {unknown} area @returns {string} */
+export function fmtAreaNode(area) {
+  return `${Math.round(Number(area) * 100) / 100}㎡`;
+}
+
 /** 원본 format.ts fmtPresaleSchedule @param {unknown} schedule @returns {string} */
 export function fmtPresaleScheduleNode(schedule) {
   if (!schedule) return "—";
@@ -170,6 +175,25 @@ export function fmtPresaleScheduleNode(schedule) {
     }
   }
   return "—";
+}
+
+/** 원본 format.ts isPastDateKst(+ todayKst) @param {unknown} d @param {Date} now @returns {boolean} */
+export function isPastDateKstNode(d, now) {
+  if (typeof d !== "string") return false;
+  const today = new Date(now.getTime() + 9 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  const day = /^(\d{4})[-.](\d{2})[-.](\d{2})$/.exec(d.trim());
+  if (day) return `${day[1]}-${day[2]}-${day[3]}` < today;
+  const month = /^(\d{4})-?(\d{2})$/.exec(d.trim());
+  if (month) return `${month[1]}-${month[2]}` < today.slice(0, 7);
+  return false;
+}
+
+/** 원본 format.ts presaleScheduleEnded @param {unknown} schedule @param {Date} now @returns {boolean} */
+export function presaleScheduleEndedNode(schedule, now) {
+  if (!isObj(schedule) || Array.isArray(schedule)) return false;
+  const info = schedule.schdl_info;
+  const end = isObj(info) ? info.end_date : null;
+  return isPastDateKstNode(typeof end === "string" && end ? end : schedule.dateInfo, now);
 }
 
 /** 원본 format.ts fmtRecruitDate @param {unknown} v @returns {string} */
@@ -244,7 +268,7 @@ export function complexJeonseTextNode(apt) {
   const rate = `${Math.round(Number(r) * 10) / 10}%`;
   const jn = Number(apt.complexJeonseN),
     sn = Number(apt.complexSaleN);
-  return jn > 0 && sn > 0 ? `${rate} (전세 ${jn}건 ÷ 매매 ${sn}건)` : rate;
+  return jn > 0 && sn > 0 ? `${rate} · 전세 가운데값 ÷ 매매 가운데값 (전세 ${jn}건 · 매매 ${sn}건)` : rate;
 }
 
 /**
@@ -473,6 +497,30 @@ export function naverListingTextNode(apt, tzOffsetMin = KST_OFFSET_MIN) {
 export const SENTINEL = { subwayDist: 9999, icDist: 99, ktxDist: 99 };
 /** 원본 sentinels.ts SENTINEL_RADIUS_KM @type {Record<string, number>} */
 export const SENTINEL_RADIUS_KM = { subwayDist: 10, icDist: 20, ktxDist: 20 };
+/** 원본 sentinels.ts KAKAO_INFRA_DIST_FIELDS (세션675 B16c) */
+export const KAKAO_INFRA_DIST_FIELDS = [
+  "hospitalDist",
+  "martDist",
+  "convDist",
+  "cafeDist",
+  "cultureDist",
+  "bankDist",
+  "pharmacyDist",
+  "parkDist",
+];
+/** 원본 sentinels.ts COUNT_SEARCH_RADIUS_M (세션675 B16) @type {Record<string, number>} */
+export const COUNT_SEARCH_RADIUS_M = {
+  convDist: 500,
+  cafeDist: 500,
+  pharmacyDist: 500,
+  hospitalDist: 1000,
+  martDist: 1000,
+  cultureDist: 1000,
+  bankDist: 1000,
+  parkDist: 1000,
+  childcareDist: 1000,
+  policeDist: 3000,
+};
 
 /** 원본 sentinels.ts isSentinel @param {string} field @param {unknown} value @returns {boolean} */
 export function isSentinelNode(field, value) {
@@ -620,12 +668,27 @@ function readRow(it, raw) {
     const c = Number(raw[it.countField]);
     if (Number.isFinite(c) && c > 0) cnt = Math.round(c);
   }
+  // 원본 DistanceDots.tsx noneWithin(세션675 B16) — 개수 0 + 반경 = 「{반경} 안에 없음」 · 개수 null·반경 없음 = 줄 숨김
+  let hidden = false;
+  if (v == null && out == null && it.countField) {
+    const c = raw[it.countField];
+    // B16c — 카카오 8종 거리가 전부 null = 그 수집기가 안 찾아본 단지 → 8줄 숨김
+    if (KAKAO_INFRA_DIST_FIELDS.includes(it.field) && KAKAO_INFRA_DIST_FIELDS.every((f) => raw[f] == null))
+      hidden = true;
+    else if (c == null) hidden = true;
+    else if (Number(c) === 0) {
+      const r = /** @type {Record<string, number>} */ (COUNT_SEARCH_RADIUS_M)[it.field];
+      if (r) out = `${fmtDistNode(r)} 안에 없음`;
+      else hidden = true;
+    }
+  }
   return {
     label: cnt != null ? `${it.label} ${cnt}곳` : it.label,
     name,
     v,
     out,
     present: name != null || v != null || out != null,
+    hidden,
   };
 }
 
@@ -639,7 +702,7 @@ export function distanceGroupLinesNode(apt) {
   if (apt.coordShared === true) return [];
   const axes = DISTANCE_AXES.map((ax) => {
     const rows = ax.items.map((it) => readRow(it, apt));
-    const keep = rows.filter((r, i) => r.present || !(ax.onlyWhenPresent || ax.items[i].schoolType));
+    const keep = rows.filter((r, i) => !r.hidden && (r.present || !(ax.onlyWhenPresent || ax.items[i].schoolType)));
     return { ...ax, rows: keep };
   }).filter((ax) => ax.rows.length > 0);
   const filled = axes.reduce((s, a) => s + a.rows.filter((r) => r.v != null || r.out != null).length, 0);
@@ -788,9 +851,10 @@ export function competitionLineNode(apt) {
     apt.competitionApplicants != null && apt.competitionApplicants > 0 ? apt.competitionApplicants : null;
   const tail =
     supply != null && applicants != null
-      ? ` (${Number(applicants).toLocaleString("ko-KR")}명 신청 / ${Number(supply).toLocaleString("ko-KR")}세대 모집)`
+      ? ` (${Number(applicants).toLocaleString("ko-KR")}명 신청 / 잔여 ${Number(supply).toLocaleString("ko-KR")}세대 모집)`
       : "";
-  return `청약 경쟁률: ${fmtRateNode(Number(r))} : 1${tail}`;
+  // 세션675 👤 「경쟁률 범위」 — 원본 PresaleTimeline COMPETITION_SCOPE(청약홈 잔여세대 경쟁률)
+  return `잔여세대 청약 경쟁률: ${fmtRateNode(Number(r))} : 1${tail}`;
 }
 
 /** 추가 모집 줄 — 원본 UnsoldEventCard.tsx(ah- 만 · 횟수 없으면 뺌 · 「마지막 YYYY.MM」) @param {Record<string, any>} apt @returns {string | null} */
@@ -848,7 +912,9 @@ export function presaleLinesNode(apt, o) {
   for (let i = 0; i < cells.length; i += 3) lines.push(cells.slice(i, i + 3).join(" · "));
   if (apt.presaleSchedule) {
     const sch = fmtPresaleScheduleNode(apt.presaleSchedule);
-    if (!PRESALE_EMPTY.has(sch)) lines.push(`일정: ${sch}`);
+    // 세션675 👤 「지난 일정 정리」 — 원본 PresaleInfo 일정 줄 끝 「 · 끝남」
+    if (!PRESALE_EMPTY.has(sch))
+      lines.push(`일정: ${sch}${presaleScheduleEndedNode(apt.presaleSchedule, o.now) ? " · 끝남" : ""}`);
   }
   return lines;
 }
@@ -896,7 +962,7 @@ export function basicLinesNode(a) {
   }
   if (a.roadAddress) out.push(`도로명: ${String(a.roadAddress)}`);
   const price = fmtPriceNode(a.price);
-  if (price !== "-") out.push(`분양가: ${price}${hasKnownAreaNode(a.area) ? ` (전용 ${a.area}㎡)` : ""}`);
+  if (price !== "-") out.push(`분양가: ${price}${hasKnownAreaNode(a.area) ? ` (전용 ${fmtAreaNode(a.area)})` : ""}`);
   const units = hubUnitsText(a.units, a.unsold);
   const unsold = unsoldFieldText(a.unsold);
   const uu = [units !== "정보 없음" ? `총 ${units}` : null, unsold !== "—" ? `미분양 ${unsold}` : null].filter(Boolean);

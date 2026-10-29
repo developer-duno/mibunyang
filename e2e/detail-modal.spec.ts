@@ -96,8 +96,9 @@ test.describe("상세 모달", () => {
     await expect(modal).not.toBeVisible({ timeout: 3000 });
   });
 
-  // 가격배열 lazy fetch (상세 해시 버킷 JSON) 후 PriceTable 첫 행 실제 렌더 검증.
-  // 세션 407 D1: PriceTable 은 시세 탭 소속 — 칩 클릭 선행. #sec-price 단언은 데이터 무관 non-skip
+  // 상세 해시 버킷 JSON lazy fetch 후 이 단지 평형별 실거래 표(AreaTradeTable) 첫 줄 실제 렌더 검증.
+  // 세션675 👤 다: 옛 시·군·구 전체 시세 표(PriceTable)를 지워 이 단지 표로 바꿨다.
+  // 세션 407 D1: 시세 탭 소속 — 칩 클릭 선행. #sec-price 단언은 데이터 무관 non-skip
   // 가드라 칩 클릭 수정이 누락되면 즉시 fail (silent-skip 함정 차단). 행 단언만 데이터 의존 skip 유지.
   test("DetailModal — 시세 탭: 칩 클릭 후 섹션 마운트 + prices lazy fetch 행 렌더", async ({ page }) => {
     await firstCard(page).click();
@@ -110,9 +111,10 @@ test.describe("상세 모달", () => {
     // non-skip 가드: 시세 탭 패널은 데이터 유무와 무관하게 마운트·가시 (탭 전환 자체의 회귀 가드)
     await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
 
-    // 세션664: CI 공용 픽스처는 전 단지가 priceByArea 를 가진다 → 첫 단지에 행이 없으면 실패(옛 skip 삭제).
-    const row = modal.locator('[data-testid="price-table-row"]').first();
-    await expect(row, "픽스처 첫 단지는 가격 표가 있어야 한다 — 픽스처·가격 표 깨짐").toBeVisible({ timeout: 15000 });
+    // 세션664·675: CI 공용 픽스처는 전 단지가 complexTable 을 가진다 → 첫 단지에 줄이 없으면 실패.
+    const row = modal.locator("[data-area-group]").first();
+    await expect(row, "픽스처 첫 단지는 이 단지 평형별 표가 있어야 한다 — 픽스처·표 깨짐").toBeVisible({ timeout: 15000 });
+    await expect(modal.locator("#sec-price")).not.toContainText("시·군·구 전체 매매");
   });
 
   // 세션661 실거래 범위(설계서 v2 §4-3) — 시세 탭 비교 상자 범위 줄·가운데 값·막대 + 목록 카드 범위 칩.

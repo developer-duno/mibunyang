@@ -9,24 +9,18 @@ import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { PricePositionBox } from "./detail/PricePositionBox";
 import { AreaTradeTable } from "./detail/AreaTradeTable";
-import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
 import { transportFacts } from "./detail/TransportCard";
 import { LocationEnvBlock } from "./detail/LocationEnvBlock";
 import { fmtPrice, fmtMoveIn, fmtAddress, fmtPriceGap } from "@/lib/format";
-import { hasKnownArea } from "@/lib/area";
-import { PriceTable } from "./detail/PriceTable";
+import { hasKnownArea, fmtArea } from "@/lib/area";
+import { noticeCount } from "@/lib/noticeCount";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
-import {
-  DataSectionBlock,
-  NearbyFacilitiesBlock,
-  PriceByFloorBlock,
-  AnnouncementLink,
-} from "./detail/DataSectionBlock";
+import { DataSectionBlock, NearbyFacilitiesBlock, AnnouncementLink } from "./detail/DataSectionBlock";
 import { ExtraFieldsAccordion } from "./detail/ExtraFieldsAccordion";
 import { PresaleTimeline } from "./charts/PresaleTimeline";
 import { LoanStack } from "./charts/LoanStack";
@@ -126,7 +120,8 @@ const DM_S = {
     padding: "3px 8px",
     marginBottom: 8,
   },
-  sourceFooter: { fontSize: F.micro, color: C.muted, marginTop: 10, lineHeight: 1.5 },
+  // keep-all — 줄바꿈을 띄어쓰기 자리에서만 해 「NEIS(교육부)」 끝의 「부)」만 다음 줄로 떨어지지 않게(세션675 👤 「깨진 글자 2개」)
+  sourceFooter: { fontSize: F.micro, color: C.muted, marginTop: 10, lineHeight: 1.5, wordBreak: "keep-all" as const },
   actionRow: { display: "flex", gap: 8 },
 };
 
@@ -433,7 +428,7 @@ export const DetailModal = memo(function DetailModal({
                     (세션576 D2). AptCard 태그 줄과 같은 모양(빈 토큰은 filter 로 거른다). */}
                 {[
                   [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "),
-                  hasKnownArea(apt.area) ? `${apt.area}㎡` : "",
+                  hasKnownArea(apt.area) ? fmtArea(apt.area) : "",
                   fmtPrice(apt.price),
                 ]
                   .filter(Boolean)
@@ -637,7 +632,9 @@ export const DetailModal = memo(function DetailModal({
                     <div style={DM_S.benefitsBox}>
                       {benefitWon > 0 && (
                         <div style={DM_S.benefitsHead}>
-                          {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
+                          {/* 세션675 👤 바 ③ — 비율 = 혜택 금액 ÷ 분양가(scoreBenefit) */}
+                          {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 (분양가의{" "}
+                          {benefitRate}%)
                         </div>
                       )}
                       {hasBenefitsList && (
@@ -655,11 +652,9 @@ export const DetailModal = memo(function DetailModal({
 
                 {/* 세션635 다: 재공고 수 = 청약홈 공고(ah-)만 센다 — 네이버 행(ap-)은 공고가 아니다. */}
                 {(() => {
-                  const notices = (Array.isArray(apt.siblingIds) ? (apt.siblingIds as string[]) : []).filter((id) =>
-                    id.startsWith("ah-")
-                  );
-                  return notices.length > 1 ? (
-                    <div style={DM_S.republishBadge}>재공고 {notices.length}회 · 시계열 통합 조회</div>
+                  const notices = noticeCount(apt.siblingIds);
+                  return notices > 1 ? (
+                    <div style={DM_S.republishBadge}>재공고 {notices}회 · 시계열 통합 조회</div>
                   ) : null;
                 })()}
 
@@ -685,7 +680,7 @@ export const DetailModal = memo(function DetailModal({
               </section>
             )}
 
-            {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
+            {/* §2 시세 탭 — 이 단지 값만(세션675 👤 다: 시·군·구 전체 시세 표·면적별 점 그림 삭제) + PriceChart + UnsoldChart */}
             {isPanelMounted("sec-price") && (
               <section
                 id="sec-price"
@@ -704,34 +699,15 @@ export const DetailModal = memo(function DetailModal({
                   (위 effect 의 fetch 경로는 setDetail(null) 을 하지 않는다) — 이 표는 그 버킷이 지금 단지 것(detailForId)일 때만 상세 칸을 쓴다.
                   버킷 행은 id 를 떼고 오므로 detail.id 로는 가를 수 없다. */}
                 <AreaTradeTable apt={detail && detailForId === apt.id ? (mergedApt ?? apt) : apt} />
-                {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
-                  유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
-                <AreaPriceScatter
-                  priceByArea={(mergedApt ?? apt).priceByArea}
-                  aptPrice={(apt.price as number | null) ?? null}
-                  aptArea={(apt.area as number | null) ?? null}
-                />
-                <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
                 <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
-                {/* 미분양 추이 + 층별 매매가 — 넓으면(PC) 2열로 나란히, 좁으면(휴대폰) 위아래.
-                  상세 안 부품은 화면 폭을 모르므로 격자가 스스로 접힌다(한 칸 최소 280px).
-                  한쪽이 안 그려지면(미분양 값 없음 · 층별 자료 없음) 남은 쪽이 전체 폭을 쓴다. */}
-                <div
-                  data-testid="price-two-col"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                    gap: "0 16px",
-                    alignItems: "start",
-                    marginTop: 4,
-                  }}
-                >
+                {/* 미분양 추이. 옛 짝 「층별 매매가 (시·군·구 전체 실거래)」 2열 격자는 세션675 👤 「같이 지우기」로
+                  블록째 지웠다(시·군·구 전체 값 — 다 「3개 다 지우기」와 같은 이유). */}
+                <div style={{ marginTop: 4 }}>
                   <UnsoldChart
                     apartmentId={apt.id as string}
                     siblingIds={apt.siblingIds as string[] | undefined}
                     unsold={(apt.unsold as number | null | undefined) ?? null}
                   />
-                  <PriceByFloorBlock apt={mergedApt ?? apt} />
                 </div>
 
                 {/* 네이버 매물 현황 한 줄 (세션589 V10) — 옛 두 출처 대조표("같은 값을 두 곳에서 재봤어요")를
