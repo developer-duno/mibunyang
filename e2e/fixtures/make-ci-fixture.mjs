@@ -13,9 +13,10 @@
  * 그래서 운영 응답의 행을 **고치지 않고 그대로** 골라 담는다(행 안의 값·칸을 바꾸지 않는다).
  *
  * 고르는 규칙(아래 `isRich`) — 고른 단지 **전부**가 다음을 만족한다. 그래서 목록 기본 정렬이 무엇이든
- * 첫 카드는 범위 칩과 가격 표를 둘 다 가진다.
+ * 첫 카드는 범위 칩과 이 단지 평형별 표를 둘 다 가진다.
  *   - 면적(`area`) > 0
- *   - `priceByArea` 가 비어 있지 않은 배열(시세 탭 가격 표 행)
+ *   - `complexTable` 이 비어 있지 않은 배열(시세 탭 「이 단지 평형별 실거래」 표 — `detail/AreaTradeTable` 의 재료.
+ *     세션675: 옛 기준 `priceByArea`(시·군·구 전체 시세 표 `PriceTable`)는 그 표와 함께 화면에서 지웠다)
  *   - 범위 칩 조건 = `src/constants/cardChips.ts` 의 `hasRange` + 비교 칩 게이트와 같은 칸:
  *     `cmpScope` 가 complex|dong_peer · `cmpMin`·`cmpMax` 유한수 · `cmpN`·`cmpMonths` > 0 ·
  *     `catsCache.price.fairPrice` > 0 · `catsCache.price.deviation` 유한수 · `catsCache.price.fairPriceScope` 가 complex|dong_peer
@@ -35,8 +36,8 @@ function isRich(a) {
   const p = a?.catsCache?.price;
   return (
     Number(a.area) > 0 &&
-    Array.isArray(a.priceByArea) &&
-    a.priceByArea.length > 0 &&
+    Array.isArray(a.complexTable) &&
+    a.complexTable.length > 0 &&
     JUDGED.has(a.cmpScope) &&
     Number.isFinite(a.cmpMin) &&
     Number.isFinite(a.cmpMax) &&

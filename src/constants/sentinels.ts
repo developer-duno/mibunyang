@@ -40,10 +40,12 @@ export const SENTINEL_RADIUS_KM: Readonly<Record<SentinelField, number>> = {
  * 「{반경} 안에 없음」으로 적는다(위 센티널 「10km 안에 없음」과 같은 꼴). 개수도 null 이면 찾아본 적이 없어 줄을 안 그린다.
  *
  * ⚠️ 수집기 상수의 **사본**이다 — `src/` 는 `scripts/` 를 import 하지 못한다(수집기는 최상위에서 env·DB 를 열고,
- *    Vercel 빌드는 `scripts/` 를 싣지 않는다). 그래서 `sentinels.test.ts` 가 수집기 파일 글자를 읽어 대조한다:
- *    infra-kakao.mjs `CATEGORIES` · collect-childcare.mjs(어린이집·유치원 반경) · collect-police.mjs `RADIUS`.
- * 응급의료(`emergencyDist`)는 없다 — 그 수집기는 거리를 반경 없이 가장 가까운 곳으로 재고 개수만 10km 안이라,
- *    거리 null 이면 "안 재본 것"이다(줄을 안 그린다).
+ *    Vercel 빌드는 `scripts/` 를 싣지 않는다). 그래서 `sentinels.test.ts` 가 infra-kakao.mjs `CATEGORIES` 글자를 읽어 대조한다.
+ * 목록에 **없는** 개수 칸 시설은 거리가 비면 줄을 안 그린다(「안에 없음」이라 단정하지 않는다):
+ *  - 응급의료(`emergencyDist`) — 그 수집기는 거리를 반경 없이 가장 가까운 곳으로 재고 개수만 10km 안이라, 거리 null = 안 잰 것.
+ *  - 경찰관서(`policeDist`)·어린이집(`childcareDist`) — 세션675 검사 보완 G1: 각자 따로(월 1회) 도는 수집기라 개수 칸
+ *    기본값 0(DEFAULT 0)과 "찾아봤는데 0곳"을 가를 수 없다(예 `ap-6027791` 천호동 「비오르」 — 병원 90m 인데 경찰 3km·
+ *    어린이집 1km 「없음」으로 나왔다).
  */
 export const COUNT_SEARCH_RADIUS_M: Readonly<Record<string, number>> = {
   convDist: 500,
@@ -54,8 +56,6 @@ export const COUNT_SEARCH_RADIUS_M: Readonly<Record<string, number>> = {
   cultureDist: 1000,
   bankDist: 1000,
   parkDist: 1000,
-  childcareDist: 1000,
-  policeDist: 3000,
 };
 
 /**

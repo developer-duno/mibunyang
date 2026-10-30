@@ -73,10 +73,11 @@ function noiseTierIndex(db: number): number {
 }
 
 /**
- * 칸 번호 순서의 색 — 첫 칸 초록 · 둘째 파랑 · 셋째(양호) 중립 회색 (마지막 칸은 칸 수와 무관하게 아래에서 빨강).
- * 세션675 👤 「'소음 양호' 색」: 셋째 칸이 주황(경고색)이라 「소음 60dB · 양호」가 나쁜 것처럼 보였다 → 판정에 맞게 중립. 경계는 그대로.
+ * 칸 번호 순서의 색 — 최고 초록 · 우수 파랑 · 양호 초록 · 보통 중립 회색. 마지막 경계(70dB)보다 시끄러운 값만 빨강.
+ * 세션675 👤 「'소음 양호' 색」 + 검사 보완 G2: 판정이 양호인데 주황, 보통인데 빨강이라 나쁜 것처럼 보였다 → 판정에 맞는 색.
+ * 경계(`NOISE_TIERS`)는 그대로.
  */
-const NOISE_TIER_COLORS = [C.green, C.blue, C.sub];
+const NOISE_TIER_COLORS = [C.green, C.blue, C.green, C.sub];
 /** 치안 등급 방향 한 줄(세션675 👤 「치안 등급 방향」) — 1등급이 가장 안전(수집기 collect-crime-safety 1~5 · 점수 1등급 > 5등급) */
 export const CRIME_DIRECTION_TEXT = "치안은 1등급이 가장 안전해요 (1~5등급)";
 
@@ -85,9 +86,9 @@ export const CRIME_DIRECTION_TEXT = "치안은 1등급이 가장 안전해요 (1
  * 옛 판은 색을 칸 순서로만 정해(첫 칸 초록·마지막 빨강·사이 주황) 50dB '우수' 가 주황으로 보였다.
  */
 export function noiseColor(db: number): string {
-  const i = noiseTierIndex(db);
-  if (i === NOISE_TIERS.length - 1) return C.red;
-  return NOISE_TIER_COLORS[Math.min(i, NOISE_TIER_COLORS.length - 1)];
+  // 마지막 경계보다 시끄러우면(70dB 초과) 경고색 — 칸 안(≤70 「보통」)은 중립
+  if (db > (NOISE_TIERS[NOISE_TIERS.length - 1].max ?? Infinity)) return C.red;
+  return NOISE_TIER_COLORS[Math.min(noiseTierIndex(db), NOISE_TIER_COLORS.length - 1)];
 }
 
 /** 소음 칸 글자 — `NOISE_TIERS` 의 label(최고·우수·양호·보통). 경계 밖은 마지막 칸 글자 */

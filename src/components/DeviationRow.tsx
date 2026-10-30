@@ -6,8 +6,8 @@ import { formatDeviationValue, type DeviationFieldSpec } from "@/constants/devia
 /*
  * 차트 라이브러리 미사용 판단: recharts 147.5KB(gzip)=초기 예산의 116%, 최소 대안 d3-shape 5.7KB도
  * 곡선/호/레이더용인데 본 설계는 div·rect·line·circle 만 씀(레이더 의도적 배제).
- * 이 파일은 SVG 조차 쓰지 않는다 — div 5개다. 전례가 레포 안에 있다(PriceTable.tsx:104-135 가
- * position:absolute div 3겹으로 범위 막대 + 마커선을 만든다).
+ * 이 파일은 SVG 조차 쓰지 않는다 — div 5개다. 같은 꼴이 레포 안에 있다(`charts/RangeBarRow.tsx` 가
+ * position:absolute div 3겹으로 범위 막대 + 마커선을 만든다 — 옛 전례 `PriceTable` 은 세션675 에 지웠다).
  */
 
 /** 행 높이 — 결측이어도 이 높이를 유지해야 무한스크롤에서 스크롤 위치가 안 튄다 */

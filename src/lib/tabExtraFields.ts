@@ -276,7 +276,8 @@ export const INTERNAL_ONLY_FIELDS: readonly string[] = [
   "housingPrice",
   // V10: 두 출처 대조표를 사실 한 줄로 줄이며 빠진 5종.
   //   주변 시세 두 값은 **면적 무관**(구 전체 12개월 매매 중위 / 네이버 주변 중위)이라 손님 판단에
-  //   도움이 안 되고 서로 재는 대상도 달랐다. 전세가율은 면적별 막대(`detail/PriceTable`)가 말한다.
+  //   도움이 안 되고 서로 재는 대상도 달랐다. 전세가율은 시세 탭 비교 상자의 이 단지 값(`complexJeonseRate`)이 말한다
+  //   (옛 면적별 막대 `detail/PriceTable` 은 세션675 👤 다 「3개 다 지우기」로 지웠다).
   //   우리측 주변 건축연도·주변 단지 수는 짝(비교·각주)을 잃어 단독으로 보여줄 자리가 없다.
   "nearbyMedian",
   "naverNearbyMedian",

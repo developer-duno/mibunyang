@@ -518,8 +518,6 @@ export const COUNT_SEARCH_RADIUS_M = {
   cultureDist: 1000,
   bankDist: 1000,
   parkDist: 1000,
-  childcareDist: 1000,
-  policeDist: 3000,
 };
 
 /** 원본 sentinels.ts isSentinel @param {string} field @param {unknown} value @returns {boolean} */

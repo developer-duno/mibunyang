@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { DistanceDots, fmtDist, parseKmText, DOTS_LEGEND, DOTS_LEGEND_OVER, DOTS_MAX_W } from "./DistanceDots";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import type { Apt } from "@/types/scoring";
@@ -101,7 +101,7 @@ describe("DistanceDots — 렌더", () => {
 
   // 세션675 B16 — 거리 빈 줄은 개수 칸으로 가른다: 개수 0 = 수집기가 반경 안을 찾아봤는데 0곳 → 「{반경} 안에 없음」 ·
   //   개수 null = 찾아본 적 없음 → 줄을 안 그림 · 개수 > 0 인데 거리 없음(모순) → 옛 「미수집」 그대로.
-  it("거리 null + 개수 0 → 「{수집기 반경} 안에 없음」(마트 1km · 약국 500m · 경찰 3km)", () => {
+  it("거리 null + 개수 0 → 「{수집기 반경} 안에 없음」(마트 1km · 약국 500m) · 경찰은 숨김(G1)", () => {
     const { container } = render(
       <DistanceDots
         apt={apt({ martDist: null, mart: 0, pharmacyDist: null, pharmacy: 0, policeDist: null, police: 0 })}
@@ -110,7 +110,7 @@ describe("DistanceDots — 렌더", () => {
     const out = (k: string) => container.querySelector(`[data-row="${k}"] [data-state="out-of-range"]`)?.textContent;
     expect(out("martDist")).toBe("1km 안에 없음");
     expect(out("pharmacyDist")).toBe("500m 안에 없음");
-    expect(out("policeDist")).toBe("3km 안에 없음");
+    expect(container.querySelector('[data-row="policeDist"]')).toBeNull(); // 세션675 G1 — 개수 0 이 기본값일 수 있다
     expect(screen.queryByText("미수집")).toBeNull();
   });
 
@@ -133,7 +133,7 @@ describe("DistanceDots — 렌더", () => {
     );
     const r1 = render(<DistanceDots apt={apt(allNull)} />);
     for (const k of KAKAO8) expect(r1.container.querySelector(`[data-row="${k}Dist"]`), k).toBeNull();
-    expect(r1.container.querySelector('[data-row="policeDist"]')).not.toBeNull(); // 다른 수집기 줄은 그대로
+    expect(r1.container.querySelector('[data-row="schoolsDist"], [data-row="subwayDist"]')).not.toBeNull(); // 다른 수집기 줄은 그대로
     r1.unmount();
     const r2 = render(<DistanceDots apt={apt({ ...allNull, cafeDist: 120, cafe: 3 })} />);
     expect(r2.container.querySelector('[data-row="cafeDist"]')?.textContent).toContain("120m");
@@ -149,6 +149,30 @@ describe("DistanceDots — 렌더", () => {
       "500m 안에 없음",
       "1km 안에 없음",
     ]);
+  });
+
+  // 세션675 검사 보완 G1 — 경찰·어린이집 수집기는 따로(월 1회) 돌아 개수 칸 0 이 기본값(DEFAULT 0)일 수 있다.
+  //   운영 예 ap-6027791 서울 강동구 천호동 「비오르」: 병원 90m 인데 경찰 3km·어린이집 1km 「없음」으로 나왔다 → 두 줄 숨김.
+  it("「비오르」 꼴 — 병원은 90m 인데 경찰·어린이집 거리 null + 개수 0 이면 두 줄을 그리지 않는다", () => {
+    const { container } = render(
+      <DistanceDots
+        apt={apt({ hospitalDist: 90, hospital: 4, policeDist: null, police: 0, childcareDist: null, childcare: 0 })}
+      />
+    );
+    expect(container.querySelector('[data-row="hospitalDist"]')?.textContent).toContain("90m");
+    expect(container.querySelector('[data-row="policeDist"]')).toBeNull();
+    expect(container.querySelector('[data-row="childcareDist"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/3km 안에 없음|1km 안에 없음/);
+  });
+
+  // 세션675 G3 — 도움말 끝 문장이 B16 뒤 규칙과 맞는다(옛 「'미수집'으로 둡니다」 삭제 · 카카오 반경은 수집기 사본에서)
+  it("도움말: 반경 안에 없으면 '안에 없음', 찾아보지 않은 시설은 줄을 뺀다 — '미수집'으로 둔다는 말 없음", () => {
+    render(<DistanceDots apt={apt()} />);
+    fireEvent.click(screen.getByRole("button", { name: /주변 시설까지 거리 풀이 보기/ }));
+    const tip = screen.getByRole("tooltip").textContent ?? "";
+    expect(tip).toContain("찾아보지 않은 시설은 줄을 빼요");
+    expect(tip).toContain("편의점·카페·약국은 500m, 병원·마트·문화시설·은행·공원은 1km");
+    expect(tip).not.toContain("'미수집'으로 둡니다");
   });
 
   it("응급의료는 반경이 없다 — 거리 null 이면 개수 0 이어도 줄을 안 그린다", () => {
@@ -369,7 +393,7 @@ describe("DistanceDots — 스크린리더", () => {
   it("시설 거리가 하나도 없으면(전부 '안에 없음') 가장 가까운 곳 문장을 통째로 뺀다", () => {
     const none = Object.fromEntries(DISTANCE_AXES.flatMap((a) => a.items.map((i) => [i.field, null])));
     // 세션675 B16: 개수 0 = 반경 안에 없음 · 응급의료는 반경이 없어 숨김 · B16c: 카카오 8종 거리가 전부 null 이라 8줄 숨김
-    //   → 시설 줄 = 어린이집·경찰 「안에 없음」 2 + 지하철·IC·KTX 3 = 5
+    //   → 경찰·어린이집도 거리가 비면 숨김(G1) → 시설 줄 = 지하철·IC·KTX 3
     const zeroCounts = Object.fromEntries(
       DISTANCE_AXES.flatMap((a) => a.items)
         .filter((i) => i.countField)
@@ -390,7 +414,7 @@ describe("DistanceDots — 스크린리더", () => {
       />
     );
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
-    expect(label).toBe("주변 시설 5곳 중 0곳의 거리를 모았습니다.");
+    expect(label).toBe("주변 시설 3곳 중 0곳의 거리를 모았습니다.");
   });
 });
 

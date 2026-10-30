@@ -213,10 +213,14 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
 
   // 반경 숫자는 손으로 적지 않는다 — 수집기 반경과 대조되는 SENTINEL_RADIUS_KM 에서 만든다(세션591 보완 F5).
   const R = SENTINEL_RADIUS_KM;
+  const CR = COUNT_SEARCH_RADIUS_M;
+  // 세션675 G3 — 옛 끝 문장 「자료가 없는 시설은 '미수집'으로 둡니다」는 B16 뒤로 사실과 달라졌다(반경 안 0곳 = 「안에 없음」,
+  //   안 찾아본 시설 = 줄 뺌). 카카오 반경도 수집기 사본(COUNT_SEARCH_RADIUS_M)에서 만든다.
   const hint =
-    `점이 왼쪽에 있을수록 가까워요. 거리 자릿수가 크게 달라서(카페는 500m 안, KTX역은 ${R.ktxDist}km 안) 비슷한 ` +
-    `것끼리 묶어 줄을 나눴어요. 고속도로 IC는 ${R.icDist}km, KTX역은 ${R.ktxDist}km, 지하철역은 ${R.subwayDist}km ` +
-    "반경을 찾아봤고, 그 안에 없으면 '안에 없음'으로 적어요. 자료가 없는 시설은 '미수집'으로 둡니다. " +
+    `점이 왼쪽에 있을수록 가까워요. 거리 자릿수가 크게 달라서(카페는 ${fmtDist(CR.cafeDist)} 안, KTX역은 ${R.ktxDist}km 안) 비슷한 ` +
+    `것끼리 묶어 줄을 나눴어요. 고속도로 IC는 ${R.icDist}km, KTX역은 ${R.ktxDist}km, 지하철역은 ${R.subwayDist}km, ` +
+    `편의점·카페·약국은 ${fmtDist(CR.convDist)}, 병원·마트·문화시설·은행·공원은 ${fmtDist(CR.hospitalDist)} ` +
+    "반경을 찾아봤고, 그 안에 없으면 '안에 없음'으로 적어요. 찾아보지 않은 시설은 줄을 빼요. " +
     "혐오시설은 멀수록 좋은 것이라 이 그림에 넣지 않았어요.";
 
   // 그릴 값이 하나도 없으면 상자째 안 그린다(세션675 👤 마 「숨기고, 못 모은 단지는 채우기」 — 화면 몫).

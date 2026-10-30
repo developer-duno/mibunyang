@@ -75,26 +75,17 @@ describe("COUNT_SEARCH_RADIUS_M — 수집기가 찾아본 반경과 같다 (세
     expect([...KAKAO_INFRA_DIST_FIELDS].sort()).toEqual(Object.keys(got).sort());
   });
 
-  it("collect-childcare.mjs 어린이집·유치원 반경과 같다", () => {
-    const src = read("collect-childcare.mjs");
-    const rs = [...src.matchAll(/searchKakao\(lat,\s*lng,\s*"(?:어린이집|유치원)",\s*(\d+)\)/g)].map((x) =>
-      Number(x[1])
-    );
-    expect(rs.length).toBe(2);
-    for (const r of rs) expect(COUNT_SEARCH_RADIUS_M.childcareDist).toBe(r);
-  });
-
-  it("collect-police.mjs RADIUS 와 같다", () => {
-    const m = read("collect-police.mjs").match(/const\s+RADIUS\s*=\s*(\d+)/);
-    expect(m).not.toBeNull();
-    expect(COUNT_SEARCH_RADIUS_M.policeDist).toBe(Number(m?.[1]));
-  });
-
-  it("개수 칸이 있는 거리 필드 중 응급의료만 반경이 없다(반경 없이 가장 가까운 곳을 잼)", () => {
+  // 세션675 G1 — 경찰·어린이집은 따로 도는 수집기라 개수 0(DEFAULT)과 "0곳"을 못 가른다 → 반경 목록에서 뺐다(거리 빈 줄 숨김).
+  it("반경이 없는(= 거리가 비면 줄을 숨기는) 개수 칸 필드는 응급의료·경찰·어린이집 셋뿐 — 나머지는 카카오 8종", () => {
     const counted = DISTANCE_AXES.flatMap((a) => a.items)
       .filter((i) => i.countField)
       .map((i) => i.field);
-    expect(counted.filter((f) => COUNT_SEARCH_RADIUS_M[f] == null)).toEqual(["emergencyDist"]);
+    expect(counted.filter((f) => COUNT_SEARCH_RADIUS_M[f] == null).sort()).toEqual([
+      "childcareDist",
+      "emergencyDist",
+      "policeDist",
+    ]);
+    expect(Object.keys(COUNT_SEARCH_RADIUS_M).sort()).toEqual([...KAKAO_INFRA_DIST_FIELDS].sort());
     expect(Object.keys(COUNT_SEARCH_RADIUS_M).every((f) => counted.includes(f))).toBe(true);
   });
 });

@@ -154,9 +154,9 @@ describe("LocationEnvBlock — 소음 게이지 (경계는 NOISE_TIERS 에서)",
   const NOISE_CASES: [number, string, string][] = [
     [40, "소음 40dB · 최고", C.green],
     [50, "소음 50dB · 우수", C.blue],
-    [60, "소음 60dB · 양호", C.sub], // 세션675 👤 — 양호는 경고색(주황)이 아니라 중립
-    [70, "소음 70dB · 보통", C.red],
-    [75, "소음 75dB · 보통", C.red], // 경계 밖(70 초과) → 마지막 칸
+    [60, "소음 60dB · 양호", C.green], // 세션675 👤 + G2 — 양호는 초록
+    [70, "소음 70dB · 보통", C.sub], // 세션675 G2 — 보통은 중립 회색(빨강 아님)
+    [75, "소음 75dB · 보통", C.red], // 경계 밖(70 초과) → 마지막 칸 글자 · 색은 경고(빨강) 유지
   ];
   it.each(NOISE_CASES)("소음 %sdB → 제목 '%s' · 제목·점 색이 그 칸 색", (db, title, color) => {
     const { container, unmount } = render(<LocationEnvBlock apt={apt({ ...MOCKUP, noise: db })} />);
@@ -169,11 +169,11 @@ describe("LocationEnvBlock — 소음 게이지 (경계는 NOISE_TIERS 에서)",
     unmount();
   });
 
-  it("noiseColor·noiseLabel 순수 함수 — 네 칸이 서로 다른 색, 경계 밖은 마지막 칸", () => {
-    expect([40, 50, 60, 70].map(noiseColor)).toEqual([C.green, C.blue, C.sub, C.red]);
+  it("noiseColor·noiseLabel 순수 함수 — 판정에 맞는 색(양호 초록 · 보통 회색), 경계 밖만 빨강", () => {
+    expect([40, 50, 60, 70].map(noiseColor)).toEqual([C.green, C.blue, C.green, C.sub]);
     expect(noiseColor(60)).not.toBe(C.amber);
+    expect(noiseColor(70)).not.toBe(C.red); // 세션675 G2 — 「보통」이 빨강이던 것
     expect([40, 50, 60, 70].map(noiseLabel)).toEqual(["최고", "우수", "양호", "보통"]);
-    expect(new Set([40, 50, 60, 70].map(noiseColor)).size).toBe(4);
     expect(noiseColor(75)).toBe(C.red);
     expect(noiseLabel(75)).toBe("보통");
     expect(noiseColor(45)).toBe(C.blue); // 칸 사이 값은 위쪽 칸(≤50)
