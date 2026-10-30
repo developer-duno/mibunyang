@@ -262,6 +262,8 @@ export const DetailModal = memo(function DetailModal({
       setDetail(null);
       setDetailForId(null);
       setPricesError(null);
+      // 세션675 H2 — 앞 단지를 불러오는 중에 priceByArea 가 있는 단지로 바꾸면 「불러오는 중…」 줄이 영영 남았다(재검사관 재현).
+      setPricesLoading(false);
       return;
     }
     let cancelled = false;

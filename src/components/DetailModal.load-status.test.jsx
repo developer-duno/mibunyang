@@ -47,10 +47,14 @@ const props = (it) => ({
 const openPrice = () => fireEvent.click(screen.getByRole("tab", { name: "시세" }));
 
 describe("DetailModal 시세 탭 — 상세 묶음 불러오기 상태 한 줄 (세션675 H1)", () => {
-  beforeEach(() => fetchApartmentDetail.mockReset());
+  // ⚠️ 중괄호 필수 — `() => fn.mockReset()` 는 가짜 함수 자체를 돌려주고, vitest 는 beforeEach 가 돌려준 함수를 시험 뒤
+  //   정리 함수로 부른다. 그러면 시험이 끝난 뒤 가짜 fetch 가 한 번 더 불려 「항상 실패」 거부가 시험 실패로 잡힌다(세션675 H3).
+  beforeEach(() => {
+    fetchApartmentDetail.mockReset();
+  });
 
   it("① 실패하면 「상세 자료를 불러오지 못했어요」 + 「다시 불러오기」 단추", async () => {
-    fetchApartmentDetail.mockRejectedValueOnce(new Error("Detail bucket fetch failed: 503"));
+    fetchApartmentDetail.mockImplementation(() => Promise.reject(new Error("Detail bucket fetch failed: 503")));
     render(<DetailModal {...props(item())} />);
     openPrice();
     const line = await screen.findByText(/상세 자료를 불러오지 못했어요/);
@@ -79,5 +83,23 @@ describe("DetailModal 시세 탭 — 상세 묶음 불러오기 상태 한 줄 (
     expect(screen.getByTestId("detail-load-status").textContent).toBe("상세 자료 불러오는 중…");
     done({});
     await waitFor(() => expect(screen.queryByTestId("detail-load-status")).toBeNull());
+  });
+
+  // 세션675 H2 — 재검사관 재현: 앞 단지(정적 모드)를 불러오는 중에 priceByArea 가 있는 단지로 바꾸면 그 분기가 로딩 상태를
+  //   끄지 않아 「상세 자료 불러오는 중…」이 영영 남았다. ⚠️ 뮤테이션 대상: 그 분기의 setPricesLoading(false) 를 빼면 빨강.
+  it("④ 불러오는 중에 priceByArea 가 이미 있는 단지로 바꾸면 「불러오는 중」 줄이 사라진다", async () => {
+    fetchApartmentDetail.mockReturnValue(new Promise(() => {}));
+    const { rerender } = render(<DetailModal {...props(item())} />);
+    openPrice();
+    expect(screen.getByTestId("detail-load-status").textContent).toBe("상세 자료 불러오는 중…");
+    const other = makeScoredItem(
+      { id: "ap-7", name: "다른단지", area: 59, priceByArea: [] },
+      /** @type {any} */ (item().res)
+    );
+    rerender(<DetailModal {...props(other)} />);
+    expect(screen.getAllByText("다른단지").length).toBeGreaterThan(0);
+    // 같은 모달 인스턴스라 시세 탭이 그대로 열려 있다(DetailModal 은 단지가 바뀌어도 activeTab 을 되돌리지 않는다).
+    await waitFor(() => expect(screen.queryByTestId("detail-load-status")).toBeNull());
+    expect(fetchApartmentDetail).toHaveBeenCalledTimes(1); // 이미 응답 받은 단지는 묶음을 다시 부르지 않는다
   });
 });
