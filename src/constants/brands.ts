@@ -44,10 +44,11 @@ export const BUILDER_ALIASES: Record<string, string> = {
 };
 
 /**
- * 시공사 글자 끝의 꼬리 — 「 외 N」「 외 N개사·개업체·사」「 등」「컨소시엄」(세션676 PR-C).
- * VIEW `apartments_flat.builder` 는 공동 시공이면 「대표사 외 N」을 낸다 — 등급·점수·필터는 **대표사**로 본다(👤 D2).
+ * 시공사 글자 끝의 꼬리 — 「 외 N」「 외 N개사·개업체·사」「 외」「 등」「컨소시엄」(세션676 PR-C), 여러 마디면 다 뗀다.
+ * VIEW `apartments_flat.builder` 는 공동 시공이면 「대표사 외 N」(수 모르면 「대표사 외」 — 👤 D8)을 낸다 — 등급·점수·필터는 **대표사**로 본다(👤 D2).
+ * 숫자는 세 자리까지(「외 1234」는 꼬리로 안 본다 — VIEW `::int` 넘침 방지와 같은 폭).
  */
-const BUILDER_TAIL_RE = /(?:\s+외\s*\d+\s*(?:개사|개업체|사)?|\s+등|\s*컨소시엄)\s*$/;
+const BUILDER_TAIL_RE = /(?:\s+외(?:\s*\d{1,3}\s*(?:개사|개업체|사)?)?|\s+등|\s*컨소시엄)+\s*$/;
 
 /** 꼬리를 뗀 이름(앞뒤 공백 자름). 다 떼어 빈 글자면 원래 글자(자른 것). */
 export function stripBuilderTail(name: string): string {
@@ -56,13 +57,13 @@ export function stripBuilderTail(name: string): string {
 }
 
 /**
- * VIEW 가 낸 「대표사 외 N」이면 대표사 이름, 아니면 null(혼자 지은 단지) — 👤 D6 「여럿이면 「대표사 부채비율」」.
- * VIEW 형식(`표시 || ' 외 ' || (n-1)`)만 본다 — 「등」「컨소시엄」 꼬리는 여럿이라는 근거가 아니다.
+ * VIEW 가 낸 「대표사 외 N」·「대표사 외」(수 모름 — 👤 D8)이면 대표사 이름, 아니면 null(혼자 지은 단지) — 👤 D6 「여럿이면 「대표사 부채비율」」.
+ * VIEW 형식(`표시 || ' 외 ' || (n-1)` · `표시 || ' 외'`)만 본다.
  */
 export function consortiumRep(builder: unknown): string | null {
   if (typeof builder !== "string") return null;
-  const m = /^(.+?) 외 (\d+)$/.exec(builder);
-  return m && Number(m[2]) >= 1 ? m[1] : null;
+  const m = /^(.+?) 외(?: (\d+))?$/.exec(builder);
+  return m && (m[2] == null || Number(m[2]) >= 1) ? m[1] : null;
 }
 
 /**

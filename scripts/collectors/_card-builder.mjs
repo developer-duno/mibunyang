@@ -7,10 +7,10 @@
  *
  * 흐름(SQL 과 JS 가 같은 문자열로 돈다 — `_card-title.mjs` 의 `WS` 와 같은 원칙: \s·\d 대신 명시 묶음·[0-9]):
  *   공고 시공사 원문(`presale_schedule_official.constructor`)
- *   → 꼬리 떼기(「 외 N(개사|개업체|사)」「 등」「컨소시엄」 — 「외 N」이면 N 을 센다)
+ *   → 꼬리 떼기(「 외 N(개사|개업체|사)」「 등」「컨소시엄」, 여러 마디면 다 — 「외 N」이면 N 을 센다 · 「등」「컨소시엄」뿐이면 수 모름 = 「외」, 👤 D8)
  *   → 구분자로 쪼개기(`,` `，` `·` `/` `、` — `&` 는 사명 안 글자라 구분자 아님: 유림E&C·자이S&D·한미글로벌 E&C·DL e&c)
  *   → 첫 조각 = 대표사 → 법인격(㈜·(주)·주식회사·(쥬)) 떼고 공백 정리 → 이름 사전(키 → 표시·연결)
- *   → 카드 글자 = 표시 + (회사가 둘 이상이면 「 외 (n-1)」) · 부채비율 연결 = 연결 이름.
+ *   → 카드 글자 = 표시 + (회사가 둘 이상이면 「 외 (n-1)」, 수 모르면 「 외」) · 부채비율 연결 = 연결 이름(+ VIEW_LINK_OVERRIDES, 👤 D7).
  *
  * 이름 사전 3칸(맹점 검사 🟠3 — 표시와 연결은 다른 이름일 수 있다):
  *   - 표시(= 등급 판정) 이름: `_shared.mjs` `BUILDER_CANONICALS`·`BUILDER_ALIASES`(= `src/constants/brands.ts` 쌍둥이)
@@ -26,10 +26,17 @@ import { WS, TRIM_SQL } from "./_card-title.mjs";
 export const CORP_SQL = "㈜|\\(주\\)|주식회사|\\(쥬\\)";
 /** 구분자(앞뒤 공백 허용) */
 export const SEP_SQL = `${WS}*[,，·/、]${WS}*`;
-/** 끝 꼬리 — `regexp_replace(x, TAIL_SQL, '')` */
-export const TAIL_SQL = `(?:${WS}+외${WS}*[0-9]+${WS}*(?:개사|개업체|사)?|${WS}+등|${WS}*컨소시엄)${WS}*$`;
-/** 「외 N」 꼬리의 N — `substring(x from TAIL_N_SQL)`(첫 괄호 묶음 = 숫자) */
-export const TAIL_N_SQL = `${WS}+외${WS}*([0-9]+)${WS}*(?:개사|개업체|사)?${WS}*$`;
+/** 꼬리 한 마디 — 「 외 N(개사|개업체|사)」 또는 「 등」「컨소시엄」. 숫자는 세 자리까지(`::int` 넘침 방지 — 「외 1234」는 꼬리로 안 본다) */
+const TAIL_ONE = `${WS}+외${WS}*[0-9]{1,3}${WS}*(?:개사|개업체|사)?|${WS}+등|${WS}*컨소시엄`;
+/** 끝 꼬리(여러 마디 이어져도 다 뗀다 — 「GS건설 외 1개사 컨소시엄」) — `regexp_replace(x, TAIL_SQL, '')` */
+export const TAIL_SQL = `(?:${TAIL_ONE})+${WS}*$`;
+/** 「외 N」 꼬리의 N(뒤에 꼬리가 더 붙어도) — `substring(x from TAIL_N_SQL)`(첫 괄호 묶음 = 숫자) */
+export const TAIL_N_SQL = `${WS}+외${WS}*([0-9]{1,3})${WS}*(?:개사|개업체|사)?(?:${TAIL_ONE})*${WS}*$`;
+/**
+ * 「등」「컨소시엄」으로 끝남 = 여럿이 지었는데 회사 수를 모름(👤 D8) — 「외 N」 숫자가 있으면 숫자가 이긴다.
+ * SQL: `x ~ OTHERS_SQL AND x !~ TAIL_N_SQL`
+ */
+export const OTHERS_SQL = `(?:${WS}+등|${WS}*컨소시엄)${WS}*$`;
 /** 빈 글자·공백뿐 — `x !~ BLANK_SQL` 이면 내용 있음 */
 export const BLANK_SQL = `^${WS}*$`;
 
@@ -37,6 +44,7 @@ const CORP_RE = new RegExp(CORP_SQL, "gu");
 const SEP_RE = new RegExp(SEP_SQL, "u");
 const TAIL_RE = new RegExp(TAIL_SQL, "u");
 const TAIL_N_RE = new RegExp(TAIL_N_SQL, "u");
+const OTHERS_RE = new RegExp(OTHERS_SQL, "u");
 const BLANK_RE = new RegExp(BLANK_SQL, "u");
 const TRIM_RE = new RegExp(TRIM_SQL, "gu");
 const WS_RUN_RE = new RegExp(`${WS}+`, "gu");
@@ -56,17 +64,24 @@ export function builderKey(s) {
 }
 
 /**
- * 공고 시공사 원문 → 조각들과 「외 N」의 N. 내용이 없으면 null.
+ * 공고 시공사 원문 → 조각들과 「외 N」의 N · 「등」「컨소시엄」(수 모름) 여부. 내용이 없으면 null.
  * @param {unknown} raw
- * @returns {{ parts: string[], extra: number } | null}
+ * @returns {{ parts: string[], extra: number, others: boolean } | null}
  */
 export function splitConstructor(raw) {
   if (typeof raw !== "string" || BLANK_RE.test(raw)) return null;
   const m = TAIL_N_RE.exec(raw);
   const extra = m ? Number(m[1]) : 0;
+  const others = !m && OTHERS_RE.test(raw); // 숫자가 있으면 숫자가 이긴다(👤 D8)
   const parts = raw.replace(TAIL_RE, "").split(SEP_RE).filter((p) => !BLANK_RE.test(p));
-  return parts.length ? { parts, extra } : null;
+  return parts.length ? { parts, extra, others } : null;
 }
+
+/**
+ * VIEW 전용 연결 덮어쓰기(👤 D7 — 세션677): 키 → 부채비율 연결 이름. 표시는 그대로(사전 밖이면 원문 정리 이름).
+ * 「대림산업」은 DART 표 정식 키지만 builders 에 그 이름 행이 없다 — 건설 부문을 이어받은 「DL이앤씨」 값으로 잇는다.
+ */
+export const VIEW_LINK_OVERRIDES = Object.freeze({ 대림산업: "DL이앤씨", 대림건설: "DL이앤씨" });
 
 /** @typedef {{ key: string, display: string | null, link: string }} CanonRow */
 
@@ -86,6 +101,7 @@ export function builderCanonRows() {
   const link = new Map();
   for (const c of Object.keys(BUILDER_CORP_CODES)) if (!link.has(builderKey(c))) link.set(builderKey(c), c);
   for (const [a, c] of Object.entries(DART_ALIAS)) if (!link.has(builderKey(a))) link.set(builderKey(a), c);
+  for (const [a, c] of Object.entries(VIEW_LINK_OVERRIDES)) link.set(builderKey(a), c); // 👤 D7 — 위 두 줄보다 이긴다
   const keys = [...new Set([...display.keys(), ...link.keys()])].filter(Boolean).sort();
   canonRows = keys.map((key) => {
     const d = display.get(key) ?? null;
@@ -97,9 +113,9 @@ export function builderCanonRows() {
 }
 
 /**
- * 공고 시공사 원문 → 대표사 표시·연결 이름과 회사 수. 내용이 없으면 null.
+ * 공고 시공사 원문 → 대표사 표시·연결 이름과 회사 수 · 「등」「컨소시엄」(수 모름 — others). 내용이 없으면 null.
  * @param {unknown} raw
- * @returns {{ display: string, link: string, n: number } | null}
+ * @returns {{ display: string, link: string, n: number, others: boolean } | null}
  */
 export function resolveCardBuilder(raw) {
   const sp = splitConstructor(raw);
@@ -109,7 +125,7 @@ export function resolveCardBuilder(raw) {
   // 키 = 정리 이름에서 공백만 뗌(SQL `regexp_replace(rep_clean, WS, '', 'g')` 와 같은 식 — 법인격은 정리 때 이미 뗐다)
   const key = clean.replace(WS_RUN_RE, "");
   const row = builderCanonRows().find((r) => r.key === key);
-  return { display: row?.display ?? clean, link: row?.link ?? clean, n: sp.parts.length + sp.extra };
+  return { display: row?.display ?? clean, link: row?.link ?? clean, n: sp.parts.length + sp.extra, others: sp.others };
 }
 
 /**
@@ -121,7 +137,8 @@ export function resolveCardBuilder(raw) {
 export function cardBuilder(rawConstructor, fallback) {
   const r = resolveCardBuilder(rawConstructor);
   if (!r) return { builder: fallback, link: fallback };
-  return { builder: r.n > 1 ? `${r.display} 외 ${r.n - 1}` : r.display, link: r.link };
+  // 숫자가 이긴다: 회사 수를 알면 「외 N」, 「등」「컨소시엄」뿐이면 「외」(👤 D8 — SQL CARD_BUILDER_SELECT_SQL 의 CASE 와 같은 순서)
+  return { builder: r.n > 1 ? `${r.display} 외 ${r.n - 1}` : r.others ? `${r.display} 외` : r.display, link: r.link };
 }
 
 /** @param {string} s */
@@ -154,12 +171,14 @@ export function cardBuilderCtesSql() {
     "  SELECT c.bkey,",
     "    COALESCE(d.display, c.rep_clean) AS b_display,",
     "    COALESCE(d.link, c.rep_clean)    AS b_link,",
-    "    c.n_parts + c.n_extra            AS b_n",
+    "    c.n_parts + c.n_extra            AS b_n,",
+    "    c.is_others                      AS b_others  -- 「등」「컨소시엄」뿐(수 모름 · 👤 D8) — 숫자가 있으면 거짓",
     "  FROM (",
     "    SELECT bc.bkey,",
     `      regexp_replace(regexp_replace(regexp_replace(p.parts[1], '${CORP_SQL}', '', 'g'), '${TRIM_SQL}', '', 'g'), '${WS}+', ' ', 'g') AS rep_clean,`,
     "      cardinality(p.parts) AS n_parts,",
-    `      COALESCE(substring(bc.b_constructor from '${TAIL_N_SQL}')::int, 0) AS n_extra`,
+    `      COALESCE(substring(bc.b_constructor from '${TAIL_N_SQL}')::int, 0) AS n_extra,`,
+    `      (bc.b_constructor ~ '${OTHERS_SQL}' AND bc.b_constructor !~ '${TAIL_N_SQL}') AS is_others`,
     "    FROM bundle_cons bc",
     "    CROSS JOIN LATERAL (",
     "      SELECT array_agg(t.part ORDER BY t.ord) AS parts",
@@ -174,10 +193,10 @@ export function cardBuilderCtesSql() {
   ].join("\n");
 }
 
-/** SELECT 의 builder 칸(옛 `a.builder,` 한 줄 자리) — 공고 시공사 있으면 「표시 외 N」, 없으면 원표 값 */
+/** SELECT 의 builder 칸(옛 `a.builder,` 한 줄 자리) — 공고 시공사 있으면 「표시 외 N」(수 모르면 「표시 외」), 없으면 원표 값 */
 export const CARD_BUILDER_SELECT_SQL = [
   "  CASE WHEN bb.bkey IS NOT NULL",
-  "       THEN bb.b_display || CASE WHEN bb.b_n > 1 THEN ' 외 ' || (bb.b_n - 1) ELSE '' END",
+  "       THEN bb.b_display || CASE WHEN bb.b_n > 1 THEN ' 외 ' || (bb.b_n - 1) WHEN bb.b_others THEN ' 외' ELSE '' END",
   "       ELSE a.builder END AS builder,",
 ].join("\n");
 

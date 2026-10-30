@@ -104,16 +104,18 @@ bundle_builder AS (                  -- 대표사 표시·연결 이름과 회�
   SELECT c.bkey,
     COALESCE(d.display, c.rep_clean) AS b_display,
     COALESCE(d.link, c.rep_clean)    AS b_link,
-    c.n_parts + c.n_extra            AS b_n
+    c.n_parts + c.n_extra            AS b_n,
+    c.is_others                      AS b_others  -- 「등」「컨소시엄」뿐(수 모름 · 👤 D8) — 숫자가 있으면 거짓
   FROM (
     SELECT bc.bkey,
       regexp_replace(regexp_replace(regexp_replace(p.parts[1], '㈜|\(주\)|주식회사|\(쥬\)', '', 'g'), '^[ \t\n\r\f\v\u00a0\u3000]+|[ \t\n\r\f\v\u00a0\u3000]+$', '', 'g'), '[ \t\n\r\f\v\u00a0\u3000]+', ' ', 'g') AS rep_clean,
       cardinality(p.parts) AS n_parts,
-      COALESCE(substring(bc.b_constructor from '[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*([0-9]+)[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?[ \t\n\r\f\v\u00a0\u3000]*$')::int, 0) AS n_extra
+      COALESCE(substring(bc.b_constructor from '[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*([0-9]{1,3})[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?(?:[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*[0-9]{1,3}[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?|[ \t\n\r\f\v\u00a0\u3000]+등|[ \t\n\r\f\v\u00a0\u3000]*컨소시엄)*[ \t\n\r\f\v\u00a0\u3000]*$')::int, 0) AS n_extra,
+      (bc.b_constructor ~ '(?:[ \t\n\r\f\v\u00a0\u3000]+등|[ \t\n\r\f\v\u00a0\u3000]*컨소시엄)[ \t\n\r\f\v\u00a0\u3000]*$' AND bc.b_constructor !~ '[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*([0-9]{1,3})[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?(?:[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*[0-9]{1,3}[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?|[ \t\n\r\f\v\u00a0\u3000]+등|[ \t\n\r\f\v\u00a0\u3000]*컨소시엄)*[ \t\n\r\f\v\u00a0\u3000]*$') AS is_others
     FROM bundle_cons bc
     CROSS JOIN LATERAL (
       SELECT array_agg(t.part ORDER BY t.ord) AS parts
-      FROM regexp_split_to_table(regexp_replace(bc.b_constructor, '(?:[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*[0-9]+[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?|[ \t\n\r\f\v\u00a0\u3000]+등|[ \t\n\r\f\v\u00a0\u3000]*컨소시엄)[ \t\n\r\f\v\u00a0\u3000]*$', ''), '[ \t\n\r\f\v\u00a0\u3000]*[,，·/、][ \t\n\r\f\v\u00a0\u3000]*') WITH ORDINALITY AS t(part, ord)
+      FROM regexp_split_to_table(regexp_replace(bc.b_constructor, '(?:[ \t\n\r\f\v\u00a0\u3000]+외[ \t\n\r\f\v\u00a0\u3000]*[0-9]{1,3}[ \t\n\r\f\v\u00a0\u3000]*(?:개사|개업체|사)?|[ \t\n\r\f\v\u00a0\u3000]+등|[ \t\n\r\f\v\u00a0\u3000]*컨소시엄)+[ \t\n\r\f\v\u00a0\u3000]*$', ''), '[ \t\n\r\f\v\u00a0\u3000]*[,，·/、][ \t\n\r\f\v\u00a0\u3000]*') WITH ORDINALITY AS t(part, ord)
       WHERE t.part !~ '^[ \t\n\r\f\v\u00a0\u3000]*$'
     ) p
   ) c
@@ -132,8 +134,8 @@ bundle_builder AS (                  -- 대표사 표시·연결 이름과 회�
     ('금성백조주택', NULL, '금성백조건설'),
     ('금호건설', '금호건설', '금호건설'),
     ('금호산업', '금호건설', '금호건설'),
-    ('대림건설', NULL, '대림산업'),
-    ('대림산업', '대림산업', '대림산업'),
+    ('대림건설', NULL, 'DL이앤씨'),
+    ('대림산업', '대림산업', 'DL이앤씨'),
     ('대방건설', NULL, '대방건설'),
     ('대방산업', NULL, '대방산업'),
     ('대방산업개발', NULL, '대방산업'),
@@ -254,7 +256,7 @@ SELECT
   a.lng,
   -- 세션676 PR-C C2: 공고 시공사(대표사 표시 이름 + 공동이면 「 외 N」) — 없으면 원표 값 그대로(👤 D1·D2)
   CASE WHEN bb.bkey IS NOT NULL
-       THEN bb.b_display || CASE WHEN bb.b_n > 1 THEN ' 외 ' || (bb.b_n - 1) ELSE '' END
+       THEN bb.b_display || CASE WHEN bb.b_n > 1 THEN ' 외 ' || (bb.b_n - 1) WHEN bb.b_others THEN ' 외' ELSE '' END
        ELSE a.builder END AS builder,
   -- 혼자인 행은 자기 값 그대로(출력 무변경 §4-7 (9)) — 묶음 CTE 는 (오)·1 이하 행을 뒤로 미루거나 빼므로 혼자인 그 행이 NULL 을 받을 수 있다.
   CASE WHEN a.member_count >= 2 THEN a.b_units  ELSE a.units  END AS units,

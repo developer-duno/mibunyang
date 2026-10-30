@@ -2,7 +2,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { NOTICE_PAREN_SQL, TRAILING_SQL, TRIM_SQL, CARD_TITLE_OPEN_SQL, CARD_TITLE_CLOSE_SQL } from "./collectors/_card-title.mjs";
-import { cardBuilderCtesSql, builderCanonValuesSql, CARD_BUILDER_SELECT_SQL, CARD_BUILDER_JOIN_SQL } from "./collectors/_card-builder.mjs";
+import { cardBuilderCtesSql, builderCanonValuesSql, CARD_BUILDER_SELECT_SQL, CARD_BUILDER_JOIN_SQL, OTHERS_SQL, TAIL_SQL, TAIL_N_SQL } from "./collectors/_card-builder.mjs";
 
 // 세션676 PR-C — 새 VIEW 마이그(20261031000000)가 직전 VIEW(20261026000002) 본문에서 바뀐 자리 5곳만 다른지 잠근다(계획서 §3 [검사 11]).
 // 이 PC 의 마이그 파일은 CRLF(autocrlf) — 줄바꿈을 LF 로 맞춰 읽는다(_view-range-sql.test.mjs 와 같은 이유).
@@ -75,6 +75,18 @@ describe("20261031000000 카드 VIEW 마이그 — 직전 VIEW 대비 바뀐 줄
     expect(c.split(`'${TRIM_SQL}'`).length - 1).toBeGreaterThanOrEqual(2); // name 칸 + rep_clean
     expect(c.split(NOTICE_PAREN_SQL).length - 1).toBe(2);
   });
+  it("👤 D8 — builder 칸 CASE: 숫자가 이긴다(b_n > 1 먼저) → 「등」「컨소시엄」뿐이면 ' 외' (JS cardBuilder 쌍둥이와 같은 순서)", () => {
+    const c = code(sql);
+    // 리터럴로 못 박는다(JS 조각에서 읽으면 조각과 함께 밀린다)
+    expect(c).toContain("THEN bb.b_display || CASE WHEN bb.b_n > 1 THEN ' 외 ' || (bb.b_n - 1) WHEN bb.b_others THEN ' 외' ELSE '' END");
+    expect(c).toContain("c.is_others                      AS b_others");
+    expect(c).toContain(`(bc.b_constructor ~ '${OTHERS_SQL}' AND bc.b_constructor !~ '${TAIL_N_SQL}') AS is_others`);
+    // 꼬리 반복(+) · 숫자 세 자리({1,3}) — 검사관 B 🟡 · A·B 🟡 ::int 넘침
+    expect(TAIL_SQL.endsWith(")+[ \\t\\n\\r\\f\\v\\u00a0\\u3000]*$")).toBe(true);
+    expect(TAIL_SQL).not.toContain("[0-9]+");
+    expect(TAIL_N_SQL).toContain("([0-9]{1,3})");
+    expect(c.split(`'${TAIL_SQL}'`).length - 1).toBe(1);
+  });
   it("공고 고르기 순서 = 재료 행 → 비오피스텔 구성원 · 공고일 최근(NULL 뒤) → 공고 번호 큰 것(COLLATE C)", () => {
     expect(code(sql)).toContain('ORDER BY m.bkey, (m.id = bm.mat_id) DESC, s.recruit_date DESC NULLS LAST, s.house_manage_no COLLATE "C" DESC');
     expect(code(sql)).toContain("AND (m.id = bm.mat_id OR NOT m.is_off)");
@@ -95,6 +107,12 @@ describe("20261031000001 되돌림 — 직전 VIEW 본문 그대로", () => {
     expect(rollback.trim().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true);
     expect(code(rollback)).not.toContain("bundle_builder");
   });
+  it("머리말 — JS 되돌림은 VIEW 되돌림 뒤에만 · VIEW 만 되돌리면 합침만 상태(세션677 검사관 C 🟠3)", () => {
+    const head = rollback.slice(0, rollback.indexOf("SET lock_timeout"));
+    expect(head).toContain("JS(코드) 되돌림은 이 VIEW 되돌림 **뒤에만**");
+    expect(head).toContain("VIEW 만 되돌리면 새 JS 는 남는다(합침만 상태)");
+    expect(head).not.toContain("부채비율 연결·점수가 옛 값으로");
+  });
 });
 
 describe("리허설 SQL 2개 — 별 이름 VIEW · 손님 권한 회수 · 같은 날 DROP", () => {
@@ -105,6 +123,14 @@ describe("리허설 SQL 2개 — 별 이름 VIEW · 손님 권한 회수 · 같�
     expect(code(reh)).toMatch(/^REVOKE ALL ON apartments_flat_card_rehearsal FROM PUBLIC, anon, authenticated;$/m);
     expect(code(reh)).toMatch(/^GRANT SELECT ON apartments_flat_card_rehearsal TO service_role;$/m);
     expect(code(reh)).not.toMatch(/VIEW apartments_flat\b(?!_card_rehearsal)/);
+  });
+  it("만들기: BEGIN → SET 2줄 → CREATE → REVOKE → GRANT → COMMIT 순서(세션677 검사관 A 🟡3 — anon 기본 권한 틈 없음)", () => {
+    const c = code(reh);
+    const at = (/** @type {RegExp} */ re) => { const m = re.exec(c); expect(m, String(re)).not.toBeNull(); return m?.index ?? -1; };
+    const order = [/^BEGIN;/m, /^SET lock_timeout/m, /^SET statement_timeout/m, /^CREATE VIEW/m, /^REVOKE ALL/m, /^GRANT SELECT/m, /^COMMIT;/m, /^NOTIFY pgrst/m].map(at);
+    expect([...order].sort((a, b) => a - b)).toEqual(order);
+    expect(c.match(/^BEGIN;/gm)?.length).toBe(1);
+    expect(c.match(/^COMMIT;/gm)?.length).toBe(1);
   });
   it("지우기: DROP VIEW IF EXISTS 리허설 이름만", () => {
     expect(code(rehDrop)).toMatch(/^DROP VIEW IF EXISTS apartments_flat_card_rehearsal;$/m);

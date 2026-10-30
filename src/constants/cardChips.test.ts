@@ -408,6 +408,12 @@ describe("buildCardChips — 강점/약점 판정", () => {
       );
       expect(find(build({ builder: null, builderDebtRatio: 210 }), "builderCredit")?.text).toBe("시공사 부채비율 210%");
     });
+    // 세션677 👤 D8: 공고 꼬리가 「등」「컨소시엄」(수 모름)이면 VIEW 「GS건설 외」 — 여럿이 지은 것이라 대표사 글자
+    it("「GS건설 외」(숫자 없음)도 '대표사 부채비율 {값}%'", () => {
+      expect(find(build({ builder: "GS건설 외", builderDebtRatio: 210 }), "builderCredit")?.text).toBe(
+        "대표사 부채비율 210%"
+      );
+    });
   });
 
   it("DSR 통과는 true 일 때만 — false·null 은 칩이 없다", () => {

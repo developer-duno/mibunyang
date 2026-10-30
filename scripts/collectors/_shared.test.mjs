@@ -1397,11 +1397,21 @@ describe("resolveBuilderForWrite — 세션676 직전 동작 잠금(원표 쓰�
 
 describe("쌍둥이 꼬리 떼기 — brands.ts 와 같다 (세션676)", () => {
   const TAILS = ["현대건설 외 2", "(주)금강주택 외 2", "현대건설(주) 외 6개사", "금호건설(주) 외 3사", "한양산업개발 외1",
-    "지에스건설(주) 등", "현대건설 주식회사 컨소시엄", "계룡건설 컨소시엄", "제일건설 주식회사 외 1개업체", "컨소시엄", " 등", "가나 외 건설"];
+    "지에스건설(주) 등", "현대건설 주식회사 컨소시엄", "계룡건설 컨소시엄", "제일건설 주식회사 외 1개업체", "컨소시엄", " 등", "가나 외 건설",
+    // 세션677: 숫자 없는 「 외」(👤 D8) · 꼬리 여러 마디 · 숫자 세 자리 · 운영 실제 이름 반례(검사관 B 🟠1)
+    "GS건설 외", "가나건설 외", "GS건설 외 1개사 컨소시엄", "가나건설 컨소시엄 등", "가나건설 외 1234", "가나건설 외 999",
+    "두류야외음악당지역주택조합", "호원초등학교주변지구 주택재개발정비사업조합", "대현청실 외2 가로주택정비사업조합"];
   it("stripBuilderTail · resolveBuilder 가 양쪽 같은 답", () => {
     for (const t of TAILS) {
       expect(stripBuilderTail(t), t).toBe(brandsStripBuilderTail(t));
       expect(resolveBuilder(t), t).toBe(brandsResolveBuilder(t));
     }
+  });
+  it("운영 실제 이름은 안 잘리고 · 「외」·여러 마디는 떼고 · 「외 1234」는 그대로 (세션677)", () => {
+    for (const r of ["두류야외음악당지역주택조합", "호원초등학교주변지구 주택재개발정비사업조합", "대현청실 외2 가로주택정비사업조합"])
+      expect(stripBuilderTail(r), r).toBe(r);
+    expect(stripBuilderTail("가나건설 외")).toBe("가나건설");
+    expect(resolveBuilder("GS건설 외 1개사 컨소시엄")).toBe("GS건설");
+    expect(stripBuilderTail("가나건설 외 1234")).toBe("가나건설 외 1234");
   });
 });

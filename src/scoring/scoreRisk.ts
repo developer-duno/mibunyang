@@ -1,4 +1,5 @@
 import { getZone } from "@/constants/regulations";
+import { consortiumRep } from "@/constants/brands";
 import {
   tierMax,
   tierMin,
@@ -97,6 +98,8 @@ export function scoreRisk(apt: Apt): Res {
   const builderDebtRatio = apt.builderDebtRatio as number | null | undefined;
   /** 글자(점수 탭 "시공사 재무")에 부채비율을 말해도 되는가 — 값이 있고 폴백이 아닐 때만(점수 식과 무관) */
   const debtKnown = builderDebtRatio != null && !apt._fallbackBuilderDebt;
+  /** 숫자 줄 앞 글자 — 공동 시공이면 대표사 값이라 「대표사 부채비율 」(👤 D9 · 카드 칩·상세와 같은 판정 consortiumRep) */
+  const debtLabel = consortiumRep(apt.builder) != null ? "대표사 부채비율 " : "부채비율 ";
   const builderCreditGrade = apt.builderCreditGrade as string | undefined;
   // 세션 508: HUG 보증 null = "모름". 수집률 0%(builders.hug_guarantee 32개사 전부 null, DART 로는
   //   영구히 못 채우는 필드)인데 옛 코드 `apt.hugGuarantee ? 0 : 40` 은 null 을 "보증 없음"으로 단정해
@@ -280,11 +283,12 @@ export function scoreRisk(apt: Apt): Res {
         // 세션592 사장님 결정: 등급 글자(A·BBB…)는 신용평가사 등급이 아니라 부채비율로 계산한 값이라
         //   (`dart-builders.mjs estimateCreditGrade`) 손님 글자에서 빼고 부채비율 숫자만 말한다. 점수(finSc)는 그대로.
         //   경계 숫자는 점수표(`BUILDER_DEBT_TIERS`)에서 조립한다 — 손으로 적으면 표를 바꿀 때 글자가 남는다.
+        // 세션677 👤 D9: 여럿이 지었으면(VIEW builder 「대표사 외 N」·「대표사 외」) 이 숫자는 대표사 한 곳의 값 → 「대표사 부채비율」.
         name: "시공사 재무",
         score: 100 - Math.round(finSc),
-        info: debtKnown ? `부채비율 ${builderDebtRatio}%` : "정보 없음",
+        info: debtKnown ? `${debtLabel}${builderDebtRatio}%` : "정보 없음",
         detail: debtKnown
-          ? `부채비율 ${builderDebtRatio}% (${BUILDER_DEBT_TIERS[0].max}% 이하 안정 · ${BUILDER_DEBT_TIERS[1].max}% 이하 보통 · 그 위 주의)`
+          ? `${debtLabel}${builderDebtRatio}% (${BUILDER_DEBT_TIERS[0].max}% 이하 안정 · ${BUILDER_DEBT_TIERS[1].max}% 이하 보통 · 그 위 주의)`
           : "부채비율 미수집 (중립)",
       },
       {

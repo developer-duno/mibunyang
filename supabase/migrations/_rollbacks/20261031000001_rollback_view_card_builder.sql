@@ -1,6 +1,8 @@
 -- 20261031000001 — 20261031000000_view_card_builder.sql 되돌림(세션676 PR-C): VIEW 를 20261026000002_view_add_range_cols.sql 본문 그대로.
 --   칸 수·순서·이름·형식이 같아(184칸) CREATE OR REPLACE 로 충분 — DROP 이 없어 GRANT 도 그대로 남는다.
---   되돌린 뒤 다음 굽기에서 name·builder·부채비율 연결·점수가 옛 값으로 돌아간다.
+--   VIEW 만 되돌리면 새 JS 는 남는다(합침만 상태) — 다음 굽기에서 name·builder·부채비율 연결이 옛 값으로, 점수는 그 값 기준으로 다시 굽힌다.
+--   ⚠️ JS(코드) 되돌림은 이 VIEW 되돌림 **뒤에만** — VIEW 새 판 + JS 옛 판이면 옛 resolveBuilder 가 「현대건설 외 2」를 못 읽어
+--      공동 시공 약 149장이 「기타」로 떨어진다(등급·필터·브랜드 점수).
 --   확인: SELECT id, name, builder FROM apartments_flat WHERE id = 'ah-2023910071';   (기대: 더샵 하남에디피스 사후 · 하남C구역 주택재개발정비사업조합)
 -- 적용 방법: 메인 세션 — 마이그와 같은 길. 작업반은 실행하지 않는다.
 SET lock_timeout = '5s';  -- 세션637(B-2 migration-safety 🟡): VIEW 를 읽는 조회가 잠금을 쥐고 있으면 5초만 기다리고 실패시킨다(뒤에 줄 서는 손님 조회가 멈추지 않게) — 실패하면 잠시 뒤 다시 Run

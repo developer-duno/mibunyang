@@ -1004,8 +1004,8 @@ function getNormalizedBuilders(aliases) {
   return map;
 }
 
-/** 시공사 글자 끝의 꼬리(「 외 N」「 외 N개사·개업체·사」「 등」「컨소시엄」) — `src/constants/brands.ts` 와 같은 정규식(세션676 PR-C) */
-const BUILDER_TAIL_RE = /(?:\s+외\s*\d+\s*(?:개사|개업체|사)?|\s+등|\s*컨소시엄)\s*$/;
+/** 시공사 글자 끝의 꼬리(「 외 N」「 외 N개사·개업체·사」「 외」「 등」「컨소시엄」, 여러 마디면 다 · 숫자 세 자리까지) — `src/constants/brands.ts` 와 같은 정규식(세션676 PR-C) */
+const BUILDER_TAIL_RE = /(?:\s+외(?:\s*\d{1,3}\s*(?:개사|개업체|사)?)?|\s+등|\s*컨소시엄)+\s*$/;
 
 /**
  * 꼬리를 뗀 이름(앞뒤 공백 자름). 다 떼어 빈 글자면 원래 글자(자른 것). `brands.ts` 동명 함수의 쌍둥이.
