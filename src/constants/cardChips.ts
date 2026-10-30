@@ -4,7 +4,7 @@ import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
 // 점수를 깎는 혐오시설이 무엇인지 **점수 쪽 표를 그대로** 읽는다 — 화면이 따로 목록을 들면
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
 // 번들 비용 0: `scoreLocation` 이 이미 이 파일을 쓰고, 카드는 그 스코어링을 이미 로드한다.
-import { NOXIOUS_PENALTY } from "@/constants/brands";
+import { NOXIOUS_PENALTY, consortiumRep } from "@/constants/brands";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -422,7 +422,9 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
     Number.isFinite(Number(builderDebtRatio)) &&
     Number(builderDebtRatio) > BUILDER_DEBT_TIERS[0].max
   ) {
-    out.push({ id: "builderCredit", text: `시공사 부채비율 ${builderDebtRatio}%`, tone: "red", layer: "bad" });
+    // 세션676 PR-C(👤 D6): 공동 시공(VIEW builder 「대표사 외 N」)이면 이 숫자는 대표사 한 곳의 값이다 → 「대표사 부채비율」
+    const who = consortiumRep(a.builder) != null ? "대표사" : "시공사";
+    out.push({ id: "builderCredit", text: `${who} 부채비율 ${builderDebtRatio}%`, tone: "red", layer: "bad" });
   }
   // 혐오시설 — 가장 가까운 것이 1km 밖이면 안심 칩으로 경고를 대체한다(상호배타, 세션 430)
   const noxList = (a.noxious as string[] | undefined) || [];

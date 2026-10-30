@@ -42,7 +42,7 @@ import {
   loadEnv, getSupabase, log, logError, sleep, createReporter,
   selectAll, upsertBatch, stringSimilarity, haversineMeters,
   recordApiQuota, recordCollectorRun,
-  REGION_MAP, VALID_REGIONS, GU_LAWD_MAP, normalizeGu, resolveBuilder, resolveRegionName,
+  REGION_MAP, VALID_REGIONS, GU_LAWD_MAP, normalizeGu, resolveBuilderForWrite, resolveRegionName,
 } from "./_shared.mjs";
 import { normName } from "./collect-applyhome-detail.mjs";
 import {
@@ -197,7 +197,7 @@ export function mapRow(item) {
     unsold_as_of: unsold != null && /^\d{4}-\d{2}-\d{2}$/.test(String(item.RCRIT_PBLANC_DE ?? ""))
       ? String(item.RCRIT_PBLANC_DE)
       : null,
-    builder: resolveBuilder(item.BSNS_MBY_NM || null),
+    builder: resolveBuilderForWrite(item.BSNS_MBY_NM || null),
     completion: item.MVN_PREARNGE_YM || null,
     announcement_url: item.PBLANC_URL || null,
     // 세대수 값이 없어도 "청약홈 seed 행" 표시로 남긴다(세션656 — 출처 칸 뜻은 그대로).

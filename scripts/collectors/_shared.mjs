@@ -922,8 +922,12 @@ export function GU_LAWD_CODES(region, gu) {
 }
 
 // ── 건설사 별칭 ────────────────────────────────────────────
-/** @type {import("../types.ts").BuilderAliasMap} */
-export const BUILDER_ALIASES = {
+/**
+ * 수집기가 **원표 apartments.builder 에 쓰는** 별칭표 — 세션676 PR-C 직전 판에서 얼렸다(`resolveBuilderForWrite` 전용).
+ * 원표 builder 에 쓰는 글자 — 바꾸면 2u 화면·DART 대상·VIEW 대체 연결이 바뀐다(세션676 D1·D5).
+ * @type {import("../types.ts").BuilderAliasMap}
+ */
+const WRITE_BUILDER_ALIASES = {
   "지에스건설": "GS건설", "GS건설(주)": "GS건설", "(주)GS건설": "GS건설",
   "현대건설(주)": "현대건설", "(주)현대건설": "현대건설",
   "(주)대우건설": "대우건설", "대우건설(주)": "대우건설",
@@ -938,6 +942,19 @@ export const BUILDER_ALIASES = {
   "SK에코플랜트(주)": "SK에코플랜트",
   "태영건설(주)": "태영건설", "(주)태영건설": "태영건설",
   "금호건설(주)": "금호건설", "(주)금호건설": "금호건설",
+};
+
+/**
+ * 화면·점수·VIEW 사전 쪽 별칭표 — `src/constants/brands.ts` `BUILDER_ALIASES` 의 쌍둥이(`_shared.test.mjs` 가 같음을 잠근다).
+ * = 위 쓰기 표 + 세션676 PR-C 새 별칭(옛 이름·한글 음차·법인 정식명·(주)한화 건설부문). 수집기의 원표 쓰기는 이 표를 안 쓴다.
+ * @type {import("../types.ts").BuilderAliasMap}
+ */
+export const BUILDER_ALIASES = {
+  ...WRITE_BUILDER_ALIASES,
+  "(주)포스코건설": "포스코이앤씨", "계룡건설산업": "계룡건설", "에스케이에코플랜트": "SK에코플랜트",
+  "아이파크현대산업개발": "HDC현대산업개발",
+  "한화 건설부문": "한화건설", "(주)한화": "한화건설", "㈜한화": "한화건설", "주식회사 한화": "한화건설",
+  "금호산업": "금호건설", "SK건설": "SK에코플랜트",
 };
 
 /**
@@ -965,14 +982,15 @@ export function normalizeBuilderKey(s) {
 }
 
 /**
- * 정규화 키 → canonical 이름 사전. `BUILDER_CANONICALS` 자신과 `BUILDER_ALIASES` 의 양변을 담는다.
- * 먼저 넣은 항목이 이긴다(정규화 충돌 시 정식 이름 우선). 첫 호출 때 한 번만 만든다.
- * @type {Record<string, string> | null}
+ * 정규화 키 → canonical 이름 사전. `BUILDER_CANONICALS` 자신과 별칭표의 양변을 담는다.
+ * 먼저 넣은 항목이 이긴다(정규화 충돌 시 정식 이름 우선). 표마다 첫 호출 때 한 번만 만든다.
+ * @type {Map<Record<string, string>, Record<string, string>>}
  */
-let normalizedBuilders = null;
-/** @returns {Record<string, string>} */
-function getNormalizedBuilders() {
-  if (normalizedBuilders) return normalizedBuilders;
+const normalizedBuildersByTable = new Map();
+/** @param {Record<string, string>} aliases @returns {Record<string, string>} */
+function getNormalizedBuilders(aliases) {
+  const cached = normalizedBuildersByTable.get(aliases);
+  if (cached) return cached;
   /** @type {Record<string, string>} */
   const map = {};
   /** @param {string} key @param {string} canonical @returns {void} */
@@ -981,22 +999,52 @@ function getNormalizedBuilders() {
     if (k && !(k in map)) map[k] = canonical;
   };
   for (const canonical of BUILDER_CANONICALS) put(canonical, canonical);
-  for (const [alias, canonical] of Object.entries(BUILDER_ALIASES)) put(alias, canonical);
-  normalizedBuilders = map;
+  for (const [alias, canonical] of Object.entries(aliases)) put(alias, canonical);
+  normalizedBuildersByTable.set(aliases, map);
   return map;
 }
 
+/** 시공사 글자 끝의 꼬리(「 외 N」「 외 N개사·개업체·사」「 등」「컨소시엄」) — `src/constants/brands.ts` 와 같은 정규식(세션676 PR-C) */
+const BUILDER_TAIL_RE = /(?:\s+외\s*\d+\s*(?:개사|개업체|사)?|\s+등|\s*컨소시엄)\s*$/;
+
 /**
+ * 꼬리를 뗀 이름(앞뒤 공백 자름). 다 떼어 빈 글자면 원래 글자(자른 것). `brands.ts` 동명 함수의 쌍둥이.
+ * @param {string} name
+ * @returns {string}
+ */
+export function stripBuilderTail(name) {
+  const base = name.trim();
+  return base.replace(BUILDER_TAIL_RE, "").trim() || base;
+}
+
+/**
+ * 화면·점수 판정 이름 — `src/constants/brands.ts` `resolveBuilder` 의 쌍둥이(대조 시험이 잠근다).
+ * 세션676 PR-C: 꼬리를 떼고(대표사 기준 — 👤 D2) 새 별칭까지 본다. **수집기가 원표에 쓸 글자는 `resolveBuilderForWrite`.**
  * @param {string | null | undefined} name
  * @returns {string}
  */
 export function resolveBuilder(name) {
   if (!name) return "기타";
-  const trimmed = name.trim();
+  const trimmed = stripBuilderTail(name);
   const alias = BUILDER_ALIASES[trimmed];
   if (alias) return alias;
   // 세션513: 별칭 표에 없어도 법인격·공백만 다른 것이면 같은 회사다.
-  return getNormalizedBuilders()[normalizeBuilderKey(trimmed)] ?? trimmed;
+  return getNormalizedBuilders(BUILDER_ALIASES)[normalizeBuilderKey(trimmed)] ?? trimmed;
+}
+
+/**
+ * 원표 builder 에 쓰는 글자 — 바꾸면 2u 화면·DART 대상·VIEW 대체 연결이 바뀐다(세션676 D1·D5).
+ * 세션676 PR-C 직전 `resolveBuilder` 와 같은 동작으로 얼렸다(옛 별칭표 `WRITE_BUILDER_ALIASES` · 꼬리 안 뗌).
+ * 쓰는 곳 = collect-applyhome-seed(새 행) · naver-presale(빈칸 채움) · collect-data(옛 전체수집 mapItem).
+ * @param {string | null | undefined} name
+ * @returns {string}
+ */
+export function resolveBuilderForWrite(name) {
+  if (!name) return "기타";
+  const trimmed = name.trim();
+  const alias = WRITE_BUILDER_ALIASES[trimmed];
+  if (alias) return alias;
+  return getNormalizedBuilders(WRITE_BUILDER_ALIASES)[normalizeBuilderKey(trimmed)] ?? trimmed;
 }
 
 // ── 문자열 유사도 (Python SequenceMatcher 포팅) ─────────────

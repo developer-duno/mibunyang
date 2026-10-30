@@ -33,6 +33,8 @@ const presaleNA = (_v: any, apt?: any): boolean => apt?.presaleStage == null;
 // 공기업·신탁·조합은 시공사 신용등급 개념 자체가 없음 → "미등록"이 아니라 "해당없음"
 // (세션388 라이브 실측: 미매칭 단지의 51%가 LH/SH·신탁·조합. 판정 정규식 138개사 전수 검증 false positive 0)
 // (세션389: LH 정식 법인명 "한국토지주택공사" 가 토큰 누락으로 "미등록" 오표시 → 토지주택공사 토큰 추가, FP 0)
+// (세션676 PR-C: builder 는 이제 VIEW 가 고른 공고 시공사가 먼저다 — 이 판정에 걸리는 것은 공고 시공사가 없어
+//  원표 값(시행 주체)이 남은 단지뿐이다. 위 51%·아래 611곳은 그 전 실측)
 const NO_CREDIT_BUILDER_RE =
   /(LH공사|SH공사|토지주택공사|도시공사|주택도시공사|도시개발공사|개발공사|신탁|자산신탁|토지신탁|조합|정비사업|재개발|재건축|지역주택)/;
 const isBuilderNoCreditGrade = (builder: any): boolean =>
@@ -79,6 +81,8 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   //   "3군 건설사"로 읽힌다. 바로 아래 builderCreditGrade 가 같은 이유로 먼저 고쳐 둔 자리라
   //   판정도 그 헬퍼(isBuilderNoCreditGrade)를 **그대로 재사용**한다 — 두 필드가 어긋나면 안 된다.
   //   점수는 안 바뀐다(어느 쪽이든 brandSc 5점) — 표시만 갈린다.
+  //   ③ 세션676 PR-C: 값은 VIEW 의 공고 시공사(공동이면 「대표사 외 N」 — `resolveBuilder` 가 꼬리를 떼고 대표사로
+  //   등급을 찾는다)이고, 공고 시공사가 없는 단지만 원표 값이다. 그래서 「해당없음」은 그 남은 단지에만 붙는다.
   builder: {
     label: "시공사",
     section: "개요",

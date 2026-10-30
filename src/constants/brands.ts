@@ -27,7 +27,43 @@ export const BUILDER_ALIASES: Record<string, string> = {
   "(주)태영건설": "태영건설",
   "금호건설(주)": "금호건설",
   "(주)금호건설": "금호건설",
+  // 세션676 PR-C(공고 시공사 원문 표기 — 근거 수 .omc/artifacts/session675/card-data/constructor-rules.json):
+  //   옛 이름(포스코건설·금호산업·SK건설·아이파크) · 한글 음차(에스케이) · 법인 정식명(계룡건설산업 — 등급표 키는 「계룡건설」) ·
+  //   (주)한화 건설부문(2023 한화건설 흡수합병 뒤 공고 표기). 여기는 **표시·등급 이름**이다 — 부채비율 연결 이름은 따로
+  //   (`scripts/collectors/_card-builder.mjs` 가 dart-builders 표에서 만든다: 계룡건설산업은 연결 「계룡건설산업」).
+  "(주)포스코건설": "포스코이앤씨",
+  계룡건설산업: "계룡건설",
+  에스케이에코플랜트: "SK에코플랜트",
+  아이파크현대산업개발: "HDC현대산업개발",
+  "한화 건설부문": "한화건설",
+  "(주)한화": "한화건설",
+  "㈜한화": "한화건설",
+  "주식회사 한화": "한화건설",
+  금호산업: "금호건설",
+  SK건설: "SK에코플랜트",
 };
+
+/**
+ * 시공사 글자 끝의 꼬리 — 「 외 N」「 외 N개사·개업체·사」「 등」「컨소시엄」(세션676 PR-C).
+ * VIEW `apartments_flat.builder` 는 공동 시공이면 「대표사 외 N」을 낸다 — 등급·점수·필터는 **대표사**로 본다(👤 D2).
+ */
+const BUILDER_TAIL_RE = /(?:\s+외\s*\d+\s*(?:개사|개업체|사)?|\s+등|\s*컨소시엄)\s*$/;
+
+/** 꼬리를 뗀 이름(앞뒤 공백 자름). 다 떼어 빈 글자면 원래 글자(자른 것). */
+export function stripBuilderTail(name: string): string {
+  const base = name.trim();
+  return base.replace(BUILDER_TAIL_RE, "").trim() || base;
+}
+
+/**
+ * VIEW 가 낸 「대표사 외 N」이면 대표사 이름, 아니면 null(혼자 지은 단지) — 👤 D6 「여럿이면 「대표사 부채비율」」.
+ * VIEW 형식(`표시 || ' 외 ' || (n-1)`)만 본다 — 「등」「컨소시엄」 꼬리는 여럿이라는 근거가 아니다.
+ */
+export function consortiumRep(builder: unknown): string | null {
+  if (typeof builder !== "string") return null;
+  const m = /^(.+?) 외 (\d+)$/.exec(builder);
+  return m && Number(m[2]) >= 1 ? m[1] : null;
+}
 
 /**
  * 법인격 표기(`㈜`·`(주)`·`주식회사`)와 공백을 걷어낸 비교용 키.
@@ -62,7 +98,8 @@ function getNormalizedBuilders(): Record<string, string> {
 
 export function resolveBuilder(name?: string | null): string {
   if (!name) return "기타";
-  const trimmed = name.trim();
+  // 세션676 PR-C: 「현대건설 외 2」·「지에스건설(주) 등」은 꼬리를 떼고 판정(대표사 기준 — 👤 D2)
+  const trimmed = stripBuilderTail(name);
   const alias = BUILDER_ALIASES[trimmed];
   if (alias) return alias;
   // 세션513: 별칭 표에 없어도 법인격·공백만 다른 것이면 같은 회사다.

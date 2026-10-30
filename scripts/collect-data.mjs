@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate, resolveRegionName } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilderForWrite as resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate, resolveRegionName } from "./collectors/_shared.mjs";
 import { buildListData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
 import { excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
 import { evaluateCountGuard } from "./_count-guard.mjs";

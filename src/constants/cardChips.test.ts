@@ -395,6 +395,19 @@ describe("buildCardChips — 강점/약점 판정", () => {
       expect(find(build({ builderDebtRatio: null }), "builderCredit")).toBeUndefined();
       expect(find(build({ builderDebtRatio: 400, _fallbackBuilderDebt: true }), "builderCredit")).toBeUndefined();
     });
+    // 세션676 PR-C(👤 D6): 공동 시공이면 이 숫자는 대표사 한 곳의 값 → 「대표사 부채비율」. 혼자면 그대로.
+    it("공동 시공(builder 「대표사 외 N」)이면 '대표사 부채비율 {값}%' · 혼자·꼬리 다른 꼴이면 '시공사 부채비율'", () => {
+      expect(find(build({ builder: "현대건설 외 2", builderDebtRatio: 210 }), "builderCredit")?.text).toBe(
+        "대표사 부채비율 210%"
+      );
+      expect(find(build({ builder: "현대건설", builderDebtRatio: 210 }), "builderCredit")?.text).toBe(
+        "시공사 부채비율 210%"
+      );
+      expect(find(build({ builder: "지에스건설(주) 등", builderDebtRatio: 210 }), "builderCredit")?.text).toBe(
+        "시공사 부채비율 210%"
+      );
+      expect(find(build({ builder: null, builderDebtRatio: 210 }), "builderCredit")?.text).toBe("시공사 부채비율 210%");
+    });
   });
 
   it("DSR 통과는 true 일 때만 — false·null 은 칩이 없다", () => {
