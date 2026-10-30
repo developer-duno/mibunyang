@@ -8,6 +8,4 @@ import type { Apt } from "@/types/scoring";
 
 export interface LoanAnalysisProps {
   apt: Apt;
-  isLoading?: boolean;
-  error?: string | null;
 }

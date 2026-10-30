@@ -1,10 +1,11 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { DetailModal } from "./DetailModal";
 import { trackEvent } from "@/lib/analytics";
 import { makeScoredItem } from "@/__tests__/factories";
 import { computeRegionalStats } from "@/scoring/regionalStats";
+import { _clearPresaleDetailCache } from "@/hooks/usePresaleDetail";
 
 // analytics mock — DetailModal 의 detail_tab_view 발화 카운트 단언용. 이 mock 은 PresaleInfo 의
 // presale_view(분양 탭 방문 시 발화)도 no-op 시키나, presale_view 커버리지는 PresaleInfo.test.jsx 소유.
@@ -1169,39 +1170,42 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
   });
 
   // 세션592 A9 — 금융 탭이 LoanStack 에 분양가·시도·DB 규제 표시를 실제로 넘기는지(배선) 지킨다.
-  // ⚠️ 뮤테이션 대상: DetailModal 의 LoanStack `isRegulated=` 줄을 빼면 화성시 행이 red 여야 한다
+  // 세션675 에 LoanStack 은 LoanAnalysis 맨 위로 옮겼다(평수 단추와 같은 값) — DetailModal → LoanAnalysis → LoanStack 사슬 전체를 본다.
+  // ⚠️ 뮤테이션 대상: LoanAnalysis 의 LoanStack `isRegulated=` 줄을 빼면 화성시 행이 red 여야 한다
   //    (이름 "화성시"는 비규제라 DB 표시가 안 넘어가면 70% = 3.5억이 된다).
   describe("금융 탭 — 대출 막대 배선 (세션592)", () => {
     /** @param {Record<string, unknown>} aptOver
      * @returns {any} */
     const itemWithApt = (aptOver) => ({ ...makeItem(), apt: { ...makeItem().apt, ...aptOver } });
     /** @param {Record<string, unknown>} aptOver */
-    const financeText = (aptOver) => {
+    // 세션675 검사 F7 — 평형표를 받는 동안은 금액 자리가 회색 자리표시라, 자리표시가 걷힌 뒤 글자를 읽는다
+    const financeText = async (aptOver) => {
       const { container } = render(<DetailModal {...makeProps({ item: itemWithApt(aptOver) })} />);
       fireEvent.click(screen.getByRole("tab", { name: "금융" }));
+      await waitFor(() => expect(container.querySelector('[data-testid="fin-unit-pending"]')).toBeNull());
       return container.querySelector("#sec-finance")?.textContent ?? "";
     };
 
-    it("서울 강남 5억(규제) → 빌릴 수 있는 돈 2억", () => {
-      const t = financeText({ price: 50000, region: "서울", gu: "강남구", isRegulated: true });
+    it("서울 강남 5억(규제) → 빌릴 수 있는 돈 2억", async () => {
+      const t = await financeText({ price: 50000, region: "서울", gu: "강남구", isRegulated: true });
       expect(t).toContain("빌릴 수 있는 돈 2억");
     });
 
-    it("부산 5억(비규제) → 빌릴 수 있는 돈 3억 5,000만", () => {
-      const t = financeText({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false });
+    it("부산 5억(비규제) → 빌릴 수 있는 돈 3억 5,000만", async () => {
+      const t = await financeText({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false });
       expect(t).toContain("빌릴 수 있는 돈 3억 5,000만");
     });
 
-    it("화성시 5억 + DB 규제 표시 참(동탄구) → 이름은 비규제여도 2억", () => {
-      const t = financeText({ price: 50000, region: "경기", gu: "화성시", isRegulated: true });
+    it("화성시 5억 + DB 규제 표시 참(동탄구) → 이름은 비규제여도 2억", async () => {
+      const t = await financeText({ price: 50000, region: "경기", gu: "화성시", isRegulated: true });
       expect(t).toContain("빌릴 수 있는 돈 2억");
       expect(t).not.toContain("빌릴 수 있는 돈 3억 5,000만");
     });
 
     // 세션593 D1 — 막대 금액은 만원까지, 숫자 3칸은 없다, 아래 글에 분양가.
-    // ⚠️ 뮤테이션 대상: DetailModal 의 LoanStack `price=` 를 빼면 막대가 "계산할 수 없어요"가 되어 빨강.
-    it("규제 5억 3,020만 → 막대 '대출 2억 1,208만 · 내 돈 3억 1,812만' · 분양가 글 · 숫자 3칸 없음", () => {
-      const t = financeText({ price: 53020, region: "서울", gu: "강남구", isRegulated: true });
+    // ⚠️ 뮤테이션 대상: LoanAnalysis 의 LoanStack `price=` 를 빼면 막대가 "계산할 수 없어요"가 되어 빨강.
+    it("규제 5억 3,020만 → 막대 '대출 2억 1,208만 · 내 돈 3억 1,812만' · 분양가 글 · 숫자 3칸 없음", async () => {
+      const t = await financeText({ price: 53020, region: "서울", gu: "강남구", isRegulated: true });
       expect(t).toContain("대출 2억 1,208만");
       expect(t).toContain("내 돈 3억 1,812만");
       expect(t).toContain("분양가 5억 3,020만 · 규제지역 기준 최대 40%");
@@ -1209,6 +1213,51 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
       expect(t).not.toContain("필요 자기자본");
       expect(t).not.toContain("은행별 금리 비교");
       expect(t).toContain("저축은행 · 여신전문 · 보험 금리 보기");
+    });
+
+    // 세션675 결정 나 「막대도 손님이 누른 평수로」 — 화면 전체(DetailModal → LoanAnalysis)에서 막대와 잔금 카드가
+    // 같은 평수 값을 쓰는지. 옛날엔 막대 = 대표 분양가(4억 5,000만 → 3억 1,500만), 카드 = 평수 값이라 둘이 갈렸다.
+    // ⚠️ 뮤테이션 대상: LoanAnalysis 의 LoanStack `price={unit.price}` 를 대표 분양가로 되돌리면 빨강.
+    it("막대와 잔금 카드가 같은 평수 값 — 첫 값 84A, 59A 를 누르면 둘 다 59A", async () => {
+      _clearPresaleDetailCache();
+      const units = [
+        { house_manage_no: "H1", model_no: "01", house_ty: "059.9847A", top_amount: 39800 },
+        { house_manage_no: "H1", model_no: "02", house_ty: "084.9916A", top_amount: 46000 },
+      ];
+      const spy = vi.spyOn(globalThis, "fetch").mockImplementation(async (url) => {
+        if (String(url).includes("/api/supabase/presale-detail")) {
+          return new Response(JSON.stringify({ ok: true, schedule: null, units, firstRecruitDate: null }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+        return new Response("{}", { status: 500 });
+      });
+      try {
+        const { container } = render(
+          <DetailModal
+            {...makeProps({
+              item: itemWithApt({ id: "ah-unit-1", price: 45000, region: "부산", gu: "해운대구", isRegulated: false }),
+            })}
+          />
+        );
+        fireEvent.click(screen.getByRole("tab", { name: "금융" }));
+        const panel = /** @type {HTMLElement} */ (container.querySelector("#sec-finance"));
+        const chip84 = await screen.findByRole("button", { name: "84A · 4억 6,000만" });
+        expect(chip84.getAttribute("aria-pressed")).toBe("true");
+        expect(panel.textContent).toContain("빌릴 수 있는 돈 3억 2,200만");
+        expect(screen.getByTestId("fp-region-limit").textContent).toContain("3억 2,200만");
+        expect(panel.textContent).not.toContain("3억 1,500만");
+
+        fireEvent.click(screen.getByRole("button", { name: "59A · 3억 9,800만" }));
+        expect(panel.textContent).toContain("빌릴 수 있는 돈 2억 7,860만");
+        expect(screen.getByTestId("fp-region-limit").textContent).toContain("2억 7,860만");
+        expect(screen.getByTestId("loan-stack-basis").textContent).toBe("59A 기준");
+        expect(screen.getByTestId("funding-planner").textContent).toContain("59A 기준");
+      } finally {
+        spy.mockRestore();
+        _clearPresaleDetailCache();
+      }
     });
   });
 

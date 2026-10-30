@@ -25,6 +25,43 @@ describe("usePresaleDetail", () => {
     vi.restoreAllMocks();
   });
 
+  // 세션675 검사 F7 — 첫 그림부터 맞는 상태. 옛날엔 첫 그림이 늘 "빈 평형표 · 불러오는 중 아님"이라
+  // 금융 탭이 대표 분양가로 금액을 먼저 그렸다가 바꿨다(이펙트가 loading 을 켜기 전 한 번).
+  // ⚠️ 변이 대상: loading 첫 값을 false 로, 또는 캐시 첫 값을 [] 로 되돌리면 빨강.
+  it("첫 그림 — id 가 있고 캐시가 없으면 loading=true · 캐시가 있으면 첫 그림부터 그 평형표 · id 없으면 false", async () => {
+    const units = [{ house_manage_no: "h1", model_no: "m1", top_amount: 39800 }];
+    vi.spyOn(globalThis, "fetch").mockResolvedValue(okResponse({ ok: true, schedule: null, units }));
+    /** @type {Array<{ loading: boolean, n: number }>} */
+    const seen = [];
+    const first = renderHook(() => {
+      const r = usePresaleDetail("ah-first");
+      seen.push({ loading: r.loading, n: r.units.length });
+      return r;
+    });
+    expect(seen[0]).toEqual({ loading: true, n: 0 });
+    await waitFor(() => expect(first.result.current.loading).toBe(false));
+    first.unmount();
+
+    // 같은 id 를 다시 열면(캐시) 첫 그림부터 평형표가 있고 불러오는 중이 아니다
+    /** @type {Array<{ loading: boolean, n: number }>} */
+    const again = [];
+    renderHook(() => {
+      const r = usePresaleDetail("ah-first");
+      again.push({ loading: r.loading, n: r.units.length });
+      return r;
+    });
+    expect(again[0]).toEqual({ loading: false, n: 1 });
+
+    /** @type {boolean[]} */
+    const none = [];
+    renderHook(() => {
+      const r = usePresaleDetail(null);
+      none.push(r.loading);
+      return r;
+    });
+    expect(none[0]).toBe(false);
+  });
+
   // apartmentId 없으면 fetch 안 함 + 빈 상태
   it("apartmentId=null이면 fetch 호출 안 하고 빈 상태", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");

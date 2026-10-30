@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { fmtPrice } from "@/lib/format";
-import { pickMonthlyRate, calcMonthlyPayment, summarizeRateRange, fmtDisclosureMonth } from "@/lib/loanRates";
+import { calcMonthlyPayment, summarizeRateRange, fmtDisclosureMonth } from "@/lib/loanRates";
 import { RangeBarRow } from "@/components/charts/RangeBarRow";
 import type { FinlifeRate } from "@/hooks/useFinlifeRates";
 
@@ -36,7 +36,9 @@ const boxStyle = {
 } as const;
 
 /**
- * "한 달에 갚을 돈" — 대출액(`loan`, 막대의 대출액과 같은 값) × 아파트·분할상환 최저 금리 × 30년.
+ * "한 달에 갚을 돈" — 대출액(`loan`, 막대의 대출액과 같은 값) × 아파트·분할상환 은행 금리 × 30년.
+ * 금리는 가장 낮은 값과 가장 높은 값 두 개(세션675 「한 달 상환에 금리 2개」) — 아래 은행 범위 줄과 같은 거름·같은
+ * 최저·최고(`summarizeRateRange`)라 두 블록의 숫자가 어긋나지 않는다. 최저 = 잔금 카드 월 상환 금리(`pickMonthlyRate`)와 같다.
  * 그런 상품이 없거나 응답이 없으면(실패·로딩 중) 그리지 않는다.
  */
 export const MonthlyPaymentBlock = memo(function MonthlyPaymentBlock({
@@ -49,18 +51,24 @@ export const MonthlyPaymentBlock = memo(function MonthlyPaymentBlock({
   rates: readonly FinlifeRate[];
   disclosureMonth: string | null;
 }) {
-  const rate = useMemo(() => pickMonthlyRate(rates), [rates]);
-  if (!(loan > 0) || rate == null) return null;
-  const pay = Math.round(calcMonthlyPayment(loan, rate, LOAN_YEARS));
-  if (!(pay > 0)) return null;
+  const range = useMemo(() => summarizeRateRange(rates), [rates]);
+  if (!(loan > 0) || range == null) return null;
+  const payLow = Math.round(calcMonthlyPayment(loan, range.min, LOAN_YEARS));
+  const payHigh = Math.round(calcMonthlyPayment(loan, range.max, LOAN_YEARS));
+  if (!(payLow > 0)) return null;
+  const one = payHigh <= payLow;
   const month = fmtDisclosureMonth(disclosureMonth);
+  // 소수 둘째 자리 — 아래 은행 범위 줄("4.20%")과 같은 자릿수(세션593 후속 F4)
+  const minText = `${range.min.toFixed(2)}%`;
+  const maxText = `${range.max.toFixed(2)}%`;
   return (
     <div data-testid="monthly-payment" style={boxStyle}>
       <div style={{ fontSize: F.md, fontWeight: 700, color: C.text }}>한 달에 갚을 돈</div>
-      <div style={{ fontSize: 22, fontWeight: 800, color: C.blue, marginTop: 2 }}>{fmtPrice(pay)} 원/월</div>
+      <div data-testid="monthly-payment-amount" style={{ fontSize: 22, fontWeight: 800, color: C.blue, marginTop: 2 }}>
+        {one ? `${fmtPrice(payLow)} 원/월` : `${fmtPrice(payLow)} ~ ${fmtPrice(payHigh)} 원/월`}
+      </div>
       <div style={{ fontSize: F.micro, color: C.muted, marginTop: 2, lineHeight: 1.5 }}>
-        {/* 소수 둘째 자리 — 아래 은행 범위 줄("4.20%")과 같은 자릿수(세션593 후속 F4) */}
-        {`대출 ${fmtPrice(loan)} · ${LOAN_YEARS}년 · 아파트·분할상환 최저 금리 ${rate.toFixed(2)}% 기준`}
+        {`대출 ${fmtPrice(loan)} · ${LOAN_YEARS}년 · 아파트·분할상환 은행 금리 ${one ? minText : `${minText} ~ ${maxText}`} 기준`}
         {month && ` · ${month}`}
       </div>
     </div>
@@ -107,7 +115,8 @@ export const RateRangeSummary = memo(function RateRangeSummary({
           label={label}
           labelWidth={RANGE_LABEL_W}
           bands={[
-            { key: "rate", min: range.min, max: range.max, minText, maxText, color: C.blue, bandColor: C.blueBorder },
+            // 띠 색 = 진한 파랑 — 옛 blueBorder(#C3D6FD)는 트랙(slate100) 대비 1.34:1 로 약했다. C.blue 는 4.72:1(그림 3:1 이상 · 세션675)
+            { key: "rate", min: range.min, max: range.max, minText, maxText, color: C.blue, bandColor: C.blue },
           ]}
           scaleMin={scaleMin}
           scaleMax={scaleMax}

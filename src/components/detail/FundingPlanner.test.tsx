@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { FundingPlanner, DSR_GAP_NOTICE, _resetFundingPlannerTracking } from "./FundingPlanner";
+import { FundingPlanner as RawPlanner, UnitChips, pathsState, _resetFundingPlannerTracking } from "./FundingPlanner";
 import { usePresaleDetail } from "@/hooks/usePresaleDetail";
+import { useUnitChoice } from "@/hooks/useUnitChoice";
 import { trackEvent } from "@/lib/analytics";
 import { makeApt } from "@/__tests__/factories";
 
@@ -30,6 +31,32 @@ function type(id: string, v: string) {
 }
 const text = () => document.body.textContent ?? "";
 
+/**
+ * 금융 탭이 실제로 그리는 꼴 그대로(세션675) — 평수 단추(`UnitChips`)는 탭 맨 위, 카드는 고른 값을 받는다.
+ * 둘을 같은 `useUnitChoice` 하나로 묶는다(`LoanAnalysis` 와 같은 배선).
+ */
+function FundingPlanner({ apt, rates }: { apt: any; rates: any }) {
+  const unit = useUnitChoice(apt);
+  return (
+    <>
+      <UnitChips aptId={apt.id} unit={unit} />
+      <RawPlanner apt={apt} rates={rates} unit={unit} />
+    </>
+  );
+}
+
+// 잔금 카드 금융사 종류별 안내 — 기대 글자는 decisions.md 「PR-A 검사 뒤 문구」 사장님 결정 3·4 원문에서 옮겼다
+const NO_INCOME_TEXT =
+  "지금 부족한 돈은 지역 한도(LTV)로 계산했어요. 지역 한도는 먼저 받은 대출까지 합쳐서 재서 다른 금융사로도 넘기 어려워요. 연소득을 넣으면 소득 기준(DSR)과 금융사 종류별 차이도 같이 보여 드려요.";
+const regionText = (ltv: string) =>
+  `부족한 이유는 지역 한도(${ltv})예요. 지역 한도는 먼저 받은 대출까지 합쳐서 재기 때문에, 다른 금융사에서 더 빌려도 합계가 이 한도를 넘기 어려워요. 은행·보험·여신전문(캐피탈)·저축은행·상호금융(농협·새마을금고 등)이 같은 규정을 따르고, 2026년 4월 2일부터는 온투업(온라인으로 여러 투자자의 돈을 모아 빌려주는 회사)도 같은 한도를 따라요.`;
+const incomeLines = (limit: string) => [
+  "은행소득의 40%(DSR)까지 — 위 계산이 이 기준이에요.",
+  "저축은행·여신전문(캐피탈)·보험·상호금융소득의 50%까지라 소득 한도가 더 클 수 있어요. 금리가 은행보다 높아 한 달에 갚을 돈도 커져요. 금리 범위는 이 탭 아래 「저축은행 · 여신전문 · 보험 금리 보기」에서 볼 수 있어요.",
+  `어디서든지역 한도 ${limit}을 넘지는 못해요.`,
+];
+const pathsBox = () => screen.queryByTestId("fp-paths");
+
 beforeEach(() => {
   vi.mocked(trackEvent).mockClear();
   vi.mocked(usePresaleDetail).mockClear();
@@ -54,12 +81,16 @@ describe("FundingPlanner — 그리기 조건", () => {
 });
 
 describe("FundingPlanner — 계산 화면", () => {
-  it("소득 빈칸 → 지역 한도만 · 소득 안내 · 안내 문장 없음", () => {
+  // ⚠️ 변이 대상(세션675 사장님 결정 3): ① 상자가 뜰 때 같은 뜻 회색 줄(fp-income-skip)을 되살리면 빨강
+  it("소득 빈칸 + 부족 → 지역 한도만 · ① 예고 한 줄 · 같은 뜻 회색 줄은 안 그림(한 번만)", () => {
     render(<FundingPlanner apt={apt()} rates={RATES} />);
-    expect(screen.getByTestId("fp-income-skip").textContent).toBe("연소득을 넣으면 소득 기준 한도도 계산해요");
+    expect(screen.queryByTestId("fp-income-skip")).toBeNull();
+    expect(text().split("연소득을 넣으면").length - 1).toBe(1);
     expect(screen.getByTestId("fp-loan").textContent).toContain("잔금 때 주담대 예상액 (지역 한도 기준)");
     expect(screen.getByTestId("fp-loan").textContent).toContain("2억 7,860만");
-    expect(screen.queryByTestId("fp-dsr-notice")).toBeNull();
+    // 결정 가 ① — 소득을 안 넣었으면 예고 한 줄
+    expect(pathsBox()?.getAttribute("data-state")).toBe("no-income");
+    expect(pathsBox()?.textContent).toBe(NO_INCOME_TEXT);
   });
 
   it("목업 예시 — 소득 4,800·가진 돈 8,000 → 작은 값 2억 3,154만 · 월 116만 · 더 필요한 돈 8,646만 · DSR 안내 문장 그대로", () => {
@@ -74,11 +105,11 @@ describe("FundingPlanner — 계산 화면", () => {
     expect(screen.getByTestId("fp-loan").textContent).toContain("2억 3,154만");
     expect(screen.getByTestId("fp-monthly").textContent).toContain("116만 원");
     expect(screen.getByTestId("fp-shortfall").textContent).toBe("더 필요한 돈 8,646만");
-    expect(screen.getByTestId("fp-dsr-notice").textContent).toBe(DSR_GAP_NOTICE);
-    expect(DSR_GAP_NOTICE).toBe(
-      "은행 DSR 40% 기준으로 계산했어요. 저축은행·여신전문(캐피탈)·보험사는 DSR 50% 를 적용해 한도가 다를 수 있고 금리가 은행보다 높아요. 금융사별 조건은 아래 공시에서 비교해 보세요."
-    );
-    expect(text()).toContain("취득세·등기비 등은 빼고 계산했어요");
+    // 결정 가 ② — 소득 한도(2억 3,154만) < 지역 한도(2억 7,860만) → 금융사 종류별 세 줄
+    expect(pathsBox()?.getAttribute("data-state")).toBe("income");
+    expect(pathsBox()?.textContent).toContain("금융사 종류별로 보면");
+    expect(screen.getAllByTestId("fp-path-line").map((e) => e.textContent)).toEqual(incomeLines("2억 7,860만"));
+    expect(screen.getByTestId("fp-cost-note").textContent).toBe("취득세·등기비 등은 빼고 계산했어요");
   });
 
   it("부족분이 없으면 소득 한도 < 지역 한도여도 안내 문장 없음(부족할 때만 — 결정 14)", () => {
@@ -86,14 +117,45 @@ describe("FundingPlanner — 계산 화면", () => {
     type("fp-income", "4800"); // 소득 한도 2억 3,154만 < 지역 2억 7,860만
     type("fp-cash", "20000");
     expect(screen.getByTestId("fp-enough")).toBeTruthy();
-    expect(screen.queryByTestId("fp-dsr-notice")).toBeNull();
+    expect(pathsBox()).toBeNull();
   });
 
-  it("지역 한도에 걸린 부족분이면 안내 문장 없음(소득이 넉넉 · 가진 돈 적음)", () => {
+  it("지역 한도에 걸린 부족분이면 ③ '합계가 이 한도를 넘기 어려워요'(소득이 넉넉 · 가진 돈 적음)", () => {
     render(<FundingPlanner apt={apt()} rates={RATES} />);
     type("fp-income", "20000");
     expect(screen.getByTestId("fp-shortfall")).toBeTruthy();
-    expect(screen.queryByTestId("fp-dsr-notice")).toBeNull();
+    expect(pathsBox()?.getAttribute("data-state")).toBe("region");
+    expect(pathsBox()?.textContent).toBe(regionText("LTV 70%"));
+    expect(screen.queryAllByTestId("fp-path-line")).toHaveLength(0);
+  });
+
+  it("③ 금액 한도가 걸렸으면 'LTV 40% · 금액 한도 적용' (서울 15억 초과 → 4억)", () => {
+    render(
+      <FundingPlanner apt={apt({ price: 151440, region: "서울", gu: "서초구", isRegulated: true })} rates={RATES} />
+    );
+    type("fp-income", "90000");
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("4억");
+    expect(pathsBox()?.getAttribute("data-state")).toBe("region");
+    expect(pathsBox()?.textContent).toBe(regionText("LTV 40% · 금액 한도 적용"));
+  });
+
+  it("갈래 판정 경계 — 소득 한도 = 지역 한도면 ③ · 1만 작으면 ② · 금리 없음·부족 0 이면 없음", () => {
+    const base = { shortfall: 1, incomeSkip: null, ltv: { current: { amount: 27860 } } } as const;
+    expect(pathsState({ ...base, incomeLimit: 27860 }, true)).toBe("region");
+    expect(pathsState({ ...base, incomeLimit: 27859 }, true)).toBe("income");
+    expect(pathsState({ ...base, incomeLimit: null, incomeSkip: "no-income" }, true)).toBe("no-income");
+    expect(pathsState({ ...base, incomeLimit: null, incomeSkip: "no-rate" }, true)).toBeNull();
+    expect(pathsState({ ...base, shortfall: 0, incomeLimit: 1 }, true)).toBeNull();
+    // 세션675 검사 F5 — 금리를 못 받은 날은 ① 예고도 없음(넣어도 소득 기준을 못 낸다)
+    expect(pathsState({ ...base, incomeLimit: null, incomeSkip: "no-income" }, false)).toBeNull();
+  });
+
+  // ⚠️ 변이 대상(F5): ① 조건에서 금리 여부를 빼면 빨강
+  it("금리를 못 받은 날 소득 빈칸 + 부족 → ① 예고를 띄우지 않는다", () => {
+    render(<FundingPlanner apt={apt()} rates={[]} />);
+    expect(screen.getByTestId("fp-shortfall")).toBeTruthy();
+    expect(pathsBox()).toBeNull();
+    expect(text()).not.toContain("금융사 종류별 차이도 같이 보여 드려요");
   });
 
   it("더 필요한 돈 ≤ 0 — 소득까지 계산했으면 초록 문장, 소득 빈칸이면 중립 문장(초록 금지)", () => {
@@ -115,6 +177,7 @@ describe("FundingPlanner — 계산 화면", () => {
     type("fp-income", "4800");
     expect(screen.getByTestId("fp-income-skip").textContent).toBe("금리를 아직 못 받아 소득 기준은 계산하지 않았어요");
     expect(screen.queryByTestId("fp-monthly")).toBeNull();
+    expect(pathsBox()).toBeNull(); // 금리 없음 = 소득 기준을 못 가려 안내도 없음
     expect(text()).not.toContain("0원");
   });
 
@@ -176,11 +239,36 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     expect(text()).toContain(
       "위 막대와 아래 '한 달에 갚을 돈'은 소득을 모르고 낸 값이에요. 이 카드는 입력한 소득 기준이에요."
     );
-    expect(text()).toContain("분양가 기준이에요(입주 때 감정가가 더 낮으면 줄어요).");
+    expect(screen.getByTestId("fp-balance-basis").textContent).toBe(
+      "분양가 기준이에요(입주 때 감정가가 더 낮으면 줄어요)."
+    );
+    // 회색 작은 글 세 문장은 카드 맨 아래 한 덩어리(세션675)
+    const notes = screen.getByTestId("fp-notes");
+    expect(notes.contains(screen.getByTestId("fp-cost-note"))).toBe(true);
+    expect(notes.contains(screen.getByTestId("fp-transfer"))).toBe(true);
+    expect(notes.contains(screen.getByTestId("fp-basis"))).toBe(true);
     m.unmount();
     render(<FundingPlanner apt={apt({ region: "부산", gu: "해운대구" })} rates={RATES} />);
     expect(screen.getByTestId("fp-basis").textContent).toContain("스트레스 DSR 3단계(지방 0.75%p(2026-12-31까지))");
     expect(screen.getByTestId("fp-basis").textContent).not.toContain("3.0%p");
+  });
+
+  // 세션675 결정 나 — 은행업감독업무시행세칙 별표 18 「5. 담보가치 산정」 다목: 수도권 투기과열지구 잔금대출은 분양가액 제외
+  it("잔금 담보가치 줄 — 수도권 규제지역은 '입주할 때 감정가·시세로 다시 재요', 비규제·지방은 분양가 기준 문장", () => {
+    const REG =
+      "위 금액은 분양가로 어림한 값이에요. 이 지역(투기과열지구)은 잔금대출을 입주할 때 감정가·시세로 다시 재서 금액이 달라질 수 있어요.";
+    const PRE = "분양가 기준이에요(입주 때 감정가가 더 낮으면 줄어요).";
+    const cases: Array<[Record<string, unknown>, string]> = [
+      [{ region: "서울", gu: "강남구", isRegulated: true }, REG],
+      [{ region: "경기", gu: "화성시", isRegulated: true }, REG], // DB 표시 우선(동탄구)
+      [{ region: "경기", gu: "평택시", isRegulated: false }, PRE],
+      [{ region: "부산", gu: "해운대구", isRegulated: true }, PRE], // 수도권이 아니면(가정) 분양가 문장
+    ];
+    for (const [o, want] of cases) {
+      const r = render(<FundingPlanner apt={apt(o)} rates={RATES} />);
+      expect(screen.getByTestId("fp-balance-basis").textContent).toBe(want);
+      r.unmount();
+    }
   });
 
   const regulated = (o: Record<string, unknown> = {}) =>
@@ -304,10 +392,16 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
     render(<FundingPlanner apt={apt({ price: 45000 })} rates={RATES} />);
     const chip84 = screen.getByRole("button", { name: "84A · 4억 6,000만" });
     expect(chip84.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("funding-planner").textContent).toContain("84A 기준");
+    // 단추 값 = 그 평형의 최고 분양가 — 제목이 그렇게 말한다(세션675 사장님 결정 2)
+    expect(screen.getByTestId("fp-unit-chips").textContent).toContain(
+      "평형별 최고 분양가 (청약홈 공고 · 같은 평형도 층·호마다 달라요)"
+    );
     const chip59 = screen.getByRole("button", { name: "59A · 3억 9,800만" });
     fireEvent.click(chip59);
     expect(chip59.getAttribute("aria-pressed")).toBe("true");
     expect(screen.getByTestId("fp-region-limit").textContent).toContain("2억 7,860만");
+    expect(screen.getByTestId("funding-planner").textContent).toContain("59A 기준");
     fireEvent.click(chip84);
     const unitCalls = vi.mocked(trackEvent).mock.calls.filter((c) => c[0] === "funding_planner_unit");
     expect(unitCalls).toEqual([["funding_planner_unit", { aptId: "ah-1" }]]);
@@ -339,13 +433,57 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
     }
   });
 
+  // 세션675 — 「신청·연결·해결·추천」과 금융회사·상품 이름 0(대부업 문장도 빼기 — 결정 가-2)
+  const BANNED = [
+    "미분양이라 대출이 더",
+    "후순위로 해결",
+    "연결",
+    "신청",
+    "추천",
+    "대부",
+    "해결",
+    "보장",
+    "국민",
+    "신한",
+    "농협은행",
+    "하나은행",
+    "우리은행",
+    "카카오",
+    "케이뱅크",
+    "토스",
+    "아이엠뱅크",
+    "디딤돌",
+    "보금자리",
+  ];
+
+  it("금지 문구 0 — 금융사 종류별 안내 세 갈래(①②③)를 전부 그린 상태에서", () => {
+    const states: string[] = [];
+    // ① 소득 빈칸
+    let r = render(<FundingPlanner apt={apt()} rates={RATES} />);
+    states.push(pathsBox()?.getAttribute("data-state") ?? "");
+    for (const w of BANNED) expect(text()).not.toContain(w);
+    r.unmount();
+    // ② 소득 한도 부족
+    r = render(<FundingPlanner apt={apt()} rates={RATES} />);
+    type("fp-income", "4800");
+    states.push(pathsBox()?.getAttribute("data-state") ?? "");
+    for (const w of BANNED) expect(text()).not.toContain(w);
+    r.unmount();
+    // ③ 지역 한도 부족
+    r = render(<FundingPlanner apt={apt()} rates={RATES} />);
+    type("fp-income", "20000");
+    states.push(pathsBox()?.getAttribute("data-state") ?? "");
+    for (const w of BANNED) expect(text()).not.toContain(w);
+    r.unmount();
+    expect(states).toEqual(["no-income", "income", "region"]);
+  });
+
   it("금지 문구 0 — 안내 문장·종전 줄·자세히까지 다 연 상태에서", () => {
-    const BANNED = ["미분양이라 대출이 더", "후순위로 해결", "연결", "신청하면", "대부", "해결", "보장"];
     const r = render(<FundingPlanner apt={apt()} rates={RATES} />);
     fireEvent.click(screen.getByRole("button", { name: /더 자세히/ }));
     type("fp-income", "4800");
     type("fp-cash", "100");
-    expect(screen.getByTestId("fp-dsr-notice")).toBeTruthy();
+    expect(pathsBox()?.getAttribute("data-state")).toBe("income");
     for (const w of BANNED) {
       expect(text()).not.toContain(w);
     }
@@ -377,7 +515,7 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
     type("fp-income", "2000"); // 소득 한도 < 지역 한도 1억 5,540만 → 안내 문장도 함께
     type("fp-cash", "100");
     expect(screen.getByTestId("fp-grandfather")).toBeTruthy();
-    expect(screen.getByTestId("fp-dsr-notice")).toBeTruthy();
+    expect(pathsBox()?.getAttribute("data-state")).toBe("income");
     for (const w of BANNED) {
       expect(text()).not.toContain(w);
     }
