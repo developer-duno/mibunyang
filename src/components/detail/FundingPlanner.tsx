@@ -58,20 +58,30 @@ const LINKS = [
  * 내에서 취급하는 주택구입목적 주담대" 전부다(금융위 2025-06-27 https://www.fsc.go.kr/edu/news/84845).
  * 온투업도 2026-04-02 부터 같은 규제 — 정부 정책뉴스 「2026년도 가계부채 관리방안」 "온라인투자연계금융업자도 강화된
  * 대출규제를 적용합니다.(4월 2일 시행)" https://www.korea.kr/news/policyNewsView.do?newsId=148961929.
+ * 업권 나열(은행·보험·여신전문·저축은행·상호금융) = 금융위 2026-06-30 보도자료가 LTV 강화 근거로 든 감독규정 목록
+ * (은행·보험·여신전문·저축은행·상호금융 감독규정 · https://www.fsc.go.kr/no010101/87222). 2금융 DSR 50% = 정부 정책뉴스
+ * 2021-10-26(`DSR_LIMIT_NONBANK`). 문장 글자는 세션675 「PR-A 검사 뒤 문구」 사장님 결정 3·4 원문.
  * 그래서 2금융권 DSR 50% 는 소득(DSR) 때문에 생긴 부족분(②)에만 알린다. 대부업 문장은 넣지 않는다(결정 가-2 「빼기」).
  *
  * ⚠️ 글자에 「신청·연결·해결·추천」과 금융회사·상품 이름을 쓰지 않는다(시험이 세 갈래를 다 그려 막는다).
  */
 export type PathsState = "no-income" | "income" | "region";
 
-export function pathsState(plan: {
-  shortfall: number;
-  incomeLimit: number | null;
-  incomeSkip: "no-income" | "no-rate" | null;
-  ltv: { current: { amount: number } };
-}): PathsState | null {
+/**
+ * `hasRate` = 은행 금리를 받았나. 못 받은 날은 ① 예고("연소득을 넣으면 … 보여 드려요")를 띄우지 않는다 —
+ * 소득을 넣어도 금리가 없으면 소득 기준을 못 내(`no-rate`) 약속을 못 지킨다(세션675 검사 F5).
+ */
+export function pathsState(
+  plan: {
+    shortfall: number;
+    incomeLimit: number | null;
+    incomeSkip: "no-income" | "no-rate" | null;
+    ltv: { current: { amount: number } };
+  },
+  hasRate: boolean
+): PathsState | null {
   if (!(plan.shortfall > 0)) return null;
-  if (plan.incomeLimit == null) return plan.incomeSkip === "no-rate" ? null : "no-income";
+  if (plan.incomeLimit == null) return plan.incomeSkip === "no-rate" || !hasRate ? null : "no-income";
   return plan.incomeLimit < plan.ltv.current.amount ? "income" : "region";
 }
 
@@ -83,8 +93,8 @@ export function incomePathLines(regionLimit: number): ReadonlyArray<{ head: stri
   return [
     { head: "은행", body: `소득의 ${BANK_PCT}%(DSR)까지 — 위 계산이 이 기준이에요.`, color: C.blue },
     {
-      head: "저축은행·캐피탈·보험",
-      body: `소득의 ${NONBANK_PCT}%까지라 소득 한도가 더 클 수 있어요. 금리는 은행보다 높아요. 금리 범위는 이 탭 아래 「${NONBANK_RATES_TOGGLE}」.`,
+      head: "저축은행·여신전문(캐피탈)·보험·상호금융",
+      body: `소득의 ${NONBANK_PCT}%까지라 소득 한도가 더 클 수 있어요. 금리가 은행보다 높아 한 달에 갚을 돈도 커져요. 금리 범위는 이 탭 아래 「${NONBANK_RATES_TOGGLE}」에서 볼 수 있어요.`,
       color: C.purple,
     },
     { head: "어디서든", body: `지역 한도 ${fmtPrice(regionLimit)}을 넘지는 못해요.`, color: C.amberText },
@@ -92,14 +102,14 @@ export function incomePathLines(regionLimit: number): ReadonlyArray<{ head: stri
 }
 
 export const NO_INCOME_PATH_TEXT =
-  "지금 부족한 돈은 지역 한도(LTV)로만 계산했어요. 연소득을 넣으면 소득 기준(DSR)과 금융사 종류별 차이도 같이 보여 드려요.";
+  "지금 부족한 돈은 지역 한도(LTV)로 계산했어요. 지역 한도는 먼저 받은 대출까지 합쳐서 재서 다른 금융사로도 넘기 어려워요. 연소득을 넣으면 소득 기준(DSR)과 금융사 종류별 차이도 같이 보여 드려요.";
 
 /** ③ 지역 한도 부족 */
 export function regionPathText(ltvPct: number, capped: boolean): string {
   return (
     `부족한 이유는 지역 한도(LTV ${ltvPct}%${capped ? " · 금액 한도 적용" : ""})예요. ` +
     "지역 한도는 먼저 받은 대출까지 합쳐서 재기 때문에, 다른 금융사에서 더 빌려도 합계가 이 한도를 넘기 어려워요. " +
-    "은행·저축은행·보험·캐피탈이 같고, 2026년 4월 2일부터는 온투업(온라인으로 여러 투자자의 돈을 모아 빌려주는 회사)도 같은 한도를 따라요."
+    "은행·보험·여신전문(캐피탈)·저축은행·상호금융(농협·새마을금고 등)이 같은 규정을 따르고, 2026년 4월 2일부터는 온투업(온라인으로 여러 투자자의 돈을 모아 빌려주는 회사)도 같은 한도를 따라요."
   );
 }
 
@@ -110,7 +120,7 @@ export function regionPathText(ltvPct: number, capped: boolean): string {
  * 지금 규제지역은 전부 서울·경기(수도권) 투기과열지구라(`regulation-zones.json`) 수도권 규제지역에만 붙인다.
  */
 export const REGULATED_BALANCE_BASIS =
-  "이 지역(투기과열지구)은 잔금대출을 분양가가 아니라 입주할 때 감정가·시세로 다시 재요.";
+  "위 금액은 분양가로 어림한 값이에요. 이 지역(투기과열지구)은 잔금대출을 입주할 때 감정가·시세로 다시 재서 금액이 달라질 수 있어요.";
 export const PRESALE_BALANCE_BASIS = "분양가 기준이에요(입주 때 감정가가 더 낮으면 줄어요).";
 
 /** 평형 칩 계측은 한 페이지 세션에 한 번 */
@@ -242,7 +252,8 @@ export const UnitChips = memo(function UnitChips({ aptId, unit }: { aptId: unkno
     <div data-testid="fp-unit-chips" style={{ marginBottom: 10 }}>
       {chips.length > 0 ? (
         <>
-          <div style={labelStyle}>평형 (청약홈 공고 기준)</div>
+          {/* 단추 값 = 그 평형의 최고 분양가(`noticeUnitChips` 의 top_amount) — 사장님 결정 2(세션675 검사 뒤) */}
+          <div style={labelStyle}>평형별 최고 분양가 (청약홈 공고 · 같은 평형도 층·호마다 달라요)</div>
           <div role="group" aria-label="평형 고르기" style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             {chips.map((c, i) => {
               const on = i === chipIdx;
@@ -367,7 +378,7 @@ export const FundingPlanner = memo(function FundingPlanner({
   const metroOrRegulated = plan ? plan.stressAdd === STRESS_RATE_METRO : false;
   // 수도권 투기과열지구 잔금대출은 분양가가 아니라 입주 때 감정가·시세로 잰다(결정 나 · 위 REGULATED_BALANCE_BASIS)
   const balanceBasis = zone !== "normal" && isMetroRegion(apt.region) ? REGULATED_BALANCE_BASIS : PRESALE_BALANCE_BASIS;
-  const paths = plan ? pathsState(plan) : null;
+  const paths = plan ? pathsState(plan, bankRate != null) : null;
 
   return (
     <div data-testid="funding-planner" style={boxStyle}>
@@ -533,8 +544,9 @@ export const FundingPlanner = memo(function FundingPlanner({
               label={`소득 기준(DSR ${Math.round(DSR_LIMIT_BANK * 100)}% · 스트레스 금리 ${plan.stressRate?.toFixed(2)}%, 은행 최저 금리 기준)으로 빌릴 수 있는 최대`}
               value={money(plan.incomeLimit)}
             />
-          ) : plan.incomeSkip === "no-rate" &&
-            plan.shortfall <= 0 ? null /* 아래 상자가 같은 금리 문장을 띄운다 — 두 번 안 보이게(세션660) */ : (
+          ) : (plan.incomeSkip === "no-rate" &&
+              plan.shortfall <= 0) /* 아래 상자가 같은 금리 문장을 띄운다 — 두 번 안 보이게(세션660) */ ||
+            paths === "no-income" /* ① 예고 상자가 같은 뜻을 말한다 — 한 번만(세션675 사장님 결정 3) */ ? null : (
             <div data-testid="fp-income-skip" style={{ fontSize: F.xs, color: C.muted, padding: "3px 0" }}>
               {plan.incomeSkip === "no-rate"
                 ? "금리를 아직 못 받아 소득 기준은 계산하지 않았어요"

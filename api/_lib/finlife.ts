@@ -1,6 +1,6 @@
 /**
  * finlife 오픈API 공통 모듈 — 주택담보대출/전세자금대출 공유 로직
- * loans.js, rent-loans.js에서 사용
+ * loans.js, rates.js에서 사용(전세 rent-loans 는 세션675 에 지웠다 — 부르는 화면이 없어졌다)
  */
 
 /** 허용 금융권역 코드 */

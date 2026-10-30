@@ -15,6 +15,7 @@ import { DEFAULT_GROUP } from "@/constants/loanGroups";
 import { LoanStack } from "@/components/charts/LoanStack";
 import { LoanRatesSection } from "./LoanRatesSection";
 import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
+import { SkeletonBox } from "@/components/primitives";
 import { FundingPlanner, UnitChips, unitBasisLabel } from "./FundingPlanner";
 import { LOAN_RULES_BASIS, grandfatherRule } from "@/constants/loanRules";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
@@ -72,18 +73,33 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
     <>
       {/* 평수 단추 → 막대 → 잔금 카드 → 한 달 상환 — 셋 다 고른 평수 값 하나(unit.price)로(세션675 결정 나).
         막대에 넘기는 시도·구·DB 규제 표시·DSR 은 DetailModal 이 넘긴 병합본(mergedApt ?? apt) 그대로(세션593 D1). */}
-      <UnitChips aptId={apt.id} unit={unit} />
-      <LoanStack
-        price={unit.price}
-        region={apt.region as string | null}
-        gu={apt.gu as string | null}
-        isRegulated={apt.isRegulated as boolean | null}
-        dsr40pass={apt.dsr40pass as boolean | null}
-        basisLabel={unit.hasPrice ? unitBasisLabel(unit) : null}
-      />
-      {/* 잔금 계획(세션659) — 위에서 받은 은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다 */}
-      <FundingPlanner apt={apt} rates={bankRates} unit={unit} />
-      <MonthlyPaymentBlock loan={ltvBase} rates={bankRates} disclosureMonth={disclosureMonth} />
+      {unit.pending ? (
+        // 평형표가 오는 동안은 금액 자리를 회색으로 — 대표 분양가로 먼저 그렸다가 바꾸지 않는다(세션675 검사 F7).
+        // 높이는 단추 줄 + 막대 + 잔금 카드 첫 줄 정도로 잡아 줄이 밀리지 않게 한다.
+        <div data-testid="fin-unit-pending" role="status" style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: F.xs, color: C.muted, marginBottom: 6 }}>평형별 분양가 불러오는 중…</div>
+          <SkeletonBox height={36} radius={7} />
+          <div style={{ height: 10 }} />
+          <SkeletonBox height={106} radius={8} />
+          <div style={{ height: 10 }} />
+          <SkeletonBox height={160} radius={10} />
+        </div>
+      ) : (
+        <>
+          <UnitChips aptId={apt.id} unit={unit} />
+          <LoanStack
+            price={unit.price}
+            region={apt.region as string | null}
+            gu={apt.gu as string | null}
+            isRegulated={apt.isRegulated as boolean | null}
+            dsr40pass={apt.dsr40pass as boolean | null}
+            basisLabel={unit.hasPrice ? unitBasisLabel(unit) : null}
+          />
+          {/* 잔금 계획(세션659) — 위에서 받은 은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다 */}
+          <FundingPlanner apt={apt} rates={bankRates} unit={unit} />
+          <MonthlyPaymentBlock loan={ltvBase} rates={bankRates} disclosureMonth={disclosureMonth} />
+        </>
+      )}
       <BankRateBars rates={bankRates} disclosureMonth={disclosureMonth} />
       <div
         style={{
@@ -172,12 +188,12 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>디딤돌대출</strong> — 무주택 서민 대상, 부부합산 연소득 6천만원 이하
               (생애최초·2자녀 이상 7천만원, 신혼 8.5천만원), 주택가격 5억 이하(신혼·2자녀 이상 6억), 최대 2억 (생애최초
-              2.4억, 신혼·2자녀 이상 3.2억), 금리 연 2.85~4.15% (주택도시기금 누리집 · 2026년 10월 확인)
+              2.4억, 신혼·2자녀 이상 3.2억), 금리 연 2.85~4.15% {`(${LOAN_RULES_BASIS} 기준 · 주택도시기금)`}
             </div>
             <div style={{ marginBottom: 6 }}>
               <strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하(신혼
-              8.5천만원), 주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리 (한국주택금융공사 누리집 · 2026년 10월
-              확인)
+              8.5천만원), 주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리{" "}
+              {`(${LOAN_RULES_BASIS} 기준 · 한국주택금융공사)`}
             </div>
             <div style={{ marginBottom: 6 }}>
               자세한 조건은 주택도시기금·한국주택금융공사 누리집에서 확인할 수 있어요.

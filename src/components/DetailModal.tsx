@@ -304,7 +304,7 @@ export const DetailModal = memo(function DetailModal({
 
   // 탭 상태 (세션 407 D1) — activeTab = 현재 콘텐츠 교체 탭, visited = 방문 탭 누적(keepMounted).
   // 한 번 마운트된 패널은 display:none 으로 유지: 떠난 탭의 fetch 훅 인스턴스 캐시(useRef 캐시인
-  // useLoanRates/useRentLoanRates 포함)·trackEvent dedup·펼침 상태가 모달 열림 세션 동안 보존된다.
+  // useLoanRates 포함 · 전세 금리 훅은 세션675 에 지웠다)·trackEvent dedup·펼침 상태가 모달 열림 세션 동안 보존된다.
   // 리셋 effect 없음 — App 이 detailAptId 조건부 렌더라 닫힘 = 언마운트 = state 자연 소멸.
   // 불변식: activeTab ∈ visited (초기 시딩 + handleTabChange 가 둘을 동시 갱신).
   const bodyRef = useRef<HTMLDivElement | null>(null);

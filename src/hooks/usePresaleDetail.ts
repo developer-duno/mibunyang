@@ -63,10 +63,18 @@ export function _clearPresaleDetailCache(): void {
  * apartments_flat VIEW 에 없는 신규 테이블 2종을 단지 상세에서 별도 조회.
  */
 export function usePresaleDetail(apartmentId: string | null | undefined): UsePresaleDetailReturn {
-  const [schedule, setSchedule] = useState<PresaleScheduleOfficial | null>(null);
-  const [units, setUnits] = useState<ApplyhomeUnitSupply[]>([]);
-  const [firstRecruitDate, setFirstRecruitDate] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // 첫 그림부터 맞는 상태로(세션675 검사 F7) — 캐시가 있으면 그 값, 없고 id 가 있으면 "불러오는 중".
+  // 옛날엔 첫 그림이 늘 "빈 평형표 · 불러오는 중 아님"이라, 금융 탭이 대표 분양가로 금액을 먼저 그렸다가 바꿨다.
+  const [schedule, setSchedule] = useState<PresaleScheduleOfficial | null>(() =>
+    apartmentId ? (cache.get(apartmentId)?.schedule ?? null) : null
+  );
+  const [units, setUnits] = useState<ApplyhomeUnitSupply[]>(() =>
+    apartmentId ? (cache.get(apartmentId)?.units ?? []) : []
+  );
+  const [firstRecruitDate, setFirstRecruitDate] = useState<string | null>(() =>
+    apartmentId ? (cache.get(apartmentId)?.firstRecruitDate ?? null) : null
+  );
+  const [loading, setLoading] = useState(() => Boolean(apartmentId) && !cache.has(apartmentId as string));
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(

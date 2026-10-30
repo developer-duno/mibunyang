@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { DetailModal } from "./DetailModal";
 import { trackEvent } from "@/lib/analytics";
 import { makeScoredItem } from "@/__tests__/factories";
@@ -1167,32 +1167,34 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
      * @returns {any} */
     const itemWithApt = (aptOver) => ({ ...makeItem(), apt: { ...makeItem().apt, ...aptOver } });
     /** @param {Record<string, unknown>} aptOver */
-    const financeText = (aptOver) => {
+    // 세션675 검사 F7 — 평형표를 받는 동안은 금액 자리가 회색 자리표시라, 자리표시가 걷힌 뒤 글자를 읽는다
+    const financeText = async (aptOver) => {
       const { container } = render(<DetailModal {...makeProps({ item: itemWithApt(aptOver) })} />);
       fireEvent.click(screen.getByRole("tab", { name: "금융" }));
+      await waitFor(() => expect(container.querySelector('[data-testid="fin-unit-pending"]')).toBeNull());
       return container.querySelector("#sec-finance")?.textContent ?? "";
     };
 
-    it("서울 강남 5억(규제) → 빌릴 수 있는 돈 2억", () => {
-      const t = financeText({ price: 50000, region: "서울", gu: "강남구", isRegulated: true });
+    it("서울 강남 5억(규제) → 빌릴 수 있는 돈 2억", async () => {
+      const t = await financeText({ price: 50000, region: "서울", gu: "강남구", isRegulated: true });
       expect(t).toContain("빌릴 수 있는 돈 2억");
     });
 
-    it("부산 5억(비규제) → 빌릴 수 있는 돈 3억 5,000만", () => {
-      const t = financeText({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false });
+    it("부산 5억(비규제) → 빌릴 수 있는 돈 3억 5,000만", async () => {
+      const t = await financeText({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false });
       expect(t).toContain("빌릴 수 있는 돈 3억 5,000만");
     });
 
-    it("화성시 5억 + DB 규제 표시 참(동탄구) → 이름은 비규제여도 2억", () => {
-      const t = financeText({ price: 50000, region: "경기", gu: "화성시", isRegulated: true });
+    it("화성시 5억 + DB 규제 표시 참(동탄구) → 이름은 비규제여도 2억", async () => {
+      const t = await financeText({ price: 50000, region: "경기", gu: "화성시", isRegulated: true });
       expect(t).toContain("빌릴 수 있는 돈 2억");
       expect(t).not.toContain("빌릴 수 있는 돈 3억 5,000만");
     });
 
     // 세션593 D1 — 막대 금액은 만원까지, 숫자 3칸은 없다, 아래 글에 분양가.
     // ⚠️ 뮤테이션 대상: LoanAnalysis 의 LoanStack `price=` 를 빼면 막대가 "계산할 수 없어요"가 되어 빨강.
-    it("규제 5억 3,020만 → 막대 '대출 2억 1,208만 · 내 돈 3억 1,812만' · 분양가 글 · 숫자 3칸 없음", () => {
-      const t = financeText({ price: 53020, region: "서울", gu: "강남구", isRegulated: true });
+    it("규제 5억 3,020만 → 막대 '대출 2억 1,208만 · 내 돈 3억 1,812만' · 분양가 글 · 숫자 3칸 없음", async () => {
+      const t = await financeText({ price: 53020, region: "서울", gu: "강남구", isRegulated: true });
       expect(t).toContain("대출 2억 1,208만");
       expect(t).toContain("내 돈 3억 1,812만");
       expect(t).toContain("분양가 5억 3,020만 · 규제지역 기준 최대 40%");

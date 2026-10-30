@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
-import { zoneOf, calcLTV, ZONE_TYPE, METRO_LOAN_CAP } from "@/constants/regulations";
+import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE, METRO_LOAN_CAP } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
 /**
@@ -33,6 +33,16 @@ import { fmtPrice } from "@/lib/format";
  */
 const INNER_LABEL_MIN_PCT = 30;
 
+/** 막대 아래 글의 DSR 문장 — 화면 글자와 화면 읽기 설명(aria)이 같은 글을 쓴다(세션675 검사 F11) */
+export const DSR_PASS_TEXT = "소득 대비 상환 부담(DSR) 기준도 통과할 만해요.";
+export const DSR_FAIL_TEXT =
+  "다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요. 연소득을 넣으면 아래 카드에서 볼 수 있어요.";
+/**
+ * 수도권 규제지역(투기과열지구) 꼬리 — 잔금대출은 분양가가 아니라 입주 때 감정가·시세로 잰다(은행업감독업무시행세칙
+ * 별표 18 「5. 담보가치 산정」 다목 · 잔금 카드 `REGULATED_BALANCE_BASIS` 와 같은 조건 · 세션675 사장님 결정 1)
+ */
+export const REGULATED_BALANCE_TAIL = "잔금 때는 감정가·시세로 다시 재요.";
+
 export const LoanStack = memo(function LoanStack({
   price,
   region,
@@ -62,11 +72,16 @@ export const LoanStack = memo(function LoanStack({
     return { zone, loan, own, metroCapped, loanPct: Math.round((loan / price) * 100) };
   }, [price, region, gu, isRegulated]);
 
-  const aria = calc
-    ? `분양가 ${fmtPrice(price as number)} 중 대출 가능액 ${fmtPrice(calc.loan)}, 직접 준비할 돈 ${fmtPrice(calc.own)}. ` +
-      `대출 비중 ${calc.loanPct} 퍼센트.` +
-      (dsr40pass === true ? " 소득 기준 대출 규제를 통과할 가능성이 높습니다." : "")
-    : "분양가가 없어 자금 구성을 계산할 수 없습니다.";
+  // 분양가가 없으면 막대를 통째로 그리지 않는다 — 빈 상자·"못 모았어요" 문구 없음(결정 마 원칙 · 세션675 검사 F9)
+  if (!calc) return null;
+  const regulatedMetro = calc.zone !== "normal" && isMetroRegion(region);
+
+  const aria =
+    `분양가 ${fmtPrice(price as number)} 중 대출 가능액 ${fmtPrice(calc.loan)}, 직접 준비할 돈 ${fmtPrice(calc.own)}. ` +
+    `대출 비중 ${calc.loanPct} 퍼센트.` +
+    (dsr40pass === true ? ` ${DSR_PASS_TEXT}` : "") +
+    (dsr40pass === false ? ` ${DSR_FAIL_TEXT}` : "") +
+    (regulatedMetro ? ` ${REGULATED_BALANCE_TAIL}` : "");
 
   return (
     <ChartFrame
@@ -77,8 +92,6 @@ export const LoanStack = memo(function LoanStack({
         "따라 더 낮아질 수 있어서, 여기 나온 금액은 최대치로 봐 주세요."
       }
       ariaLabel={aria}
-      empty={!calc}
-      emptyReason="분양가를 아직 모으지 못해 자금 구성을 계산할 수 없어요"
       height={106}
       titleAside={
         basisLabel ? (
@@ -99,63 +112,56 @@ export const LoanStack = memo(function LoanStack({
         ) : null
       }
     >
-      {calc && (
-        <div>
-          <div style={{ display: "flex", height: 26, borderRadius: 6, overflow: "hidden" }} aria-hidden>
-            <div
-              style={{
-                width: `${calc.loanPct}%`,
-                background: C.blue,
-                color: C.white,
-                fontSize: F.micro,
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-              }}
-            >
-              {calc.loanPct >= INNER_LABEL_MIN_PCT ? `대출 ${fmtPrice(calc.loan)}` : ""}
-            </div>
-            <div
-              style={{
-                flex: 1,
-                // 흰 글자가 올라가므로 진한 주황(흰 글자 대비 5.02:1 · 세션675 「주황 글자 진하게」)
-                background: C.amberText,
-                color: C.white,
-                fontSize: F.micro,
-                fontWeight: 700,
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                whiteSpace: "nowrap",
-                overflow: "hidden",
-              }}
-            >
-              {100 - calc.loanPct >= INNER_LABEL_MIN_PCT ? `내 돈 ${fmtPrice(calc.own)}` : ""}
-            </div>
+      <div>
+        <div style={{ display: "flex", height: 26, borderRadius: 6, overflow: "hidden" }} aria-hidden>
+          <div
+            style={{
+              width: `${calc.loanPct}%`,
+              background: C.blue,
+              color: C.white,
+              fontSize: F.micro,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+            }}
+          >
+            {calc.loanPct >= INNER_LABEL_MIN_PCT ? `대출 ${fmtPrice(calc.loan)}` : ""}
           </div>
-          <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: F.xs }}>
-            <span style={{ color: C.blue, fontWeight: 700 }}>빌릴 수 있는 돈 {fmtPrice(calc.loan)}</span>
-            <span style={{ color: C.amberText, fontWeight: 700 }}>직접 준비할 돈 {fmtPrice(calc.own)}</span>
-          </div>
-          <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
-            {`분양가 ${fmtPrice(price as number)} · `}
-            {calc.metroCapped
-              ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 최대 ${fmtPrice(METRO_LOAN_CAP)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
-              : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
-            {dsr40pass === true && (
-              <span style={{ color: C.green }}> 소득 대비 상환 부담(DSR) 기준도 통과할 만해요.</span>
-            )}
-            {dsr40pass === false && (
-              <span style={{ color: C.amberText }}>
-                {" 다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요. 연소득을 넣으면 아래 카드에서 볼 수 있어요."}
-              </span>
-            )}
+          <div
+            style={{
+              flex: 1,
+              // 흰 글자가 올라가므로 진한 주황(흰 글자 대비 5.02:1 · 세션675 「주황 글자 진하게」)
+              background: C.amberText,
+              color: C.white,
+              fontSize: F.micro,
+              fontWeight: 700,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+            }}
+          >
+            {100 - calc.loanPct >= INNER_LABEL_MIN_PCT ? `내 돈 ${fmtPrice(calc.own)}` : ""}
           </div>
         </div>
-      )}
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: F.xs }}>
+          <span style={{ color: C.blue, fontWeight: 700 }}>빌릴 수 있는 돈 {fmtPrice(calc.loan)}</span>
+          <span style={{ color: C.amberText, fontWeight: 700 }}>직접 준비할 돈 {fmtPrice(calc.own)}</span>
+        </div>
+        <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
+          {`분양가 ${fmtPrice(price as number)} · `}
+          {calc.metroCapped
+            ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 최대 ${fmtPrice(METRO_LOAN_CAP)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
+            : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
+          {dsr40pass === true && <span style={{ color: C.green }}>{` ${DSR_PASS_TEXT}`}</span>}
+          {dsr40pass === false && <span style={{ color: C.amberText }}>{` ${DSR_FAIL_TEXT}`}</span>}
+          {regulatedMetro && <span data-testid="loan-stack-regulated">{` ${REGULATED_BALANCE_TAIL}`}</span>}
+        </div>
+      </div>
     </ChartFrame>
   );
 });

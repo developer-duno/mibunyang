@@ -1,22 +1,12 @@
 // @ts-check
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LoanAnalysis } from "./LoanAnalysis";
 import { makeApt } from "@/__tests__/factories";
 import { useLoanRates } from "@/hooks/useLoanRates";
 import { FundingPlanner } from "./FundingPlanner";
 import { LOAN_RULES_BASIS } from "@/constants/loanRules";
-import { useRentLoanRates } from "@/hooks/useRentLoanRates";
 import { usePresaleDetail } from "@/hooks/usePresaleDetail";
-
-// 전세대출 금리 — 세션675 에 면적별 표(월이자)와 함께 지웠다. 모킹은 "이제 안 부른다"를 재려고 남긴다.
-vi.mock("@/hooks/useRentLoanRates", () => ({
-  useRentLoanRates: vi.fn(() => ({
-    rates: [{ bank: "테스트은행", product: "전세대출A", rateMin: 3.8, rateMax: 4.5 }],
-    loading: false,
-    error: null,
-  })),
-}));
 
 // 주담대 은행권 금리 — LoanAnalysis 가 한 번 받아 "한 달에 갚을 돈"·은행 범위 줄이 같이 쓴다(세션593 D2·D3 · 세션665).
 // 아파트·분할상환 4.2% 하나만 두면 월 상환액 줄 "대출 X · 30년 …" 에서 대출액(= 위 대출 막대와 같은 값)을 읽을 수 있다.
@@ -60,6 +50,11 @@ vi.mock("./LoanRatesSection", () => ({
 const loanLine = (/** @type {string} */ amount) => screen.getByText(new RegExp(`^대출 ${amount} · 30년 · `));
 
 describe("LoanAnalysis", () => {
+  // 시험 하나가 중간에 실패해도 갈아 끼운 평형표가 뒤 시험에 새지 않게(세션675 검사 F12)
+  afterEach(() => {
+    vi.mocked(usePresaleDetail).mockImplementation(() => NO_UNITS);
+  });
+
   // 세션593 D1 — 숫자 3칸(분양가·LTV 대출한도·필요 자기자본)은 위 대출 막대로 합쳤다.
   // ⚠️ 변이 대상: 3칸을 되살리면 빨강.
   it("숫자 3칸(분양가·LTV 대출한도·필요 자기자본)이 없다", () => {
@@ -172,9 +167,10 @@ describe("LoanAnalysis", () => {
     expect(text).not.toContain("9억 이하 70%");
     expect(text).not.toContain("전 금융권 40%");
     // 세션675 라 「숫자 유지 + 기준일·출처」 · 「빨간 '참고용' 문장 지우기」
-    expect(text).toContain("금리 연 2.85~4.15% (주택도시기금 누리집 · 2026년 10월 확인)");
-    expect(text).toContain("고정금리 (한국주택금융공사 누리집 · 2026년 10월 확인)");
-    expect(text.split("2026년 10월 확인").length - 1).toBe(2);
+    // 꼬리 꼴 = 사장님 결정 원문 「2026년 10월 기준 · 주택도시기금」(세션675 검사 F8)
+    expect(text).toContain("금리 연 2.85~4.15% (2026년 10월 기준 · 주택도시기금)");
+    expect(text).toContain("고정금리 (2026년 10월 기준 · 한국주택금융공사)");
+    expect(text).not.toContain("누리집 · 2026년 10월 확인");
     expect(text).not.toContain("참고용");
     expect(text).not.toContain("금융기관에 확인하세요");
   });
@@ -242,8 +238,7 @@ describe("LoanAnalysis", () => {
 
   // 세션675 결정 다 「3개 다 지우기」 — 면적별 매매/대출 표(시·군·구 전체 시세)와 그 표만 쓰던 전세 금리 조회를 지웠다.
   // ⚠️ 변이 대상: 표나 전세 금리 조회를 되살리면 빨강.
-  it("면적별 표·월이자·전세 금리 조회가 없다 — 상자 제목은 '지역 대출 규칙'", () => {
-    vi.mocked(useRentLoanRates).mockClear();
+  it("면적별 표·월이자가 없다 — 상자 제목은 '지역 대출 규칙'(전세 금리 훅 파일은 세션675 검사 F10 에 지웠다)", () => {
     const apt = makeApt({
       price: 50000,
       area: 84,
@@ -256,7 +251,6 @@ describe("LoanAnalysis", () => {
       expect(container.textContent).not.toContain(w);
     }
     expect(screen.getByText("지역 대출 규칙")).toBeTruthy();
-    expect(vi.mocked(useRentLoanRates)).not.toHaveBeenCalled();
   });
 
   // 키보드 접근성 — Enter 키로 토글
@@ -319,18 +313,37 @@ describe("LoanAnalysis", () => {
     expect(container.textContent).toContain("대출 3억 2,200만");
     expect(container.textContent).toContain("분양가 4억 6,000만 · ");
     expect(loanLine("3억 2,200만")).toBeTruthy();
-    expect(lastUnit().price).toBe(46000);
+    expect(lastUnit()?.price).toBe(46000);
     expect(container.textContent).not.toContain("3억 1,500만");
 
     fireEvent.click(screen.getByRole("button", { name: "59A · 3억 9,800만" }));
     expect(screen.getByTestId("loan-stack-basis").textContent).toBe("59A 기준");
     expect(container.textContent).toContain("대출 2억 7,860만");
     expect(loanLine("2억 7,860만")).toBeTruthy();
-    expect(lastUnit().price).toBe(39800);
-    expect(lastUnit().unitLabel).toBe("59A");
+    expect(lastUnit()?.price).toBe(39800);
+    expect(lastUnit()?.unitLabel).toBe("59A");
     // 평형표는 이 부품에서 한 번만 부른다(잔금 카드는 값을 받기만 한다)
     expect(new Set(vi.mocked(usePresaleDetail).mock.calls.map((c) => c[0]))).toEqual(new Set(["ah-9"]));
-    vi.mocked(usePresaleDetail).mockImplementation(() => NO_UNITS);
+  });
+
+  // 세션675 검사 F7 — 평형표가 오는 동안 금액을 대표 분양가로 먼저 그렸다가 바꾸지 않는다.
+  // ⚠️ 변이 대상: 로딩 중에도 막대·카드·한 달 상환을 그리면 빨강.
+  it("평형표를 불러오는 중이면 금액 자리는 회색 자리표시 — 막대·카드·한 달 상환·단추 없음, 은행 금리는 그대로", () => {
+    vi.mocked(usePresaleDetail).mockReturnValue({ ...NO_UNITS, loading: true });
+    vi.mocked(FundingPlanner).mockClear();
+    const { container } = render(
+      <LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 45000, region: "부산", gu: "해운대구" }))} />
+    );
+    const pending = screen.getByTestId("fin-unit-pending");
+    expect(pending.getAttribute("role")).toBe("status");
+    expect(pending.textContent).toContain("불러오는 중");
+    expect(container.textContent).not.toContain("빌릴 수 있는 돈");
+    expect(container.textContent).not.toContain("3억 1,500만");
+    expect(screen.queryByTestId("monthly-payment")).toBeNull();
+    expect(screen.queryByTestId("fp-unit-chips")).toBeNull();
+    expect(vi.mocked(FundingPlanner)).not.toHaveBeenCalled();
+    expect(screen.getByTestId("bank-rate-bars")).toBeTruthy();
+    for (const w of ["못 모았", "모으지 못"]) expect(container.textContent).not.toContain(w);
   });
 
   it("분양가가 없으면 평형표를 부르지 않고 단추 줄도 없다", () => {

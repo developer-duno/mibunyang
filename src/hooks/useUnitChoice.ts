@@ -25,13 +25,15 @@ export type UnitChoice = {
   unitLabel: string | null;
   schedule: PresaleScheduleOfficial | null;
   firstRecruitDate: string | null;
+  /** 평형표를 불러오는 중 — 이때는 금액을 그리지 않는다(대표 분양가로 먼저 그렸다 바꾸지 않게 · 세션675 검사 F7) */
+  pending: boolean;
 };
 
 export function useUnitChoice(apt: Apt): UnitChoice {
   const aptPrice = Number(apt.price ?? 0);
   const hasPrice = Number.isFinite(aptPrice) && aptPrice > 0;
   // 분양가가 없으면 금융 탭이 계산하지 않으니 평형표도 부르지 않는다
-  const { schedule, units, firstRecruitDate } = usePresaleDetail(hasPrice ? String(apt.id) : null);
+  const { schedule, units, firstRecruitDate, loading } = usePresaleDetail(hasPrice ? String(apt.id) : null);
   const [sel, setSel] = useState<number | null>(null);
 
   const chips = useMemo(() => noticeUnitChips(units), [units]);
@@ -40,5 +42,16 @@ export function useUnitChoice(apt: Apt): UnitChoice {
   const price = chipIdx >= 0 ? chips[chipIdx].price : aptPrice;
   const unitLabel = chipIdx >= 0 ? chips[chipIdx].label : null;
 
-  return { hasPrice, aptPrice, chips, chipIdx, select: setSel, price, unitLabel, schedule, firstRecruitDate };
+  return {
+    hasPrice,
+    aptPrice,
+    chips,
+    chipIdx,
+    select: setSel,
+    price,
+    unitLabel,
+    schedule,
+    firstRecruitDate,
+    pending: hasPrice && loading,
+  };
 }

@@ -4,11 +4,34 @@ import { LoanStack } from "./LoanStack";
 import { calcLTV, getZone } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
-describe("LoanStack — 분양가가 없으면 계산하지 않는다", () => {
-  it.each([null, undefined, 0, -1, NaN])("price=%s 면 이유를 적고 안 그린다", (p) => {
-    render(<LoanStack price={p as number | null} region="서울" gu="강남구" />);
-    expect(screen.getByText(/자금 구성을 계산할 수 없어요/)).toBeInTheDocument();
-    expect(screen.queryByRole("img")).toBeNull();
+describe("LoanStack — 분양가가 없으면 그리지 않는다", () => {
+  // 세션675 검사 F9 — 빈 상자·"못 모았어요" 문구 없이 통째로 안 그린다(결정 마 원칙)
+  it.each([null, undefined, 0, -1, NaN])("price=%s 면 아무것도 안 그린다", (p) => {
+    const { container } = render(<LoanStack price={p as number | null} region="서울" gu="강남구" />);
+    expect(container.innerHTML).toBe("");
+  });
+});
+
+describe("LoanStack — 수도권 규제지역 꼬리 · 화면 읽기 설명 (세션675 검사 F1·F11)", () => {
+  // 은행업감독업무시행세칙 별표 18 「5. 담보가치 산정」 다목 — 수도권 투기과열지구 잔금대출은 분양가액 제외
+  it("서울 규제 → 막대 아래 글 끝 '잔금 때는 감정가·시세로 다시 재요.' · 비규제·지방 규제는 없음", () => {
+    const a = render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated />);
+    expect(screen.getByTestId("loan-stack-regulated").textContent).toBe(" 잔금 때는 감정가·시세로 다시 재요.");
+    a.unmount();
+    const b = render(<LoanStack price={50000} region="경기" gu="평택시" isRegulated={false} />);
+    expect(screen.queryByTestId("loan-stack-regulated")).toBeNull();
+    b.unmount();
+    render(<LoanStack price={50000} region="부산" gu="해운대구" isRegulated />);
+    expect(screen.queryByTestId("loan-stack-regulated")).toBeNull();
+  });
+
+  it("aria 설명에 DSR 미통과 문장과 규제지역 꼬리가 같이 들어간다", () => {
+    render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated dsr40pass={false} />);
+    const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
+    expect(label).toContain(
+      "다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요. 연소득을 넣으면 아래 카드에서 볼 수 있어요."
+    );
+    expect(label).toContain("잔금 때는 감정가·시세로 다시 재요.");
   });
 });
 
