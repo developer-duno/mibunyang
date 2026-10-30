@@ -87,6 +87,18 @@ const DM_S = {
   verdictBlind: { fontSize: F.sm, color: C.muted, textAlign: "center" as const, marginBottom: 8 },
   // 입지 탭 교통 사실 한 줄(세션591 L3) — 판정이 가려졌을 때(비로그인)도 보이는 원자료 글자
   factLine: { fontSize: F.sm, fontWeight: 600, color: C.sub, textAlign: "center" as const, marginBottom: 8 },
+  // 시세 탭 맨 위 상세 묶음 불러오기 상태 한 줄(세션675 H1)
+  detailStatus: { fontSize: F.sm, color: C.muted, marginBottom: 8 },
+  detailRetryBtn: {
+    fontSize: F.sm,
+    fontWeight: 600,
+    color: C.blue,
+    background: "none",
+    border: "none",
+    padding: "4px 2px",
+    textDecoration: "underline",
+    cursor: "pointer",
+  },
   scoreBadgeWrap: { textAlign: "center" as const, marginBottom: 16 },
   metricsHead: { fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 },
   metricsRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
@@ -170,6 +182,9 @@ export const DetailModal = memo(function DetailModal({
   const [detailForId, setDetailForId] = useState<string | null>(null);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
+  // 「다시 불러오기」 단추가 올리는 수 — 상세 묶음 effect 의존값이라 같은 fetch 를 다시 부른다(세션675 H1).
+  //   실패한 요청은 staticDataApi 가 캐시에 남기지 않으므로(loadDetailBucketOnce finally) 다시 부르면 새로 받는다.
+  const [detailRetry, setDetailRetry] = useState(0);
   useEffect(() => {
     if (!item) return;
     prevFocusRef.current = document.activeElement;
@@ -273,7 +288,7 @@ export const DetailModal = memo(function DetailModal({
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [item, detailRetry]);
   // 상세 필드 병합 — useMemo + item?.apt.id deps 로 item ref 변경마다 무효화 차단.
   // hook 순서 보장 위해 conditional return 이전에 호출. item 미정의 시 undefined 반환.
   // 버킷의 가격배열·학교·어린이집·혜택·catsCache(full) 를 목록의 슬림 apt 위에 덮음.
@@ -693,6 +708,22 @@ export const DetailModal = memo(function DetailModal({
                 {/* 비교 범위 머리 줄 + 비교 표(분양가·중앙값·차이·전세가율) + 동네 사실 줄 + 출처 (세션 430 · 589 · 609 · 651).
                   범위(cmpScope)·게이트(`fairPrice > 0`)의 근거는 `detail/PricePositionBox` 머리 주석.
                   전부 점수가 아니라 값이라 비로그인에게도 공개다. 옛 PSR 줄은 PSR 축 삭제(세션607 다)와 함께 지웠다. */}
+                {/* 상세 묶음 불러오기 상태 한 줄(세션675 H1) — 옛 소비처(시·군·구 시세 표·대출 분석 표)를 지워 이 상태를 읽는 곳이
+                  0 이 됐다. 불러오는 중이면 회색 한 줄, 실패면 일시 실패 안내 + 다시 불러오기, 성공이면 아무것도 없다.
+                  (「못 모았어요」 같은 수집 사정 글이 아니다 — 지금 이 창의 네트워크 실패다.) */}
+                {pricesLoading && (
+                  <div data-testid="detail-load-status" role="status" style={DM_S.detailStatus}>
+                    상세 자료 불러오는 중…
+                  </div>
+                )}
+                {!pricesLoading && pricesError && (
+                  <div data-testid="detail-load-status" role="status" style={DM_S.detailStatus}>
+                    상세 자료를 불러오지 못했어요{" "}
+                    <button type="button" style={DM_S.detailRetryBtn} onClick={() => setDetailRetry((n) => n + 1)}>
+                      다시 불러오기
+                    </button>
+                  </div>
+                )}
                 <PricePositionBox priceCat={res.cats.price} apt={mergedApt ?? apt} />
                 {/* 이 단지 평형별 실거래 표(세션662 👤 B안 — 평형대로 묶기). 자료(complexTable)는 상세 버킷 전용이라 mergedApt 에서 읽는다.
                   ⚠️ 창을 닫지 않고 단지를 바꾸면 새 버킷이 올 때까지(실패하면 계속) 옛 detail 이 남아 mergedApt 에 붙는다
