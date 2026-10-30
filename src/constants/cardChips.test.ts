@@ -306,7 +306,7 @@ describe("buildCardChips — 강점/약점 판정", () => {
       ).toEqual(["jeonseRate"]);
       expect(jeonse[0].tone, String(v)).toBe("plain");
       expect(jeonse[0].layer, String(v)).toBe("neutral");
-      expect(jeonse[0].text, String(v)).toBe(`전세가율 ${v}% (전세 5건 ÷ 매매 8건)`);
+      expect(jeonse[0].text, String(v)).toBe(`전세가율 ${v}% · 전세 가운데값 ÷ 매매 가운데값 (전세 5건 · 매매 8건)`);
     }
   });
 

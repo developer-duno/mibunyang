@@ -438,7 +438,7 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
         chips.find((c) => c.id === "jeonseRate")?.text,
       ];
       for (const t of texts) expect(t, `jr=${jr}: ${t}`).not.toMatch(/적정|위험|과열|높음|낮음|주의/);
-      expect(s.detail).toBe(`${jr}% — 같은 단지 같은 평수 전세 5건 ÷ 매매 8건 중앙값`);
+      expect(s.detail).toBe(`${jr}% — 같은 단지 같은 평수 전세 가운데값 ÷ 매매 가운데값 (전세 5건 · 매매 8건)`);
     }
   });
 
@@ -467,7 +467,9 @@ describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () =>
     expect(out).toContain("분양가가 18.8% 낮음"); // 점수 탭 판정
     expect(out).toContain("차이 분양가가 18.8% 낮음"); // 시세 탭 표
     expect(chips.find((c) => c.id === "priceCompare")?.text).toBe("이 단지 실거래 중앙 6억 (12건·12개월)");
-    expect(chips.find((c) => c.id === "jeonseRate")?.text).toBe("전세가율 72.3% (전세 5건 ÷ 매매 8건)");
+    expect(chips.find((c) => c.id === "jeonseRate")?.text).toBe(
+      "전세가율 72.3% · 전세 가운데값 ÷ 매매 가운데값 (전세 5건 · 매매 8건)"
+    );
   });
 });
 

@@ -106,7 +106,7 @@ export const LoginCta = memo(function LoginCta({ onRequestLogin }: { onRequestLo
           3초 카카오 로그인하고 이 단지 점수 보기
         </span>
         <span style={{ display: "block", fontSize: F.sm, fontWeight: 500, color: KAKAO_SUB_INK, marginTop: 2 }}>
-          모든 단지의 점수·순위·내 프로필 맞춤 추천이 열립니다
+          모든 단지의 점수·순위가 열리고, 내 프로필 기준으로 다시 볼 수 있어요
         </span>
       </span>
     </div>

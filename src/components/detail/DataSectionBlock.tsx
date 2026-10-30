@@ -1,14 +1,11 @@
 import { memo, useState } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
-import { fmtPrice } from "@/lib/format";
 import { computeCompleteness } from "@/lib/completeness";
 import { fieldsOf, dataValueColor } from "@/lib/dataSections";
 import { HighlightField } from "./HighlightField";
 import { CompletenessDonut } from "./CompletenessDonut";
 import { HelpHint } from "@/components/HelpHint";
-import { ChartFrame } from "@/components/charts/ChartFrame";
-import { StepBars } from "@/components/charts/StepBars";
 import type { Apt } from "@/types/scoring";
 import type { DataSection } from "@/types/components/DataSections.types";
 
@@ -150,53 +147,7 @@ export const NearbyFacilitiesBlock = memo(function NearbyFacilitiesBlock({ apt }
   );
 });
 
-// 층별 매매가 (시·군·구 전체 실거래) — 계단 칸 + 평균 거래 층수·거래 층 범위 흡수 (→ 시세 탭, 세션508 PR-3b B3)
-//
-// 왜 계단 칸인가 — 층이 오를수록 값이 뚜렷이 오른다(1-5층/6-15층/16층+ 3구간 실측,
-// 세션508). 표로 세 줄 늘어놓으면 그 오름세가 안 읽히는데, 막대 높이로 그리면 한눈에 든다.
-//
-// 왜 이 블록이 avgFloor·floorRange 까지 떠맡나 — 셋이 **정확히 같은 1,488 단지**에서만 성립하기
-// 때문이다(개수만 같은 게 아니라 행 집합이 동일 — 같은 "시·군·구 전체 실거래" 계산에서 함께 나온다).
-// ⚠️ 비율로 적을 땐 모수를 같이 적는다: 정적 JSON n=1,597 기준 93.2% / 운영 API n=1,646 기준
-// 90.4%(2026-08-10 실측). 초안의 "94.2%" 는 어느 모수로도 재현되지 않았다(모수 1,579~1,580 이
-// 필요한데 그런 필드가 없다) — 세션509 적대검증에서 정정. 구조 주장(셋이 같다)은 참이었다.
-// priceByFloor 가 비면 나머지 둘도 사실상 같이 빈다. 그래서
-// 블록을 통째로 숨기는 게이트(priceByFloor 없으면 렌더 안 함)를 그대로 셋의 게이트로 쓴다 —
-// 별도 카드를 하나 더 만들면 "빈 카드 옆에 또 빈 카드"가 나란히 뜰 뻔했다.
-export const PriceByFloorBlock = memo(function PriceByFloorBlock({ apt }: { apt: Apt }) {
-  const rows = (apt.priceByFloor as Array<{ group: string; avg: number; count: number }> | undefined) ?? [];
-  if (rows.length === 0) return null;
-
-  // SourceComparison 이 하던 폴백 은폐를 그대로 이관한다 — 우리 값이 없어 네이버 값을 대신
-  // 앉힌 상태(`_fallbackAvgFloor`)면 "N층"이 아니라 "미수집"으로 적어야 한다. 안 그러면
-  // 네이버 값을 우리가 잰 값처럼 말하게 된다(옛 두 출처 대조표의 원칙 — 그 표는 세션589 에 `detail/NaverListingLine` 한 줄로 바뀌었다).
-  const isAvgFloorFallback = apt._fallbackAvgFloor === true;
-  const avgFloor = isAvgFloorFallback ? null : (apt.avgFloor as number | null | undefined);
-  // floorRange 는 대응하는 폴백 플래그가 없다(확인 완료) — 값이 있으면 그대로 쓴다.
-  const floorRange = apt.floorRange as string | null | undefined;
-  const summaryParts: string[] = [];
-  if (avgFloor != null) summaryParts.push(`평균 거래 층수 ${avgFloor}층`);
-  // 단위를 여기서 붙인다 — DB 값은 "1~23" 처럼 **단위가 없다**(라이브 1,488건 전수 확인).
-  // 옛 격자에선 "거래 층수 범위" 라벨이 문맥을 줬지만 문장 안에서는 "거래 층 1~23" 으로 끊겨
-  // 어색해진다. 값에 이미 "층" 이 붙어 오는 날을 대비해 한 번 떼고 다시 붙인다.
-  if (floorRange != null) summaryParts.push(`거래 층 ${String(floorRange).replace(/층$/, "")}층`);
-
-  const aria =
-    `층별 평균 매매가 ${rows.length}개 구간. ` +
-    rows.map((r) => `${r.group} ${fmtPrice(r.avg)}, ${r.count}건.`).join(" ") +
-    (summaryParts.length > 0 ? ` ${summaryParts.join(", ")}.` : "");
-
-  return (
-    <ChartFrame title="층별 매매가 (시·군·구 전체 실거래)" ariaLabel={aria} height={140}>
-      <StepBars
-        items={rows.map((r) => ({ label: r.group, value: r.avg, valueText: fmtPrice(r.avg), sub: `${r.count}건` }))}
-      />
-      {summaryParts.length > 0 && (
-        <div style={{ marginTop: 8, fontSize: F.xs, color: C.sub }}>{summaryParts.join(" · ")}</div>
-      )}
-    </ChartFrame>
-  );
-});
+// 층별 매매가 (시·군·구 전체 실거래) 블록은 세션675 👤 「같이 지우기」로 지웠다(시세 탭에 시·군·구 전체 값을 두지 않는다).
 
 // 국토부 모집공고 원문 링크 (→ 분양 탭). 라벨 = "국토부 모집공고 원문" (PresaleInfo "청약홈 공고"와 차별화).
 export const AnnouncementLink = memo(function AnnouncementLink({ apt }: { apt: Apt }) {

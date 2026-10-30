@@ -2,6 +2,7 @@ import { BRAND_TIER, LAYOUT_SCORE, resolveBuilder } from "./brands";
 import { estimateParkingRatio } from "./parkingEstimate";
 import { SENTINEL_RADIUS_KM } from "./sentinels";
 import { fmtPrice, fmtMoveIn, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
+import { fmtArea } from "@/lib/area";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
 // 좁힘 보류 — `any` 사용. 호출처 호환성 우선.
@@ -44,7 +45,7 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
   dong: { label: "동", section: "개요", fmt: (v) => v ?? "—" },
   gu: { label: "구/시", section: "개요", fmt: (v) => v ?? "—" },
   region: { label: "시/도", section: "개요", fmt: (v) => v ?? "—" },
-  area: { label: "전용면적", section: "개요", unit: "㎡", fmt: (v) => n(v, "㎡") },
+  area: { label: "전용면적", section: "개요", unit: "㎡", fmt: (v) => (v != null ? fmtArea(v) : "—") },
   price: { label: "분양가", section: "개요", unit: "만원", fmt: (v) => fmtPrice(v) },
   pp: { label: "평당가", section: "개요", unit: "만원", fmt: (v) => nk(v ?? 0, "만원") },
   floors: { label: "층수 범위", section: "개요", fmt: (v) => v ?? "—" },

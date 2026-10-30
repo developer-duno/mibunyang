@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
-import { DistanceDots, fmtDist, parseKmText } from "./DistanceDots";
+import { render, screen, fireEvent } from "@testing-library/react";
+import { DistanceDots, fmtDist, parseKmText, DOTS_LEGEND, DOTS_LEGEND_OVER, DOTS_MAX_W } from "./DistanceDots";
 import { DISTANCE_AXES } from "@/constants/distanceAxes";
 import type { Apt } from "@/types/scoring";
 
@@ -99,10 +99,90 @@ describe("DistanceDots — 렌더", () => {
     expect(screen.getByText("1.2km")).toBeInTheDocument(); // 지하철 1200m
   });
 
-  it("값이 없는 시설은 '미수집'으로 자리를 지킨다 (행이 사라지지 않는다)", () => {
-    render(<DistanceDots apt={apt({ martDist: null, bankDist: null })} />);
-    expect(screen.getAllByText("미수집")).toHaveLength(2);
-    expect(screen.getByText("마트")).toBeInTheDocument();
+  // 세션675 B16 — 거리 빈 줄은 개수 칸으로 가른다: 개수 0 = 수집기가 반경 안을 찾아봤는데 0곳 → 「{반경} 안에 없음」 ·
+  //   개수 null = 찾아본 적 없음 → 줄을 안 그림 · 개수 > 0 인데 거리 없음(모순) → 옛 「미수집」 그대로.
+  it("거리 null + 개수 0 → 「{수집기 반경} 안에 없음」(마트 1km · 약국 500m) · 경찰은 숨김(G1)", () => {
+    const { container } = render(
+      <DistanceDots
+        apt={apt({ martDist: null, mart: 0, pharmacyDist: null, pharmacy: 0, policeDist: null, police: 0 })}
+      />
+    );
+    const out = (k: string) => container.querySelector(`[data-row="${k}"] [data-state="out-of-range"]`)?.textContent;
+    expect(out("martDist")).toBe("1km 안에 없음");
+    expect(out("pharmacyDist")).toBe("500m 안에 없음");
+    expect(container.querySelector('[data-row="policeDist"]')).toBeNull(); // 세션675 G1 — 개수 0 이 기본값일 수 있다
+    expect(screen.queryByText("미수집")).toBeNull();
+  });
+
+  it("거리 null + 개수 null(안 찾아봄) → 그 줄을 안 그린다", () => {
+    const { container } = render(<DistanceDots apt={apt({ martDist: null, bankDist: null })} />);
+    expect(container.querySelector('[data-row="martDist"]')).toBeNull();
+    expect(container.querySelector('[data-row="bankDist"]')).toBeNull();
+    expect(screen.queryByText("미수집")).toBeNull();
+    expect(container.querySelector('[data-row="hospitalDist"]')).not.toBeNull(); // 양성 앵커
+  });
+
+  // 세션675 B16c — 카카오 8종 거리가 전부 null = 그 수집기가 안 찾아본 단지(개수 0 은 DEFAULT) → 8줄 숨김
+  const KAKAO8 = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"];
+  it("카카오 8종 거리가 전부 null 이면 개수가 0 이어도 8줄을 숨긴다 · 1종만 거리 있으면 나머지 7줄은 「안에 없음」", () => {
+    const allNull = Object.fromEntries(
+      KAKAO8.flatMap((k) => [
+        [`${k}Dist`, null],
+        [k, 0],
+      ])
+    );
+    const r1 = render(<DistanceDots apt={apt(allNull)} />);
+    for (const k of KAKAO8) expect(r1.container.querySelector(`[data-row="${k}Dist"]`), k).toBeNull();
+    expect(r1.container.querySelector('[data-row="schoolsDist"], [data-row="subwayDist"]')).not.toBeNull(); // 다른 수집기 줄은 그대로
+    r1.unmount();
+    const r2 = render(<DistanceDots apt={apt({ ...allNull, cafeDist: 120, cafe: 3 })} />);
+    expect(r2.container.querySelector('[data-row="cafeDist"]')?.textContent).toContain("120m");
+    const outs = KAKAO8.filter((k) => k !== "cafe").map(
+      (k) => r2.container.querySelector(`[data-row="${k}Dist"] [data-state="out-of-range"]`)?.textContent
+    );
+    expect(outs).toEqual([
+      "1km 안에 없음",
+      "1km 안에 없음",
+      "500m 안에 없음",
+      "1km 안에 없음",
+      "1km 안에 없음",
+      "500m 안에 없음",
+      "1km 안에 없음",
+    ]);
+  });
+
+  // 세션675 검사 보완 G1 — 경찰·어린이집 수집기는 따로(월 1회) 돌아 개수 칸 0 이 기본값(DEFAULT 0)일 수 있다.
+  //   운영 예 ap-6027791 서울 강동구 천호동 「비오르」: 병원 90m 인데 경찰 3km·어린이집 1km 「없음」으로 나왔다 → 두 줄 숨김.
+  it("「비오르」 꼴 — 병원은 90m 인데 경찰·어린이집 거리 null + 개수 0 이면 두 줄을 그리지 않는다", () => {
+    const { container } = render(
+      <DistanceDots
+        apt={apt({ hospitalDist: 90, hospital: 4, policeDist: null, police: 0, childcareDist: null, childcare: 0 })}
+      />
+    );
+    expect(container.querySelector('[data-row="hospitalDist"]')?.textContent).toContain("90m");
+    expect(container.querySelector('[data-row="policeDist"]')).toBeNull();
+    expect(container.querySelector('[data-row="childcareDist"]')).toBeNull();
+    expect(container.textContent).not.toMatch(/3km 안에 없음|1km 안에 없음/);
+  });
+
+  // 세션675 G3 — 도움말 끝 문장이 B16 뒤 규칙과 맞는다(옛 「'미수집'으로 둡니다」 삭제 · 카카오 반경은 수집기 사본에서)
+  it("도움말: 반경 안에 없으면 '안에 없음', 찾아보지 않은 시설은 줄을 뺀다 — '미수집'으로 둔다는 말 없음", () => {
+    render(<DistanceDots apt={apt()} />);
+    fireEvent.click(screen.getByRole("button", { name: /주변 시설까지 거리 풀이 보기/ }));
+    const tip = screen.getByRole("tooltip").textContent ?? "";
+    expect(tip).toContain("찾아보지 않은 시설은 줄을 빼요");
+    expect(tip).toContain("편의점·카페·약국은 500m, 병원·마트·문화시설·은행·공원은 1km");
+    expect(tip).not.toContain("'미수집'으로 둡니다");
+  });
+
+  it("응급의료는 반경이 없다 — 거리 null 이면 개수 0 이어도 줄을 안 그린다", () => {
+    const { container } = render(<DistanceDots apt={apt({ emergencyDist: null, emergency: 0 })} />);
+    expect(container.querySelector('[data-row="emergencyDist"]')).toBeNull();
+  });
+
+  it("개수 > 0 인데 거리 null(모순) → 옛 「미수집」 그대로", () => {
+    const { container } = render(<DistanceDots apt={apt({ martDist: null, mart: 2 })} />);
+    expect(container.querySelector('[data-row="martDist"]')?.textContent).toContain("미수집");
   });
 
   it("센티널(지하철 9999)은 점이 아니라 '10km 안에 없음' — 수집 반경을 찾아봤는데 없던 것 (세션591 L2)", () => {
@@ -134,7 +214,8 @@ describe("DistanceDots — 렌더", () => {
   });
 
   it("음수 거리는 점을 안 찍고 미수집 (보완 F9)", () => {
-    const { container } = render(<DistanceDots apt={apt({ convDist: -5, icDist: -1 })} />);
+    // conv: 3 — 개수가 있는데 거리가 깨진 줄(세션675 B16 의 「안에 없음」·숨김 판정을 타지 않게)
+    const { container } = render(<DistanceDots apt={apt({ convDist: -5, conv: 3, icDist: -1 })} />);
     expect(container.querySelector('[data-row="convDist"]')?.textContent).toContain("미수집");
     expect(container.querySelector('[data-row="icDist"]')?.textContent).toContain("미수집");
     expect(container.querySelector('[data-row="convDist"] div[style*="border-radius: 50%"]')).toBeNull();
@@ -220,10 +301,27 @@ describe("DistanceDots — 렌더", () => {
     expect(container.textContent).not.toMatch(/정확하지|참고로|오차/); // 경고문 금지
   });
 
-  it("전부 비면 왜 없는지 말한다 (고장난 줄 알지 않게)", () => {
+  // 세션675 👤 마 「숨기고, 못 모은 단지는 채우기」 — 그릴 값이 없으면 빈 상자도 "못 모았어요" 글도 없다.
+  it("전부 비면 상자째 안 그린다", () => {
     const empty = Object.fromEntries(DISTANCE_AXES.flatMap((a) => a.items.map((i) => [i.field, null])));
-    render(<DistanceDots apt={empty as unknown as Apt} />);
-    expect(screen.getByText(/아직 모으지 못했어요/)).toBeInTheDocument();
+    const { container } = render(<DistanceDots apt={empty as unknown as Apt} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("값이 하나라도 있으면 그린다 + 위에 방향 한 줄(왼쪽 = 가까움)", () => {
+    render(<DistanceDots apt={apt({ cafeDist: 120 })} />);
+    expect(screen.getByTestId("dots-legend").textContent).toBe(DOTS_LEGEND);
+  });
+
+  it("축 밖 값(속 빈 주황 점)이 있을 때만 그 뜻을 덧붙인다", () => {
+    render(<DistanceDots apt={apt({ emergencyDist: 69072 })} />);
+    expect(screen.getByTestId("dots-legend").textContent).toBe(`${DOTS_LEGEND} · ${DOTS_LEGEND_OVER}`);
+  });
+
+  it("줄 묶음마다 최대 폭이 있다 — 넓은 화면에서 이름과 값이 멀어지지 않게", () => {
+    const { container } = render(<DistanceDots apt={apt({ cafeDist: 120 })} />);
+    const axis = container.querySelector("[data-row]")?.parentElement as HTMLElement;
+    expect(axis.style.maxWidth).toBe(`${DOTS_MAX_W}px`);
   });
 
   it("축을 넘는 값(응급의료 69km)도 자리를 지키고 실제 값을 적는다", () => {
@@ -294,13 +392,29 @@ describe("DistanceDots — 스크린리더", () => {
   // 시설이 전부 미수집·"안에 없음"이면 고를 이름이 없다 — "가장 가까운 곳은  입니다" 같은 빈 문장 대신 그 문장을 뺀다.
   it("시설 거리가 하나도 없으면(전부 '안에 없음') 가장 가까운 곳 문장을 통째로 뺀다", () => {
     const none = Object.fromEntries(DISTANCE_AXES.flatMap((a) => a.items.map((i) => [i.field, null])));
+    // 세션675 B16: 개수 0 = 반경 안에 없음 · 응급의료는 반경이 없어 숨김 · B16c: 카카오 8종 거리가 전부 null 이라 8줄 숨김
+    //   → 경찰·어린이집도 거리가 비면 숨김(G1) → 시설 줄 = 지하철·IC·KTX 3
+    const zeroCounts = Object.fromEntries(
+      DISTANCE_AXES.flatMap((a) => a.items)
+        .filter((i) => i.countField)
+        .map((i) => [i.countField, 0])
+    );
     render(
       <DistanceDots
-        apt={{ ...none, subwayDist: 9999, icDist: 99, ktxDist: 99, cityDev: "의왕내손 0.3km" } as unknown as Apt}
+        apt={
+          {
+            ...none,
+            ...zeroCounts,
+            subwayDist: 9999,
+            icDist: 99,
+            ktxDist: 99,
+            cityDev: "의왕내손 0.3km",
+          } as unknown as Apt
+        }
       />
     );
     const label = screen.getByRole("img").getAttribute("aria-label") || "";
-    expect(label).toBe("주변 시설 14곳 중 0곳의 거리를 모았습니다.");
+    expect(label).toBe("주변 시설 3곳 중 0곳의 거리를 모았습니다.");
   });
 });
 

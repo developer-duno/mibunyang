@@ -55,6 +55,9 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   // 층별가 계단 카드로 승격) 네이버측 값이 혼자 남았다. 비교 상대 없는 단독값을 새로
   // 보여줄 자리가 없어 손님 화면에서 뺐다.
   naverAvgFloor: "짝(avgFloor)이 계단 카드로 승격해 단독 비교값이 됨 — 새 자리 없음 (세션508 PR-3b B3)",
+  avgFloor:
+    "시·군·구 전체 실거래의 평균 거래 층수 — 층별가 계단 카드와 함께 손님 화면에서 뺐다 (세션675 👤 같이 지우기)",
+  floorRange: "시·군·구 전체 실거래의 거래 층 범위 — 층별가 계단 카드와 함께 뺐다 (세션675 👤 같이 지우기)",
   floors: "maxFloor 에서 파생되는 구간 문자열인데 재계산이 안 돼 최고층과 어긋난다(306곳/18.1%). 관리자 표에만 남긴다.",
   builderCreditGrade:
     "신용평가사 등급이 아니라 부채비율 계산값 — 분양 탭(세션591)·점수 탭·카드 칩(세션592) 모두 등급 글자를 빼고 부채비율 숫자만 말한다",
@@ -64,7 +67,8 @@ const INTENTIONALLY_UNRENDERED: Record<string, string> = {
   housingPrice: "공시가격 — 시군구 평균·세금 기준값, 점수 미사용. 시세 탭 접힘과 함께 손님 화면에서 뺐다 (V11)",
   nearbyMedian: "구 전체 12개월 매매 중위(면적 무관) — 두 출처 대조표와 함께 뺐다 (V10)",
   naverNearbyMedian: "〃 네이버 주변 중위(면적 무관) (V10)",
-  naverJeonseRate: "전세가율은 면적별 막대(PriceTable)가 면적마다 말한다 — 대조 줄을 뺐다 (V10)",
+  naverJeonseRate:
+    "전세가율은 시세 탭 비교 상자의 이 단지 값(complexJeonseRate)이 말한다 — 대조 줄을 뺐다 (V10 · 세션675 면적별 막대 PriceTable 삭제)",
   nearbyBuildYear: "대조 줄이 없어져 우리측 건축연도는 짝을 잃었다 — 한 줄에는 네이버 값만 남는다 (V10)",
   naverNearbyCount: "대조표 각주('주변 N개 단지 기준')였다 — 표와 함께 빠졌다 (V10)",
   jeonseRate:
@@ -238,18 +242,8 @@ describe("전용 카드가 그린다고 적어둔 필드는 실제로 그 카드
 
   // (세션589 의 PSR 게이지 줄 `CARD_SOURCE.psr` 는 세션609 라) 에 줄째 지웠다 — PSR 축 삭제(세션607 다) · R4).)
 
-  // 세션508 PR-3b B3 — 시세 탭 층별가 계단 카드(`detail/DataSectionBlock` PriceByFloorBlock)가
-  // "평균 거래 층수 N층 · 거래 층 X~Y층" 문장으로 avgFloor·floorRange 를 흡수한다. 옛 자리는
-  // 각각 두 출처 대조표(avgFloor)와 PRICE_SECTIONS.grid(floorRange)였다 — 짝이던 naverAvgFloor
-  // 는 혼자 남을 비교 대상이 없어 `INTERNAL_ONLY_FIELDS` 로 내렸다(위 두 출처 대조표 목록에서
-  // 뺀 이유이기도 하다).
-  const PRICE_BY_FLOOR_BLOCK = "../components/detail/DataSectionBlock.tsx";
-  CARD_SOURCE.avgFloor = [
-    { file: PRICE_BY_FLOOR_BLOCK, re: /apt\.avgFloor\b/, why: "층별가 계단 카드 — 평균 거래 층수 문장" },
-  ];
-  CARD_SOURCE.floorRange = [
-    { file: PRICE_BY_FLOOR_BLOCK, re: /apt\.floorRange\b/, why: "층별가 계단 카드 — 거래 층 범위 문장" },
-  ];
+  // (세션508 PR-3b B3 의 층별가 계단 카드 `CARD_SOURCE.avgFloor`·`floorRange` 는 세션675 👤 「같이 지우기」로 카드째 지웠다 —
+  //  두 필드는 INTERNAL_ONLY_FIELDS 로 갔다.)
 
   // 세션508 PR-3c C1 — 분양 탭 추가 모집 이력 카드(ah- 단지만) 2필드.
   const UNSOLD_EVENT_CARD = "../components/detail/UnsoldEventCard.tsx";
@@ -592,7 +586,7 @@ describe("차트가 이미 보여준 필드 — 손 목록이 차트와 어긋�
       "icDist",
       "ktxDist",
       // B3: 층별가 계단 카드(PriceByFloorBlock)가 문장으로 흡수한 2종(옛 자리는 각각
-      // 두 출처 대조표·PRICE_SECTIONS.grid) + 짝을 잃어 INTERNAL_ONLY_FIELDS 로 내린 1종.
+      // 두 출처 대조표·PRICE_SECTIONS.grid — 세션675 에 카드째 지워 INTERNAL_ONLY_FIELDS 로) + 짝을 잃어 내린 1종.
       "avgFloor",
       "floorRange",
       "naverAvgFloor",

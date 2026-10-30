@@ -81,16 +81,6 @@ export interface NearbyChildcareSectionProps {
 }
 
 /**
- * PriceTable props (86줄).
- * isLoading / error: 가격배열 lazy fetch (상세 해시 버킷 JSON) 진행 상태.
- */
-export interface PriceTableProps {
-  apt: Apt;
-  isLoading?: boolean;
-  error?: string | null;
-}
-
-/**
  * MarketStatsCharts props (99줄, 지역 + 구 차트).
  */
 export interface MarketStatsChartsProps {

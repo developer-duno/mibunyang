@@ -328,11 +328,13 @@ describe("동네 사실 줄 — T2·T3 (§5-4 · R5)", () => {
 });
 
 describe("같은 단지 전세가율 — 산식 (R3 · 세션651 W3)", () => {
-  it("값이 있으면 표의 '전세가율' 줄에 '72.3% (전세 N건 ÷ 매매 M건)'", () => {
+  it("값이 있으면 표의 '전세가율' 줄에 '62.4% · 전세 가운데값 ÷ 매매 가운데값 (전세 N건 · 매매 M건)' (세션675)", () => {
     const a = apt({ ...T1_SALE, complexJeonseRate: 62.37, complexJeonseN: 5, complexSaleN: 7 });
-    expect(complexJeonseText(a)).toBe("62.4% (전세 5건 ÷ 매매 7건)");
+    expect(complexJeonseText(a)).toBe("62.4% · 전세 가운데값 ÷ 매매 가운데값 (전세 5건 · 매매 7건)");
     render(<PricePositionBox priceCat={cat("complex", "12.4")} apt={a} />);
-    expect(screen.getByTestId("complex-jeonse").textContent).toBe("전세가율62.4% (전세 5건 ÷ 매매 7건)");
+    expect(screen.getByTestId("complex-jeonse").textContent).toBe(
+      "전세가율62.4% · 전세 가운데값 ÷ 매매 가운데값 (전세 5건 · 매매 7건)"
+    );
   });
 
   it("건수 칸이 없으면 비율만", () => {

@@ -23,10 +23,10 @@ function makeItem(/** @type {any} */ overrides = {}) {
 }
 
 describe("PresaleResultList", () => {
-  it("행 렌더: 단지명·주소·전용면적(소수1)·분양가·경쟁률 + 잔여세대 캡션", () => {
+  it("행 렌더: 단지명·주소·전용면적(소수 둘째까지, 세션675)·분양가·경쟁률 + 잔여세대 캡션", () => {
     render(<PresaleResultList items={[makeItem()]} />);
     expect(screen.getByText("결과단지")).toBeInTheDocument();
-    expect(screen.getByText(/대전 유성구 · 전용 85\.0㎡ · 분양가 4억 1,800만/)).toBeInTheDocument();
+    expect(screen.getByText(/대전 유성구 · 전용 84\.99㎡ · 분양가 4억 1,800만/)).toBeInTheDocument();
     expect(screen.getByText(/청약 경쟁률 8\.6:1/)).toBeInTheDocument();
     expect(screen.getByText(/공급 50세대 · 신청 429명/)).toBeInTheDocument();
     // 거짓 표시 가드: "1순위" 문구 금지 (데이터 = 잔여세대 경쟁률)

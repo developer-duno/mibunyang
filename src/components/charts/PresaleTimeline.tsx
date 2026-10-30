@@ -34,6 +34,13 @@ import { ChartFrame } from "./ChartFrame";
  */
 
 /**
+ * 경쟁률이 무엇의 경쟁률인지(세션675 👤 「경쟁률 범위」) — 값은 수집기 `collect-applyhome.mjs` 하나만 쓰고, 그 API 는
+ * 청약홈 「잔여세대 경쟁률」(getRemndrLttotPblancCmpet)이다. 모집 세대 = 그 잔여세대 공고 행의 공급 세대 합.
+ * 그래서 일반분양 전체(예 576세대)가 아니라 잔여 39세대 같은 작은 수가 나온다. 「1순위」라 적지 않는다(PresaleResultList 규칙).
+ */
+export const COMPETITION_SCOPE = "잔여세대";
+
+/**
  * 진행 순서 — 왼쪽에서 오른쪽으로.
  *
  * 세션591(E3): `입주예정` 칸을 더했다. 옛 4칸 목록 밖이라 그 단계 단지(정적 사본 564곳)는
@@ -143,10 +150,10 @@ export const PresaleTimeline = memo(function PresaleTimeline({
       parts.push(
         `분양가 ${(minPrice as number).toLocaleString("ko-KR")}만원부터 ${(maxPrice as number).toLocaleString("ko-KR")}만원.`
       );
-    if (rate) parts.push(`청약 경쟁률 ${fmtRate(rate)} 대 1.`);
+    if (rate) parts.push(`${COMPETITION_SCOPE} 청약 경쟁률 ${fmtRate(rate)} 대 1.`);
     if (hasApplicantDetail)
       parts.push(
-        `${(applicants as number).toLocaleString("ko-KR")}명 신청, ${(supply as number).toLocaleString("ko-KR")}세대 모집.`
+        `${(applicants as number).toLocaleString("ko-KR")}명 신청, 잔여 ${(supply as number).toLocaleString("ko-KR")}세대 모집.`
       );
     return parts.join(" ");
   }, [idx, isRental, hasRange, minPrice, maxPrice, rate, hasApplicantDetail, applicants, supply]);
@@ -158,7 +165,7 @@ export const PresaleTimeline = memo(function PresaleTimeline({
         "왼쪽부터 분양계획 → 청약중 → 분양중 → 미분양 → 입주예정 순서예요. 색이 찬 칸이 지금 단계고, " +
         "입주예정 단지는 '미분양' 칸이 비어 있어요(미분양을 거쳤는지 알 수 없어서예요). " +
         "임대로 입주자를 모집하는 단지는 칸 대신 '임대모집' 표시만 붙어요. " +
-        "그 아래는 분양가 범위(가장 싼 평형~가장 비싼 평형)와 청약 경쟁률이에요. " +
+        "그 아래는 분양가 범위(가장 싼 평형~가장 비싼 평형)와 청약홈 잔여세대 공고의 청약 경쟁률이에요(일반분양 전체가 아니에요). " +
         "경쟁률 눈금은 1·10·100처럼 자릿수로 늘어나요 — 수만 대 1인 단지가 있어서 " +
         "보통 눈금으로는 나머지가 전부 안 보이거든요."
       }
@@ -283,7 +290,7 @@ export const PresaleTimeline = memo(function PresaleTimeline({
           {rate && (
             <div style={{ marginTop: 12 }}>
               <div style={{ fontSize: F.micro, color: C.muted, marginBottom: 4 }}>
-                청약 경쟁률 <b style={{ color: C.indigo, fontSize: F.sm }}>{fmtRate(rate)} : 1</b>
+                {COMPETITION_SCOPE} 청약 경쟁률 <b style={{ color: C.indigo, fontSize: F.sm }}>{fmtRate(rate)} : 1</b>
               </div>
               <div style={{ position: "relative", height: 10, background: "#ECEEF4", borderRadius: 5 }} aria-hidden>
                 <div
@@ -303,7 +310,8 @@ export const PresaleTimeline = memo(function PresaleTimeline({
               {/* 세션508 PR-3c C3 — 신청수·모집세대 실값 병기. 하나라도 없으면 줄 자체를 생략. */}
               {hasApplicantDetail && (
                 <div style={{ marginTop: 6, fontSize: F.micro, color: C.sub }}>
-                  {(applicants as number).toLocaleString("ko-KR")}명 신청 / {(supply as number).toLocaleString("ko-KR")}
+                  {(applicants as number).toLocaleString("ko-KR")}명 신청 / 잔여{" "}
+                  {(supply as number).toLocaleString("ko-KR")}
                   세대 모집
                 </div>
               )}

@@ -244,3 +244,51 @@ describe("PresaleInfo — '임대모집' 머리 배지 숨김 (세션594)", () =
     expect(screen.getByTestId("presale-rental-badge")).toHaveTextContent(RENTAL_STAGE);
   });
 });
+
+// 세션675 👤 「지난 일정 정리」 — 지난 일정에 「끝남」(지금 = 밖에서 고정, KST 날짜)
+describe("PresaleInfo — 지난 일정 「끝남」 (세션675)", () => {
+  const NOW = new Date("2026-10-30T03:00:00+09:00");
+  it("네이버 일정 줄: 끝난 일정이면 끝에 ' · 끝남', 앞으로 할 일이면 없음", () => {
+    const past = /** @type {any} */ (
+      makeApt({
+        presaleStage: "분양중",
+        presaleSchedule: { scheduleName: "당첨자계약", dateInfo: "2023-09-04", schdl_info: { end_date: "" } },
+      })
+    );
+    const { container, unmount } = render(<PresaleInfo apt={past} now={NOW} />);
+    const line = [...container.querySelectorAll("div")].find((d) => (d.textContent ?? "").startsWith("일정: "));
+    expect(line?.textContent).toBe("일정: 당첨자계약 2023-09-04 · 끝남");
+    unmount();
+    const future = /** @type {any} */ (
+      makeApt({
+        presaleStage: "분양중",
+        presaleSchedule: { scheduleName: "당첨자계약", dateInfo: "2026-11-10", schdl_info: { end_date: "2026-11-12" } },
+      })
+    );
+    const r2 = render(<PresaleInfo apt={future} now={NOW} />);
+    const line2 = [...r2.container.querySelectorAll("div")].find((d) => (d.textContent ?? "").startsWith("일정: "));
+    expect(line2?.textContent).toBe("일정: 당첨자계약 2026-11-10");
+  });
+
+  it("청약홈 공식 일정: 지난 칸만 「끝남」 — 기간 칸은 끝 날짜로", () => {
+    vi.mocked(usePresaleDetail).mockReturnValueOnce(
+      /** @type {any} */ ({
+        schedule: {
+          house_manage_no: "2026000123",
+          recruit_date: "2026-10-01",
+          contract_bgnde: "2026-10-28",
+          contract_endde: "2026-11-02",
+          move_in_ym: "202901",
+        },
+        units: [],
+        loading: false,
+        error: null,
+      })
+    );
+    const { container } = render(<PresaleInfo apt={/** @type {any} */ (makeApt({ presaleStage: null }))} now={NOW} />);
+    const past = [...container.querySelectorAll('[data-past="true"]')].map((e) => e.textContent);
+    expect(past).toEqual(["26.10.01 · 끝남"]);
+    expect(container.textContent).toContain("26.10.28"); // 계약은 11-02 까지라 아직
+    expect(container.textContent).not.toContain("26.10.28 · 끝남");
+  });
+});

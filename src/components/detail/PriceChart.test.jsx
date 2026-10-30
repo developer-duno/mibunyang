@@ -13,7 +13,7 @@ vi.mock("@/components/primitives", () => ({
   LineChart: (/** @type {any} */ props) => <div data-testid="line-chart" aria-label={props.yLabel} />,
 }));
 
-import { PriceChart } from "./PriceChart";
+import { PriceChart, PRICE_CHART_MIN_POINTS } from "./PriceChart";
 
 function makeData(count = 3) {
   return Array.from({ length: count }, (_, i) => ({
@@ -66,10 +66,25 @@ describe("PriceChart", () => {
     expect(screen.getByTestId("line-chart")).toBeTruthy();
   });
 
+  // 세션675 👤 마-2 「점 3개보다 적으면 숨기기」 — 점 2개는 그래프도 빈 상자도 없다.
+  it("점 2개 → 아무것도 안 그린다(문턱 = 3)", () => {
+    expect(PRICE_CHART_MIN_POINTS).toBe(3);
+    mockUsePriceHistory.mockReturnValue({ data: makeData(2), loading: false, error: null, retry: vi.fn() });
+    const { container } = render(<PriceChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    expect(container.innerHTML).toBe("");
+  });
+
+  it("행은 3개여도 날짜가 2개뿐이면(같은 날 두 줄) 안 그린다", () => {
+    const rows = [...makeData(2), { recorded_at: "2025-01-01", price: 40000 }];
+    mockUsePriceHistory.mockReturnValue({ data: rows, loading: false, error: null, retry: vi.fn() });
+    const { container } = render(<PriceChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
+    expect(container.innerHTML).toBe("");
+  });
+
   // 세션595 D2 — 점이 6개 미만일 때 붙던 "데이터 N개 · 매주 자동 수집 누적 중" 줄은 우리 수집 상태를 손님에게
   //   말하는 글이라 지웠다. 그림은 그대로 그린다.
-  it("점 2~5개여도 '수집 누적 중' 글자는 없다 — 그림은 그린다", () => {
-    for (const n of [2, 5]) {
+  it("점 3~5개여도 '수집 누적 중' 글자는 없다 — 그림은 그린다", () => {
+    for (const n of [3, 5]) {
       mockUsePriceHistory.mockReturnValue({ data: makeData(n), loading: false, error: null, retry: vi.fn() });
       const { container, unmount } = render(<PriceChart apartmentId={/** @type {any} */ (1)} siblingIds={[]} />);
       expect(screen.getByTestId("line-chart")).toBeTruthy(); // 양성 앵커

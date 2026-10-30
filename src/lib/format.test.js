@@ -14,6 +14,9 @@ import {
   fmtCompetitionRate,
   fmtUnsoldRate,
   fmtAddress,
+  todayKst,
+  isPastDateKst,
+  presaleScheduleEnded,
 } from "./format";
 
 describe("fmtUnsoldRate — 100% 캡 (세션 444)", () => {
@@ -356,5 +359,37 @@ describe("fmtAddress — 시도 접두 축약 (세션556)", () => {
 
   it("앞뒤 공백은 다듬는다", () => {
     expect(fmtAddress("  전라남도 여수시 소호로 267  ")).toBe("전남 여수시 소호로 267");
+  });
+});
+
+// 세션675 👤 「지난 일정 정리」 — KST 날짜로 지났나(지금은 밖에서 넣는다)
+describe("isPastDateKst · presaleScheduleEnded (세션675)", () => {
+  // 2026-10-29 15:30 UTC = 2026-10-30 00:30 KST — UTC 로는 29일, KST 로는 30일
+  const NOW = new Date("2026-10-29T15:30:00Z");
+  it("todayKst 는 KST 날짜", () => {
+    expect(todayKst(NOW)).toBe("2026-10-30");
+  });
+  it("YYYY-MM-DD: 오늘보다 앞이면 지남, 오늘·내일은 아님 (KST 기준)", () => {
+    expect(isPastDateKst("2023-09-04", NOW)).toBe(true);
+    expect(isPastDateKst("2026-10-29", NOW)).toBe(true); // UTC 로는 '오늘'이지만 KST 로는 어제
+    expect(isPastDateKst("2026-10-30", NOW)).toBe(false);
+    expect(isPastDateKst("2026-10-31", NOW)).toBe(false);
+    expect(isPastDateKst("2026.10.29", NOW)).toBe(true);
+  });
+  it("YYYY-MM · YYYYMM: 이번 달보다 앞이면 지남", () => {
+    expect(isPastDateKst("2026-09", NOW)).toBe(true);
+    expect(isPastDateKst("202610", NOW)).toBe(false);
+    expect(isPastDateKst("202811", NOW)).toBe(false);
+  });
+  it("날짜가 아닌 글자는 판정하지 않는다", () => {
+    for (const v of ["2026 하반기", "미정", "", null, undefined, 20231231]) expect(isPastDateKst(v, NOW)).toBe(false);
+  });
+  it("네이버 일정 객체: 끝 날짜가 있으면 그것으로 본다", () => {
+    const base = { scheduleName: "당첨자계약", dateInfo: "2026-10-28" };
+    expect(presaleScheduleEnded({ ...base, schdl_info: { end_date: "2026-11-02" } }, NOW)).toBe(false);
+    expect(presaleScheduleEnded({ ...base, schdl_info: { end_date: "" } }, NOW)).toBe(true);
+    expect(presaleScheduleEnded({ ...base, schdl_info: {} }, NOW)).toBe(true);
+    expect(presaleScheduleEnded("당첨자계약 2023-09-04", NOW)).toBe(false); // 문자열 꼴은 판정 안 함
+    expect(presaleScheduleEnded([base], NOW)).toBe(false); // 배열 꼴도
   });
 });

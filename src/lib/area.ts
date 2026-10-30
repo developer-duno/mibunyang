@@ -8,3 +8,11 @@
 export function hasKnownArea(area: unknown): boolean {
   return area != null && Number(area) > 0;
 }
+
+/**
+ * 면적 글자 — 소수 둘째 자리까지 반올림 + 단위 「㎡」(세션675 👤 「면적 숫자 정리」: 「59.7537㎡」→「59.75㎡」, 「85.0㎡」→「85㎡」).
+ * 면적을 아는지(`hasKnownArea`)는 부르는 쪽이 먼저 본다. 정적 장 본문 사본 = `src/utils/aptStaticBody.mjs` fmtAreaNode.
+ */
+export function fmtArea(area: unknown): string {
+  return `${Math.round(Number(area) * 100) / 100}㎡`;
+}

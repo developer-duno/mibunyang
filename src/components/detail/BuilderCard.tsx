@@ -26,7 +26,9 @@ import type { Apt } from "@/types/scoring";
  * ## builder — fmt 재사용 (등급 어휘를 새로 짓지 않는다)
  *
  * `FIELD_META.builder.fmt` 가 이미 "롯데건설 (1군)" · "OO신탁 (브랜드 해당없음)" · "OO건설 (기타)" 를
- * 가른다(`BRAND_TIER` + 해당없음 판정). 칩 글자로 그대로 쓴다.
+ * 가른다(`BRAND_TIER` + 해당없음 판정). 칩 글자는 그 결과에서 「(브랜드 해당없음)」「(기타)」 꼬리표만 뗀다
+ * (세션675 👤 「시공사 꼬리표」 — 손님에게 어색했다). 「(1군)」 같은 등급 꼬리표는 그대로.
+ * 관리자 전수 표는 같은 fmt 를 그대로 쓰므로 꼬리표가 남는다(fmt 자체는 안 바꿈).
  *
  * ## builderDebtRatio — 눈금 (기준선은 `BUILDER_DEBT_TIERS` 에서)
  *
@@ -77,8 +79,16 @@ const BC_S: Record<string, CSSProperties> = {
   gaugeTitle: { fontSize: F.sm, fontWeight: 700 },
 };
 
+/** 손님 화면에서 떼는 꼬리표 — 등급표에 없는 시공사(기타)·시행 주체(브랜드 해당없음) */
+const DROP_TAG_RE = / \((?:브랜드 해당없음|기타)\)$/;
+
+/** 시공사 칩 글자 — `FIELD_META.builder.fmt` 에서 「(브랜드 해당없음)」「(기타)」만 뗀다 */
+export function builderChipText(builder: unknown, apt: Apt): string {
+  return FIELD_META.builder.fmt(builder, apt).replace(DROP_TAG_RE, "");
+}
+
 export const BuilderCard = memo(function BuilderCard({ apt }: { apt: Apt }) {
-  const builderText = apt.builder != null ? FIELD_META.builder.fmt(apt.builder, apt) : null;
+  const builderText = apt.builder != null ? builderChipText(apt.builder, apt) : null;
 
   // scoreRisk.ts 와 같은 "미수집" 판정 — null 이거나 폴백이면 눈금을 안 그린다.
   const builderDebtRatio = apt.builderDebtRatio as number | null | undefined;

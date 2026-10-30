@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { DeviationStrip, stripHeight } from "./DeviationStrip";
+import { DeviationStrip, stripHeight, deviationLegendText } from "./DeviationStrip";
+import { LABEL_W_COMPACT, LABEL_W_WIDE } from "./DeviationRow";
 import { CARD_DEVIATION_FIELDS, OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { computeRegionalStats } from "@/scoring/regionalStats";
 import { computeDeviation } from "@/lib/deviation";
@@ -287,5 +288,46 @@ describe("DeviationStrip — 평당가·전세가율 줄은 판정 없이 (세�
     fireEvent.click(screen.getByRole("button", { name: /지역 비교 풀이 보기/ }));
     const tip = screen.getByRole("tooltip").textContent ?? "";
     expect(tip).toContain("단, 주차·전용률 줄은 좋고 나쁨도 함께 적어요");
+  });
+});
+
+// 세션675 👤 「비교 막대 색 뜻 안내」 · 「'소득...' 잘림 고치기」 · 「깨진 글자 2개」(멂)
+describe("DeviationStrip — 상세 종합 탭 색 뜻 한 줄 · 이름 칸 폭 (세션675)", () => {
+  it("상세(compact=false)에만 색 뜻 한 줄 — 실제 색 규칙대로(회색 = 판정 없는 줄, 판정 줄만 파랑·주황)", () => {
+    render(
+      <DeviationStrip apt={apt()} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={gyeonggiStats()} compact={false} />
+    );
+    const legend = screen.getByTestId("deviation-legend").textContent ?? "";
+    expect(legend).toBe(
+      "세로선 = 같은 지역 한가운데 값 · 회색 막대 = 이 단지 값이 그보다 크거나 작은 정도 · 주차·전용률 줄은 파랑 = 유리 · 주황 = 불리"
+    );
+  });
+
+  it("판정 줄이 없는 목록(카드 3줄)이면 파랑·주황 절을 빼고, 카드에는 아예 안 그린다", () => {
+    expect(deviationLegendText(CARD_DEVIATION_FIELDS)).not.toMatch(/파랑|주황/);
+    render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    expect(screen.queryByTestId("deviation-legend")).toBeNull();
+  });
+
+  it("이름 칸 = 카드 40px · 상세 52px(4글자 「소득부담」이 잘리지 않게) — 한 블록 안은 같은 폭", () => {
+    const { container } = render(
+      <DeviationStrip apt={apt()} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={gyeonggiStats()} compact={false} />
+    );
+    const widths = [...container.querySelectorAll('[role="img"]')].map(
+      (row) => (row.firstElementChild as HTMLElement).style.width
+    );
+    expect(widths.length).toBeGreaterThan(3);
+    expect(new Set(widths)).toEqual(new Set([`${LABEL_W_WIDE}px`]));
+    const card = render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={gyeonggiStats()} />);
+    const cardRow = card.container.querySelector('[role="img"]')?.firstElementChild as HTMLElement;
+    expect(cardRow.style.width).toBe(`${LABEL_W_COMPACT}px`);
+  });
+
+  it("상세 값 슬롯은 끝을 2px 띄운다(굵은 끝 글자 「멂」이 창 끝에 붙어 잘려 보이지 않게)", () => {
+    const { container } = render(
+      <DeviationStrip apt={apt()} fields={OVERVIEW_DEVIATION_FIELDS} regionStats={gyeonggiStats()} compact={false} />
+    );
+    const row = container.querySelector('[role="img"][aria-label^="역세권"]') as HTMLElement;
+    expect((row.lastElementChild as HTMLElement).style.paddingRight).toBe("2px");
   });
 });

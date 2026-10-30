@@ -69,27 +69,26 @@ test.describe("면적 빈칸 단지 상세 · 주차 추정 문구", () => {
     await page.getByRole("button", { name: "미분양 없는 단지 보기" }).click();
   });
 
-  test("루원시티 SK 리더스뷰 — 헤더에 ㎡ 없음 + 시세 탭 '전체 면적'", async ({ page }) => {
+  test("루원시티 SK 리더스뷰 — 헤더에 ㎡ 없음 + 시세 탭에 시·군·구 전체 표 없음", async ({ page }) => {
     await searchAndOpenCard(page, "루원시티 SK", "루원시티 SK 리더스뷰");
 
     const modal = page.locator('[role="dialog"]');
     await expect(modal).toBeVisible({ timeout: 5000 });
 
     // (a) 모달 헤더(h1 + 지역/면적/가격 서브텍스트 + 주소) 스코프에 "㎡" 가 전혀 없다.
-    // 시세 탭 본문(PriceTable)에는 정상적으로 "㎡"가 여러 번 나오므로 헤더 영역으로 스코프를
+    // 시세 탭 본문(이 단지 평형별 표)에는 정상적으로 "㎡"가 나올 수 있으므로 헤더 영역으로 스코프를
     // 좁혀야 한다 — h1의 부모 div(headerRow 첫 자식)를 xpath 로 잡는다.
     const headerBlock = modal.locator("h1").locator("xpath=..");
     const headerText = await headerBlock.textContent();
     expect(headerText).not.toContain("㎡");
     expect(headerText).not.toContain("0㎡");
 
-    // (b) 시세 탭으로 이동 → "총 N건 · 전체 면적" 정확 문자열 (N = 픽스처 priceByArea count 합 25).
+    // (b) 시세 탭으로 이동 → 시·군·구 전체 시세 표·면적별 점 그림이 없다(세션675 👤 다 — 이 단지 값만 남김).
+    //     옛 단언 "총 25건 · 전체 면적"은 그 시·군·구 표(PriceTable)의 글자라 표와 함께 지웠다.
     await modal.getByRole("tab", { name: "시세", exact: true }).click();
     await expect(modal.locator("#sec-price")).toBeVisible({ timeout: 4000 });
-
-    const row = modal.locator('[data-testid="price-table-row"]').first();
-    await row.waitFor({ state: "visible", timeout: 15000 });
-    await expect(modal.locator("#sec-price")).toContainText("총 25건 · 전체 면적");
+    await expect(modal.locator("#sec-price")).not.toContainText("시·군·구 전체 매매");
+    await expect(modal.locator("#sec-price")).not.toContainText("면적별 실거래가");
   });
 
   test("용문역 리체스트(임의공급) — 종합 탭 주차 편차 '추정 1.13대/세대', 막대 없음", async ({ page }) => {

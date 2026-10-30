@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { BuilderCard, DEBT_GAUGE, debtColor } from "./BuilderCard";
+import { BuilderCard, DEBT_GAUGE, debtColor, builderChipText } from "./BuilderCard";
+import { FIELD_META } from "@/constants/fieldMeta";
 import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
 import { C } from "@/theme";
 import { makeApt } from "@/__tests__/factories";
@@ -83,16 +84,24 @@ describe("BuilderCard — 신용등급 칩 없음 (보완 G3)", () => {
   });
 });
 
-describe("BuilderCard — 칩 글자는 FIELD_META fmt 재사용 (등급 어휘를 새로 짓지 않는다)", () => {
-  it("등급표에 없는 시공사는 '(기타)'", () => {
-    render(<BuilderCard apt={apt({ builder: "어느건설", builderCreditGrade: null })} />);
-    expect(screen.getByText("어느건설 (기타)")).toBeTruthy();
+// 세션675 👤 「시공사 꼬리표」 — 손님 칩에서 「(기타)」「(브랜드 해당없음)」만 뗀다. 「(1군)」 등급은 그대로, FIELD_META fmt(관리자 표)는 그대로.
+describe("BuilderCard — 칩 글자는 FIELD_META fmt 재사용 + 어색한 꼬리표만 뗀다", () => {
+  it("등급표에 없는 시공사는 이름만 — '(기타)' 없음 (관리자 fmt 는 그대로 '(기타)')", () => {
+    const { container } = render(<BuilderCard apt={apt({ builder: "어느건설", builderCreditGrade: null })} />);
+    expect(container.querySelector('[data-chip="builder"]')?.textContent).toBe("어느건설");
+    expect(FIELD_META.builder.fmt("어느건설")).toBe("어느건설 (기타)");
   });
 
-  it("신탁·조합 시행 주체는 '(브랜드 해당없음)' — 신용등급 칩은 없다", () => {
-    render(<BuilderCard apt={apt({ builder: "OO자산신탁", builderCreditGrade: null })} />);
-    expect(screen.getByText("OO자산신탁 (브랜드 해당없음)")).toBeTruthy();
+  it("신탁·조합 시행 주체는 이름만 — '(브랜드 해당없음)' 없음 · 신용등급 칩도 없다", () => {
+    const { container } = render(<BuilderCard apt={apt({ builder: "OO자산신탁", builderCreditGrade: null })} />);
+    expect(container.querySelector('[data-chip="builder"]')?.textContent).toBe("OO자산신탁");
     expect(screen.queryByText(/신용등급/)).toBeNull();
+  });
+
+  it("등급표에 있는 시공사는 등급 꼬리표를 그대로 둔다", () => {
+    const tiered = FIELD_META.builder.fmt("롯데건설");
+    expect(tiered).toMatch(/^롯데건설 \(.+\)$/); // 양성 앵커 — 등급표에 있다
+    expect(builderChipText("롯데건설", apt({}))).toBe(tiered);
   });
 });
 

@@ -9,24 +9,18 @@ import { DeviationStrip } from "./DeviationStrip";
 import { OVERVIEW_DEVIATION_FIELDS } from "@/constants/deviationFields";
 import { PricePositionBox } from "./detail/PricePositionBox";
 import { AreaTradeTable } from "./detail/AreaTradeTable";
-import { AreaPriceScatter } from "./charts/AreaPriceScatter";
 import { DistanceDots } from "./charts/DistanceDots";
 import { ScoreBadge } from "./primitives";
 import { CatPanel, getHighlights } from "./CatPanel";
 import { transportFacts } from "./detail/TransportCard";
 import { LocationEnvBlock } from "./detail/LocationEnvBlock";
 import { fmtPrice, fmtMoveIn, fmtAddress, fmtPriceGap } from "@/lib/format";
-import { hasKnownArea } from "@/lib/area";
-import { PriceTable } from "./detail/PriceTable";
+import { hasKnownArea, fmtArea } from "@/lib/area";
+import { noticeCount } from "@/lib/noticeCount";
 import { SchoolInfo } from "./detail/SchoolInfo";
 import { NearbyChildcareSection } from "./detail/NearbyChildcareSection";
 import { LoanAnalysis } from "./detail/LoanAnalysis";
-import {
-  DataSectionBlock,
-  NearbyFacilitiesBlock,
-  PriceByFloorBlock,
-  AnnouncementLink,
-} from "./detail/DataSectionBlock";
+import { DataSectionBlock, NearbyFacilitiesBlock, AnnouncementLink } from "./detail/DataSectionBlock";
 import { ExtraFieldsAccordion } from "./detail/ExtraFieldsAccordion";
 import { PresaleTimeline } from "./charts/PresaleTimeline";
 import { CategoryMiniCard } from "./detail/CategoryMiniCard";
@@ -92,6 +86,18 @@ const DM_S = {
   verdictBlind: { fontSize: F.sm, color: C.muted, textAlign: "center" as const, marginBottom: 8 },
   // 입지 탭 교통 사실 한 줄(세션591 L3) — 판정이 가려졌을 때(비로그인)도 보이는 원자료 글자
   factLine: { fontSize: F.sm, fontWeight: 600, color: C.sub, textAlign: "center" as const, marginBottom: 8 },
+  // 시세 탭 맨 위 상세 묶음 불러오기 상태 한 줄(세션675 H1)
+  detailStatus: { fontSize: F.sm, color: C.muted, marginBottom: 8 },
+  detailRetryBtn: {
+    fontSize: F.sm,
+    fontWeight: 600,
+    color: C.blue,
+    background: "none",
+    border: "none",
+    padding: "4px 2px",
+    textDecoration: "underline",
+    cursor: "pointer",
+  },
   scoreBadgeWrap: { textAlign: "center" as const, marginBottom: 16 },
   metricsHead: { fontSize: F.md, fontWeight: 700, color: C.text, marginBottom: 6 },
   metricsRow: { display: "flex", justifyContent: "space-between", padding: "4px 0" },
@@ -125,7 +131,8 @@ const DM_S = {
     padding: "3px 8px",
     marginBottom: 8,
   },
-  sourceFooter: { fontSize: F.micro, color: C.muted, marginTop: 10, lineHeight: 1.5 },
+  // keep-all — 줄바꿈을 띄어쓰기 자리에서만 해 「NEIS(교육부)」 끝의 「부)」만 다음 줄로 떨어지지 않게(세션675 👤 「깨진 글자 2개」)
+  sourceFooter: { fontSize: F.micro, color: C.muted, marginTop: 10, lineHeight: 1.5, wordBreak: "keep-all" as const },
   actionRow: { display: "flex", gap: 8 },
 };
 
@@ -174,6 +181,9 @@ export const DetailModal = memo(function DetailModal({
   const [detailForId, setDetailForId] = useState<string | null>(null);
   const [pricesLoading, setPricesLoading] = useState(false);
   const [pricesError, setPricesError] = useState<string | null>(null);
+  // 「다시 불러오기」 단추가 올리는 수 — 상세 묶음 effect 의존값이라 같은 fetch 를 다시 부른다(세션675 H1).
+  //   실패한 요청은 staticDataApi 가 캐시에 남기지 않으므로(loadDetailBucketOnce finally) 다시 부르면 새로 받는다.
+  const [detailRetry, setDetailRetry] = useState(0);
   useEffect(() => {
     if (!item) return;
     prevFocusRef.current = document.activeElement;
@@ -252,6 +262,8 @@ export const DetailModal = memo(function DetailModal({
       setDetail(null);
       setDetailForId(null);
       setPricesError(null);
+      // 세션675 H2 — 앞 단지를 불러오는 중에 priceByArea 가 있는 단지로 바꾸면 「불러오는 중…」 줄이 영영 남았다(재검사관 재현).
+      setPricesLoading(false);
       return;
     }
     let cancelled = false;
@@ -277,7 +289,7 @@ export const DetailModal = memo(function DetailModal({
     return () => {
       cancelled = true;
     };
-  }, [item]);
+  }, [item, detailRetry]);
   // 상세 필드 병합 — useMemo + item?.apt.id deps 로 item ref 변경마다 무효화 차단.
   // hook 순서 보장 위해 conditional return 이전에 호출. item 미정의 시 undefined 반환.
   // 버킷의 가격배열·학교·어린이집·혜택·catsCache(full) 를 목록의 슬림 apt 위에 덮음.
@@ -432,7 +444,7 @@ export const DetailModal = memo(function DetailModal({
                     (세션576 D2). AptCard 태그 줄과 같은 모양(빈 토큰은 filter 로 거른다). */}
                 {[
                   [apt.region, apt.gu, apt.dong].filter(Boolean).join(" "),
-                  hasKnownArea(apt.area) ? `${apt.area}㎡` : "",
+                  hasKnownArea(apt.area) ? fmtArea(apt.area) : "",
                   fmtPrice(apt.price),
                 ]
                   .filter(Boolean)
@@ -636,7 +648,9 @@ export const DetailModal = memo(function DetailModal({
                     <div style={DM_S.benefitsBox}>
                       {benefitWon > 0 && (
                         <div style={DM_S.benefitsHead}>
-                          {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 ({benefitRate}%)
+                          {/* 세션675 👤 바 ③ — 비율 = 혜택 금액 ÷ 분양가(scoreBenefit) */}
+                          {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 (분양가의{" "}
+                          {benefitRate}%)
                         </div>
                       )}
                       {hasBenefitsList && (
@@ -654,11 +668,9 @@ export const DetailModal = memo(function DetailModal({
 
                 {/* 세션635 다: 재공고 수 = 청약홈 공고(ah-)만 센다 — 네이버 행(ap-)은 공고가 아니다. */}
                 {(() => {
-                  const notices = (Array.isArray(apt.siblingIds) ? (apt.siblingIds as string[]) : []).filter((id) =>
-                    id.startsWith("ah-")
-                  );
-                  return notices.length > 1 ? (
-                    <div style={DM_S.republishBadge}>재공고 {notices.length}회 · 시계열 통합 조회</div>
+                  const notices = noticeCount(apt.siblingIds);
+                  return notices > 1 ? (
+                    <div style={DM_S.republishBadge}>재공고 {notices}회 · 시계열 통합 조회</div>
                   ) : null;
                 })()}
 
@@ -684,7 +696,7 @@ export const DetailModal = memo(function DetailModal({
               </section>
             )}
 
-            {/* §2 시세 탭 — PriceTable + PriceChart + UnsoldChart */}
+            {/* §2 시세 탭 — 이 단지 값만(세션675 👤 다: 시·군·구 전체 시세 표·면적별 점 그림 삭제) + PriceChart + UnsoldChart */}
             {isPanelMounted("sec-price") && (
               <section
                 id="sec-price"
@@ -697,40 +709,37 @@ export const DetailModal = memo(function DetailModal({
                 {/* 비교 범위 머리 줄 + 비교 표(분양가·중앙값·차이·전세가율) + 동네 사실 줄 + 출처 (세션 430 · 589 · 609 · 651).
                   범위(cmpScope)·게이트(`fairPrice > 0`)의 근거는 `detail/PricePositionBox` 머리 주석.
                   전부 점수가 아니라 값이라 비로그인에게도 공개다. 옛 PSR 줄은 PSR 축 삭제(세션607 다)와 함께 지웠다. */}
+                {/* 상세 묶음 불러오기 상태 한 줄(세션675 H1) — 옛 소비처(시·군·구 시세 표·대출 분석 표)를 지워 이 상태를 읽는 곳이
+                  0 이 됐다. 불러오는 중이면 회색 한 줄, 실패면 일시 실패 안내 + 다시 불러오기, 성공이면 아무것도 없다.
+                  (「못 모았어요」 같은 수집 사정 글이 아니다 — 지금 이 창의 네트워크 실패다.) */}
+                {pricesLoading && (
+                  <div data-testid="detail-load-status" role="status" style={DM_S.detailStatus}>
+                    상세 자료 불러오는 중…
+                  </div>
+                )}
+                {!pricesLoading && pricesError && (
+                  <div data-testid="detail-load-status" role="status" style={DM_S.detailStatus}>
+                    상세 자료를 불러오지 못했어요{" "}
+                    <button type="button" style={DM_S.detailRetryBtn} onClick={() => setDetailRetry((n) => n + 1)}>
+                      다시 불러오기
+                    </button>
+                  </div>
+                )}
                 <PricePositionBox priceCat={res.cats.price} apt={mergedApt ?? apt} />
                 {/* 이 단지 평형별 실거래 표(세션662 👤 B안 — 평형대로 묶기). 자료(complexTable)는 상세 버킷 전용이라 mergedApt 에서 읽는다.
                   ⚠️ 창을 닫지 않고 단지를 바꾸면 새 버킷이 올 때까지(실패하면 계속) 옛 detail 이 남아 mergedApt 에 붙는다
                   (위 effect 의 fetch 경로는 setDetail(null) 을 하지 않는다) — 이 표는 그 버킷이 지금 단지 것(detailForId)일 때만 상세 칸을 쓴다.
                   버킷 행은 id 를 떼고 오므로 detail.id 로는 가를 수 없다. */}
                 <AreaTradeTable apt={detail && detailForId === apt.id ? (mergedApt ?? apt) : apt} />
-                {/* 요약 시각화 (세션 487 PR-5b) — 154필드 중 단지 하나로 분포가 성립하는
-                  유일한 자산(priceByArea 채움 96.8%, 단지당 중앙 28포인트). */}
-                <AreaPriceScatter
-                  priceByArea={(mergedApt ?? apt).priceByArea}
-                  aptPrice={(apt.price as number | null) ?? null}
-                  aptArea={(apt.area as number | null) ?? null}
-                />
-                <PriceTable apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
                 <PriceChart apartmentId={apt.id as string} siblingIds={apt.siblingIds as string[] | undefined} />
-                {/* 미분양 추이 + 층별 매매가 — 넓으면(PC) 2열로 나란히, 좁으면(휴대폰) 위아래.
-                  상세 안 부품은 화면 폭을 모르므로 격자가 스스로 접힌다(한 칸 최소 280px).
-                  한쪽이 안 그려지면(미분양 값 없음 · 층별 자료 없음) 남은 쪽이 전체 폭을 쓴다. */}
-                <div
-                  data-testid="price-two-col"
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-                    gap: "0 16px",
-                    alignItems: "start",
-                    marginTop: 4,
-                  }}
-                >
+                {/* 미분양 추이. 옛 짝 「층별 매매가 (시·군·구 전체 실거래)」 2열 격자는 세션675 👤 「같이 지우기」로
+                  블록째 지웠다(시·군·구 전체 값 — 다 「3개 다 지우기」와 같은 이유). */}
+                <div style={{ marginTop: 4 }}>
                   <UnsoldChart
                     apartmentId={apt.id as string}
                     siblingIds={apt.siblingIds as string[] | undefined}
                     unsold={(apt.unsold as number | null | undefined) ?? null}
                   />
-                  <PriceByFloorBlock apt={mergedApt ?? apt} />
                 </div>
 
                 {/* 네이버 매물 현황 한 줄 (세션589 V10) — 옛 두 출처 대조표("같은 값을 두 곳에서 재봤어요")를

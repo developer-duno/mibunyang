@@ -2,6 +2,8 @@ import { memo, useMemo, useState } from "react";
 import { C, F, R, catCol, gr, SHORT_LABEL } from "@/theme";
 import { ScoreBadge, Bar } from "./primitives";
 import { fmtPrice } from "@/lib/format";
+import { fmtArea } from "@/lib/area";
+import { noticeCount } from "@/lib/noticeCount";
 import { NOW_YM } from "@/lib/classify";
 import { getTopCats } from "@/constants/profiles";
 import type { Category } from "@/constants/profiles";
@@ -50,6 +52,17 @@ const S = {
     whiteSpace: "nowrap",
   },
   tagRow: { display: "flex", gap: 4, flexWrap: "wrap" as const },
+  noticeBadge: {
+    flexShrink: 0,
+    fontSize: F.xs,
+    fontWeight: 700,
+    color: C.sub,
+    background: C.bg,
+    border: `1px solid ${C.border}`,
+    padding: "1px 6px",
+    borderRadius: R.badge,
+    whiteSpace: "nowrap" as const,
+  },
   grid: { display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "8px 12px", marginTop: 12 },
   catHeader: { display: "flex", justifyContent: "space-between", marginBottom: 2 },
   catLabel: { fontSize: F.sm, color: C.muted },
@@ -140,6 +153,7 @@ export const AptCard = memo(
     const moveInDone = layers.status.some((c) => c.id === "moveInDone");
     // 판정 한 줄 — 비로그인은 점수를 못 보므로 total 을 넘기지 않아 문구 자체가 안 만들어진다
     const verdict = aptVerdict(isLoggedIn ? res.total : null, res.cats);
+    const notices = noticeCount(apt.siblingIds);
 
     // 상태 의존 스타일만 useMemo로 계산
     const dynStyles = useMemo(
@@ -250,6 +264,12 @@ export const AptCard = memo(
                     {String(apt.name ?? "")}
                   </span>
                 )}
+                {/* 세션675 👤 바 ① 「공고 N」 — 한 카드로 묶인 청약홈 공고 수(상세 창 재공고 배지와 같은 규칙, 2 이상일 때만) */}
+                {notices > 1 && (
+                  <span data-testid="card-notice-badge" style={S.noticeBadge}>
+                    공고 {notices}
+                  </span>
+                )}
               </div>
               <div style={S.tagRow}>
                 {[
@@ -257,7 +277,7 @@ export const AptCard = memo(
                   // ⚠️ `${apt.area ?? ""}㎡` 로 쓰면 면적이 없을 때 단위만 남은 "㎡" 가 되고,
                   //    빈 문자열이 아니라서 아래 filter(Boolean) 도 못 걸러낸다.
                   //    실측(2026-08-03): 면적 없는 단지 **670개(42.4%)** — 라이브에서 실제로 그렇게 떠 있었다.
-                  apt.area != null ? `${apt.area}㎡` : "",
+                  apt.area != null ? fmtArea(apt.area) : "",
                   fmtPrice(apt.price),
                   apt.builder ?? "",
                 ]
@@ -381,7 +401,8 @@ export const AptCard = memo(
               }}
             >
               <span style={{ fontSize: F.base, fontWeight: 700, color: C.amber }}>
-                {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 (
+                {/* 세션675 👤 바 ③ — 비율이 무엇의 몇 %인지(scoreBenefit rate = 혜택 금액 ÷ 분양가) */}
+                {res.cats.benefit?.wonSource || "혜택"} 약 {benefitWon.toLocaleString()}만원 (분양가의{" "}
                 {res.cats.benefit?.rate ?? 0}%)
               </span>
             </div>
@@ -459,6 +480,8 @@ export const AptCard = memo(
     if (pa.builderDebtRatio !== na.builderDebtRatio) return false;
     if (pa._fallbackBuilderDebt !== na._fallbackBuilderDebt) return false;
     if (pa.unsoldEventCount !== na.unsoldEventCount) return false;
+    // 세션675 👤 바 ① — 제목 옆 「공고 N」 재료. 빠지면 묶음이 바뀌어도 옛 숫자를 재사용한다(시험이 잠근다).
+    if (noticeCount(pa.siblingIds) !== noticeCount(na.siblingIds)) return false;
     // infoRow/alertRow 칩 신호 (세션 430) — 역세권·전세가율·주차·혐오안심
     if (pa.subwayDist !== na.subwayDist) return false;
     if (pa.subwayName !== na.subwayName) return false;

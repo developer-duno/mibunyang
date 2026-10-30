@@ -1,7 +1,13 @@
 import { memo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
-import { isSentinel, SENTINEL_RADIUS_KM, type SentinelField } from "@/constants/sentinels";
+import {
+  isSentinel,
+  SENTINEL_RADIUS_KM,
+  COUNT_SEARCH_RADIUS_M,
+  KAKAO_INFRA_DIST_FIELDS,
+  type SentinelField,
+} from "@/constants/sentinels";
 import { DISTANCE_AXES, distanceItemKey, type DistanceItem } from "@/constants/distanceAxes";
 import { schoolsOf, nearestSchoolDistance } from "@/lib/nearbySchools";
 import type { Apt } from "@/types/scoring";
@@ -49,6 +55,14 @@ const NAME_MAX_LINES = 2;
 // 세션 505 에 62 → 84. 라벨이 "병원"에서 "병원 12곳"으로 길어졌다 — 62 로 두면 개수가 잘린다.
 const LABEL_W = 84;
 const VALUE_W = 62;
+/**
+ * 줄 하나(이름 · 막대 · 값)의 최대 폭 — 세션675 👤 「점 그림 뜻·간격」. 막대가 flex:1 이라 넓은 화면(상세 창 760)에서는
+ * 이름과 값이 약 550px 떨어져 어느 값이 어느 줄인지 눈으로 잇기 어려웠다. 휴대폰(390)은 이보다 좁아 그대로다.
+ */
+export const DOTS_MAX_W = 480;
+/** 그림 위 한 줄 — 축 방향(왼쪽 = 0) 그대로. 축 밖 값(속 빈 주황 점)이 있을 때만 뒤 절을 붙인다 */
+export const DOTS_LEGEND = "점이 왼쪽에 있을수록 가까워요";
+export const DOTS_LEGEND_OVER = "속 빈 주황 점은 줄 끝보다 먼 곳";
 
 /** m 를 사람이 읽는 말로 — 1km 넘으면 km */
 export function fmtDist(m: number): string {
@@ -113,7 +127,25 @@ type Row = {
   out: string | null;
   /** 그릴 줄인가(`onlyWhenPresent` 축에서 이름·거리가 다 없으면 false) */
   present: boolean;
+  /** 찾아본 적이 없는 줄 — 축과 상관없이 안 그린다(세션675 B16: 개수도 거리도 null) */
+  hidden?: boolean;
 };
+
+/**
+ * 거리 null 인 개수 칸 시설 줄의 처리(세션675 B16) — 개수 0 + 반경 있음 = 「{반경} 안에 없음」 ·
+ * 개수 null(안 찾아봄)이나 반경 없는 필드(응급의료) = 줄을 안 그림 · 개수 > 0 = 옛 「미수집」 그대로(모순이라 판정 안 함).
+ */
+function noneWithin(it: DistanceItem, raw: Record<string, unknown>): { out: string | null; hidden: boolean } {
+  if (!it.countField) return { out: null, hidden: false };
+  // B16c — 카카오 8종 거리가 전부 null 이면 그 수집기가 안 찾아본 단지(개수 0 은 기본값) → 8줄 숨김
+  if (KAKAO_INFRA_DIST_FIELDS.includes(it.field) && KAKAO_INFRA_DIST_FIELDS.every((f) => raw[f] == null))
+    return { out: null, hidden: true };
+  const c = raw[it.countField];
+  if (c == null) return { out: null, hidden: true };
+  if (Number(c) !== 0) return { out: null, hidden: false };
+  const r = COUNT_SEARCH_RADIUS_M[it.field];
+  return r ? { out: `${fmtDist(r)} 안에 없음`, hidden: false } : { out: null, hidden: true };
+}
 
 function readRow(it: DistanceItem, raw: Record<string, unknown>): Row {
   const base = { key: distanceItemKey(it), label: it.label, name: null, out: null };
@@ -133,14 +165,17 @@ function readRow(it: DistanceItem, raw: Record<string, unknown>): Row {
       ? (raw[it.nameField] as string).trim()
       : null;
   const cnt = it.countField ? usableCount(raw[it.countField]) : null;
+  const none = v == null && out == null ? noneWithin(it, raw) : { out: null, hidden: false };
+  const out2 = out ?? none.out;
   return {
     ...base,
     // 세션 505: 라벨에 개수를 함께 적는다("병원 3곳").
     label: cnt != null ? `${it.label} ${cnt}곳` : it.label,
     name,
     v,
-    out,
-    present: name != null || v != null || out != null,
+    out: out2,
+    present: name != null || v != null || out2 != null,
+    hidden: none.hidden,
   };
 }
 
@@ -152,7 +187,7 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
     const rows = ax.items.map((it) => readRow(it, raw));
     // 학교 줄도 없으면 안 그린다 — 목록에 고등학교가 없다는 건 "못 모았다"가 아니라 "주변 목록에
     // 없다"라서 "미수집"이라 적으면 거짓이다(옛 학군 카드도 그 줄을 안 그렸다).
-    const keep = rows.filter((r, i) => r.present || !(ax.onlyWhenPresent || ax.items[i].schoolType));
+    const keep = rows.filter((r, i) => !r.hidden && (r.present || !(ax.onlyWhenPresent || ax.items[i].schoolType)));
     return { ...ax, rows: keep };
   }).filter((ax) => ax.rows.length > 0);
   const filled = axes.reduce((s, a) => s + a.rows.filter((r) => r.v != null || r.out != null).length, 0);
@@ -178,11 +213,21 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
 
   // 반경 숫자는 손으로 적지 않는다 — 수집기 반경과 대조되는 SENTINEL_RADIUS_KM 에서 만든다(세션591 보완 F5).
   const R = SENTINEL_RADIUS_KM;
+  const CR = COUNT_SEARCH_RADIUS_M;
+  // 세션675 G3 — 옛 끝 문장 「자료가 없는 시설은 '미수집'으로 둡니다」는 B16 뒤로 사실과 달라졌다(반경 안 0곳 = 「안에 없음」,
+  //   안 찾아본 시설 = 줄 뺌). 카카오 반경도 수집기 사본(COUNT_SEARCH_RADIUS_M)에서 만든다.
   const hint =
-    `점이 왼쪽에 있을수록 가까워요. 거리 자릿수가 크게 달라서(카페는 500m 안, KTX역은 ${R.ktxDist}km 안) 비슷한 ` +
-    `것끼리 묶어 줄을 나눴어요. 고속도로 IC는 ${R.icDist}km, KTX역은 ${R.ktxDist}km, 지하철역은 ${R.subwayDist}km ` +
-    "반경을 찾아봤고, 그 안에 없으면 '안에 없음'으로 적어요. 자료가 없는 시설은 '미수집'으로 둡니다. " +
+    `점이 왼쪽에 있을수록 가까워요. 거리 자릿수가 크게 달라서(카페는 ${fmtDist(CR.cafeDist)} 안, KTX역은 ${R.ktxDist}km 안) 비슷한 ` +
+    `것끼리 묶어 줄을 나눴어요. 고속도로 IC는 ${R.icDist}km, KTX역은 ${R.ktxDist}km, 지하철역은 ${R.subwayDist}km, ` +
+    `편의점·카페·약국은 ${fmtDist(CR.convDist)}, 병원·마트·문화시설·은행·공원은 ${fmtDist(CR.hospitalDist)} ` +
+    "반경을 찾아봤고, 그 안에 없으면 '안에 없음'으로 적어요. 찾아보지 않은 시설은 줄을 빼요. " +
     "혐오시설은 멀수록 좋은 것이라 이 그림에 넣지 않았어요.";
+
+  // 그릴 값이 하나도 없으면 상자째 안 그린다(세션675 👤 마 「숨기고, 못 모은 단지는 채우기」 — 화면 몫).
+  //   옛 "주변 시설 거리를 아직 모으지 못했어요" 236px 빈 상자는 우리 수집 사정을 손님에게 말하는 글이었다.
+  //   좌표 공유 단지는 값이 있어도 "위치 확인 중"을 말해야 하므로 이 판정보다 아래에서 따로 다룬다.
+  if (filled === 0 && !coordUnknown) return null;
+  const anyOver = axes.some((ax) => ax.rows.some((r) => r.v != null && (r.v as number) > ax.cap));
 
   // 좌표 공유 단지 — 거리는 전부 이 단지 좌표로 잰 값이라 점을 하나도 안 그린다(세션568-3 · 세션591 L7).
   if (coordUnknown) {
@@ -204,17 +249,15 @@ export const DistanceDots = memo(function DistanceDots({ apt }: { apt: Apt }) {
     <ChartFrame
       title="주변 시설까지 거리"
       hint={hint}
-      ariaLabel={
-        filled === 0
-          ? "주변 시설 거리 자료가 아직 없습니다."
-          : `주변 시설 ${facilityTotal}곳 중 ${facilityFilled}곳의 거리를 모았습니다.${near ? ` 가장 가까운 곳은 ${near} 입니다.` : ""}`
-      }
-      empty={filled === 0}
-      emptyReason="주변 시설 거리를 아직 모으지 못했어요"
+      ariaLabel={`주변 시설 ${facilityTotal}곳 중 ${facilityFilled}곳의 거리를 모았습니다.${near ? ` 가장 가까운 곳은 ${near} 입니다.` : ""}`}
       height={height}
     >
+      <div data-testid="dots-legend" style={{ fontSize: F.xs, color: C.sub, marginBottom: 6, lineHeight: "18px" }}>
+        {DOTS_LEGEND}
+        {anyOver ? ` · ${DOTS_LEGEND_OVER}` : ""}
+      </div>
       {axes.map((ax) => (
-        <div key={ax.title} style={{ marginBottom: 10 }}>
+        <div key={ax.title} style={{ marginBottom: 10, maxWidth: DOTS_MAX_W }}>
           <div style={{ display: "flex", justifyContent: "space-between", height: 20, alignItems: "center" }}>
             <span style={{ fontSize: F.sm, color: C.muted }}>{ax.title}</span>
             <span style={{ fontSize: F.xs, color: C.muted }}>0 ~ {ax.capLabel}</span>

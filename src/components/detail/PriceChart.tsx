@@ -8,6 +8,12 @@ import type { PriceChartProps } from "@/types/detail";
 const PRICE_CHART_HINT =
   "이 단지(같은 분양 묶음)의 분양가가 시간에 따라 어떻게 바뀌었는지예요. 단위는 만원이고, 매주 자동으로 모아 쌓고 있어요.";
 
+/**
+ * 점(날짜)이 이보다 적으면 그래프를 통째로 안 그린다(빈 상자도 없음) — 세션675 👤 마-2 「점 3개보다 적으면 숨기기」.
+ * 점 2개짜리 평평한 선은 위아래 빈 여백만 크고 알려 주는 게 없었다.
+ */
+export const PRICE_CHART_MIN_POINTS = 3;
+
 /** 분양가 추이 차트 — DetailModal 내 표시 */
 export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: PriceChartProps) {
   const { data, loading, error, retry } = usePriceHistory(apartmentId, siblingIds);
@@ -57,7 +63,7 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: 
         </button>
       </div>
     );
-  if (data.length < 2) return null;
+  if (data.length < PRICE_CHART_MIN_POINTS) return null;
 
   // 타입별 최신 가격만 추출하여 시계열 구성
   interface PriceRow {
@@ -78,7 +84,7 @@ export const PriceChart = memo(function PriceChart({ apartmentId, siblingIds }: 
       label: `${date}: ${(row.price ?? 0).toLocaleString()}만원`,
     }));
 
-  if (chartData.length < 2) return null;
+  if (chartData.length < PRICE_CHART_MIN_POINTS) return null;
 
   return (
     <div style={{ marginTop: 12 }}>

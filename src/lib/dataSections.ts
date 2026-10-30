@@ -86,7 +86,7 @@ export const LOCATION_SECTIONS: DataSection[] = [];
 //  · 공시가격(`housingPrice`) → 손님 화면에서 뺐다(V11 — 시군구 평균·세금 기준값이고 점수에 안 쓴다).
 //    관리자 전수 표·`fieldMeta` 정의·DB 는 그대로다(`lib/tabExtraFields` INTERNAL_ONLY_FIELDS).
 // 세션 507 이 이 표에서 내보낸 값들의 지금 자리: 지역 통계 7종 = 분양 탭 `detail/RegionStats`,
-// 거래 층수 범위 = 층별가 계단 카드(`detail/DataSectionBlock` PriceByFloorBlock).
+// 거래 층수 범위 = 옛 층별가 계단 카드 → 세션675 에 카드째 지워 손님 화면 밖(`lib/tabExtraFields` INTERNAL_ONLY_FIELDS).
 
 // 분양 탭 — 세부 섹션 없음(세션591 P3 — 마지막 "분양 안전" 1섹션도 해체, 아래 ⑤).
 //

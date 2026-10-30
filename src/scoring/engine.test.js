@@ -1878,7 +1878,9 @@ describe("scorePrice — 같은 단지·같은 동 또래 비교 (세션607)", (
     expect(sub(r, "전세가율").info).toBe("데이터 부재");
     expect(sub(r, "전세가율").detail).toBe(`같은 단지 전세·매매 거래 부족 (중립 ${PRICE_NO_DATA_DEFAULTS.jr}점)`);
     const has = scorePrice(makeApt({ ...base, complexJeonseRate: 75, jeonseRate: null }));
-    expect(sub(has, "전세가율").detail).toContain("같은 단지 같은 평수 전세 4건 ÷ 매매 6건 중앙값");
+    expect(sub(has, "전세가율").detail).toContain(
+      "같은 단지 같은 평수 전세 가운데값 ÷ 매매 가운데값 (전세 4건 · 매매 6건)"
+    );
     // 세션651: 판정 토막 "(적정 70~80%, 위험 40%↓, 과열 90%↑)" 이 돌아오면 red
     expect(sub(has, "전세가율").detail).not.toMatch(/적정|위험|과열/);
   });
