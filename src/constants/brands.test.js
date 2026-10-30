@@ -1,6 +1,15 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
-import { BUILDER_ALIASES, resolveBuilder, BRAND_TIER, AGE_PREMIUM, LAYOUT_SCORE, NOXIOUS_PENALTY } from "./brands";
+import {
+  BUILDER_ALIASES,
+  resolveBuilder,
+  BRAND_TIER,
+  AGE_PREMIUM,
+  LAYOUT_SCORE,
+  NOXIOUS_PENALTY,
+  stripBuilderTail,
+  consortiumRep,
+} from "./brands";
 
 describe("resolveBuilder", () => {
   it('null → "기타"', () => {
@@ -117,5 +126,66 @@ describe("NOXIOUS_PENALTY", () => {
   });
   it("소각장이 가장 큰 페널티", () => {
     expect(NOXIOUS_PENALTY["소각장"]).toBe(Math.min(...Object.values(NOXIOUS_PENALTY)));
+  });
+});
+
+// 세션676 PR-C — VIEW builder 「대표사 외 N」·공고 표기 꼬리 · 새 별칭(계획서 v2 C2-3·C2-5)
+describe("resolveBuilder — 꼬리 떼기·새 별칭 (세션676)", () => {
+  it("「 외 N」「등」「컨소시엄」을 떼고 대표사로 판정", () => {
+    expect(resolveBuilder("현대건설 외 2")).toBe("현대건설");
+    expect(resolveBuilder("GS건설 외 1")).toBe("GS건설");
+    expect(resolveBuilder("지에스건설(주) 등")).toBe("GS건설");
+    expect(resolveBuilder("현대건설 주식회사 컨소시엄")).toBe("현대건설");
+    expect(resolveBuilder("금호건설(주) 외 3사")).toBe("금호건설");
+    expect(BRAND_TIER[resolveBuilder("현대건설 외 2")].tier).toBe("1군Super");
+  });
+  it("가운데 「외」·꼬리만 있는 글자는 그대로", () => {
+    expect(stripBuilderTail("가나 외 건설")).toBe("가나 외 건설");
+    expect(stripBuilderTail("컨소시엄")).toBe("컨소시엄");
+  });
+  it("운영 실제 이름 — 꼬리처럼 보여도 끝이 아니면 안 잘린다(검사관 B 🟠1 반례 · 세션677)", () => {
+    for (const r of [
+      "두류야외음악당지역주택조합",
+      "호원초등학교주변지구 주택재개발정비사업조합",
+      "대현청실 외2 가로주택정비사업조합",
+    ])
+      expect(stripBuilderTail(r), r).toBe(r);
+  });
+  it("👤 D8 뒤 의도 동작 — 숫자 없는 「 외」(VIEW 「GS건설 외」)·꼬리 여러 마디·숫자 세 자리까지", () => {
+    // 「가나건설 외」 는 VIEW 가 낸 「대표사 외」(수 모름) 꼴이라 대표사로 뗀다. 원표 글자가 우연히 이 꼴이어도
+    // builders 조인이 안 맞아 부채비율이 null → 「대표사 부채비율」 칩이 안 뜬다(검사관 A 확인 — 결함 아님).
+    expect(stripBuilderTail("가나건설 외")).toBe("가나건설");
+    expect(resolveBuilder("GS건설 외")).toBe("GS건설");
+    expect(resolveBuilder("GS건설 외 1개사 컨소시엄")).toBe("GS건설");
+    expect(stripBuilderTail("가나건설 컨소시엄 등")).toBe("가나건설");
+    expect(stripBuilderTail("가나건설 외 1234")).toBe("가나건설 외 1234");
+    expect(stripBuilderTail("가나건설 외 999")).toBe("가나건설");
+  });
+  it("새 별칭 — 옛 이름·한글 음차·법인 정식명·(주)한화 계열", () => {
+    expect(resolveBuilder("(주)포스코건설")).toBe("포스코이앤씨");
+    expect(resolveBuilder("계룡건설산업(주)")).toBe("계룡건설");
+    expect(resolveBuilder("에스케이에코플랜트 주식회사")).toBe("SK에코플랜트");
+    expect(resolveBuilder("아이파크현대산업개발(주)")).toBe("HDC현대산업개발");
+    for (const r of ["(주)한화 건설부문", "(주)한화건설부문", "(주)한화", "㈜한화", "주식회사 한화", "(주) 한화"])
+      expect(resolveBuilder(r), r).toBe("한화건설");
+    expect(resolveBuilder("금호산업(주)")).toBe("금호건설");
+    expect(resolveBuilder("SK건설(주)")).toBe("SK에코플랜트");
+  });
+});
+
+describe("consortiumRep — VIEW 「대표사 외 N」·「대표사 외」 (세션676 D6 · 세션677 D8)", () => {
+  it("숫자 없는 「GS건설 외」(수 모름)도 대표사로 인정", () => {
+    expect(consortiumRep("GS건설 외")).toBe("GS건설");
+    expect(consortiumRep("현대건설 외")).toBe("현대건설");
+    expect(consortiumRep("외")).toBeNull();
+  });
+  it("「현대건설 외 2」 → 현대건설 · 혼자·꼬리 다른 꼴·비문자는 null", () => {
+    expect(consortiumRep("현대건설 외 2")).toBe("현대건설");
+    expect(consortiumRep("에이치제이중공업 건설부문 외 1")).toBe("에이치제이중공업 건설부문");
+    expect(consortiumRep("현대건설")).toBeNull();
+    expect(consortiumRep("지에스건설(주) 등")).toBeNull();
+    expect(consortiumRep("현대건설 외 0")).toBeNull();
+    expect(consortiumRep(null)).toBeNull();
+    expect(consortiumRep(3)).toBeNull();
   });
 });

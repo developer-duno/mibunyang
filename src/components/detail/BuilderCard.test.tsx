@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { render, screen } from "@testing-library/react";
-import { BuilderCard, DEBT_GAUGE, debtColor, builderChipText } from "./BuilderCard";
+import { BuilderCard, DEBT_GAUGE, debtColor, builderChipText, debtTitle } from "./BuilderCard";
 import { FIELD_META } from "@/constants/fieldMeta";
 import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
 import { C } from "@/theme";
@@ -160,5 +160,28 @@ describe("BuilderCard — hugGuarantee 제외 (사장님 확정, Q6 유지)", ()
   it("HUG 보증 필드는 그리지 않는다", () => {
     render(<BuilderCard apt={apt({ hugGuarantee: true })} />);
     expect(screen.queryByText(/HUG/)).toBeNull();
+  });
+});
+
+// 세션676 PR-C(👤 D6) — 공동 시공이면 눈금 제목 「대표사(<이름>) 부채비율」, 혼자면 지금 그대로 「부채비율」
+describe("BuilderCard — 대표사 부채비율 (세션676 D6)", () => {
+  it("builder 「현대건설 외 2」 → 「대표사(현대건설) 부채비율 210%」 · 칩은 「현대건설 외 2 (1군Super)」", () => {
+    render(<BuilderCard apt={apt({ builder: "현대건설 외 2", builderDebtRatio: 210 })} />);
+    expect(screen.getByTestId("debt-gauge").textContent).toContain(
+      `대표사(현대건설) 부채비율 ${FIELD_META.builderDebtRatio.fmt(210)}`
+    );
+    expect(screen.getByText("현대건설 외 2 (1군Super)")).toBeTruthy();
+  });
+  it("혼자 지은 단지는 「부채비율 N%」 그대로(대표사 글자 없음)", () => {
+    render(<BuilderCard apt={apt({ builder: "현대건설", builderDebtRatio: 210 })} />);
+    const g = screen.getByTestId("debt-gauge").textContent ?? "";
+    expect(g).toContain(`부채비율 ${FIELD_META.builderDebtRatio.fmt(210)}`);
+    expect(g).not.toContain("대표사");
+  });
+  it("debtTitle — 「외 N」만 대표사, 「등」·없음은 그냥", () => {
+    expect(debtTitle("GS건설 외 1")).toBe("대표사(GS건설) 부채비율");
+    expect(debtTitle("GS건설 외")).toBe("대표사(GS건설) 부채비율"); // 세션677 👤 D8 — 「등」「컨소시엄」 공고(수 모름)
+    expect(debtTitle("지에스건설(주) 등")).toBe("부채비율");
+    expect(debtTitle(null)).toBe("부채비율");
   });
 });

@@ -23,7 +23,7 @@ import { dirname, resolve } from "path";
 import {
   loadEnv, getSupabase, log, logError, createReporter, recordCollectorRun,
   upsertBatch, stringSimilarity, sleep, VALID_REGIONS,
-  resolveBuilder, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP, joinRunMessage, clampUnsoldRate,
+  resolveBuilderForWrite, today, resolveRegionName, selectAll, normalizeGu, GU_LAWD_MAP, joinRunMessage, clampUnsoldRate,
 } from "./_shared.mjs";
 import { isLeaseName, isLeasePresale } from "../../src/constants/leaseTypes.mjs";
 import { isPresaleOwner } from "./_same-complex.mjs";
@@ -493,7 +493,7 @@ export function toPresaleRow(complex, detail, listItem) {
     _enrich: {
       units: complex?.total_house_cnt ?? null,
       builder: complex?.cmpy_nm
-        ? resolveBuilder(complex.cmpy_nm.trim())
+        ? resolveBuilderForWrite(complex.cmpy_nm.trim())
         : null,
       max_floor: complex?.max_flr_cnt ?? null,
       lat: complex?.ypos != null ? parseFloat(String(complex.ypos)) : null,

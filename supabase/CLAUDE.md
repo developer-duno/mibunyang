@@ -43,7 +43,7 @@
 | monitor_alert_state | 모니터 경보 dedup 상태 | monitor-collectors |
 | monitor_daily_snapshot | 모니터 일일 스냅샷 (NULL 추세 비교용) | monitor-collectors |
 | permission_baseline · permission_baseline_item | 권한 지문 기준선(승인 1회 = 1행 + 항목들) — **서비스 전용**: RLS 켬·정책 0·service_role 에 SELECT·INSERT 만 | `accept_permission_baseline()` (세션569) |
-| **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 · **세션635 다)(`20261013000000_view_one_card_bundle.sql`)부터 같은 단지 묶음을 한 장으로** — 대표 D11(id·이름·점수) · 재료 행(나머지 칸·파생표·가격) · 세대수 D7 · 묶음 미분양 · `name` 회차·안내문 떼기(`_card-title.mjs`) · 새 칸 5(`complexKey`·`memberIds`·`materialId`·`noticeName`·`aliasIds`) 맨 끝 · 되돌리기 `_rollbacks/20261013000001` | - |
+| **apartments_flat** (VIEW) | dedup CTE + 7개 JOIN 평탄화 + presale 19컬럼 · **세션635 다)(`20261013000000_view_one_card_bundle.sql`)부터 같은 단지 묶음을 한 장으로** — 대표 D11(id·이름·점수) · 재료 행(나머지 칸·파생표·가격) · 세대수 D7 · 묶음 미분양 · `name` 회차·안내문 떼기(`_card-title.mjs`) · 새 칸 5(`complexKey`·`memberIds`·`materialId`·`noticeName`·`aliasIds`) 맨 끝 · 되돌리기 `_rollbacks/20261013000001` · **지금 정의 파일 = `20261031000000_view_card_builder.sql`(세션676 PR-C, 184칸 그대로, 되돌림 `_rollbacks/20261031000001` = 20261026000002 본문)** — `name` 끝 회차·공고 종류 낱말 떼기(`_card-title.mjs cardTitle`) · `builder` = 공고 시공사(`presale_schedule_official.constructor` — 재료 행 공고 → 비오피스텔 구성원 공고, 공동이면 「대표사 외 N」, 없으면 원표 값) · 부채비율 연결 = 대표사 DART 이름(`_card-builder.mjs` 이름 사전 3칸이 VIEW 안 VALUES) · 원표 `apartments.builder`·2u 영향 0 | - |
 | **api_quota_daily** (VIEW) | 일별 API 쿼터 합계 | - |
 
 > **원문 보존 표는 원문 칸 목록을 종류별로 전부 적고, 버리는 칸마다 이유를 쓴다**(세션589 검사관 C1) — 옛 표를 베끼면

@@ -6,7 +6,7 @@ import { readFileSync, writeFileSync, mkdirSync, existsSync } from "fs";
 import { resolve, dirname } from "path";
 import { fileURLToPath } from "url";
 import { createClient } from "@supabase/supabase-js";
-import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate, resolveRegionName } from "./collectors/_shared.mjs";
+import { REGION_MAP, VALID_REGIONS, BUILDER_ALIASES, resolveBuilderForWrite as resolveBuilder, REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, loadEnv, fetchWithRetry, selectAll, clampUnsoldRate, resolveRegionName } from "./collectors/_shared.mjs";
 import { buildListData, buildDetailBuckets, detailBucketName } from "./static-outputs.mjs";
 import { excludeLeaseUnits } from "../src/constants/leaseTypes.mjs";
 import { evaluateCountGuard } from "./_count-guard.mjs";
@@ -1254,4 +1254,5 @@ if (isCLI) {
 }
 
 export { resolveBuilder, isValidGu, parseAddress, mapItem, getLawdCd, estimateCreditGrade };
+// 시험용 내보내기 — 쓰기 함수(`resolveBuilderForWrite` → 위 `resolveBuilder`)와 화면 별칭표 `BUILDER_ALIASES` 는 짝이 아니다(세션676: 쓰기는 옛 표 `WRITE_BUILDER_ALIASES`).
 export { AREA_CODE_REGION, BUILDER_ALIASES, VALID_REGIONS, GU_LAWD_MAP, REGION_LAWD_PREFIX };

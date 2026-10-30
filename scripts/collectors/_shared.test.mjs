@@ -4,7 +4,7 @@
  */
 import { describe, it, expect, vi } from "vitest";
 import {
-  resolveBuilder, stringSimilarity, today, sleep,
+  resolveBuilder, resolveBuilderForWrite, stripBuilderTail, stringSimilarity, today, sleep,
   REGION_MAP, VALID_REGIONS, createReporter, recordCollectorRun, recordApiQuota,
   REGION_LAWD_PREFIX, GU_LAWD_MAP, getLawdCd, normalizeGu, guParentCity,
   setupGracefulShutdown, clampUnsoldRate, budgetExceeded, fetchWithRetry,
@@ -19,6 +19,7 @@ import {
 } from "./_shared.mjs";
 import {
   resolveBuilder as brandsResolveBuilder,
+  stripBuilderTail as brandsStripBuilderTail,
   BUILDER_ALIASES as BRANDS_BUILDER_ALIASES,
   BRAND_TIER,
 } from "@/constants/brands";
@@ -1356,5 +1357,61 @@ describe("infra 행 없음 마커 — formatInfraRowMissing ↔ parseInfraRowMis
     expect(parseInfraRowMissing("INFRA_ROW_MISSING=-1")).toBeNull();
     expect(parseInfraRowMissing("INFRA_ROW_MISSING=0")).toBeNull();
     expect(parseInfraRowMissing("XINFRA_ROW_MISSING=3")).toBeNull();
+  });
+});
+
+// ── 세션676 PR-C — 쓰기 전용 함수는 옛 동작 그대로(👤 D1·D5) · 쌍둥이 꼬리 떼기 ──
+//   원표 apartments.builder 에 쓰는 글자(seed·naver-presale·collect-data)는 PR-C 의 새 별칭·꼬리 규칙을 따르지 않는다.
+//   아래 8종 = 지금 원표 3,440행에서 새 resolveBuilder 가 다른 글자를 낼 원문 전부(세션676 실측 probe-raw-builder.log).
+describe("resolveBuilderForWrite — 세션676 직전 동작 잠금(원표 쓰기)", () => {
+  const FROZEN = [
+    ["계룡건설산업(주)", "계룡건설산업(주)"],
+    ["(주)한화건설부문", "(주)한화건설부문"],
+    ["(주)포스코건설", "(주)포스코건설"],
+    ["(주)한화", "(주)한화"],
+    ["현대건설개포컨소시엄", "현대건설개포컨소시엄"],
+    ["디비이엔씨(주) 외 1", "디비이엔씨(주) 외 1"],
+    ["아이파크현대산업개발(주)", "아이파크현대산업개발(주)"],
+    ["(주) 한화", "(주) 한화"],
+  ];
+  it("8종 원문이 옛 글자 그대로", () => {
+    for (const [raw, want] of FROZEN) expect(resolveBuilderForWrite(raw), raw).toBe(want);
+  });
+  it("같은 8종을 화면 쪽 resolveBuilder 는 새 규칙으로 판정한다(두 함수가 실제로 갈린다)", () => {
+    for (const [raw] of FROZEN) expect(resolveBuilder(raw), raw).not.toBe(resolveBuilderForWrite(raw));
+  });
+  it("옛 별칭·정규화 동작은 그대로(지에스건설·법인격 변형·미등록·빈 값)", () => {
+    expect(resolveBuilderForWrite("지에스건설")).toBe("GS건설");
+    expect(resolveBuilderForWrite("주식회사 대우건설")).toBe("대우건설");
+    expect(resolveBuilderForWrite("  무명건설 ")).toBe("무명건설");
+    expect(resolveBuilderForWrite(null)).toBe("기타");
+    expect(resolveBuilderForWrite("")).toBe("기타");
+  });
+  it("수집기 세 곳은 쓰기 함수를 쓴다(화면 함수로 되돌리면 빨강)", () => {
+    const strip = (/** @type {string} */ p) => readFileSync(new URL(p, import.meta.url), "utf8").replace(/\/\/[^\n]*/g, "");
+    expect(strip("./collect-applyhome-seed.mjs")).toMatch(/builder:\s*resolveBuilderForWrite\(item\.BSNS_MBY_NM/);
+    expect(strip("./naver-presale.mjs")).toMatch(/\?\s*resolveBuilderForWrite\(complex\.cmpy_nm\.trim\(\)\)/);
+    expect(strip("../collect-data.mjs")).toMatch(/resolveBuilderForWrite as resolveBuilder,/);
+  });
+});
+
+describe("쌍둥이 꼬리 떼기 — brands.ts 와 같다 (세션676)", () => {
+  const TAILS = ["현대건설 외 2", "(주)금강주택 외 2", "현대건설(주) 외 6개사", "금호건설(주) 외 3사", "한양산업개발 외1",
+    "지에스건설(주) 등", "현대건설 주식회사 컨소시엄", "계룡건설 컨소시엄", "제일건설 주식회사 외 1개업체", "컨소시엄", " 등", "가나 외 건설",
+    // 세션677: 숫자 없는 「 외」(👤 D8) · 꼬리 여러 마디 · 숫자 세 자리 · 운영 실제 이름 반례(검사관 B 🟠1)
+    "GS건설 외", "가나건설 외", "GS건설 외 1개사 컨소시엄", "가나건설 컨소시엄 등", "가나건설 외 1234", "가나건설 외 999",
+    "두류야외음악당지역주택조합", "호원초등학교주변지구 주택재개발정비사업조합", "대현청실 외2 가로주택정비사업조합"];
+  it("stripBuilderTail · resolveBuilder 가 양쪽 같은 답", () => {
+    for (const t of TAILS) {
+      expect(stripBuilderTail(t), t).toBe(brandsStripBuilderTail(t));
+      expect(resolveBuilder(t), t).toBe(brandsResolveBuilder(t));
+    }
+  });
+  it("운영 실제 이름은 안 잘리고 · 「외」·여러 마디는 떼고 · 「외 1234」는 그대로 (세션677)", () => {
+    for (const r of ["두류야외음악당지역주택조합", "호원초등학교주변지구 주택재개발정비사업조합", "대현청실 외2 가로주택정비사업조합"])
+      expect(stripBuilderTail(r), r).toBe(r);
+    expect(stripBuilderTail("가나건설 외")).toBe("가나건설");
+    expect(resolveBuilder("GS건설 외 1개사 컨소시엄")).toBe("GS건설");
+    expect(stripBuilderTail("가나건설 외 1234")).toBe("가나건설 외 1234");
   });
 });

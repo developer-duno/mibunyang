@@ -2,6 +2,7 @@ import { memo, type CSSProperties } from "react";
 import { C, F } from "@/theme";
 import { FIELD_META } from "@/constants/fieldMeta";
 import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
+import { consortiumRep } from "@/constants/brands";
 import { PositionGauge, positionPct } from "@/components/charts/PositionGauge";
 import type { Apt } from "@/types/scoring";
 
@@ -26,7 +27,9 @@ import type { Apt } from "@/types/scoring";
  * ## builder — fmt 재사용 (등급 어휘를 새로 짓지 않는다)
  *
  * `FIELD_META.builder.fmt` 가 이미 "롯데건설 (1군)" · "OO신탁 (브랜드 해당없음)" · "OO건설 (기타)" 를
- * 가른다(`BRAND_TIER` + 해당없음 판정). 칩 글자는 그 결과에서 「(브랜드 해당없음)」「(기타)」 꼬리표만 뗀다
+ * 가른다(`BRAND_TIER` + 해당없음 판정). 세션676 PR-C 부터 `builder` 는 VIEW 가 고른 **공고 시공사**(공동이면 「대표사 외 N」 —
+ * 등급은 대표사로 판정)이고, 공고 시공사가 없는 단지만 원표 값(조합·신탁 등 시행 주체일 수 있음)이다.
+ * 칩 글자는 그 결과에서 「(브랜드 해당없음)」「(기타)」 꼬리표만 뗀다
  * (세션675 👤 「시공사 꼬리표」 — 손님에게 어색했다). 「(1군)」 같은 등급 꼬리표는 그대로.
  * 관리자 전수 표는 같은 fmt 를 그대로 쓰므로 꼬리표가 남는다(fmt 자체는 안 바꿈).
  *
@@ -82,6 +85,15 @@ const BC_S: Record<string, CSSProperties> = {
 /** 손님 화면에서 떼는 꼬리표 — 등급표에 없는 시공사(기타)·시행 주체(브랜드 해당없음) */
 const DROP_TAG_RE = / \((?:브랜드 해당없음|기타)\)$/;
 
+/**
+ * 부채비율 눈금 제목 — 공동 시공(VIEW builder 「대표사 외 N」)이면 「대표사(현대건설) 부채비율」, 혼자면 「부채비율」
+ * (세션676 PR-C 👤 D6 — 이 숫자는 대표사 한 곳의 값이다). 카드 칩(`cardChips.ts` builderCredit)과 같은 판정(`consortiumRep`).
+ */
+export function debtTitle(builder: unknown): string {
+  const rep = consortiumRep(builder);
+  return rep != null ? `대표사(${rep}) 부채비율` : "부채비율";
+}
+
 /** 시공사 칩 글자 — `FIELD_META.builder.fmt` 에서 「(브랜드 해당없음)」「(기타)」만 뗀다 */
 export function builderChipText(builder: unknown, apt: Apt): string {
   return FIELD_META.builder.fmt(builder, apt).replace(DROP_TAG_RE, "");
@@ -113,7 +125,7 @@ export const BuilderCard = memo(function BuilderCard({ apt }: { apt: Apt }) {
       {debt != null && (
         <div style={BC_S.gauge} data-testid="debt-gauge" data-debt={debt}>
           <div style={{ ...BC_S.gaugeTitle, color: debtColor(debt) }}>
-            부채비율 {FIELD_META.builderDebtRatio.fmt(debt, apt)}
+            {debtTitle(apt.builder)} {FIELD_META.builderDebtRatio.fmt(debt, apt)}
           </div>
           <PositionGauge
             pct={positionPct(debt, DEBT_GAUGE.center, DEBT_GAUGE.best, DEBT_GAUGE.worst)}

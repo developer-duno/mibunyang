@@ -592,14 +592,15 @@ describe('sanitize — 한 단지 = 한 장 묶음 칸 통과(세션635 다)', (
 //   세션609 라): 화면 칸 3개(dongFact·complexTable·complexJeonseTable)가 끝에 붙어 9 → 12. `dong_fact` 는
 //   `cmp_`·`complex_` 접두가 아니라 정규식에 `dong_` 를 더했다(빠뜨리면 11 로 세어 빨강).
 //   세션661: 실거래 범위 4칸(cmpMin·cmpMax·complexJeonseMin·complexJeonseMax)이 끝에 붙어 12 → 16. 읽는 VIEW 파일 = 20261026000002.
-describe('VIEW 마이그(최신 20261026000002) ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
+describe('VIEW 마이그(최신 20261031000000) ↔ 라이브 API 화이트리스트 (세션607 정적 가드)', () => {
   const stripSql = (p: string) =>
     readFileSync(new URL(p, import.meta.url), 'utf8')
       .split(/\r?\n/)
       .map((l) => l.replace(/--.*$/, ''))
       .join('\n');
   // 세션661: 최신 VIEW 파일을 읽는다(20261013 본문 + 끝 4칸). 롤백은 거래 범위 칸을 처음 넣은 20261007 판의 것 그대로(그 칸이 하나도 없는 판).
-  const mig = stripSql('../../supabase/migrations/20261026000002_view_add_range_cols.sql');
+  // 세션676 PR-C: 최신 VIEW = 20261031000000(20261026000002 본문 + 제목·시공사 — 아래 칸 별칭·신뢰도 식은 그대로)
+  const mig = stripSql('../../supabase/migrations/20261031000000_view_card_builder.sql');
   const rollback = stripSql('../../supabase/migrations/_rollbacks/20261007000001_rollback_view_add_trade_scope.sql');
   // 세션661 범위 칸의 롤백 = 20261013 본문 재생성(기존 12칸은 있고 새 4칸만 없다)
   const rangeRollback = stripSql('../../supabase/migrations/_rollbacks/20261026000003_rollback_view_add_range_cols.sql');

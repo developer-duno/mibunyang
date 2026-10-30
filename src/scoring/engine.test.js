@@ -947,6 +947,21 @@ describe("scoreRisk", () => {
       expect(s?.info).toBe("정보 없음");
       expect(s?.detail).toBe("부채비율 미수집 (중립)");
     });
+    // 세션677 👤 D9: 공동 시공(VIEW builder 「대표사 외 N」·「대표사 외」)이면 숫자 줄만 「대표사 부채비율」 — 점수는 그대로
+    it("공동 시공이면 info·detail 앞 글자 '대표사 부채비율' · 혼자면 '부채비율' · 점수 같음 · 값 없음 글자는 그대로", () => {
+      const multi = finOf({ builder: "현대건설 외 2", builderDebtRatio: 155.2 });
+      const unknownN = finOf({ builder: "GS건설 외", builderDebtRatio: 155.2 });
+      const solo = finOf({ builder: "현대건설", builderDebtRatio: 155.2 });
+      expect(multi?.info).toBe("대표사 부채비율 155.2%");
+      expect(multi?.detail).toBe("대표사 부채비율 155.2% (150% 이하 안정 · 200% 이하 보통 · 그 위 주의)");
+      expect(unknownN?.info).toBe("대표사 부채비율 155.2%");
+      expect(solo?.info).toBe("부채비율 155.2%");
+      expect(solo?.detail).toBe("부채비율 155.2% (150% 이하 안정 · 200% 이하 보통 · 그 위 주의)");
+      expect(multi?.score).toBe(solo?.score);
+      const none = finOf({ builder: "현대건설 외 2", builderDebtRatio: null });
+      expect(none?.info).toBe("정보 없음");
+      expect(none?.detail).toBe("부채비율 미수집 (중립)");
+    });
     it("등급 글자(A·A-·BBB·BB·B·CCC·AA)는 info·detail 어디에도 안 나온다", () => {
       for (const [grade, debt] of [
         ["A", 80],
