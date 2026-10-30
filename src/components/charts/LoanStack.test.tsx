@@ -4,11 +4,34 @@ import { LoanStack } from "./LoanStack";
 import { calcLTV, getZone } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
-describe("LoanStack — 분양가가 없으면 계산하지 않는다", () => {
-  it.each([null, undefined, 0, -1, NaN])("price=%s 면 이유를 적고 안 그린다", (p) => {
-    render(<LoanStack price={p as number | null} region="서울" gu="강남구" />);
-    expect(screen.getByText(/자금 구성을 계산할 수 없어요/)).toBeInTheDocument();
-    expect(screen.queryByRole("img")).toBeNull();
+describe("LoanStack — 분양가가 없으면 그리지 않는다", () => {
+  // 세션675 검사 F9 — 빈 상자·"못 모았어요" 문구 없이 통째로 안 그린다(결정 마 원칙)
+  it.each([null, undefined, 0, -1, NaN])("price=%s 면 아무것도 안 그린다", (p) => {
+    const { container } = render(<LoanStack price={p as number | null} region="서울" gu="강남구" />);
+    expect(container.innerHTML).toBe("");
+  });
+});
+
+describe("LoanStack — 수도권 규제지역 꼬리 · 화면 읽기 설명 (세션675 검사 F1·F11)", () => {
+  // 은행업감독업무시행세칙 별표 18 「5. 담보가치 산정」 다목 — 수도권 투기과열지구 잔금대출은 분양가액 제외
+  it("서울 규제 → 막대 아래 글 끝 '잔금 때는 감정가·시세로 다시 재요.' · 비규제·지방 규제는 없음", () => {
+    const a = render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated />);
+    expect(screen.getByTestId("loan-stack-regulated").textContent).toBe(" 잔금 때는 감정가·시세로 다시 재요.");
+    a.unmount();
+    const b = render(<LoanStack price={50000} region="경기" gu="평택시" isRegulated={false} />);
+    expect(screen.queryByTestId("loan-stack-regulated")).toBeNull();
+    b.unmount();
+    render(<LoanStack price={50000} region="부산" gu="해운대구" isRegulated />);
+    expect(screen.queryByTestId("loan-stack-regulated")).toBeNull();
+  });
+
+  it("aria 설명에 DSR 미통과 문장과 규제지역 꼬리가 같이 들어간다", () => {
+    render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated dsr40pass={false} />);
+    const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
+    expect(label).toContain(
+      "다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요. 연소득을 넣으면 아래 카드에서 볼 수 있어요."
+    );
+    expect(label).toContain("잔금 때는 감정가·시세로 다시 재요.");
   });
 });
 
@@ -106,15 +129,38 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
   });
 });
 
+describe("LoanStack — 진한 주황 · 기준 배지 (세션675)", () => {
+  // ⚠️ 변이 대상: 옛 amber(#D97706 = 흰 글자 3.19:1)로 되돌리면 빨강.
+  it("'내 돈' 조각 바탕과 '직접 준비할 돈' 글자는 진한 주황 #B45309", () => {
+    render(<LoanStack price={53020} region="서울" gu="강남구" isRegulated />);
+    const seg = screen.getByText(/^내 돈 /);
+    expect(seg.style.background).toBe("rgb(180, 83, 9)");
+    expect(screen.getByText(/^직접 준비할 돈 /).style.color).toBe("rgb(180, 83, 9)");
+  });
+
+  it("basisLabel 을 주면 제목 옆 배지, 안 주면 배지 없음", () => {
+    const r = render(<LoanStack price={50000} region="부산" gu="해운대구" basisLabel="59B 기준" />);
+    expect(screen.getByTestId("loan-stack-basis").textContent).toBe("59B 기준");
+    r.unmount();
+    render(<LoanStack price={50000} region="부산" gu="해운대구" />);
+    expect(screen.queryByTestId("loan-stack-basis")).toBeNull();
+  });
+});
+
 describe("LoanStack — DSR 은 막대가 아니라 한 줄 안내", () => {
   it("통과면 초록 안내", () => {
     render(<LoanStack price={50000} region="서울" gu="강남구" dsr40pass />);
     expect(screen.getByText(/기준도 통과할 만해요/)).toBeInTheDocument();
   });
 
-  it("미통과면 주의 안내", () => {
+  // 세션675 「막대 아래 말 끝맺기」 · 「주황 글자 진하게」(글자 #B45309 = 흰 바탕 5.02:1)
+  it("미통과면 주의 안내 — '연소득을 넣으면 아래 카드에서 볼 수 있어요'로 끝맺고 진한 주황", () => {
     render(<LoanStack price={50000} region="서울" gu="강남구" dsr40pass={false} />);
-    expect(screen.getByText(/기준에 걸릴 수 있어요/)).toBeInTheDocument();
+    const el = screen.getByText(/기준에 걸릴 수 있어요/);
+    expect(el.textContent).toBe(
+      " 다만 소득 대비 상환 부담(DSR) 기준에 걸릴 수 있어요. 연소득을 넣으면 아래 카드에서 볼 수 있어요."
+    );
+    expect(el.style.color).toBe("rgb(180, 83, 9)");
   });
 
   it("모르면 아무 말도 안 한다 (모르는 걸 단정하지 않는다)", () => {

@@ -73,7 +73,8 @@ test.describe("금융 탭 금리 블록", () => {
 
     const panel = modal.locator("#sec-finance");
     await expect(panel.getByText("한 달에 갚을 돈", { exact: true })).toBeVisible({ timeout: 10000 });
-    await expect(panel.getByText(/아파트·분할상환 최저 금리 4\.20% 기준 · 2026년 9월 공시/)).toBeVisible();
+    // 세션675 「한 달 상환에 금리 2개」 — 가장 낮은·가장 높은 은행 금리(= 아래 범위 줄 양 끝)
+    await expect(panel.getByText(/아파트·분할상환 은행 금리 4\.20% ~ 7\.71% 기준 · 2026년 9월 공시/)).toBeVisible();
     // 세션665 — 은행 이름 없이 범위 한 줄. 가짜 응답의 아파트·분할상환 6개 은행: 최저 4.20(아이엠뱅크) ~ 최고 7.71(농협)
     await expect(panel.getByTestId("bank-rate-row")).toHaveCount(1);
     await expect(panel.getByTestId("bank-rate-row")).toHaveAttribute("aria-label", "6개 은행 4.20% ~ 7.71%");
@@ -81,7 +82,7 @@ test.describe("금융 탭 금리 블록", () => {
     await expect(panel.getByTestId("bank-rate-bars")).not.toContainText("아이엠뱅크");
     await expect(panel.getByText("은행별 금리 비교")).toHaveCount(0);
 
-    // 닫힌 채로는 다른 권역을 부르지 않는다 — 첫 진입 = 전세 1 + 주담대 은행권 1
+    // 닫힌 채로는 다른 권역을 부르지 않는다 — 첫 진입 = 주담대 은행권 1(전세 금리 조회는 세션675 에 면적별 표와 함께 지움)
     expect(calls.filter((c) => c.startsWith("mortgage:") && !c.endsWith(":020000"))).toEqual([]);
 
     const toggle = panel.getByRole("button", { name: "저축은행 · 여신전문 · 보험 금리 보기" });

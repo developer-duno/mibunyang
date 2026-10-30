@@ -29,7 +29,6 @@ import {
 } from "./detail/DataSectionBlock";
 import { ExtraFieldsAccordion } from "./detail/ExtraFieldsAccordion";
 import { PresaleTimeline } from "./charts/PresaleTimeline";
-import { LoanStack } from "./charts/LoanStack";
 import { CategoryMiniCard } from "./detail/CategoryMiniCard";
 import { ProfileWeightBar } from "./detail/ProfileWeightBar";
 import { BlindScoreBadge, LoginCta, ScoreLockPanel } from "./detail/ScoreBlind";
@@ -305,7 +304,7 @@ export const DetailModal = memo(function DetailModal({
 
   // 탭 상태 (세션 407 D1) — activeTab = 현재 콘텐츠 교체 탭, visited = 방문 탭 누적(keepMounted).
   // 한 번 마운트된 패널은 display:none 으로 유지: 떠난 탭의 fetch 훅 인스턴스 캐시(useRef 캐시인
-  // useLoanRates/useRentLoanRates 포함)·trackEvent dedup·펼침 상태가 모달 열림 세션 동안 보존된다.
+  // useLoanRates 포함 · 전세 금리 훅은 세션675 에 지웠다)·trackEvent dedup·펼침 상태가 모달 열림 세션 동안 보존된다.
   // 리셋 effect 없음 — App 이 detailAptId 조건부 렌더라 닫힘 = 언마운트 = state 자연 소멸.
   // 불변식: activeTab ∈ visited (초기 시딩 + handleTabChange 가 둘을 동시 갱신).
   const bodyRef = useRef<HTMLDivElement | null>(null);
@@ -866,16 +865,9 @@ export const DetailModal = memo(function DetailModal({
                 data-tab-panel
                 style={panelStyle("sec-finance")}
               >
-                {/* 출처 통일(세션593 D1) — 분양가·시도·구도 규제 표시·DSR 과 같은 병합본에서. 아래 LoanAnalysis 의
-                  월 상환액이 같은 대출액을 쓰려면 두 곳이 같은 행을 봐야 한다. */}
-                <LoanStack
-                  price={((mergedApt ?? apt).price as number | null) ?? null}
-                  region={(mergedApt ?? apt).region as string | null}
-                  gu={(mergedApt ?? apt).gu as string | null}
-                  isRegulated={(mergedApt ?? apt).isRegulated as boolean | null}
-                  dsr40pass={(mergedApt ?? apt).dsr40pass as boolean | null}
-                />
-                <LoanAnalysis apt={mergedApt ?? apt} isLoading={pricesLoading} error={pricesError} />
+                {/* 출처 통일(세션593 D1) — 분양가·시도·구도 규제 표시·DSR 은 병합본 하나에서. 대출 막대(LoanStack)는
+                  세션675 에 LoanAnalysis 맨 위로 옮겼다 — 평수 단추로 고른 값 하나를 막대·잔금 카드·한 달 상환이 같이 쓴다. */}
+                <LoanAnalysis apt={mergedApt ?? apt} />
                 <ExtraFieldsAccordion apt={mergedApt ?? apt} tab="sec-finance" />
               </section>
             )}
