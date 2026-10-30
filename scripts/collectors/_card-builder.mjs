@@ -106,7 +106,9 @@ export function resolveCardBuilder(raw) {
   if (!sp) return null;
   const clean = cleanCompanyName(sp.parts[0]);
   if (clean === "") return null;
-  const row = builderCanonRows().find((r) => r.key === builderKey(clean));
+  // 키 = 정리 이름에서 공백만 뗌(SQL `regexp_replace(rep_clean, WS, '', 'g')` 와 같은 식 — 법인격은 정리 때 이미 뗐다)
+  const key = clean.replace(WS_RUN_RE, "");
+  const row = builderCanonRows().find((r) => r.key === key);
   return { display: row?.display ?? clean, link: row?.link ?? clean, n: sp.parts.length + sp.extra };
 }
 
@@ -133,3 +135,54 @@ export function builderCanonValuesSql() {
   const rows = builderCanonRows().map((r) => `    (${q(r.key)}, ${r.display == null ? "NULL" : q(r.display)}, ${q(r.link)})`);
   return `(VALUES\n${rows.join(",\n")}\n  ) AS d(key, display, link)`;
 }
+
+// ── VIEW 글자(세션676 마이그레이션 20261031000000_view_card_builder.sql) — 시험이 마이그 파일과 글자째 맞댄다 ──
+
+/** 묶음 CTE 두 개(bundle_agg 뒤 · deduped 앞) — 끝 쉼표 포함 */
+export function cardBuilderCtesSql() {
+  return [
+    "bundle_cons AS (                     -- 세션676 PR-C 카드 시공사 원문: 재료 행 공고 → 비오피스텔 구성원 공고 · 각 안에서 최근 공고(공고일 → 공고 번호 큰 것)",
+    "  SELECT DISTINCT ON (m.bkey) m.bkey, s.constructor AS b_constructor",
+    "  FROM presale_schedule_official s",
+    "  JOIN members m ON m.id = s.apartment_id",
+    "  JOIN bundle_mat bm ON bm.bkey = m.bkey",
+    `  WHERE s.constructor !~ '${BLANK_SQL}'   -- NULL·빈 글자·공백뿐은 없음(NULL !~ … 은 NULL 이라 빠진다)`,
+    "    AND (m.id = bm.mat_id OR NOT m.is_off)",
+    '  ORDER BY m.bkey, (m.id = bm.mat_id) DESC, s.recruit_date DESC NULLS LAST, s.house_manage_no COLLATE "C" DESC',
+    "),",
+    "bundle_builder AS (                  -- 대표사 표시·연결 이름과 회사 수 = _card-builder.mjs resolveCardBuilder 의 쌍둥이",
+    "  SELECT c.bkey,",
+    "    COALESCE(d.display, c.rep_clean) AS b_display,",
+    "    COALESCE(d.link, c.rep_clean)    AS b_link,",
+    "    c.n_parts + c.n_extra            AS b_n",
+    "  FROM (",
+    "    SELECT bc.bkey,",
+    `      regexp_replace(regexp_replace(regexp_replace(p.parts[1], '${CORP_SQL}', '', 'g'), '${TRIM_SQL}', '', 'g'), '${WS}+', ' ', 'g') AS rep_clean,`,
+    "      cardinality(p.parts) AS n_parts,",
+    `      COALESCE(substring(bc.b_constructor from '${TAIL_N_SQL}')::int, 0) AS n_extra`,
+    "    FROM bundle_cons bc",
+    "    CROSS JOIN LATERAL (",
+    "      SELECT array_agg(t.part ORDER BY t.ord) AS parts",
+    `      FROM regexp_split_to_table(regexp_replace(bc.b_constructor, '${TAIL_SQL}', ''), '${SEP_SQL}') WITH ORDINALITY AS t(part, ord)`,
+    `      WHERE t.part !~ '${BLANK_SQL}'`,
+    "    ) p",
+    "  ) c",
+    `  LEFT JOIN ${builderCanonValuesSql()}`,
+    `    ON d.key = regexp_replace(c.rep_clean, '${WS}', '', 'g')`,
+    "  WHERE c.rep_clean <> ''",
+    "),",
+  ].join("\n");
+}
+
+/** SELECT 의 builder 칸(옛 `a.builder,` 한 줄 자리) — 공고 시공사 있으면 「표시 외 N」, 없으면 원표 값 */
+export const CARD_BUILDER_SELECT_SQL = [
+  "  CASE WHEN bb.bkey IS NOT NULL",
+  "       THEN bb.b_display || CASE WHEN bb.b_n > 1 THEN ' 외 ' || (bb.b_n - 1) ELSE '' END",
+  "       ELSE a.builder END AS builder,",
+].join("\n");
+
+/** 부채비율 연결(옛 `LEFT JOIN builders b ON b.name = a.builder` 한 줄 자리) */
+export const CARD_BUILDER_JOIN_SQL = [
+  "LEFT JOIN bundle_builder bb ON bb.bkey = a.bkey",
+  "LEFT JOIN builders b ON b.name = COALESCE(bb.b_link, a.builder)",
+].join("\n");

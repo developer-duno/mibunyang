@@ -35,6 +35,12 @@ export const TRAILING_WORDS =
 export const TRAILING_SQL = `(?:${WS}+(?:${TRAILING_WORDS})(?:${WS}*[0-9]+${WS}*(?:차|회차|회))?)+${WS}*$`;
 /** 앞뒤 공백(위 묶음) — `regexp_replace(x, TRIM_SQL, '', 'g')` */
 export const TRIM_SQL = `^${WS}+|${WS}+$`;
+/**
+ * VIEW name 칸 = 괄호 떼기 CASE 식(그대로)을 감싸는 앞·뒤 글자(세션676 마이그 20261031000000 — 시험이 글자째 맞댄다).
+ * 결과 = COALESCE(NULLIF(trim(끝 낱말 떼기(괄호 뗀 이름)), ''), 원래 이름) — cardTitle() 과 같은 순서.
+ */
+export const CARD_TITLE_OPEN_SQL = "  COALESCE(NULLIF(regexp_replace(regexp_replace(";
+export const CARD_TITLE_CLOSE_SQL = `  '${TRAILING_SQL}', ''), '${TRIM_SQL}', '', 'g'), ''), a.rep_name) AS name,`;
 
 /** @param {string} inner 괄호 안쪽 글자 */
 export function isNoticeParen(inner) {

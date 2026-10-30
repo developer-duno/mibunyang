@@ -515,7 +515,7 @@
       "readers": [
         "2u"
       ],
-      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261026000002_view_add_range_cols.sql(세션661 범위 4칸 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax 추가 · 184칸, 되돌림 _rollbacks/20261026000003) — 묶음당 1행 구조는 20261013000000_view_one_card_bundle.sql 부터"
+      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261031000000_view_card_builder.sql(세션676 PR-C — name 끝 회차·공고 종류 낱말 떼기 · builder = 공고 시공사(공동이면 「대표사 외 N」) · 부채비율 연결 = 대표사 DART 이름 · 184칸·2u 가 읽는 칸 그대로, 되돌림 _rollbacks/20261031000001 = 20261026000002 본문) · 그 전 20261026000002_view_add_range_cols.sql(세션661 범위 4칸 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax 추가, 되돌림 _rollbacks/20261026000003) — 묶음당 1행 구조는 20261013000000_view_one_card_bundle.sql 부터"
     },
     "api_quota_daily": {
       "owner": "mibunyang",
