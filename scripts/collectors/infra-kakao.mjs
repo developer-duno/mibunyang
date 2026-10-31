@@ -83,7 +83,7 @@ export function buildFreshIds(rows, nowMs = Date.now(), days = FRESH_DAYS) {
 // N = 800 근거(.omc/artifacts/session679/transition-b2.md ②-b):
 //   - 회차 = 화·금 KST 05:30(collect-naver-listings-incremental.yml, 주 2회) · 단지당 9콜 · 단지당 약 0.7초(동시 5,
 //     10/29 run 86단지 60초) → 800단지 ≈ 9~10분 · 7,200콜. 같은 job(240분)을 transport·schools(최근 101~140분)와 나눠 쓴다.
-//   - 몰림 3,264곳 → 800·800·800·800·64 = 5회차 ≈ 2.5주에 흩어짐(「2~3주」).
+//   - 몰림(좌표 있는 단지 전부 — 10/31 실측 3,440) → 800×4 + 240 = 5회차 ≈ 2.5주에 흩어짐(「2~3주」 · 첫 회차 11/03 화).
 //   - 평시 처리량: 30일에 회차 약 8.6번 × 800 = 약 6,880단지 — 지금 3,440단지의 두 배라 밀림이 쌓이지 않는다.
 // 고르는 순서: ① 한 번도 못 채운 행(infra 행 없음·REQUIRED_KEYS 중 빈칸) ② kakao_updated_at 오래된 순(NULL = 맨 앞) ③ id.
 //   처리한 행은 kakao_updated_at 이 지금으로 바뀌어 뒤로 가므로, 이번에 못 고른 행은 다음 회차 맨 앞에 온다(굶주림 없음).

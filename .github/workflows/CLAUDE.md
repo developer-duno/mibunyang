@@ -126,7 +126,7 @@
 
 | 워크플로우 | 일자 | 설명 |
 |-----------|------|------|
-| `collect-infra.yml` | **수동만** | Kakao Places 인프라 — 세션 491 schedule 삭제. 매일 경로(`collect-naver-listings-incremental.yml`)가 같은 `infra-kakao.mjs` 를 무인자로 실행하므로 중복이었다 |
+| `collect-infra.yml` | **수동만** | Kakao Places 인프라 — 세션 491 schedule 삭제. 화·금 경로(`collect-naver-listings-incremental.yml`, 세션612 매일→주 2회)가 같은 `infra-kakao.mjs` 를 무인자로 실행하므로 중복이었다. **세션681: 무인자 = 한 회차 상한 800곳(`kakao_updated_at` 오래된 순 · 넘긴 수는 `collector_runs.error_message` `INFRA_DEFERRED=N`)** — 수동 실행도 800곳·약 7,200콜이 나간다(`max_apts` 입력 없음) |
 | `collect-transport.yml` | **수동만** | Kakao Places 교통 — 세션 491 schedule 삭제(동일 사유, `transport-tago.mjs`). dispatch 는 `--force` 전체 재수집 창구 |
 | `collect-schools.yml` | **수동만** | NEIS 학교 — 세션 491 schedule 삭제(동일 사유, `schools-neis.mjs`). dispatch 는 limit/force 보충 창구 + **`ids` 입력(세션567)** = 지정 단지만 다시 계산(30일 건너뛰기 무시, env 경유·정규식 검사). 학교 점수를 손으로 반영할 땐 **이 창구로만** — 로컬엔 `SCHOOLINFO_KEY` 가 없어 점수가 달라지고, 로컬 실제 쓰기는 시작 전에 멈춘다. 먼저 `-f dry_run=true -f ids=<id,id>` 로 미리보기. **세션568**: `limit` 입력의 뜻 = "30일 안 신선한 행을 걷어낸 뒤 오래된 것부터 처리할 단지 수"(`selectProcessList`). ⚠️ `limit` 은 아직 셸에 직접 끼워진다(`ids` 처럼 env 경유로 — BACKLOG A-6 🟢) |
 | `calc-exclusive-ratio.yml` | **수동만** | 전용률 계산 — 세션 491 주간 schedule 삭제. `collect-naver-listings.yml`(Core) 마지막 스텝이 같은 스크립트를 **매일** 실행해 중복이었다(주간보다 오히려 잦다) |

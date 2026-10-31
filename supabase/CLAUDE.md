@@ -217,7 +217,7 @@ CLI 가 없거나 사용자가 직접 적용할 때:
 4. Run 버튼 → 결과 확인 (에러 0건 + Success 응답)
 5. 후속 collector 호출로 컬럼 채움 검증
 
-> **Claude 가 크롬 확장으로 이 화면을 조종할 때**(세션677 리허설·운영 적용 — 사장님 로그인 1회 뒤): ① `DROP` 같은 파괴 명령은 「Potential issue detected」 확인 창이 뜬다 → 창 안 「Run query」 단추를 눌러야 실행되고, 창이 뜬 채 다른 키를 치면 대시보드 단축키로 엉뚱한 화면으로 넘어간다 ② 결과 칸 값은 내려받기 대신 **칸 클릭 + ctrl+c → PowerShell `Get-Clipboard` 로 UTF-8 파일**에 받는다(132KB JSON 도 됨 · 콘솔 표시가 깨져 보여도 파일은 정상) ③ 끝나면 연 탭을 닫는다(닫기가 응답 없으면 사장님께).
+> **Claude 가 크롬 확장으로 이 화면을 조종할 때**(세션677 리허설·운영 적용 — 사장님 로그인 1회 뒤): ① `DROP` 같은 파괴 명령은 「Potential issue detected」 확인 창이 뜬다 → 창 안 「Run query」 단추를 눌러야 실행되고, 창이 뜬 채 다른 키를 치면 대시보드 단축키로 엉뚱한 화면으로 넘어간다 ② 결과 칸 값은 내려받기 대신 **칸 클릭 + ctrl+c → PowerShell `Get-Clipboard` 로 UTF-8 파일**에 받는다(132KB JSON 도 됨 · 콘솔 표시가 깨져 보여도 파일은 정상) ③ 끝나면 연 탭을 닫는다(닫기가 응답 없으면 사장님께) ④ (세션681 운영 적용) SQL 은 글자 입력 대신 `javascript_tool` 로 `monaco.editor.getModels()[0].setValue(sql)` 로 넣고 `find` 로 「Run」 단추를 찾아 클릭 → 3~4초 뒤 `get_page_text` 로 결과 표 글자를 읽는다(리허설 `BEGIN; … ROLLBACK;` 도 같은 길 · 긴 SQL 을 타이핑하면 자동완성이 끼어든다).
 
 ### 방법 C — Supabase MCP(`execute_sql`) — **사전 승인된 SQL 한 건**을 사장님이 자리에 없을 때 (세션653 2026-10-21 실사용)
 

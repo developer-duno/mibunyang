@@ -2,7 +2,7 @@
 
 # 설계서 — `infra.kakao_updated_at` 카카오 전용 날짜 칸 (세션681 · 2026-10-31 · Fable)
 
-> 상태: **v2 — 검사관 2인 반영 끝(할루 Sonnet 🟡 3 · 맹점 Opus 🔴0 🟠5 🟡8 🟢5 · 보고 = `.omc/handoffs/session681/review-design-*.md`) · 사장님 확인 대기.** 구현은 확인 뒤.
+> 상태: **v2 — 검사관 2인 반영 끝(할루 Sonnet 🟡 3 · 맹점 Opus 🔴0 🟠5 🟡8 🟢5 · 보고 = `.omc/handoffs/session681/review-design-*.md`) → 👤 「이대로 구현」 → 구현 PR #846 `91f3501b`(10/31 · 적대 Opus 🔴0🟠0🟡3 + 할루 Sonnet) · 운영 DB 칸 적용 10/31 17:4x · 2u 통보 #847.** (세션682 2단 마무리 맹점 Opus 🔴1 🟠2 🟡8 → §4-0·§4-5·§5 정정 — 보고 `.omc/handoffs/session682/review-wrap-blind.md`)
 > 조사 재료 = `.omc/artifacts/session679/transition-b2.md`(B2 ①~③ · 운영 DB 실측 10/31) · 상한 코드 = `m1-cap-saved.patch`(세션679 · 시험 11개).
 > 숫자는 전부 10/31 실측값 — 구현 직전 다시 잰다. v1→v2 바뀐 자리는 「(v2)」 표시.
 
@@ -89,18 +89,18 @@ NOTIFY pgrst, 'reload schema';
 - 2u: `mb_models.py:254-317` `Infra` 칸 매핑 · `env_common.py:22` `db.query(Infra)` → 모르는 칸은 SELECT 에 안 들어가 **DB 영향 0**. 백엔드 원시 `SELECT * … infra` 0건. (v2) **단 2u 화면이 `infra.updated_at` 을 신선도로 쓴다**(§1 · 통보 ②) — 우리 변경으로 그 값이 더 틀리거나 맞아지지는 않는다(우리 upsert 는 전과 같이 `updated_at` 도 찍는다).
 
 ## 4. 적용 순서 (2u V053 교훈 「코드보다 DB 먼저」 · (v2) 마감 = **11/19(수)까지 합치기**)
-0. (v2) **마감 근거**: 지금 main 은 상한이 없어 11/20(금) 05:30 회차에 옛 몰림(약 29,000콜 · `transition-b2.md:40,59`)이 한 번 날 수 있다. 한도 안이라 깨지진 않지만 피하려면 11/19 까지. 못 하면 1회 몰림 감수(그날 로그 「갱신 N · 오류 M」과 다음 날 「8종 전부 빈 행 수」(지금 19)로 빈 응답 덮어쓰기 유무 확인).
+0. (v2) **마감 근거**: 지금 main 은 상한이 없어 11/20(금) 05:30 회차에 옛 몰림(약 29,000콜 · `transition-b2.md:40,59`)이 한 번 날 수 있다. 한도 안이라 깨지진 않지만 피하려면 11/19 까지. 못 하면 1회 몰림 감수(그날 로그 「갱신 N · 오류 M」과 다음 날 「8종 전부 빈 행 수」(지금 19)로 빈 응답 덮어쓰기 유무 확인). **(세션682) 10/31 합쳐져 마감 안 — 몰림 해당 없음.** 단 §5 되돌림을 통째 revert 로 하면 상한도 사라져 몰림이 되살아난다.
 1. **PR 준비**(워크트리 `s681/kakao-clock`): 마이그 + 되돌리기 파일 · 수집기(§3-2 전부 — 패치 적용 뒤 정렬 키·주석·`--force` 조건·빈 응답 가드·catch 기록) · `INFRA_KAKAO_COLUMNS` + 시험 `*2+2` · ownership.json + build-ownership 글자 · monitor ⑤ 1줄 + 시계 로그 · `monitor-ownership.test` 예시 이름 · 문서(§4-6). CI 초록(ownership audit 🟡 1건 예상).
    - **(v2) 시험 설계**: 정렬 키 되돌림 변이를 잡으려면 시험 재료의 두 시계를 **반대로** 둔다 — `updated_at = 1일 전(남의 시계) · kakao_updated_at = 40일 전` → 새 코드는 「대상」, 되돌린 코드는 「최신 건너뜀」. 읽기 select 목록에 `kakao_updated_at` 이 있는지 **소스 대조 시험** 1개(빼먹으면 매 회차 800곳을 영구히 다시 잼). 빈 응답(`meta`·`documents` 없음) 던지기 시험 1개. `--force` 단독 던지기 시험 1개.
 2. **검사관**: 설계서 2인(끝) → 구현 뒤 적대 Opus(DB·수집기 — `general-purpose` + `model:"opus"`, 변이 = 위 셋 + 정렬 키 되돌림) + 할루 Sonnet.
 3. **DB 적용(코드 합치기 전 · 같은 날)**: 사장님 자리에서 방법 B(크롬 SQL 편집기 · 세션677) 또는 방법 C(Supabase MCP · 세션653 · OAuth 1회). `BEGIN; … ROLLBACK;` 리허설 → 본 적용 → 확인 쿼리 1행 → `NOTIFY pgrst` → supabase-js select 1회 → `perm-baseline.mjs` 미리보기. 시각 = KST 03:00~06:30(굽기·증분)과 월·목 08~14시(네이버 러너)를 피한다 · **월요일 09:00 KST(감시 ⑲) 전에 4번까지 끝낸다**. 운영 데이터 값 변경 0(칸만) → 전이표 불필요.
 4. **코드 합치기(같은 날)** → 본 폴더 `git pull --ff-only` + `grep -c kakao_updated_at scripts/collectors/infra-kakao.mjs` ≥ 3.
    - (v2) 순서가 뒤집히면(코드 먼저·DB 늦음): select 가 없는 칸으로 실패 → `selectAll` 이 던지고(`_shared.mjs:1107`) → 지금 코드는 **기록 없이 exit 1**, 단계는 `continue-on-error` 라 job 초록 → ①⑬ 침묵, ⑤-b 가 14일 뒤에야 잡음. §3-2 catch 보강이 들어가면 다음 날 ⑬ 이 잡는다. 어느 쪽이든 「고칠 때까지 매 회차 실패」 — 되돌릴 땐 **코드 먼저**(§5).
-5. **첫 회차 확인**(다음 화·금 05:30): (v2) **전날 메인이 읽기 전용 흉내로 첫 800 id 명단을 파일로 뜬다**(`selectInfraTargets` 를 DB 읽기만으로 호출 · 카카오 호출 0 · `.omc/artifacts/session681/first-run-ids.json` — 규칙 next-session-grep-mandate §4 「개수 + 명단」). 회차 뒤: run 로그 「대상 800 · 다음 회차로 넘김 2,640」 · `collector_runs` infra success ok≈800 · `error_message` `INFRA_DEFERRED=2640` · DB `count(kakao_updated_at not null)` = 800(±오류) **이고 그 id 집합 = 명단**. 5회차 뒤 3,440 · DEFERRED 0. 그 뒤 **19곳 재조회**(`b2-probe-infra.mjs` 재실행) — 여전히 0 이면 「진짜 0」 확정, 바뀐 곳은 명단으로 보고.
+5. **첫 회차 확인**(첫 회차 = **11/03(화) 05:30** · 이어 11/06(금)·11/10(화)·11/13(금)·**11/17(화) 5회차** — 세션682 정정: cron 은 UTC 월·목 20:30 = KST 화·금 05:30, 요일은 `date -d` 로 잰다): (v2) **전날(11/02 월 오후 — 네이버 러너·청약홈 seed 뒤) 메인이 읽기 전용 흉내로 첫 800 id 명단을 파일로 뜬다**(도구 `.omc/artifacts/session681/first-run-ids-probe.mjs` — 수집기와 같은 조회 + `selectInfraTargets` · 카카오 호출 0 · `--out=.omc/artifacts/session681/first-run-ids.json` — 규칙 next-session-grep-mandate §4 「개수 + 명단」 · 리허설 10/31 18:5x: 좌표 있는 단지 3,440/3,440 · 0순위 0 · 대상 800 전부 `ah-`(id 글자 순) · 넘김 2,640). 회차 뒤: run 로그 「대상 800 · 다음 회차로 넘김 N」 · `collector_runs` infra success ok≈800−k(오류 k곳은 다음 회차 맨 앞) · `error_message` `INFRA_DEFERRED=N` · DB `count(kakao_updated_at not null)` = 800−k **이고 그 id 집합 = 명단**(어긋날 수 있는 원천 = 명단 뒤 생긴 새 단지·좌표 채워진 단지(0순위 끼어듦)·지워진 단지 — 다름 → 원인 표 대조 → 👤 보고, 보고 전 고치지 않음). **기대값의 분모 = 좌표 있는 단지(`a.lat && a.lng`) − 최신**, infra 행 수가 아니다(좌표 없는 행은 영영 NULL — 10/31 은 둘 다 3,440 이라 차이 0). 5회차 뒤 좌표 있는 단지 전부 · DEFERRED 0. 그 뒤 **19곳 재조회**(`b2-probe-infra.mjs` 재실행) — 여전히 0 이면 「진짜 0」 확정, 바뀐 곳은 명단으로 보고. 같은 run 의 jobs API 단계 시간(transport·infra·schools)이 240분 안인지도 본다(10/29 = 2.5·1·61분 · infra 가 약 10분으로 는다).
 6. **문서**: BACKLOG A-27 🟠 → ✅ · (v2) 공유 시계를 카카오 시각처럼 적은 세 곳 고침 — `.claude/BACKLOG.md:476-477`(「infra.updated_at 20:30 은 우리 infra-kakao 가 찍은 것」) · `supabase/CLAUDE.md:79` 트리거 절(「같은 함정일 수 있다(실측 필요)」 → 실측 결과 + 새 시계) · `docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md:148` C3 행 · ownership note · 메모리 · 2u 이슈 댓글(§3-4 문안) · 설계서 사본을 `docs/superpowers/specs/2026-10-31-infra-kakao-updated-at-design.md` 로 커밋.
 
 ## 5. 되돌리기
-- 순서 = **코드 먼저 되돌리고(PR revert) → DB**(`_rollbacks/20261101000001` `DROP COLUMN IF EXISTS kakao_updated_at`). (v2) 반대로 DB 를 먼저 지우면 새 코드의 select 가 없는 칸으로 실패해 **고칠 때까지 매 회차 실패**(기록은 §3-2 catch 보강 뒤에만 남음) — 「회차 1번 실패로 끝남」이 아니다(v1 문장 정정). `continue-on-error` 라 job 은 계속.
+- 순서 = **코드 먼저 되돌리고(PR revert) → DB**(`_rollbacks/20261101000001` `DROP COLUMN IF EXISTS kakao_updated_at`). (v2) 반대로 DB 를 먼저 지우면 새 코드의 select 가 없는 칸으로 실패해 **고칠 때까지 매 회차 실패**(기록은 §3-2 catch 보강 뒤에만 남음) — 「회차 1번 실패로 끝남」이 아니다(v1 문장 정정). `continue-on-error` 라 job 은 계속. **(세션682) 되돌리는 PR 은 #846 통째 revert 가 아니라 판정·정렬 시계 줄(`infra-kakao.mjs` `tsOf`·`buildFreshIds` 입력)만 되돌린다 — 통째면 상한 800 도 사라져 11/20 옛 몰림이 되살아난다. 순서 = 코드 PR 합침 → 본 폴더 pull(정리 도구 `fix-placeholder`·`fix-sosa` 가 로컬 실행) → 정본 `ownership.json` 되돌림과 같은 날 월요일 09:00(감시 ⑲) 전에 DB DROP. 역순을 강제하는 장치는 없다 — 문서와 되돌리기 파일 머리 주석뿐.**
 - 상한만 끄기: `--force` 단독은 막혀 있으므로(§3-2) 상수 `DEFAULT_MAX_APTS` 를 올리는 PR.
 
 ## 6. 열린 물음
