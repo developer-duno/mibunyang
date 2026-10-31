@@ -81,7 +81,8 @@ describe("Kakao radius 상한 — scripts 전수", () => {
       }
     }
     expect(violations).toEqual([]);
-  });
+    // scripts 전수를 읽는다 — 전체 시험 부하에서 이 시험 5,030ms(파일 5,037ms)로 기본 5초 초과(w2-full2.log) — 단독은 약 1.5초(세션679 메인 실측)
+  }, 20_000);
 });
 
 describe("findOversizedRadii — 판정 로직", () => {
