@@ -86,6 +86,9 @@ describe("이름 사전 3칸 — 표시(등급) ≠ 연결(DART)", () => {
     expect(resolveCardBuilder("에스케이에코플랜트(주)")).toEqual({ display: "SK에코플랜트", link: "SK에코플랜트", n: 1, others: false });
     expect(resolveCardBuilder("아이파크현대산업개발(주)")?.display).toBe("HDC현대산업개발");
     for (const r of ["(주)한화 건설부문", "(주)한화", "㈜한화", "주식회사 한화"]) expect(resolveCardBuilder(r), r).toEqual({ display: "한화건설", link: "한화건설", n: 1, others: false });
+    // 세션679: DART 표(BUILDER_CORP_CODES)에서 「한화건설」을 뺐다(헛호출 8회 제거) — 카드 글자·VIEW 연결 이름은 그대로여야 한다
+    expect(Object.prototype.hasOwnProperty.call(BUILDER_CORP_CODES, "한화건설")).toBe(false);
+    expect(resolveCardBuilder("한화건설")).toEqual({ display: "한화건설", link: "한화건설", n: 1, others: false });
     expect(resolveCardBuilder("금호산업(주)")).toEqual({ display: "금호건설", link: "금호건설", n: 1, others: false });
     expect(resolveCardBuilder("SK건설(주)")).toEqual({ display: "SK에코플랜트", link: "SK에코플랜트", n: 1, others: false });
     expect(resolveCardBuilder("(쥬)디에이건설")).toEqual({ display: "디에이건설", link: "디에이건설", n: 1, others: false });

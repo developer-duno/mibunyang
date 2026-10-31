@@ -749,15 +749,16 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
   //   그 오염을 tier 1 정답으로 못 박고 있었다. ap-* 는 이제 자기 번호만 받으므로(세션582 describe),
   //   "지역이 달라도 1순위" 라는 이 시험의 뜻은 ah-* 행으로 지킨다.
   //   ah 행이 쥔 남의 번호는 수집기가 아니라 `cleanup-presale-links.mjs` 가 끊는다 — 이 시험은 1순위가 지역을 안 본다는 뜻만 고정.
-  it("(g) 1순위 번호 일치는 지역이 달라도 매칭(현행 유지 — ah-* 행)", () => {
+  // 세션679: 옛 (g) 는 "1순위 번호 일치는 지역이 달라도 매칭"을 정답으로 못 박고 있었다 — 그 길이 김포 공고로 광양 단지를
+  //   매일 덮은 결함(세션675 대조)이다. 이제 번호 주인이 아닌 ah-* 행은 확실히 다른 시군구면 1순위로 안 붙는다.
+  //   (번호 주인 ap-<번호> 는 그대로 지역 무관 — 아래 「1순위 시군구 게이트 (세션679)」 묶음)
+  it("(g) 1순위 번호 일치라도 번호 주인이 아닌 ah-* 행이 다른 시도면 매칭하지 않는다(세션679)", () => {
     const row = gateRow({ name: "서울원아이파크", address: "서울특별시 노원구 월계동 1" });
     row.naver_presale_no = "6027751";
     const apts = [createApartment({
       id: "ah-2024000777", name: "음성아이파크", region: "충북", gu: "음성군", naver_presale_no: "6027751",
     })];
-    const r = matchPresaleToApt(row, apts);
-    expect(r?.apartment.id).toBe("ah-2024000777");
-    expect(r?.tier).toBe(1);
+    expect(matchPresaleToApt(row, apts)).toBeNull();
   });
 
   it("(h) 게이트차단 카운터 — (a) 에서 1 이상, 정당한 매칭(다른 후보 없음)에서는 0", () => {
@@ -792,6 +793,113 @@ describe("matchPresaleToApt 시군구 게이트 (세션578)", () => {
     const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
     expect(src).toMatch(/matchPresaleToApt\(row, apts, aptIndexes, matchStats\)/);
     expect(src).toMatch(/게이트차단=\$\{matchStats\.gateBlocked\}/);
+  });
+});
+
+// ── matchPresaleToApt 1순위 시군구 게이트 (세션679) ─────────────────
+// 오염 사고(세션675 네이버 대조): 김포 「고촌센트럴자이」 공고(주소 "경기도 김포시 고촌읍")가 번호 일치(1순위)로
+// 광양 `ah-2022930016` 「광양센트럴자이」(전남 광양시, 306km)의 「특징」 칸을 매일 다시 썼다.
+// 기대값 출처 = 세션675 탐침 캐시 probe_naver_119.json 의 그 행(네이버 address·build_point "김포신곡6지구 A3BL").
+describe("matchPresaleToApt 1순위 시군구 게이트 (세션679)", () => {
+  const GOCHON_NO = "6020897";
+  /** @param {string | null} address */
+  const gochonRow = (address) => {
+    const row = gateRow({ name: "고촌센트럴자이", address });
+    row.naver_presale_no = GOCHON_NO;
+    return row;
+  };
+  const gwangyang = () => createApartment({
+    id: "ah-2022930016", name: "광양센트럴자이", region: "전남", gu: "광양시",
+    bjd_code: "4623010100", lat: 34.939, lng: 127.678, naver_presale_no: GOCHON_NO,
+  });
+
+  it("음성 — 번호가 같아도 다른 시도·시군구 행(김포 공고 → 광양 단지)은 1순위로 안 붙고, 다른 후보도 없으면 null", () => {
+    const stats = { gateBlocked: 0, tier1Blocked: 0 };
+    expect(matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [gwangyang()], undefined, stats)).toBeNull();
+    expect(stats.tier1Blocked).toBe(1);
+  });
+
+  it("음성 — 색인(byPresaleNo)을 넘겨도 같다", () => {
+    const apts = [gwangyang()];
+    const indexes = /** @type {any} */ ({
+      byPresaleNo: new Map([[GOCHON_NO, apts[0]]]), byBjd: new Map(), byId: new Map([[apts[0].id, apts[0]]]),
+    });
+    expect(matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), apts, indexes)).toBeNull();
+  });
+
+  it("음성 — 같은 시도·다른 시군구(김포 공고 → 경기 양주 행)도 거른다", () => {
+    const apt = createApartment({ id: "ah-yangju", name: "고촌센트럴자이", region: "경기", gu: "양주시", naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [apt])).toBeNull();
+  });
+
+  it("음성 — 시군구 이름이 같아도 시도가 다르면(부산 중구 공고 → 서울 중구 행) 거른다", () => {
+    const row = gateRow({ name: "중구아파트", address: "부산광역시 중구 중앙동" });
+    row.naver_presale_no = GOCHON_NO;
+    const apt = createApartment({ id: "ah-seoul-junggu", region: "서울", gu: "중구", naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(row, [apt])).toBeNull();
+  });
+
+  it("거른 뒤 같은 시군구의 정답 후보가 있으면 그쪽(2~4순위)으로 간다", () => {
+    const right = createApartment({ id: "ah-gimpo", name: "고촌센트럴자이", region: "경기", gu: "김포시", bjd_code: "4157025300", lat: 37.59, lng: 126.76 });
+    const r = matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [gwangyang(), right]);
+    expect(r?.apartment.id).toBe("ah-gimpo");
+    expect(r?.tier).toBeGreaterThan(1);
+  });
+
+  it("같은 번호의 행이 둘이면 시군구가 맞는 쪽을 1순위로", () => {
+    const right = createApartment({ id: "ah-gimpo", name: "다른이름", region: "경기", gu: "김포시", naver_presale_no: GOCHON_NO });
+    const stats = { gateBlocked: 0, tier1Blocked: 0 };
+    const r = matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [gwangyang(), right], undefined, stats);
+    expect(r?.apartment.id).toBe("ah-gimpo");
+    expect(r?.tier).toBe(1);
+    expect(stats.tier1Blocked).toBe(0);
+  });
+
+  it("양성 — 같은 시군구면 1순위 그대로(일반구 표기 차이 '수원시' ↔ '수원시 영통구' 포함)", () => {
+    const row = gateRow({ name: "광교아파트", address: "경기도 수원시 영통구 이의동" });
+    row.naver_presale_no = GOCHON_NO;
+    const apt = createApartment({ id: "ah-suwon", name: "전혀다른이름", region: "경기", gu: "수원시", naver_presale_no: GOCHON_NO });
+    const stats = { gateBlocked: 0, tier1Blocked: 0 };
+    const r = matchPresaleToApt(row, [apt], undefined, stats);
+    expect(r?.apartment.id).toBe("ah-suwon");
+    expect(r?.tier).toBe(1);
+    expect(stats.tier1Blocked).toBe(0);
+  });
+
+  // 세션679 검사관: 행 쪽 gu 가 비정본 표기여도(별칭표 src/data/sigungu-aliases.json 의 forms) 정본 분양 주소와 같은 구면 유지
+  it("양성 — 행 gu 가 비정본(「영통구」·「고양덕양구」)이고 분양 주소가 정본이면 1순위 그대로", () => {
+    const suwon = gateRow({ name: "광교아파트", address: "경기도 수원시 영통구 이의동" });
+    suwon.naver_presale_no = GOCHON_NO;
+    const a1 = createApartment({ id: "ah-yeongtong", name: "전혀다른이름", region: "경기", gu: "영통구", naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(suwon, [a1])?.apartment.id).toBe("ah-yeongtong");
+    const goyang = gateRow({ name: "덕양아파트", address: "경기도 고양시 덕양구 행신동" });
+    goyang.naver_presale_no = GOCHON_NO;
+    const a2 = createApartment({ id: "ah-deogyang", name: "전혀다른이름", region: "경기", gu: "고양덕양구", naver_presale_no: GOCHON_NO });
+    const stats = { gateBlocked: 0, tier1Blocked: 0 };
+    expect(matchPresaleToApt(goyang, [a2], undefined, stats)?.apartment.id).toBe("ah-deogyang");
+    expect(stats.tier1Blocked).toBe(0);
+  });
+
+  it("시군구를 모르면 옛 링크 유지 — 분양 주소 없음 / 행의 gu 빈칸 / 행의 region 빈칸", () => {
+    expect(matchPresaleToApt(gochonRow(null), [gwangyang()])?.tier).toBe(1);
+    const noGu = createApartment({ id: "ah-nogu", region: "경기", gu: null, naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [noGu])?.apartment.id).toBe("ah-nogu");
+    const noRegion = createApartment({ id: "ah-noregion", region: null, gu: "광양시", naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [noRegion])?.apartment.id).toBe("ah-noregion");
+  });
+
+  it("세종은 시도만 맞으면 통과 · 번호 주인(ap-<번호>)은 다른 시군구여도 그대로", () => {
+    const sejongRow = gateRow({ name: "세종아파트", address: "세종특별자치시 산울동" });
+    sejongRow.naver_presale_no = GOCHON_NO;
+    const sj = createApartment({ id: "ah-sejong", region: "세종", gu: null, naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(sejongRow, [sj])?.tier).toBe(1);
+    const owner = createApartment({ id: `ap-${GOCHON_NO}`, region: "전남", gu: "광양시", naver_presale_no: GOCHON_NO });
+    expect(matchPresaleToApt(gochonRow("경기도 김포시 고촌읍"), [owner])?.apartment.id).toBe(`ap-${GOCHON_NO}`);
+  });
+
+  it("[매칭] 로그 줄에 번호일치시군구차단 수(소스 확인)", () => {
+    const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
+    expect(src).toMatch(/번호일치시군구차단=\$\{matchStats\.tier1Blocked\}/);
   });
 });
 
@@ -970,7 +1078,8 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
   });
 
   it("14. H1③ — ap-<번호> 행이 없으면 번호 필드 조회로(회귀)", () => {
-    const apts = [createApartment({ id: "ah-2024000010", name: "딴이름", naver_presale_no: "7000123" })];
+    // 세션679: 행 시군구를 noRow 주소(서초구)에 맞춘다 — 이 시험은 번호 조회 경로를 보고, 1순위 시군구 게이트는 따로 시험한다
+    const apts = [createApartment({ id: "ah-2024000010", name: "딴이름", gu: "서초구", naver_presale_no: "7000123" })];
     const r = matchPresaleToApt(noRow("7000123"), apts, idx(apts));
     expect(r?.apartment.id).toBe("ah-2024000010");
     expect(r?.tier).toBe(1);
@@ -1005,7 +1114,7 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
   });
 
   it("23. 세션582② — 필드에 7777 을 쥔 ah-1 → 지금처럼 tier 1", () => {
-    const apts = [createApartment({ id: "ah-1", name: "딴이름", naver_presale_no: "7777" })];
+    const apts = [createApartment({ id: "ah-1", name: "딴이름", gu: "서초구", naver_presale_no: "7777" })];
     const r = matchPresaleToApt(noRow("7777"), apts, idx(apts));
     expect(r?.apartment.id).toBe("ah-1");
     expect(r?.tier).toBe(1);
@@ -1023,7 +1132,7 @@ describe("matchPresaleToApt 후보 게이트 (세션579)", () => {
 
   it("25. 세션582④ — 같은 번호를 ah-1 과 ap-1111 이 함께 쥐고 주인 ap-7777 없음 → 색인·선형 둘 다 ah-1 tier 1(중복 카드 방지)", () => {
     const apts = [
-      createApartment({ id: "ah-1", name: "딴이름", naver_presale_no: "7777" }),
+      createApartment({ id: "ah-1", name: "딴이름", gu: "서초구", naver_presale_no: "7777" }),
       createApartment({ id: "ap-1111", name: "딴이름2", naver_presale_no: "7777" }),
     ];
     const ix = idx(apts);
@@ -1282,9 +1391,9 @@ describe("matchPresaleToApt 이름·차수 게이트 (세션581)", () => {
   it("[매칭] 로그 줄·matchStats 초기값·이름 게이트 차단 로그(소스 확인)", () => {
     const src = stripComments(readFileSync(new URL("./naver-presale.mjs", import.meta.url), "utf8"));
     expect(src).toMatch(
-      /const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, blocked: null \}/,
+      /const matchStats = \{ gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, tier1Blocked: 0, blocked: null \}/,
     );
-    expect(src).toMatch(/id복원=\$\{matchStats\.idHealed\} 차수충돌=\$\{matchStats\.phaseConflict\} 이름약함=\$\{matchStats\.nameWeak\}`\)/);
+    expect(src).toMatch(/id복원=\$\{matchStats\.idHealed\} 차수충돌=\$\{matchStats\.phaseConflict\} 이름약함=\$\{matchStats\.nameWeak\} 번호일치시군구차단=\$\{matchStats\.tier1Blocked\}`\)/);
     expect(src).toMatch(
       /const match = matchPresaleToApt\(row, apts, aptIndexes, matchStats\);\s*if \(matchStats\.blocked\) \{\s*const b = matchStats\.blocked;\s*const outcome = match \? `tier\$\{match\.tier\} \$\{match\.apartment\.id\}` : "매칭없음";\s*log\(PHASE, `  ⚠ 이름 게이트 차단: \$\{row\._name\} → \$\{b\.name\} \(tier=\$\{b\.tier\} sim=\$\{b\.sim\.toFixed\(2\)\} 이유=\$\{b\.reason\}\) 결과=\$\{outcome\}`\);/,
     );

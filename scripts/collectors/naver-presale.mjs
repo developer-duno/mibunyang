@@ -736,12 +736,21 @@ export function sameDistrict(region, guA, guB) {
  * @param {PresaleRow} presale
  * @param {AptForMatch[]} apartments
  * @param {AptIndexes} [indexes]
- * @param {{ gateBlocked: number; apSkipped?: number; leaseMismatch?: number; idHealed?: number; phaseConflict?: number; nameWeak?: number; blocked?: GateBlocked | null }} [stats] 넘기면 "이름 유사도 기준은
+ * 세션679 1순위 시군구 게이트(번호 주인이 아닌 1순위 후보에만):
+ *   - 왜: 세션578 게이트 전에 2~4순위로 잘못 붙은 번호가 1순위(번호 일치)로 매일 다시 붙었다 — 김포 고촌센트럴자이 공고가
+ *     광양 `ah-2022930016` 의 분양 칸을 덮음(세션675 네이버 대조 119행 중 다른 시군구 1). 번호 주인 행 `ap-<번호>` 가 없어
+ *     `cleanup-presale-links.mjs` 기본 판정에도 안 걸렸다.
+ *   - 무엇: 분양 주소의 시도·시군구와 **확실히** 다르면(`knownOtherDistrict`) 그 행을 1순위로 쓰지 않고 같은 번호의 다른
+ *     ap-* 아닌 행 → 2~4순위 순으로 넘긴다. 주소를 못 읽었거나 행의 시도·시군구가 비면 옛 링크 유지(2~4순위와 반대 — 끊으면
+ *     신규 ap-* 중복 카드). 번호 주인 행(id 주인)은 그대로 지역 무관.
+ *
+ * @param {{ gateBlocked: number; apSkipped?: number; leaseMismatch?: number; idHealed?: number; phaseConflict?: number; nameWeak?: number; tier1Blocked?: number; blocked?: GateBlocked | null }} [stats] 넘기면 "이름 유사도 기준은
  *   넘었지만 시군구 게이트로 버린 후보가 하나라도 있었던 분양" 1건마다 `gateBlocked` 를 1 올린다(반환값은 그대로).
  *   `apSkipped`·`leaseMismatch` 도 같은 방식(세션579 후보 게이트로 버린 후보가 있으면 공고 1건당 1).
  *   `phaseConflict`·`nameWeak` 도 같은 방식(세션581 이름·차수 게이트). `blocked` 는 호출마다 null 로 시작해,
  *   이 공고에서 세션581 게이트로 버린 후보 중 원 이름 유사도가 가장 높은 1건을 담는다(로그용).
  *   `idHealed` 는 1순위를 id 주인으로 찾았는데 그 행의 `naver_presale_no` 가 공고 번호와 다를 때 1.
+ *   `tier1Blocked` 는 번호가 같은 ap-* 아닌 행을 세션679 1순위 시군구 게이트로 하나라도 버린 공고 1건당 1.
  * @returns {{ apartment: AptForMatch; confidence: number; tier: number } | null}
  */
 export function matchPresaleToApt(presale, apartments, indexes, stats) {
@@ -753,7 +762,30 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
   // 세션581: 앞 공고의 차단 기록이 이 공고 로그로 새지 않게 비운다(값이 있을 때만 — 칸이 없던 stats 에 칸을 만들지 않는다)
   if (stats?.blocked) stats.blocked = null;
 
-  // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색) — 지역 무관(세션578 게이트 예외)
+  // 세션578 게이트 재료: 분양 주소의 시도·시군구(DB 표기로 정규화) — 세션679 부터 1순위도 쓴다
+  const parsed = parsePresaleAddress(presale._enrich?.address);
+  const pRegion = parsed.region;
+  const pGu = normalizeGu(pRegion ?? "", parsed.gu) ?? null;
+  // 세종은 gu 가 없어도 된다. 그 외에는 시도·시군구 둘 다 알아야 2~4순위를 본다.
+  const districtKnown = !!pRegion && (pRegion === "세종" || !!pGu);
+  /**
+   * 세션679 1순위 시군구 게이트 — 번호 주인(ap-<번호>)이 아닌 행이 번호만 같고 **확실히** 다른 시도·시군구면 거른다.
+   * 2~4순위 게이트(`inDistrict`)와 달리 "모르면 통과"다: 분양 주소를 못 읽었거나 행의 시도·시군구가 비면 옛 링크를 유지한다
+   * (이미 붙어 있는 정상 링크를 주소 파싱 한 번으로 끊으면 신규 ap-* 중복 카드가 생긴다).
+   * @param {AptForMatch} a
+   */
+  const knownOtherDistrict = (a) => {
+    if (!districtKnown || !a.region) return false;
+    if (a.region !== pRegion) return true;
+    if (pRegion === "세종") return false;
+    if (typeof a.gu !== "string" || !a.gu.trim()) return false;
+    // 세션679 검사관: 행 쪽 gu 도 분양 쪽(pGu)과 같은 normalizeGu 를 거친다 — 비정본 표기(「영통구」·「고양덕양구」)가
+    //   정본(「수원시 영통구」)과 달라 보여 멀쩡한 연결이 끊기고 ap-* 중복 카드가 생기지 않게.
+    return !sameDistrict(pRegion, normalizeGu(pRegion, a.gu) ?? a.gu, pGu);
+  };
+
+  // 1순위: naver_presale_no 완전 일치 (Map O(1) 또는 선형 탐색) — 번호 주인은 지역 무관(세션578 게이트 예외),
+  //   주인 아닌 행은 세션679 1순위 시군구 게이트(`knownOtherDistrict`)를 지나야 한다.
   if (presaleNo) {
     // 세션579: id 주인(ap-<번호>) 먼저 — 번호 필드를 잃었거나 남의 번호를 쥔 ap-* 도 자기 공고로
     const ownerId = `ap-${presaleNo}`;
@@ -768,21 +800,23 @@ export function matchPresaleToApt(presale, apartments, indexes, stats) {
       ?? apartments.find(a => a.naver_presale_no === presaleNo);
     // 세션582: ap-* 행은 자기 번호(ap-<공고 번호>)만 — 여기 온 ap-* 는 id 주인이 아니므로(위에서 걸렸을 것)
     //   남의 번호를 쥔 행이다. 채택하면 남의 공고로 덮인다 → 2~4순위로 넘긴다(그쪽은 ap-* 를 후보에서 뺀다).
-    if (exact && !exact.id?.startsWith("ap-")) return { apartment: exact, confidence: 1.0, tier: 1 };
+    // 세션679: 다른 시군구 행이면 채택하지 않고 아래(같은 번호의 다른 행 → 2~4순위)로 넘긴다 — 김포 「고촌센트럴자이」
+    //   공고가 광양 `ah-2022930016` 「광양센트럴자이」의 「특징」 칸을 매일 다시 쓰던 길(세션675 대조 · 306km).
+    let tier1Blocked = false;
+    if (exact && !exact.id?.startsWith("ap-")) {
+      if (!knownOtherDistrict(exact)) return { apartment: exact, confidence: 1.0, tier: 1 };
+      tier1Blocked = true;
+    }
     // 세션582 검사관A 🟡1: 색인은 마지막 행이 이긴다 — 같은 번호를 정상 행과 남의 번호를 쥔 ap-* 가 함께 쥐면
     //   색인이 ap-* 를 돌려줘 정상 행의 1순위를 잃고 신규 ap-<번호> 중복 카드가 된다. ap-* 아닌 행을 한 번 더 찾는다.
     if (exact) {
-      const nonAp = apartments.find(a => a.naver_presale_no === presaleNo && !String(a.id).startsWith("ap-"));
+      const nonAp = apartments.find(a => a.naver_presale_no === presaleNo && !String(a.id).startsWith("ap-") && !knownOtherDistrict(a));
+      if (!nonAp && apartments.some(a => a.naver_presale_no === presaleNo && !String(a.id).startsWith("ap-"))) tier1Blocked = true;
       if (nonAp) return { apartment: nonAp, confidence: 1.0, tier: 1 };
     }
+    if (tier1Blocked && stats) stats.tier1Blocked = (stats.tier1Blocked ?? 0) + 1;
   }
 
-  // 세션578 게이트 재료: 분양 주소의 시도·시군구(DB 표기로 정규화)
-  const parsed = parsePresaleAddress(presale._enrich?.address);
-  const pRegion = parsed.region;
-  const pGu = normalizeGu(pRegion ?? "", parsed.gu) ?? null;
-  // 세종은 gu 가 없어도 된다. 그 외에는 시도·시군구 둘 다 알아야 2~4순위를 본다.
-  const districtKnown = !!pRegion && (pRegion === "세종" || !!pGu);
   let blocked = false;
   /** @param {AptForMatch} a */
   const inDistrict = (a) => {
@@ -1202,8 +1236,9 @@ async function main() {
   let regionFiltered = 0;
   // 세션578: 이름 유사도는 넘었지만 시군구 게이트로 후보를 버린 분양 수(matchPresaleToApt stats)
   // 세션581: phaseConflict·nameWeak = 이름·차수 게이트로 후보를 버린 공고 수, blocked = 이번 공고의 대표 차단 1건(로그용)
-  /** @type {{ gateBlocked: number; apSkipped: number; leaseMismatch: number; idHealed: number; phaseConflict: number; nameWeak: number; blocked: GateBlocked | null }} */
-  const matchStats = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, blocked: null };
+  // 세션679: tier1Blocked = 번호는 같지만 다른 시군구라 1순위로 안 쓴 공고 수
+  /** @type {{ gateBlocked: number; apSkipped: number; leaseMismatch: number; idHealed: number; phaseConflict: number; nameWeak: number; tier1Blocked: number; blocked: GateBlocked | null }} */
+  const matchStats = { gateBlocked: 0, apSkipped: 0, leaseMismatch: 0, idHealed: 0, phaseConflict: 0, nameWeak: 0, tier1Blocked: 0, blocked: null };
   // 단지 상세 응답이 비어 실패로 센 단지 설명(describeComplexFailure) — 루프 뒤 [실패 명단] 한 줄
   /** @type {string[]} */
   const failedComplexes = [];
@@ -1346,7 +1381,7 @@ async function main() {
   if (unitsFollowed.length > 0) log(PHASE, `[세대수 따라감${FOLLOW_UNITS ? "" : " 후보"}] ${unitsFollowed.length}건: ${unitsFollowed.slice(0, 20).join(", ")}${unitsFollowed.length > 20 ? " …" : ""}`);
 
   // 매칭 tier 집계
-  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch} id복원=${matchStats.idHealed} 차수충돌=${matchStats.phaseConflict} 이름약함=${matchStats.nameWeak}`);
+  log(PHASE, `[매칭] tier1=${tierCounts[1]} tier2=${tierCounts[2]} tier3=${tierCounts[3]} tier4=${tierCounts[4]} 신규=${tierCounts.new} 미매칭=${tierCounts.none} region미확정=${regionUnresolved} 지역필터제외=${regionFiltered} 게이트차단=${matchStats.gateBlocked} ap제외=${matchStats.apSkipped} 임대불일치=${matchStats.leaseMismatch} id복원=${matchStats.idHealed} 차수충돌=${matchStats.phaseConflict} 이름약함=${matchStats.nameWeak} 번호일치시군구차단=${matchStats.tier1Blocked}`);
 
   // 공고(item) 단위 집계와 단지 단위 실갱신 수를 구분해 남긴다 — 아래 UPDATE 는 단지 단위로 돈다.
   // reporter/collector_runs 의 ok 는 공고 단위 그대로 둔다(회귀 방지). 이 줄이 그 차이를 설명한다.
