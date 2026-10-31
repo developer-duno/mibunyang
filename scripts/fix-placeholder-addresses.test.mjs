@@ -826,8 +826,10 @@ describe("infra 컬럼 소유권 (세션539 실사고 — 행 통째 삭제 금�
       expect(INFRA_KAKAO_COLUMNS).toContain(kind);
       expect(INFRA_KAKAO_COLUMNS).toContain(`${kind}_dist`);
     }
-    // 종류 × 2 + subway_dist(단독)
-    expect(INFRA_KAKAO_COLUMNS).toHaveLength(INFRA_KAKAO_KINDS.length * 2 + 1);
+    // 종류 × 2 + subway_dist + kakao_updated_at(시계 · 세션681)
+    expect(INFRA_KAKAO_COLUMNS).toHaveLength(INFRA_KAKAO_KINDS.length * 2 + 2);
+    // 세션681: 좌표를 옮겨 카카오 칸을 비우면 시계도 NULL 이어야 다음 회차가 맨 앞으로 다시 잰다
+    expect(INFRA_KAKAO_COLUMNS).toContain("kakao_updated_at");
   });
 
   it("목록에 중복이 없다", () => {

@@ -349,11 +349,12 @@ export function demoteMultiPointed(rows) {
  */
 export const INFRA_KAKAO_KINDS = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"];
 
-/** purge 시 null 로 만들 `infra` 컬럼 — 종류별 개수 + 거리, 그리고 단독 컬럼(`subway_dist`). */
+/** purge 시 null 로 만들 `infra` 컬럼 — 종류별 개수 + 거리, 그리고 단독 컬럼(`subway_dist`) + 카카오 시계. */
 export const INFRA_KAKAO_COLUMNS = [
   ...INFRA_KAKAO_KINDS,
   ...INFRA_KAKAO_KINDS.map((k) => `${k}_dist`),
   "subway_dist",
+  "kakao_updated_at", // 카카오 시계도 비운다(NULL = 잰 적 없음 · 세션681)
 ];
 /** 단일 소유 테이블 — purge 시 행 삭제 가능. */
 export const SOLE_OWNER_TABLES = ["transport", "schools"];

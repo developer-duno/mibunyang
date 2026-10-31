@@ -76,7 +76,7 @@ psql 로 `ADD COLUMN` 을 적용했으면 supabase-js 로 그 칸을 **한 번 �
 
 - `apartments`·`infra`·`schools`·`transport`·`builders` 등에 `BEFORE UPDATE … EXECUTE FUNCTION update_updated_at()` 가 걸려 있다.
 - ⚠️ **`schools` 는 세션568 부터 `BEFORE UPDATE OF nearby_schools`**(마이그 20260924000300, 2026-09-24 09:39 KST 운영 적용) — 학교 목록을 **쓸 때만** 30일 재수집 시계가 간다. 그 전엔 점수만 다시 매기는 `rescaleOnly`·어린이집 수집기(`nearby_childcare`)가 쓸 때도 시계가 초기화돼 9/23 하루에 2,654행이 몰렸다. 열 지정 트리거는 그 열이 UPDATE 의 **SET 목록에 있을 때** 발화한다(값이 실제로 바뀌었는지 무관 — PostgreSQL CREATE TRIGGER 문서, `INSERT … ON CONFLICT DO UPDATE` 도 같은 기준).
-- ⚠️ 다른 표는 여전히 "어떤 칸을 고쳐도" 갱신이다. `infra-kakao` 는 `updated_at` 30일 + 완결성으로 건너뛴다(`scripts/collectors/infra-kakao.mjs` `buildFreshIds`) — 다른 수집기(대기질 등)가 `infra` 에 쓸 때 시계가 오르면 **같은 함정일 수 있다(실측 필요 — BACKLOG 세션568 후속)**. 공유 표의 `updated_at` 은 "누가 마지막에 건드렸나"일 뿐이다.
+- ⚠️ 다른 표는 여전히 "어떤 칸을 고쳐도" 갱신이다. `infra` 는 **실측으로 같은 함정이 확인됐다**(2026-10-31: 3,440행 중 3,255행이 `2026-10-18T13:59:24Z` 같은 초 — 남의 일괄 UPDATE · police·childcare·emergency·air-quality·2u 배치가 같은 행을 UPDATE). 그래서 `infra-kakao` 의 30일 재확인이 사실상 꺼져 있었다 → **세션681 부터 infra-kakao 시계 = `kakao_updated_at`**(마이그 20261101000000 · 이 수집기만 씀 · NULL = 잰 적 없음 · `buildFreshIds`·`selectInfraTargets` 가 이 칸을 본다). 공유 표의 `updated_at` 은 "누가 마지막에 건드렸나"일 뿐이다.
 
 ---
 

@@ -21,11 +21,11 @@ describe("checkOwnershipColumns", () => {
   });
 
   it("정본에 없는 칸(손 DDL) → ownership-drift 1건, 칸 이름이 상세 줄에", () => {
-    const issues = checkOwnershipColumns(registry, { infra: [...OK_COLS, "kakao_updated_at"] });
+    const issues = checkOwnershipColumns(registry, { infra: [...OK_COLS, "ghost_col"] });
     expect(issues).toHaveLength(1);
     expect(issues[0]).toMatchObject({ kind: "ownership-drift", collector: "ownership" });
     expect(issues[0].detail).toBe("infra: 정본에 없는 칸 1 · DB 에 없는 칸 0");
-    expect(issues[0].lines?.join(" ")).toContain("kakao_updated_at");
+    expect(issues[0].lines?.join(" ")).toContain("ghost_col");
   });
 
   it("정본엔 있는데 DB 에 없는 칸 → 1건", () => {
@@ -75,7 +75,8 @@ describe("runOwnershipCheck — fail-open", () => {
 
 describe("main 배선", () => {
   const src = readFileSync(fileURLToPath(new URL("./monitor-collectors.mjs", import.meta.url)), "utf8");
+  // 세션681: 사이에 허용하는 것은 주석 줄과 카카오 시계 관찰 로그 한 줄(이슈 0 · fail-open)뿐이다.
   it("⑲ 는 runDailyGuardedChecks 바로 뒤, KST 월요일(또는 수동 강제)에만", () => {
-    expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);\s*\r?\n(?:\s*\/\/[^\n]*\r?\n)+\s*if \(isKstMonday\(\) \|\| process\.env\.FORCE_DB_PERMISSION_AUDIT === "1"\) \{\s*\r?\n\s*issues = issues\.concat\(await runOwnershipCheck\(\)\);/);
+    expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);\s*\r?\n(?:\s*(?:\/\/[^\n]*|await logKakaoClockStats\(\);)\r?\n)+\s*if \(isKstMonday\(\) \|\| process\.env\.FORCE_DB_PERMISSION_AUDIT === "1"\) \{\s*\r?\n\s*issues = issues\.concat\(await runOwnershipCheck\(\)\);/);
   });
 });

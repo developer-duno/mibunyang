@@ -241,8 +241,8 @@
 
 > 정본(깃 밖) = `.omc/artifacts/session617/followups.md`(검사관 지적 원문) · `review-own-{adv,adv2,blind,halu}.md`. 정본 파일 = `supabase/ownership.json`(알려진 충돌 = `known_conflicts`).
 - ☐ **통보 실증 나머지 절반**: 미분양→2u 첫 통보 = 이슈 #720(자연 발생, 10-09) · 남은 것 = 2u 세션 시작 훅이 `📬 미분양 통보 1건` 을 보이는지 · 2u 가 #720 을 닫아 읽음 처리(안 닫으면 10-23 `stale-unread` 로 자동 닫힘) · 2u→미분양 역방향 1건(2u PR 뒤). 재촉하지 않는다.
-- 🟠 **알려진 충돌 C1·C2·C3·C5 해소 트랙**(등재만 했고 해소는 2u 합의 뒤): C1 `complexes` 10칸 양쪽 쓰기(2u 주인·미분양은 빈칸만 안) · C2 `articles` 12칸 + 행 수명(미분양 `is_active=false` vs 2u 물리 삭제) · C3 `infra.updated_at` 공유 시계(→ `infra.kakao_updated_at` 칸) · C5 `complex_price_history` 두 출처 섞임.
-- 🟠 **좌표 정정 때 infra 비카카오 칸 10개가 옛 값으로 남는다**(적대 C4): `fix-sosa`·`fix-placeholder-addresses.mjs` 는 카카오 17칸만 비운다 — `air_station_name/dist`·`childcare/dist`·`emergency/dist/name/type`·`police/dist` 는 옛 좌표 값 그대로. 재수집 주기(대기 매일·어린이집·경찰 월간)와 [[purge-to-recollect-timing]] 을 본 뒤 비울 칸을 넓힐지 결정.
+- 🟠 **알려진 충돌 C1·C2·C3·C5 해소 트랙**(등재만 했고 해소는 2u 합의 뒤): C1 `complexes` 10칸 양쪽 쓰기(2u 주인·미분양은 빈칸만 안) · C2 `articles` 12칸 + 행 수명(미분양 `is_active=false` vs 2u 물리 삭제) · ~~C3 `infra.updated_at` 공유 시계(→ `infra.kakao_updated_at` 칸)~~ → ✅ 세션681 해소(마이그 `20261101000000` · 카카오 시계 = `kakao_updated_at`, 설계서 `docs/superpowers/specs/2026-10-31-infra-kakao-updated-at-design.md`) · C5 `complex_price_history` 두 출처 섞임.
+- 🟠 **좌표 정정 때 infra 비카카오 칸 10개가 옛 값으로 남는다**(적대 C4): `fix-sosa`·`fix-placeholder-addresses.mjs` 는 카카오 18칸(17 + 시계 `kakao_updated_at`, 세션681)만 비운다 — `air_station_name/dist`·`childcare/dist`·`emergency/dist/name/type`·`police/dist` 는 옛 좌표 값 그대로. 재수집 주기(대기 매일·어린이집·경찰 월간)와 [[purge-to-recollect-timing]] 을 본 뒤 비울 칸을 넓힐지 결정.
 - 🟡 감시 ⑲ 는 공유 4표 칸만 본다 — "정본에 있는데 DB 에 없는 표"(나머지 53표·absent 2) 존재 대조는 후속 · 빈 표면 판정을 건너뛰는데 로그 표시가 없다(지금 4표는 행이 있어 오탐 0).
 - 🟡 `supabase/CLAUDE.md:15-40` 손 표 목록이 남아 있어 머리말 "정본 = ownership.json" 과 나중에 어긋날 수 있다(맹점 임무4).
 - ✅ 통보 판정(`scripts/notify-sister.mjs`) 빈틈 — #769 `73152a03`(세션643): 주석 판정을 확장자별로(js·py·sql, 그 밖 없음) · 작은따옴표 문자열 속 `--` 보존 · 여러 커밋 push 는 범위 안 커밋 **전부**가 제외 꼴일 때만 제외 · 고친 마이그(M·R·C) 통보(실질 SQL 0줄이면 뺌) · 2u 훅 gh 10초 = **2u 가 해결**(`naver-estate-web/.claude/hooks/session-start-sister-notices.sh` gh 1회 + 실패 시 캐시). 🟡 **남은 것**: 쓰기 줄을 `/* */` 로 감싸기만 하면 통보 안 됨(옛 판부터) · 템플릿 문자열 줄이 `/*` 로 시작하면 뒤 쓰기 줄을 지움(등록 파일 0곳) · Actions 얕은 받기(fetch-depth 2)로 범위를 다 못 읽는 여러 커밋 push 는 제외 판정 안 함(통보 쪽) · TRUNCATE/DELETE FROM/ALTER TYPE·`_rollbacks` 경로는 그대로 범위 밖.
@@ -475,6 +475,7 @@
   - 참고(정상 확인): 대기질은 **하루 100단지 순환**이 설계다(단지당 API 1콜이라 쿼터 보호).
     09-17~21 각 100건 정확히 시도됨. 전 단지 한 바퀴 ≈ 30일. `infra.updated_at` 20:30 은
     **우리 `infra-kakao` 수집기**가 찍은 것이지 대기질이 아니다 — 대기질 시각은 `air_updated_at`.
+    (세션681 정정: updated_at 은 공유 시계라 누가 찍었는지 못 가른다 — 카카오 시각은 kakao_updated_at)
   - ★ 교훈: **"현재 피해 규모" 를 적을 땐 그 수치를 언제 쟀는지 함께 적는다.** 세션 중에
     수집기가 돌면 뒤집힌다 — 이번엔 내가 옛 측정값을 현재형으로 써서 후속 확인 항목이
     **이미 해결된 것을 기다리라고** 적힐 뻔했다.

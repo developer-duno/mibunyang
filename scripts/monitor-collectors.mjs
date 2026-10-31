@@ -1,5 +1,5 @@
 // @ts-check
-// ownership-guard: allow infra 읽기만(권한 기준선 표 이름 명단 PUBLIC_READ_TABLES_BASELINE · ⑲ select · 공유 표는 select 만 — 세션617 fix1 grep 확인)
+// ownership-guard: allow infra 읽기만(권한 기준선 표 이름 명단 PUBLIC_READ_TABLES_BASELINE · ⑲ select · 카카오 시계 로그 count head 2회(세션681) · 공유 표는 select 만 — 세션617 fix1 grep 확인)
 // ownership-guard: allow officetel_presale_schedule 읽기만(권한 기준선 표 이름 명단 PUBLIC_READ_TABLES_BASELINE — 쓰기 없음)
 // ownership-guard: allow officetel_unit_supply 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
 // ownership-guard: allow rental_schedule_official 읽기만(권한 기준선 표 이름 명단 — 쓰기 없음)
@@ -380,6 +380,10 @@ export const EXTERNAL_API_COLLECTORS = [
   { collector: "molit-units",     stale_days: 14, owner: "MOLIT 세대수 보정 (네이버 파이프라인 월/목 — 세션612 부터 한 곳)" },
   { collector: "transport-tago",  stale_days: 14, owner: "버스정류장 파일(data.go.kr, 세션497부터 TAGO 실시간 API 대체) + Kakao" },
   { collector: "schools",         stale_days: 14, owner: "NEIS 학교정보" },
+  // 세션681: infra-kakao(PHASE "infra") — 같은 job(collect-naver-listings-incremental.yml 화·금 05:30)의 transport·schools
+  //   다음. ⑤-a(빈 성공)는 안 울린다(최신 행을 rpt.skip 으로 세어 skip 이 늘 >0) → ⑤-b(14일 미발화)만 유효.
+  //   「멈춤」은 ⑬(실패 행 — main().catch 가 failure 1행을 남김)·①·⑤-b 셋이 잡는다. 주 2회라 14 = 일일·주간 기준표.
+  { collector: "infra",           stale_days: 14, owner: "카카오 로컬 8종+지하철 (Actions 화·금 05:30 — ⑤-a 는 skip>0 이라 안 울림, ⑤-b 만)" },
   { collector: "applyhome-detail", stale_days: 14, owner: "청약홈 분양일정·평형 (주간 월 cron — 세션 467 주간화)" },
   // 세션 496 단계1. collect-applyhome-remndr.yml = 주간 월 13:30 KST cron → 7+7 = 14.
   //   cron 주기를 바꾸면 이 값도 함께 바꿀 것 (일일=14 / 월간=38 / 분기=100).
@@ -2260,6 +2264,33 @@ export async function fetchSgisMapLatestRun(sbArg) {
     .limit(1);
   if (error) throw new Error(`collector_runs(${SGIS_MAP_COLLECTOR}) 조회 실패: ${error.message}`);
   return data ?? [];
+}
+
+// ── 카카오 시계 관찰 로그 (세션681 · 이슈 0) ──────────────────────────────────
+/** 카카오 시계가 이 일수를 넘으면 「낡음」으로 센다(30일 재확인 + 회차 여유 — 설계서 §3-5). */
+export const KAKAO_CLOCK_STALE_DAYS = 45;
+/**
+ * infra.kakao_updated_at(infra-kakao.mjs 전용 시계, 마이그 20261101000000) 이 NULL 인 행 수와
+ * KAKAO_CLOCK_STALE_DAYS 넘은 행 수를 count head 2회로 세어 **로그만** 남긴다(이슈 0 · fail-open · 조회 실패도 로그만).
+ * 경보 임계는 첫 사이클(800곳 × 5회차 ≈ 2.5주) 뒤 실측해 다음 PR(설계서 §3-5) — 그 전엔 NULL 이 정상이다.
+ * @param {import("@supabase/supabase-js").SupabaseClient | null} [sbArg]
+ * @param {number} [nowMs]
+ * @returns {Promise<{ nullCount: number | null, staleCount: number | null } | null>} 조회 실패면 null
+ */
+export async function logKakaoClockStats(sbArg = null, nowMs = Date.now()) {
+  try {
+    const sb = sbArg ?? getSupabase();
+    const cutoff = new Date(nowMs - KAKAO_CLOCK_STALE_DAYS * 86400000).toISOString();
+    const nul = await sb.from("infra").select("*", { count: "exact", head: true }).is("kakao_updated_at", null);
+    if (nul.error) throw new Error(`NULL 행 수 조회 실패: ${nul.error.message}`);
+    const old = await sb.from("infra").select("*", { count: "exact", head: true }).lt("kakao_updated_at", cutoff);
+    if (old.error) throw new Error(`${KAKAO_CLOCK_STALE_DAYS}일 초과 행 수 조회 실패: ${old.error.message}`);
+    console.log(`[monitor] 카카오 시계(infra.kakao_updated_at): NULL ${nul.count ?? "?"}행 · ${KAKAO_CLOCK_STALE_DAYS}일 초과 ${old.count ?? "?"}행 (관찰 로그 — 경보 아님)`);
+    return { nullCount: nul.count ?? null, staleCount: old.count ?? null };
+  } catch (err) {
+    console.log(`[monitor] 카카오 시계 관찰 로그 실패(감시는 계속 · 이슈 0): ${err instanceof Error ? err.message : String(err)}`);
+    return null;
+  }
 }
 
 // ── ⑲ 공유 DB 소유권 정본 대조 (세션617) ────────────────────────────────────
@@ -4503,6 +4534,9 @@ async function main() {
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
     issues = issues.concat(await runDailyGuardedChecks());
+
+    // 카카오 시계 관찰 로그(세션681) — 이슈 0 · fail-open. 경보 임계는 첫 사이클 뒤 실측해 다음 PR(설계서 §3-5).
+    await logKakaoClockStats();
 
     // ⑲ 공유 DB 소유권 정본 대조 — KST 월요일만(설계서 §1-2 "월요일 감시", 세션617). 공유 4표의 DB 칸 vs
     //    supabase/ownership.json 칸. 마이그로 바뀐 칸은 CI 소유권 감사 ④ 가 합치기 전에 보고, 대시보드 손 DDL 은

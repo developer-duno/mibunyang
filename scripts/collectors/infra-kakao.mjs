@@ -6,10 +6,13 @@
  *
  * 사용법:
  *   node scripts/collectors/infra-kakao.mjs              (Supabase UPDATE)
- *   node scripts/collectors/infra-kakao.mjs --dry-run    (미리보기만)
- *   node scripts/collectors/infra-kakao.mjs --force      (신선도 무시하고 전량 재수집)
+ *   node scripts/collectors/infra-kakao.mjs --dry-run    (DB 에 안 씀 — ⚠️ 카카오는 실제로 부른다: 회차당 최대 800×9 = 7,200콜.
+ *                                                         시계를 안 쓰므로 다시 돌리면 같은 800곳을 또 잰다)
+ *   node scripts/collectors/infra-kakao.mjs --max-apts=N (한 회차 최대 N단지, kakao_updated_at 오래된 순 · 기본 800 — 세션679)
+ *   node scripts/collectors/infra-kakao.mjs --force --max-apts=N (신선도 무시하고 오래된 순 N단지 재수집)
+ *     --force 는 --max-apts 와 함께만 — 단독이면 시작에서 던진다(전량 약 31,000콜 방지 · 세션681)
  */
-import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun, createSemaphore, selectAll } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, fetchWithRetry, sleep, createReporter, recordCollectorRun, createSemaphore, selectAll, joinRunMessage } from "./_shared.mjs";
 
 loadEnv();
 
@@ -51,7 +54,9 @@ export const REQUIRED_KEYS = [...CATEGORIES.map((c) => c.key), "subway_dist"];
 
 /**
  * 건너뛸(=이미 완결 + 최근 갱신) apartment_id 집합.
- * @param {Record<string, unknown>[]} rows infra 행 (apartment_id, updated_at, 카테고리 컬럼)
+ * 시계 = `kakao_updated_at`(이 수집기만 씀 · 세션681). `updated_at` 은 police·childcare·emergency·air-quality·2u 가
+ * 올리는 공유 시계(DB 트리거)라 판정에 쓰지 않는다 — 쓰면 남이 찍은 시각으로 「최신」이 되어 재확인이 꺼진다.
+ * @param {Record<string, unknown>[]} rows infra 행 (apartment_id, kakao_updated_at, 카테고리 컬럼)
  * @param {number} [nowMs]
  * @param {number} [days]
  * @returns {Set<string>}
@@ -63,12 +68,105 @@ export function buildFreshIds(rows, nowMs = Date.now(), days = FRESH_DAYS) {
   for (const r of rows || []) {
     const id = r?.apartment_id;
     if (typeof id !== "string" || !id) continue;
-    const ts = r.updated_at ? Date.parse(String(r.updated_at)) : NaN;
+    const ts = r.kakao_updated_at ? Date.parse(String(r.kakao_updated_at)) : NaN; // NULL = 잰 적 없음
     if (isNaN(ts) || ts < cutoff) continue;             // 오래됨 → 재수집
     if (REQUIRED_KEYS.some((k) => r[k] == null)) continue; // 미완성 → 재수집
     fresh.add(id);
   }
   return fresh;
+}
+
+// ── 한 회차 상한 (세션679 — 사장님 결정 10/31 「한 회차 상한 두기」) ────────────────
+// 왜: infra.updated_at 은 공유 시계(DB 트리거가 모든 UPDATE 에 now())라 남의 일괄 UPDATE 한 번에 행들이 같은 초로
+//   묶인다. 2026-10-31 실측 3,440행 중 3,255행이 2026-10-18T13:59:24Z — 30일 뒤 정기 회차(KST 11/20 05:30) 한 번에
+//   3,264단지 × 9콜 ≈ 29,376 카카오 콜이 몰리고, 그 뒤로도 30일마다 같은 몰림이 되풀이된다.
+// N = 800 근거(.omc/artifacts/session679/transition-b2.md ②-b):
+//   - 회차 = 화·금 KST 05:30(collect-naver-listings-incremental.yml, 주 2회) · 단지당 9콜 · 단지당 약 0.7초(동시 5,
+//     10/29 run 86단지 60초) → 800단지 ≈ 9~10분 · 7,200콜. 같은 job(240분)을 transport·schools(최근 101~140분)와 나눠 쓴다.
+//   - 몰림 3,264곳 → 800·800·800·800·64 = 5회차 ≈ 2.5주에 흩어짐(「2~3주」).
+//   - 평시 처리량: 30일에 회차 약 8.6번 × 800 = 약 6,880단지 — 지금 3,440단지의 두 배라 밀림이 쌓이지 않는다.
+// 고르는 순서: ① 한 번도 못 채운 행(infra 행 없음·REQUIRED_KEYS 중 빈칸) ② kakao_updated_at 오래된 순(NULL = 맨 앞) ③ id.
+//   처리한 행은 kakao_updated_at 이 지금으로 바뀌어 뒤로 가므로, 이번에 못 고른 행은 다음 회차 맨 앞에 온다(굶주림 없음).
+//   updated_at 은 police·childcare·emergency·air-quality·2u 가 올리는 공유 시계라 쓰지 않는다(세션681 · 마이그 20261101000000).
+// --force(신선도 무시)는 --max-apts 와 함께만 — 단독이면 resolveMaxApts 가 던진다(전량 약 31,000콜 방지 · 세션681).
+export const DEFAULT_MAX_APTS = 800;
+/** 이번 회차에 상한으로 다음 회차로 넘긴 단지 수 — collector_runs.error_message 표식(status 는 그대로) */
+export const INFRA_DEFERRED_MARKER = "INFRA_DEFERRED=";
+
+/**
+ * `--max-apts=<N>` 을 읽는다. 없으면 null. 양의 정수가 아니면 던진다(오타로 상한이 조용히 풀리지 않게).
+ * @param {string[]} argv
+ * @returns {number | null}
+ */
+export function parseMaxApts(argv) {
+  const hits = argv.filter((a) => a === "--max-apts" || a.startsWith("--max-apts="));
+  if (hits.length === 0) return null;
+  if (hits.length > 1) throw new Error("--max-apts 는 한 번만 줄 수 있다");
+  const raw = hits[0].slice("--max-apts=".length);
+  if (hits[0] === "--max-apts" || !/^[1-9]\d*$/.test(raw)) throw new Error(`--max-apts=<양의 정수> 형식이어야 한다: ${hits[0]}`);
+  return Number(raw);
+}
+
+/**
+ * 이번 회차 상한을 정한다. `--max-apts` 없으면 DEFAULT_MAX_APTS. `--force` 는 `--max-apts` 와 함께만
+ * (단독이면 던진다 — 운영자가 `--force` 만 쳐서 상한 없이 전량이 나가는 길을 닫는다 · 세션681).
+ * @param {string[]} argv
+ * @returns {{ force: boolean, maxApts: number }}
+ */
+export function resolveMaxApts(argv) {
+  const force = argv.includes("--force");
+  const maxArg = parseMaxApts(argv);
+  if (force && maxArg == null) throw new Error("--force 는 --max-apts=<N> 과 함께만(전량 31,000콜 방지)");
+  return { force, maxApts: maxArg ?? DEFAULT_MAX_APTS };
+}
+
+/**
+ * 이번 회차에 카카오로 잴 단지를 고른다(순수 함수).
+ * @param {InfraAptRow[]} withCoords 좌표 있는 단지
+ * @param {Record<string, unknown>[]} infraRows infra 행 (apartment_id, kakao_updated_at, REQUIRED_KEYS)
+ * @param {{ nowMs?: number, maxApts?: number | null, force?: boolean }} [opts] maxApts null = 상한 없음
+ * @returns {{ targets: InfraAptRow[], freshCount: number, deferred: number }}
+ */
+export function selectInfraTargets(withCoords, infraRows, opts = {}) {
+  const { nowMs = Date.now(), maxApts = null, force = false } = opts;
+  const freshIds = force ? new Set() : buildFreshIds(infraRows, nowMs);
+  /** @type {Map<string, Record<string, unknown>>} */
+  const rowById = new Map();
+  for (const r of infraRows || []) if (typeof r?.apartment_id === "string") rowById.set(r.apartment_id, r);
+  /** @param {InfraAptRow} a */
+  const rank = (a) => {
+    const r = rowById.get(a.id);
+    return !r || REQUIRED_KEYS.some((k) => r[k] == null) ? 0 : 1;
+  };
+  /** @param {InfraAptRow} a */
+  const tsOf = (a) => {
+    const v = rowById.get(a.id)?.kakao_updated_at; // 공유 시계 updated_at 이 아니라 카카오 시계(세션681)
+    const t = v ? Date.parse(String(v)) : NaN;
+    return isNaN(t) ? -Infinity : t;
+  };
+  const cands = withCoords.filter((a) => !freshIds.has(a.id));
+  cands.sort((a, b) => rank(a) - rank(b) || tsOf(a) - tsOf(b) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  const targets = maxApts == null ? cands : cands.slice(0, maxApts);
+  return { targets, freshCount: freshIds.size, deferred: cands.length - targets.length };
+}
+
+/**
+ * 관찰용 시계 통계(세션681 · 로그만): 공유 시계 updated_at 이 days 안인 행 수 · kakao_updated_at 이 NULL 인 행 수.
+ * 남이 updated_at 을 얼마나 자주 덮어쓰는지 보려는 것 — 판정·정렬엔 안 쓴다.
+ * @param {Record<string, unknown>[]} rows
+ * @param {number} [nowMs]
+ * @param {number} [days]
+ * @returns {{ sharedFresh: number, kakaoNull: number }}
+ */
+export function countClockStats(rows, nowMs = Date.now(), days = FRESH_DAYS) {
+  const cutoff = nowMs - days * 86400000;
+  let sharedFresh = 0, kakaoNull = 0;
+  for (const r of rows || []) {
+    const t = r?.updated_at ? Date.parse(String(r.updated_at)) : NaN;
+    if (!isNaN(t) && t >= cutoff) sharedFresh++;
+    if (r?.kakao_updated_at == null) kakaoNull++;
+  }
+  return { sharedFresh, kakaoNull };
 }
 
 /**
@@ -108,9 +206,25 @@ export function errorFailCount({ ok, err }) {
 export async function searchKakao(lat, lng, keyword, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/keyword.json?query=${encodeURIComponent(keyword)}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=1`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
-  const data = /** @type {KakaoPlacesResponse} */ (await res.json());
-  const docs = data.documents || [];
+  const data = assertKakaoShape(await res.json(), keyword);
+  const docs = data.documents;
   return { count: data.meta?.total_count ?? docs.length, nearest: docs[0] ?? null };
+}
+
+/**
+ * 카카오 응답 모양 검사(세션681). `meta` 가 객체가 아니거나 `documents` 가 배열이 아니면 던진다 —
+ * 모양이 깨진 응답(한도·장애 의심)을 「0건」으로 덮어쓰지 않게(그 단지는 errored → 옛 값 유지).
+ * 정상 0건(`documents: []`, `meta.total_count: 0`)은 그대로 통과.
+ * @param {unknown} data
+ * @param {string} what 오류 문구에 넣을 질의(키워드·카테고리 코드)
+ * @returns {KakaoPlacesResponse}
+ */
+export function assertKakaoShape(data, what) {
+  const d = /** @type {Record<string, unknown> | null} */ (data && typeof data === "object" ? data : null);
+  if (!d || !d.meta || typeof d.meta !== "object" || Array.isArray(d.meta) || !Array.isArray(d.documents)) {
+    throw new Error(`카카오 응답 모양 깨짐 (${what}): meta·documents 없음 — 한도·장애 의심`);
+  }
+  return /** @type {KakaoPlacesResponse} */ (/** @type {unknown} */ (d));
 }
 
 /**
@@ -123,13 +237,13 @@ export async function searchKakao(lat, lng, keyword, radius) {
 async function searchKakaoCategory(lat, lng, categoryCode, radius) {
   const url = `https://dapi.kakao.com/v2/local/search/category.json?category_group_code=${categoryCode}&x=${lng}&y=${lat}&radius=${radius}&sort=distance&size=5`;
   const res = await fetchWithRetry(url, { headers: { Authorization: `KakaoAK ${KAKAO_KEY}` } });
-  const data = /** @type {KakaoPlacesResponse} */ (await res.json());
-  return data.documents || [];
+  return assertKakaoShape(await res.json(), categoryCode).documents;
 }
 
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
-  const forceAll = process.argv.includes("--force");
+  // 세션679: 한 회차 상한 — 인자 없으면 기본 DEFAULT_MAX_APTS · 세션681: --force 는 --max-apts 와 함께만(단독이면 던짐)
+  const { force: forceAll, maxApts } = resolveMaxApts(process.argv);
   if (dryRun) log(PHASE, "=== DRY-RUN 모드 ===");
 
   const sb = getSupabase();
@@ -139,20 +253,18 @@ async function main() {
   ));
 
   const withCoords = apts.filter(a => a.lat && a.lng);
-  let targets = withCoords;
-  let freshCount = 0;
-  if (!forceAll) {
-    const infraRows = /** @type {Record<string, unknown>[]} */ (
-      await selectAll((s) => s.from("infra").select(
-        ["apartment_id", "updated_at", "subway_dist", ...CATEGORIES.map((c) => c.key)].join(", "),
-      ), sb, "apartment_id") // infra 는 apartment_id 가 PK
-    );
-    const freshIds = buildFreshIds(infraRows);
-    freshCount = freshIds.size;
-    targets = withCoords.filter(a => !freshIds.has(a.id));
-    log(PHASE, `전체 ${withCoords.length}건 중 ${freshCount}건 최신(${FRESH_DAYS}일 이내·완결) 건너뜀`);
-  }
-  log(PHASE, `대상: ${targets.length}건 (좌표 있음)`);
+  // 세션679: --force 여도 읽는다 — 상한을 걸면 오래된 순으로 골라야 해서
+  // 세션681: 판정·정렬 시계 = kakao_updated_at. updated_at 은 남의 시계 관찰 로그용으로만 읽는다(판정·정렬엔 안 씀).
+  const infraRows = /** @type {Record<string, unknown>[]} */ (
+    await selectAll((s) => s.from("infra").select(
+      ["apartment_id", "updated_at", "kakao_updated_at", "subway_dist", ...CATEGORIES.map((c) => c.key)].join(", "),
+    ), sb, "apartment_id") // infra 는 apartment_id 가 PK
+  );
+  const { targets, freshCount, deferred } = selectInfraTargets(withCoords, infraRows, { maxApts, force: forceAll });
+  if (!forceAll) log(PHASE, `전체 ${withCoords.length}건 중 ${freshCount}건 최신(${FRESH_DAYS}일 이내·완결) 건너뜀`);
+  log(PHASE, `대상: ${targets.length}건 (좌표 있음 · 오래된 순) · 이번 상한 ${maxApts ?? "무제한"} · 다음 회차로 넘김 ${deferred}건`);
+  const clock = countClockStats(infraRows);
+  log(PHASE, `남의 시계(updated_at) 최신 ${FRESH_DAYS}일 안 ${clock.sharedFresh}행 / kakao 시계 NULL ${clock.kakaoNull}행 (관찰용)`);
 
   const rpt = createReporter(PHASE);  // 세션 327: SIGTERM 핸들러 등록을 loop 이전으로 이동 (이전에는 loop 끝난 뒤 호출되어 등록 0회)
   // 신선도로 건너뛴 건을 skip 으로 기록 — 전량 최신인 날 ok=0 이어도 monitor ② 의
@@ -167,8 +279,10 @@ async function main() {
    */
   const processApt = async (apt, i) => sem(async () => {
     try {
+      // updated_at 직접 쓰기는 효과 없음(INSERT 는 DEFAULT NOW · UPDATE 는 트리거) — ownership 기준선 유지용 · 시계는 kakao_updated_at
+      const now = new Date().toISOString();
       /** @type {Record<string, unknown>} */
-      const row = { apartment_id: apt.id, updated_at: new Date().toISOString() };
+      const row = { apartment_id: apt.id, updated_at: now, kakao_updated_at: now };
 
       for (const cat of CATEGORIES) {
         const { count, nearest } = await searchKakao(Number(apt.lat), Number(apt.lng), cat.keyword, cat.radius);
@@ -215,11 +329,23 @@ async function main() {
   if (errFailN > 0) rpt.fail(errFailN);
   else rpt.skip(errored);
   log(PHASE, `갱신 ${updated} · 오류 ${errored} (${errFailN > 0 ? "실패" : "skip"}로 셈)`);
-  const result = rpt.summary();
+  const summary = rpt.summary();
+  // 세션679: 상한으로 넘긴 수는 조용히 버리지 않고 기록에 남긴다(data-changing-run-approval §4 — skip 칸이 아니라 표식)
+  const result = deferred > 0
+    ? { ...summary, errorMessage: joinRunMessage(undefined, `${INFRA_DEFERRED_MARKER}${deferred}`) }
+    : summary;
   await recordCollectorRun(PHASE, result);
   if (result.fail > 0) process.exit(1);
 }
 
 const argv1 = process.argv[1];
 const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
-if (isCLI) main().catch(err => { const msg = err instanceof Error ? err.message : String(err); logError(PHASE, msg); process.exit(1); });
+// 세션681: 시작도 못 한 회차(select 실패·칸 없음·인자 오류)도 collector_runs 에 failure 1행을 남긴다 → 감시 ⑬ 이 다음 날 잡는다.
+//   기록 실패는 다시 던지지 않는다(recordCollectorRun 이 안에서 로그만 남김 · 그래도 던지면 삼킨다).
+if (isCLI) main().catch(async (err) => {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  try { await recordCollectorRun(PHASE, { ok: 0, fail: 1, skip: 0, errorMessage: msg }); }
+  catch (e) { logError(PHASE, `실패 기록도 실패: ${e instanceof Error ? e.message : String(e)}`); }
+  process.exit(1);
+});
