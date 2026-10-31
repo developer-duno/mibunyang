@@ -1331,6 +1331,13 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     }
   });
 
+  // 세션681: 카카오 시계 칸(infra.kakao_updated_at)과 한 쌍 — 수집기가 멈추면 ⑤-b 가 14일 안에 잡는다.
+  it("infra(infra-kakao) 는 stale 14 로 등재돼 있다 — 주 2회(화·금) Actions (세션681)", () => {
+    const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "infra");
+    expect(entry, "infra 미등재 — 카카오 수집기가 멈춰도 ⑤ 가 못 본다").toBeTruthy();
+    expect(entry?.stale_days).toBe(14);
+  });
+
   // 세션605: 대기질이 매일 러너로 바뀌어 이 행이 러너의 생존 신호가 됐다 — 일일 기준표(14)의 예외.
   it("air-quality 는 stale 3 으로 등재돼 있다 — 매일 러너가 죽으면 3일 안에 ⑤-b (세션605)", () => {
     const entry = EXTERNAL_API_COLLECTORS.find((c) => c.collector === "air-quality");
@@ -1387,7 +1394,7 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
     expect(issues).toHaveLength(0);
   });
 
-  it("EXTERNAL_API_COLLECTORS 배열 = 37 후보 박힘 (sgis-map-emd, 세션 614 +기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550 + naver-pipeline, 세션 570)", () => {
+  it("EXTERNAL_API_COLLECTORS 배열 = 38 후보 박힘 (infra, 세션 681 + sgis-map-emd, 세션 614 +기존 5 + KOSIS 로컬 10, 세션 289 + childcare 로컬 3, 세션 399 + maintenance, 세션 447 + applyhome-seed, 세션 466 + notify-subscribers, 세션 467 + naver-presale, 세션 470 + naver-collect, 세션 495 + applyhome-remndr, 세션 496 + housing-price, 세션 504 + MOLIT 로컬 3, 세션 515 + naver-devplan, 세션 517 + air-quality, 세션 519 + crime-safety, 세션 521 + lhzone-status, 세션 522 + emergency, 세션 525 + population·population-sex-age, 세션 550 + naver-pipeline, 세션 570)", () => {
     const names = EXTERNAL_API_COLLECTORS.map((c) => c.collector).sort();
     expect(names).toEqual([
       "air-quality",
@@ -1400,6 +1407,8 @@ describe("checkExternalApiStale — ⑤ 외부 API 장기 중단", () => {
       // 로컬 러너 매월 3일. GH run 이 없어 ①③ 대상 밖이므로 ⑤ 가 유일한 "안 돌면 알림".
       "emergency",
       "housing-permits", "housing-price",
+      // 세션 681: infra-kakao(PHASE "infra") — 카카오 전용 시계 칸과 한 쌍. ⑤-b(14일 미발화)만 유효.
+      "infra",
       "kosis-fertility-rate", "kosis-housing-supply-ratio", "kosis-jeonse-price-index",
       "kosis-medical-access", "kosis-regional-economy", "kosis-sale-price-index",
       "kosis-unsold",
@@ -2512,5 +2521,52 @@ describe("fetchExternalApiRuns/호출부 — ⑤ collector_runs 조회 실패를
     expect(src).toContain("failed.set(name, error);");
     expect(src).toContain("queryFailed: new Set(queryFailed.keys())");
     expect(src).toMatch(/issues\.push\(checkFailedIssue\(`⑤/);
+  });
+});
+
+// ── 세션681: 카카오 시계 관찰 로그 — 이슈 0 · fail-open ───────────────────────────
+describe("logKakaoClockStats — infra.kakao_updated_at NULL·45일 초과 행 수 로그만 (세션681)", () => {
+  /** @param {Array<{ count?: number | null, error?: { message: string } | null }>} answers */
+  const fakeSb = (answers) => {
+    /** @type {Array<{ table: string, op: string, col: string, val: unknown }>} */
+    const calls = [];
+    let i = 0;
+    const sb = {
+      /** @param {string} table */
+      from: (table) => ({
+        select: () => ({
+          /** @param {string} col @param {unknown} val */
+          is: (col, val) => { calls.push({ table, op: "is", col, val }); return Promise.resolve(answers[i++]); },
+          /** @param {string} col @param {unknown} val */
+          lt: (col, val) => { calls.push({ table, op: "lt", col, val }); return Promise.resolve(answers[i++]); },
+        }),
+      }),
+    };
+    return { sb: /** @type {any} */ (sb), calls };
+  };
+  const NOW_MS = Date.parse("2026-11-01T00:00:00Z");
+
+  it("두 count 를 infra.kakao_updated_at 으로 센다(NULL · cutoff = 지금 − 45일)", async () => {
+    const { logKakaoClockStats, KAKAO_CLOCK_STALE_DAYS } = await import("./monitor-collectors.mjs");
+    const { sb, calls } = fakeSb([{ count: 3440, error: null }, { count: 0, error: null }]);
+    const r = await logKakaoClockStats(sb, NOW_MS);
+    expect(r).toEqual({ nullCount: 3440, staleCount: 0 });
+    expect(KAKAO_CLOCK_STALE_DAYS).toBe(45);
+    expect(calls).toEqual([
+      { table: "infra", op: "is", col: "kakao_updated_at", val: null },
+      { table: "infra", op: "lt", col: "kakao_updated_at", val: new Date(NOW_MS - 45 * 86400000).toISOString() },
+    ]);
+  });
+
+  it("조회 실패는 던지지 않고 null(감시는 계속 · 이슈 0)", async () => {
+    const { logKakaoClockStats } = await import("./monitor-collectors.mjs");
+    const { sb } = fakeSb([{ count: null, error: { message: "column infra.kakao_updated_at does not exist" } }]);
+    await expect(logKakaoClockStats(sb, NOW_MS)).resolves.toBeNull();
+  });
+
+  it("main 이 runDailyGuardedChecks 뒤에 부르고 반환값을 issues 에 넣지 않는다(소스 확인)", () => {
+    const src = readFileSync(new URL("./monitor-collectors.mjs", import.meta.url), "utf-8");
+    expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);[\s\S]{0,300}\n\s*await logKakaoClockStats\(\);\r?\n/);
+    expect(src).not.toMatch(/issues\.concat\(await logKakaoClockStats/);
   });
 });

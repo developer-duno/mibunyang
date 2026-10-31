@@ -145,7 +145,7 @@
 | C7 남의 표에 칸 추가 | ✅ | 가드 ④ 🟡 + 통보 |
 | C1 complexes 10칸 | 등재만(`contested` + 기준선) | 별도 트랙: 원천이 다르다(마커 bbox vs 2u 검색) → "2u 가 주인, 미분양은 없을 때만 채움" 을 2u 와 합의 뒤 · C6 `last_crawled_at` 도 그때 |
 | C2 articles 12칸 + 행 수명 | 등재만 | 별도 트랙(2u 물리 삭제 vs 미분양 `is_active=false` · 2u 화면 영향부터 2u 확인) |
-| C3 infra.updated_at | 등재만(`clock`) | 별도 트랙: 인과 실측 뒤 `infra.kakao_updated_at` 칸 + `infra-kakao.mjs:59-72` — 마이그·전이표 |
+| C3 infra.updated_at | 등재만(`clock`) | 해소(세션681 · 마이그 20261101000000 · infra.kakao_updated_at) |
 | C5 complex_price_history | 등재만(`sources`) | 별도 트랙: `trade-stats.mjs:378`·`sync-naver-complex.mjs:676` 값 영향 실측 |
 
 ## 6. 작업 나누기 · 순서

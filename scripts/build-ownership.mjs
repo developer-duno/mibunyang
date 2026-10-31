@@ -142,7 +142,7 @@ Object.assign(tables.infra, { row_create: ["mibunyang", "2u"], fk_cascade_from: 
 // inventory 의 ③ 은 이번 PR 이 고친 옛 사실 — 고친 문장으로 바꾼다(fix1 🟡). 원문이 없으면 시끄럽게 실패.
 const OLD_C4 = "③ 미분양 fix-sosa-coordinates.mjs:73 은 infra 행을 통째 삭제(2u 칸 포함)";
 if (!String(tables.infra.note).includes(OLD_C4)) problems.push("infra note 에 옛 C4 문장이 없음 — inventory 가 바뀌었나");
-tables.infra.note = `${String(tables.infra.note).replace(OLD_C4, "③ fix-sosa-coordinates.mjs 의 infra 행 통째 삭제(C4)는 세션617 에 고침(미분양 카카오 칸만 null)")} — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3). fix-sosa·fix-placeholder 의 infra 비우기 = 카카오 17칸만(INFRA_KAKAO_COLUMNS) — 좌표 파생 미분양 칸 10개(air_station_*·childcare*·emergency*·police*)는 그대로 남음(후속 BACKLOG · purge-to-recollect-timing 본 뒤 결정).`;
+tables.infra.note = `${String(tables.infra.note).replace(OLD_C4, "③ fix-sosa-coordinates.mjs 의 infra 행 통째 삭제(C4)는 세션617 에 고침(미분양 카카오 칸만 null)")} — updated_at 은 DB 트리거가 모든 UPDATE 에 now(): 어느 쪽도 자기 수집 시각으로 믿지 말 것(C3). fix-sosa·fix-placeholder 의 infra 비우기 = 카카오 18칸만(INFRA_KAKAO_COLUMNS) — 좌표 파생 미분양 칸 10개(air_station_*·childcare*·emergency*·police*)는 그대로 남음(후속 BACKLOG · purge-to-recollect-timing 본 뒤 결정).`;
 // 옛 supabase/CLAUDE.md 손 표에만 있던 지식(세션617 에 표를 지우며 여기로 옮김 · fix1 🟡)
 tables.air_station_annual.note = "측정소별 3년 평균(연 1회 air-annual-load.mjs). 2u 백엔드가 단지 상세마다 station_name 으로 조회(2u backend/routers/mb.py → mb_air_annual.py, 예외 격리 없음) — 표 이름·칸(station_name·pm25·pm10·o3·years·updated_at)을 바꾸거나 지우면 2u 모든 단지 상세가 500. 등급 경계(PM2.5 15/19 등)는 2u 에 복제돼 있다(src/constants/scoringTiers.ts 주석).";
 Object.assign(tables.articles, { row_lifecycle: { mibunyang: "is_active=false", "2u": "delete" } });
@@ -165,7 +165,7 @@ if (contested.slice().sort().join() !== C1_CONTESTED.slice().sort().join()) prob
 if ((tables.articles.columns.contested ?? []).length !== 11) problems.push(`articles contested ${tables.articles.columns.contested?.length} ≠ 11`);
 
 // C4 수정 뒤 fix-sosa-coordinates 는 infra 의 미분양 카카오 칸을 null UPDATE 한다(행 삭제 안 함)
-const kakaoCols = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"].flatMap((k) => [k, `${k}_dist`]).concat("subway_dist");
+const kakaoCols = ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"].flatMap((k) => [k, `${k}_dist`]).concat("subway_dist", "kakao_updated_at");
 addWriter("mibunyang", "scripts/fix-sosa-coordinates.mjs", "infra", ["apartment_id", ...kakaoCols]);
 
 // 기준선 = 지금 그 파일에 글자로 든 그 표 칸(가드 ② 와 같은 추출기) — "기존은 허용, 새로 늘면 빨강"
@@ -216,7 +216,7 @@ const registry = {
   known_conflicts: {
     C1: "complexes contested 10칸 — 미분양 naver-collect.py(마커 bbox)와 2u 검색이 같은 칸을 씀. 해소(2u 주인·미분양은 빈칸만)는 2u 합의 뒤 별도 트랙",
     C2: "articles 양쪽이 같이 쓰는 12칸(열쇠 article_no + contested 11) + 행 수명(미분양 is_active=false · 2u 물리 삭제) — 별도 트랙",
-    C3: "infra.updated_at 공유 시계(DB 트리거) — 어느 쪽 수집 시각도 아님. 해소 = infra.kakao_updated_at 칸(별도 트랙)",
+    C3: "infra.updated_at 공유 시계(DB 트리거) — 해소: infra.kakao_updated_at 칸(마이그 20261101000000 · 세션681)",
     C5: "complex_price_history 두 출처(2u 공공 base_month 6자리·area_no='' / 네이버 8자리) — 별도 트랙",
   },
   guard: {
