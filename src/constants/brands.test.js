@@ -188,4 +188,11 @@ describe("consortiumRep — VIEW 「대표사 외 N」·「대표사 외」 (세
     expect(consortiumRep(null)).toBeNull();
     expect(consortiumRep(3)).toBeNull();
   });
+  // 세션679 N1 — 숫자 폭은 VIEW 꼬리 식([0-9]{1,3})·stripBuilderTail 과 같은 세 자리. 「외 1234」는 꼬리가 아니라
+  //   등급 판정(resolveBuilder)이 이름 전체를 보므로 여기서도 공동 시공으로 안 본다(둘이 같은 판정을 해야 한다).
+  it("숫자는 세 자리까지 — 「외 999」는 대표사, 「외 1234」는 아님(등급 판정과 같은 폭)", () => {
+    expect(consortiumRep("가나건설 외 999")).toBe("가나건설");
+    expect(consortiumRep("가나건설 외 1234")).toBeNull();
+    expect(resolveBuilder("가나건설 외 1234")).toBe("가나건설 외 1234"); // 꼬리를 안 뗀다 — 위 null 과 짝
+  });
 });

@@ -652,7 +652,9 @@ describe("data-audit — 모수 보정이 배선돼 있다", () => {
     expect(src).toMatch(/const view = await fetchViewIds\(sb, regionFilter\);/);
     expect(src).toMatch(/const viewIds = view \? view\.ids : null;/);
     expect(src).toMatch(/const run = \(cols\) => fetchAllFromTable\(sb, "apartments_flat", cols,/);
-    expect(src).toMatch(/rows = await run\("id"\);/); // VIEW 적용 전 폴백 = 지금처럼 id 만
+    // VIEW 적용 전 폴백 = 지금처럼 id 만 — 세션679: 칸 없음마다 그 묶음만 빼는 꼴로 바뀌어(부채비율 칸 추가) 모양을 따라 고침(뜻은 같다:
+    //   materialId·부채비율 칸이 둘 다 빠지면 "id" 하나만 남는다).
+    expect(src).toMatch(/const cols = \["id", \.\.\.\(bundled \? \["materialId", "units"\] : \[\]\), \.\.\.\(withBuilder \? VIEW_BUILDER_COLS : \[\]\)\];/);
   });
 });
 
@@ -869,5 +871,78 @@ describe("fetchAllFromView — 칸 없음이 아닌 오류(세션636 D10ⓐ)", (
     const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
     expect(flatSelects).toHaveLength(1); // 재시도 없음
     expect(rows).toHaveLength(2); // 보정 건너뜀 = 테이블 전체(fail-open)
+  });
+});
+
+// 세션679(BACKLOG A-27) — 부채비율 칸은 VIEW apartments_flat 이 낸 값을 그대로 쓴다(VIEW 는 공고 대표사로 builders 를 잇는다 —
+//   마이그 20261031000000). 원표 builder 로 다시 붙이면 공동 시공 단지의 채움률·신뢰도가 화면과 어긋난다.
+//   VIEW 에 그 칸이 없는 날(칸 없음 오류)만 옛 길(원표 builder 이름으로 builders 붙이기) — materialId 와 같은 관례.
+describe("fetchAllFromView — 부채비율은 VIEW 값 (세션679)", () => {
+  /**
+   * PostgREST 처럼 select 에 적힌 칸만 돌려주는 mock. noBuilderCols 면 apartments_flat 이 부채비율 칸을 고르는 select 에 칸 없음 오류.
+   * @param {Record<string, Record<string, unknown>[]>} tables
+   * @param {{ noBuilderCols?: boolean }} [o]
+   */
+  function makeSb(tables, o = {}) {
+    /** @type {string[]} */
+    const flatSelects = [];
+    return {
+      flatSelects,
+      from(/** @type {string} */ table) {
+        /** @type {string[]} */
+        let cols = [];
+        /** @type {any} */
+        const builder = {
+          select: (/** @type {string} */ c) => {
+            cols = c.split(",").map((x) => x.trim());
+            if (table === "apartments_flat") flatSelects.push(c);
+            return builder;
+          },
+          eq: () => builder, order: () => builder, gt: () => builder, limit: () => builder, range: () => builder,
+          then: (/** @type {any} */ resolve, /** @type {any} */ reject) => {
+            const res =
+              table === "apartments_flat" && o.noBuilderCols && cols.includes("builderDebtRatio")
+                ? { data: null, error: { message: 'column apartments_flat.builderDebtRatio does not exist' } }
+                : { data: (tables[table] ?? []).map((r) => Object.fromEntries(Object.entries(r).filter(([k]) => cols.includes(k)))), error: null };
+            return Promise.resolve(res).then(resolve, reject);
+          },
+        };
+        return builder;
+      },
+    };
+  }
+  // 원표 builder 「(주)현대건설 컨소시엄」은 builders 에 그 이름 행(999)이 있다 — 옛 길이면 999 가 붙는다.
+  const base = {
+    apartments: [{ id: "ah-1", region: "서울", gu: "강남구", builder: "(주)현대건설 컨소시엄", units: 300 }],
+    builders: [{ name: "(주)현대건설 컨소시엄", debt_ratio: 999, credit_grade: "C", hug_guarantee: false }],
+  };
+
+  it("VIEW 의 부채비율 값이 원표 builder 연결보다 이긴다 — 채움·신뢰도도 VIEW 값으로", async () => {
+    const sb = makeSb({ ...base, apartments_flat: [{ id: "ah-1", materialId: "ah-1", units: 300, builderDebtRatio: 150, builderCreditGrade: "A", hugGuarantee: true }] });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(sb.flatSelects[0]).toContain("builderDebtRatio");
+    expect(rows).toHaveLength(1);
+    expect(rows[0].builderDebtRatio).toBe(150);
+    expect(rows[0].builderCreditGrade).toBe("A");
+    expect(rows[0].hugGuarantee).toBe(true);
+  });
+
+  it("VIEW 가 연결 못 한 단지(null)는 원표 builder 로 다시 잇지 않는다 — 신뢰도 8점도 안 준다", async () => {
+    const sb = makeSb({ ...base, apartments_flat: [{ id: "ah-1", materialId: "ah-1", units: 300, builderDebtRatio: null, builderCreditGrade: null, hugGuarantee: null }] });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(rows[0].builderDebtRatio).toBeNull();
+    expect(rows[0].dataReliability).toBe(computeReliabilityMirror(/** @type {any} */ ({ ...rows[0], builderDebtRatio: null })));
+    expect(rows[0].dataReliability).toBe(computeReliabilityMirror(/** @type {any} */ ({ ...rows[0], builderDebtRatio: 999 })) - 8);
+  });
+
+  it("VIEW 에 부채비율 칸이 없으면(칸 없음 오류) 그 칸만 빼고 다시 묻고, 옛 길(원표 builder 이름)로 붙인다", async () => {
+    const sb = makeSb({ ...base, apartments_flat: [{ id: "ah-1", materialId: "ah-1", units: 300 }] }, { noBuilderCols: true });
+    const rows = await fetchAllFromView(/** @type {any} */ (sb), null);
+    expect(sb.flatSelects).toHaveLength(2);
+    expect(sb.flatSelects[0]).toContain("builderDebtRatio");
+    expect(sb.flatSelects[1]).not.toContain("builderDebtRatio");
+    expect(sb.flatSelects[1]).toContain("materialId"); // 묶음 칸은 그대로 읽는다
+    expect(rows).toHaveLength(1);
+    expect(rows[0].builderDebtRatio).toBe(999);
   });
 });

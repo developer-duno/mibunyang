@@ -59,10 +59,12 @@ export function stripBuilderTail(name: string): string {
 /**
  * VIEW 가 낸 「대표사 외 N」·「대표사 외」(수 모름 — 👤 D8)이면 대표사 이름, 아니면 null(혼자 지은 단지) — 👤 D6 「여럿이면 「대표사 부채비율」」.
  * VIEW 형식(`표시 || ' 외 ' || (n-1)` · `표시 || ' 외'`)만 본다.
+ * 숫자는 세 자리까지(세션679 N1) — 위 `BUILDER_TAIL_RE`·VIEW 꼬리 식(`[0-9]{1,3}`)과 같은 폭. 「가나 외 1234」는
+ * 등급 판정이 꼬리를 안 떼므로(이름 전체) 여기서도 공동 시공으로 안 본다.
  */
 export function consortiumRep(builder: unknown): string | null {
   if (typeof builder !== "string") return null;
-  const m = /^(.+?) 외(?: (\d+))?$/.exec(builder);
+  const m = /^(.+?) 외(?: (\d{1,3}))?$/.exec(builder);
   return m && (m[2] == null || Number(m[2]) >= 1) ? m[1] : null;
 }
 

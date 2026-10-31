@@ -77,6 +77,26 @@ const MIN_KEY_LEN = 2;
 const MIN_CONTAIN_LEN = 3;
 
 /**
+ * 점검 중 응답 오류 문구(세션679 BACKLOG A-27) — 2026-10-21~ `openapi.jigu.go.kr` 가 JSON·ZIP 대신 HTML
+ * 「서비스 점검 중」 페이지를 200 으로 돌려줘 `Unexpected token '<'` 로 죽었고, `collector_runs` 실패 행도 안 남았다.
+ */
+export const MAINTENANCE_MESSAGE = "택지정보시스템 서비스 점검 중(HTML 응답)";
+/** 응답 머리가 HTML(`<!DOCTYPE`·`<html`)인가 */
+const HTML_HEAD_RE = /^\s*<(?:!doctype|html)/i;
+
+/**
+ * 응답 본문 → JSON. HTML 이면 점검 중 오류로 던진다(JSON 파서의 `Unexpected token '<'` 대신).
+ * @param {Response} res
+ * @param {string} label 어느 단계인지(로그용)
+ * @returns {Promise<unknown>}
+ */
+async function readJsonOrMaintenance(res, label) {
+  const text = await res.text();
+  if (HTML_HEAD_RE.test(text)) throw new Error(`${MAINTENANCE_MESSAGE} — ${label}`);
+  return JSON.parse(text);
+}
+
+/**
  * CSV 한 줄 → 필드 배열. 이 파일은 전 필드가 큰따옴표로 감싸여 있지만
  * 빈 값은 따옴표 없이 `,,` 로 오므로(실측) 인용/비인용을 함께 다뤄야 한다.
  * @param {string} line
@@ -219,7 +239,7 @@ export async function fetchLatestNtfcDe(fetchImpl = fetch) {
     body: `table=${TABLE}`,
   });
   if (!res.ok) throw new Error(`title.json HTTP ${res.status}`);
-  const json = /** @type {Record<string, unknown>} */ (await res.json());
+  const json = /** @type {Record<string, unknown>} */ (await readJsonOrMaintenance(res, "title.json"));
   const ntfcDe = typeof json.ntfcDe === "string" ? json.ntfcDe : "";
   if (!ntfcDe) throw new Error(`title.json 응답에 ntfcDe 없음: ${JSON.stringify(json).slice(0, 200)}`);
   return ntfcDe;
@@ -236,7 +256,7 @@ export async function fetchCsvFileMeta(ntfcDe, fetchImpl = fetch) {
   const body = `tNm=${TABLE}&table=${TABLE}&ctprvn=${CTPRVN_ALL}&ntfcDe=${encodeURIComponent(ntfcDe)}`;
   const res = await fetchImpl(`${BASE}/api/list.json`, { method: "POST", headers: FORM_HEADERS, body });
   if (!res.ok) throw new Error(`list.json HTTP ${res.status}`);
-  const json = /** @type {{ list?: Record<string, unknown>[] }} */ (await res.json());
+  const json = /** @type {{ list?: Record<string, unknown>[] }} */ (await readJsonOrMaintenance(res, "list.json"));
   const list = Array.isArray(json.list) ? json.list : [];
   const hit = list.find((r) => String(r.fileTy) === "csv" && String(r.ctprvn) === CTPRVN_ALL);
   if (!hit) throw new Error(`list.json 에 전국 csv 항목 없음 (총 ${list.length}건, ntfcDe=${ntfcDe})`);
@@ -258,6 +278,7 @@ export async function downloadStageCsv(meta, fetchImpl = fetch) {
   const res = await fetchImpl(url, { method: "POST", headers: FORM_HEADERS });
   if (!res.ok) throw new Error(`down.do HTTP ${res.status}`);
   const buffer = Buffer.from(await res.arrayBuffer());
+  if (HTML_HEAD_RE.test(buffer.subarray(0, 64).toString("latin1"))) throw new Error(`${MAINTENANCE_MESSAGE} — down.do`);
   log(PHASE, `zip ${(buffer.length / 1024).toFixed(0)}KB 받음 — 압축 해제`);
   const directory = await unzipper.Open.buffer(buffer);
   const entry = directory.files.find((f) => /\.csv$/i.test(f.path));
@@ -285,14 +306,40 @@ async function main() {
     process.exit(1);
   }
 
-  const rpt = createReporter(PHASE); // ⚠️ 루프 이전에 등록해야 SIGTERM 핸들러가 붙는다
-  const sb = getSupabase();
+  await runLhzoneStatus(getSupabase(), dryRun);
+}
 
-  const ntfcDe = await fetchLatestNtfcDe();
-  const meta = await fetchCsvFileMeta(ntfcDe);
+/**
+ * 수집 한 회차 — 도중에 던지면(점검 중 HTML 응답 등) `collector_runs` 에 failure 행을 남기고 다시 던진다(세션679).
+ *   옛 구조는 예외가 CLI 의 catch 로 바로 가서 기록 0행 — 감시 ① 대신 「미발화」로만 잡혔다.
+ *   dry-run 은 기록하지 않는다(위 사용법 — 기록 0).
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {boolean} dryRun
+ * @param {typeof fetch} [fetchImpl] 시험이 가장 낮은 경계(fetch)만 가짜로 넣는다
+ */
+export async function runLhzoneStatus(sb, dryRun, fetchImpl = fetch) {
+  try {
+    await collectStages(sb, dryRun, fetchImpl);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (!dryRun) await recordCollectorRun(PHASE, { status: "failure", ok: 0, fail: 1, skip: 0, errorMessage: msg }, sb);
+    throw err;
+  }
+}
+
+/**
+ * @param {import("@supabase/supabase-js").SupabaseClient} sb
+ * @param {boolean} dryRun
+ * @param {typeof fetch} fetchImpl
+ */
+async function collectStages(sb, dryRun, fetchImpl) {
+  const rpt = createReporter(PHASE); // ⚠️ 루프 이전에 등록해야 SIGTERM 핸들러가 붙는다
+
+  const ntfcDe = await fetchLatestNtfcDe(fetchImpl);
+  const meta = await fetchCsvFileMeta(ntfcDe, fetchImpl);
   log(PHASE, `고시월 ${ntfcDe} · 전국 csv fileNo=${meta.fileNo} stdrDe=${meta.stdrDe} (${meta.fileNm})`);
 
-  const csvText = await downloadStageCsv(meta);
+  const csvText = await downloadStageCsv(meta, fetchImpl);
   const csvRows = parseStageCsv(csvText);
   if (csvRows.length === 0) throw new Error("CSV 파싱 결과 0행 — 형식이 바뀌었는지 확인 필요");
   const index = buildStageIndex(csvRows);

@@ -153,6 +153,22 @@ describe("AptCard", () => {
     });
   });
 
+  // 세션679(BACKLOG A-27) — 같은 id 에서 시공사(builder)·제목(name)만 바뀌어도 다시 그린다.
+  //   builder 는 머리 태그와 D6 칩(「대표사/시공사 부채비율」, cardChips.ts consortiumRep)이 읽는다.
+  // ⚠️ 뮤테이션 대상: memo 비교에서 name·builder 줄을 빼면 compare 가 true 가 되고 옛 글자가 남아 red.
+  it("같은 id 에서 builder·name 만 달라도 memo 비교가 '다르다'고 보고 다시 그린다", () => {
+    const base = makeApt({ id: "ah-1", builder: "가나건설", name: "가나아파트" });
+    const builderOnly = makeApt({ id: "ah-1", builder: "다라건설 외 1", name: "가나아파트" });
+    const nameOnly = makeApt({ id: "ah-1", builder: "가나건설", name: "마바아파트" });
+    const compare = /** @type {any} */ (AptCard).compare;
+    expect(compare(makeProps({ apt: base }), makeProps({ apt: builderOnly }))).toBe(false);
+    expect(compare(makeProps({ apt: base }), makeProps({ apt: nameOnly }))).toBe(false);
+    const { rerender, container } = render(<AptCard {...makeProps({ apt: base })} />);
+    expect(container.textContent).toContain("가나건설");
+    rerender(<AptCard {...makeProps({ apt: builderOnly })} />);
+    expect(container.textContent).toContain("다라건설 외 1");
+  });
+
   it("혜택이 0이면 혜택 영역 미표시", () => {
     const res = makeRes();
     res.cats.benefit.totalWon = 0;

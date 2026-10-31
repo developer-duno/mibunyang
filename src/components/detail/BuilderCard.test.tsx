@@ -178,7 +178,7 @@ describe("BuilderCard — 대표사 부채비율 (세션676 D6)", () => {
     expect(g).toContain(`부채비율 ${FIELD_META.builderDebtRatio.fmt(210)}`);
     expect(g).not.toContain("대표사");
   });
-  it("debtTitle — 「외 N」만 대표사, 「등」·없음은 그냥", () => {
+  it("debtTitle — 「외 N」·「외」(수 모름)는 대표사, 「등」·없음은 그냥", () => {
     expect(debtTitle("GS건설 외 1")).toBe("대표사(GS건설) 부채비율");
     expect(debtTitle("GS건설 외")).toBe("대표사(GS건설) 부채비율"); // 세션677 👤 D8 — 「등」「컨소시엄」 공고(수 모름)
     expect(debtTitle("지에스건설(주) 등")).toBe("부채비율");
