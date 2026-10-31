@@ -21,6 +21,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
 const {
   parseCsvLine, parseStageCsv, decodeStageCsvBuffer,
   normalizeZoneName, buildStageIndex, matchZoneStage,
+  runLhzoneStatus, downloadStageCsv, MAINTENANCE_MESSAGE,
 } = await import("./lhzone-status.mjs");
 
 const SRC = readFileSync(fileURLToPath(new URL("./lhzone-status.mjs", import.meta.url)), "utf8");
@@ -239,5 +240,62 @@ describe("배선", () => {
 
   it("list.json 요청에 tNm 을 함께 보낸다 (빠지면 406)", () => {
     expect(SRC).toMatch(/const\s+body\s*=\s*`tNm=\$\{TABLE\}&table=\$\{TABLE\}/);
+  });
+});
+
+// 세션679(BACKLOG A-27) — 2026-10-21~ openapi.jigu.go.kr 가 JSON 대신 HTML 「서비스 점검 중」을 200 으로 준다.
+//   옛 코드는 `Unexpected token '<'` 로 죽고 collector_runs 실패 행이 0 이라 감시 ① 이 못 봤다.
+//   진짜 recordCollectorRun(_shared — 위 mock 은 원본을 펼친다) + 가장 낮은 경계(fetch·DB insert)만 가짜.
+describe("점검 중 HTML 응답 (세션679)", () => {
+  const HTML = "<!DOCTYPE html><html><head><title>서비스 점검</title></head><body>서비스 점검 중입니다</body></html>";
+  /** @returns {typeof fetch} */
+  const htmlFetch = () => /** @type {any} */ (async () => new Response(HTML, { status: 200, headers: { "Content-Type": "text/html" } }));
+  function fakeSb() {
+    /** @type {{ table: string, row: Record<string, unknown> }[]} */
+    const inserts = [];
+    const sb = {
+      from: (/** @type {string} */ table) => ({
+        insert: async (/** @type {Record<string, unknown>} */ row) => { inserts.push({ table, row }); return { error: null }; },
+      }),
+    };
+    return { sb: /** @type {any} */ (sb), inserts };
+  }
+
+  it("title.json 이 HTML 이면 「점검 중」 오류로 끝나고 collector_runs 에 failure 1행", async () => {
+    const { sb, inserts } = fakeSb();
+    await expect(runLhzoneStatus(sb, false, htmlFetch())).rejects.toThrow(MAINTENANCE_MESSAGE);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].table).toBe("collector_runs");
+    expect(inserts[0].row.collector).toBe("lhzone-status");
+    expect(inserts[0].row.status).toBe("failure");
+    expect(String(inserts[0].row.error_message)).toContain(MAINTENANCE_MESSAGE);
+    expect(String(inserts[0].row.error_message)).not.toContain("Unexpected token");
+  });
+
+  it("title.json 은 정상 JSON 인데 list.json 이 HTML 이면 같은 「점검 중」 오류 + failure 1행", async () => {
+    const { sb, inserts } = fakeSb();
+    /** @type {string[]} */
+    const urls = [];
+    const fetchImpl = /** @type {any} */ (async (/** @type {string} */ url) => {
+      urls.push(url);
+      return url.endsWith("/down/title.json")
+        ? new Response(JSON.stringify({ ntfcDe: "2026-09" }), { status: 200, headers: { "Content-Type": "application/json" } })
+        : new Response(HTML, { status: 200, headers: { "Content-Type": "text/html" } });
+    });
+    await expect(runLhzoneStatus(sb, false, fetchImpl)).rejects.toThrow(`${MAINTENANCE_MESSAGE} — list.json`);
+    expect(urls.map((u) => u.replace(/^https:\/\/[^/]+/, ""))).toEqual(["/down/title.json", "/api/list.json"]);
+    expect(inserts).toHaveLength(1);
+    expect(inserts[0].row.status).toBe("failure");
+    expect(String(inserts[0].row.error_message)).toContain(`${MAINTENANCE_MESSAGE} — list.json`);
+  });
+
+  it("dry-run 은 같은 오류로 끝나도 기록 0행", async () => {
+    const { sb, inserts } = fakeSb();
+    await expect(runLhzoneStatus(sb, true, htmlFetch())).rejects.toThrow(MAINTENANCE_MESSAGE);
+    expect(inserts).toHaveLength(0);
+  });
+
+  it("down.do 가 ZIP 대신 HTML 이면 압축 해제 전에 「점검 중」 오류", async () => {
+    await expect(downloadStageCsv({ fileNo: "1", stdrDe: "20261031" }, htmlFetch())).rejects.toThrow(MAINTENANCE_MESSAGE);
   });
 });

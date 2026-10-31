@@ -469,6 +469,9 @@ function toCamel(row) {
   return /** @type {FlatRow} */ (out);
 }
 
+/** VIEW `apartments_flat` 이 내는 부채비율 칸(마이그 20261031000000 `b.debt_ratio AS "builderDebtRatio"` 등 — 그 전 VIEW 도 같은 이름) */
+const VIEW_BUILDER_COLS = /** @type {const} */ (["builderDebtRatio", "builderCreditGrade", "hugGuarantee"]);
+
 /**
  * 화면(apartments_flat VIEW)에 실제로 있는 id 집합 + (묶음 VIEW 면) 카드 id → 재료 행 id · 카드 세대수. 실패하면 null (호출처가 fail-open).
  *
@@ -476,7 +479,8 @@ function toCamel(row) {
  *
  * @param {any} sb
  * @param {string | null | undefined} regionFilter
- * @returns {Promise<{ ids: Set<unknown>, materialOf: Map<unknown, unknown>, unitsOf: Map<unknown, unknown> } | null>}
+ * 세션679: 부채비율 칸(`VIEW_BUILDER_COLS`)도 VIEW 에서 같이 읽어 `builderOf`(카드 id → 그 칸들)로 낸다 — 칸이 없으면 null(옛 길).
+ * @returns {Promise<{ ids: Set<unknown>, materialOf: Map<unknown, unknown>, unitsOf: Map<unknown, unknown>, builderOf: Map<unknown, Record<string, unknown>> | null } | null>}
  */
 async function fetchViewIds(sb, regionFilter) {
   /** @param {string} cols */
@@ -484,16 +488,26 @@ async function fetchViewIds(sb, regionFilter) {
   try {
     // 세션635 다: 묶음 VIEW 는 카드 id(대표)로 내지만 파생표·가격은 재료 행(materialId)에서, 세대수는 묶음 세대수(D7)를 쓴다.
     //   VIEW 적용 전(또는 되돌린 날)엔 materialId 칸이 없어 칸 없음 오류(42703) → 빼고 처음부터 한 번 더(지금과 같은 동작).
+    //   세션679: 부채비율 칸도 같은 규칙 — 칸 없음 오류에 그 칸 이름이 있으면 그 칸들만 빼고 처음부터 다시(옛 길 = builders 붙이기).
     /** @type {Record<string, unknown>[]} */
-    let rows;
+    let rows = [];
     let bundled = true;
-    try {
-      rows = await run("id, materialId, units");
-    } catch (err) {
-      if (!String(err instanceof Error ? err.message : err).includes("materialId")) throw err;
-      log(PHASE, "  apartments_flat 에 materialId 칸 없음(묶음 VIEW 적용 전) — 카드 id 로 붙인다");
-      rows = await run("id");
-      bundled = false;
+    let withBuilder = true;
+    for (;;) {
+      const cols = ["id", ...(bundled ? ["materialId", "units"] : []), ...(withBuilder ? VIEW_BUILDER_COLS : [])];
+      try {
+        rows = await run(cols.join(", "));
+        break;
+      } catch (err) {
+        const m = String(err instanceof Error ? err.message : err);
+        if (withBuilder && VIEW_BUILDER_COLS.some((c) => m.includes(c))) {
+          log(PHASE, "  apartments_flat 에 부채비율 칸 없음 — 원표 builder 이름으로 builders 를 붙인다");
+          withBuilder = false;
+        } else if (bundled && m.includes("materialId")) {
+          log(PHASE, "  apartments_flat 에 materialId 칸 없음(묶음 VIEW 적용 전) — 카드 id 로 붙인다");
+          bundled = false;
+        } else throw err;
+      }
     }
     if (!rows.length) {
       logError(PHASE, "apartments_flat 에서 id 를 0건 받았습니다 — 모수 보정을 건너뜁니다.");
@@ -509,7 +523,9 @@ async function fetchViewIds(sb, regionFilter) {
         unitsOf.set(r.id, r.units ?? null);
       }
     }
-    return { ids: new Set(rows.map((r) => r.id)), materialOf, unitsOf };
+    /** @type {Map<unknown, Record<string, unknown>> | null} */
+    const builderOf = withBuilder ? new Map(rows.map((r) => [r.id, Object.fromEntries(VIEW_BUILDER_COLS.map((c) => [c, r[c] ?? null]))])) : null;
+    return { ids: new Set(rows.map((r) => r.id)), materialOf, unitsOf, builderOf };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     logError(PHASE, `apartments_flat id 조회 실패(${msg}) — 모수 보정을 건너뜁니다.`);
@@ -731,10 +747,20 @@ export async function fetchAllFromView(sb, regionFilter) {
     apt.busStopNames = t.bus_stop_names;
   }
 
-  // merge builders (join by name)
-  mergeRelated(apts, builders, "name", "builder", {
-    debt_ratio: "builderDebtRatio", credit_grade: "builderCreditGrade", hug_guarantee: "hugGuarantee",
-  });
+  // merge builders — 세션679(BACKLOG A-27): VIEW 가 낸 부채비율 칸을 그대로 쓴다. VIEW 는 공고 대표사로 builders 를
+  //   잇는데(마이그 20261031000000) 원표 builder 로 다시 붙이면 공동 시공 단지의 채움률·신뢰도가 화면과 어긋난다.
+  //   그 칸을 못 읽은 날(칸 없음 — fetchViewIds)만 옛 길(원표 builder 이름으로 builders 붙이기).
+  if (view?.builderOf) {
+    for (const apt of apts) {
+      const b = view.builderOf.get(apt.id);
+      if (!b) continue;
+      for (const k of VIEW_BUILDER_COLS) apt[k] = b[k];
+    }
+  } else {
+    mergeRelated(apts, builders, "name", "builder", {
+      debt_ratio: "builderDebtRatio", credit_grade: "builderCreditGrade", hug_guarantee: "hugGuarantee",
+    });
+  }
 
   // merge regions — VIEW latest_regions 재현: gu IS NULL 시도 레벨 + **컬럼별 최신 non-null**
   //

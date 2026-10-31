@@ -241,7 +241,7 @@ console.log('저장됨: scratch/out.png — 반드시 직접 열어서 확인할
 | `useHistoryData` | `endpoint\|idsKey∥apartmentId` | URL과 1:1 대응 | ✅ |
 | `useFinlifeRates` | `topFinGrpNo` **만** | URL은 `apiPath`+`topFinGrpNo` | ⚠️ **잠재** |
 
-**`useFinlifeRates` 는 지금은 안전하다** — 호출자(`useLoanRates`·`useRentLoanRates`)가
+**`useFinlifeRates` 는 지금은 안전하다** — 호출자(`useLoanRates`·`useRentLoanRates`(세션675 삭제))가
 **각자 자기 `cacheRef` 를 만들고** `apiPath` 를 상수로 고정해 **캐시 범위 자체가 갈리기** 때문이다.
 그러나 호출자가 `apiPath` 를 인자로 열거나 `cacheRef` 를 공유하면 **주담대 금리와 전세대출 금리가
 섞인다.** 해당 파일에 경고 주석을 남겼다.

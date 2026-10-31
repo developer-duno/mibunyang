@@ -471,6 +471,9 @@ export const AptCard = memo(
     // (BACKLOG 🟢: AptCard memo comparator 6필드 — 세션168)
     const pa = prev.apt,
       na = next.apt;
+    // 세션679(BACKLOG A-27): 제목(name)과 시공사 글자(builder — 머리 태그 + D6 칩 「대표사/시공사 부채비율」
+    //   `cardChips.ts` consortiumRep) — 같은 id 에서 이것만 바뀌면 옛 제목·옛 칩이 남는다.
+    if (pa.name !== na.name || pa.builder !== na.builder) return false;
     if (pa.completion !== na.completion) return false;
     if (pa.unsoldRate !== na.unsoldRate) return false;
     if (pa.presaleStage !== na.presaleStage) return false;
