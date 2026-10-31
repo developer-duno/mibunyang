@@ -374,7 +374,7 @@ App (Pretendard Variable 폰트, paddingTop: isDesktop ? 64 : 0)
 │       ├── CatPanel (memo) * 6
 │       ├── PriceChart (memo) ← 분양가 추이 LineChart
 │       ├── UnsoldChart (memo) ← 미분양 추이 LineChart
-│       ├── PriceTable / SchoolInfo / PresaleInfo / LoanAnalysis / DataSections
+│       ├── SchoolInfo / PresaleInfo / LoanAnalysis / DataSections (PriceTable 은 세션675 PR-B 에서 지움)
 │       └── 관심매물/비교추가/공유 버튼 (데스크톱: 14px, 패딩12px)
 │
 ├── BottomNav (memo) ← [isDesktop] return null / [mobile] 하단 고정
@@ -559,6 +559,8 @@ const brand = BRAND_TIER[apt.builder] || { adj: 1.0 };
 const fairPrice = apt.nearbyMedian * ageCoeff * areaAdj * brand.adj;
 const dev = apt.nearbyMedian > 0 ? (fairPrice - apt.price) / fairPrice * 100 : 0;
 ```
+
+> `apt.builder` 는 원표 `apartments.builder` 가 아니라 VIEW `apartments_flat` 의 카드 시공사다 — 세션676 PR-C(#840, `supabase/migrations/20261031000000_view_card_builder.sql`)부터 **공고 시공사**, 공동이면 「대표사 외 N」. 등급은 꼬리를 뗀 대표사로 판정(`src/constants/brands.ts` `resolveBuilder` → `stripBuilderTail`), 부채비율은 VIEW 가 대표사 연결 이름으로 `builders` 를 붙인다 · 「대표사 부채비율」 표기 판정 = `consortiumRep`.
 
 catKeys는 `Object.keys(res.cats)`로 동적 추출 (OCP 원칙).
 

@@ -20,7 +20,7 @@
 | trades | 실거래가 (매매/전세) | collect-trades |
 | trade_deals | 실거래 원문 한 건 = 한 행(매매·전세·분양권 · aptSeq·지번·법정동코드·거래일·도로명·해제일 보존). **미분양 소유 · 공개 읽기 없음**(Service write 만) · (sgg_cd, deal_month, trade_type) 열쇠별 batch_id **교체 방식**(0건 응답은 안 지움, 읽을 땐 열쇠마다 **가장 새 완성 batch** = 행 수가 `batch_rows` 와 같은 것) · 2u 영향 0(2u 는 trades 만 읽는다) · 감시 ⑯ · 세션589 | collect-trades(같은 회차·같은 응답으로 trades 와 함께) |
 | apartment_trade_links | 우리 단지 ↔ 실거래 열쇠(`trade_deals.apt_seq` 또는 분양권 열쇠 `sgg_cd\|umd_nm\|jibun\|정리이름`) · status active/hold/rejected · **미분양 소유 · 공개 읽기 없음**(Service write 만) · 월 2회 배치(collect-trade-stats.yml 안, trade-stats 바로 앞) · method jibun+name/name/manual/bundle(같은 묶음 전파) · 사람 판정 = `docs/audits/trade-link-decisions.json` · 감시 ⑰(무성공 20일·형제 명단·hold 45일 명단) · 세션590 | assign-trade-links |
-| trade_stats | 거래 통계 캐시 · 시세 비교 칸 `cmp_*`·`complex_*`·`dong_fact`(세션590·609 — `complex_src` 만 VIEW 미노출) · **범위 4칸(세션661, `20261026000000`, INTEGER 만원)**: `cmp_min`·`cmp_max` = 적정가(cmp_fair_price)와 같은 거래 집합의 최저·최고 · `complex_jeonse_min`·`complex_jeonse_max` = 전세가율과 같은 전세 집합의 최저·최고 · 화면 = 카드 칩·시세 탭 상자 · 면적별 표 `complex_table`·`complex_jeonse_table` = 시세 탭 평형별 표(세션662) · VIEW 정의 `20261026000002_view_add_range_cols.sql`(롤백 `_rollbacks/20261026000003`) | trade-stats |
+| trade_stats | 거래 통계 캐시 · 시세 비교 칸 `cmp_*`·`complex_*`·`dong_fact`(세션590·609 — `complex_src` 만 VIEW 미노출) · **범위 4칸(세션661, `20261026000000`, INTEGER 만원)**: `cmp_min`·`cmp_max` = 적정가(cmp_fair_price)와 같은 거래 집합의 최저·최고 · `complex_jeonse_min`·`complex_jeonse_max` = 전세가율과 같은 전세 집합의 최저·최고 · 화면 = 카드 칩·시세 탭 상자 · 면적별 표 `complex_table`·`complex_jeonse_table` = 시세 탭 평형별 표(세션662) · 범위 칸 첫 도입 VIEW `20261026000002_view_add_range_cols.sql`(롤백 `_rollbacks/20261026000003` · 지금 VIEW 정의는 아래 apartments_flat 행) | trade-stats |
 | infra | 인프라 (병원/마트/어린이집/응급의료/경찰) | infra-kakao, childcare, emergency, police |
 | schools | 학교 정보 | schools-neis |
 | transport | 교통 정보 | transport-tago |
@@ -216,6 +216,8 @@ CLI 가 없거나 사용자가 직접 적용할 때:
 3. 마지막 줄에 `NOTIFY pgrst, 'reload schema';` 추가 (마이그에 이미 있으면 생략)
 4. Run 버튼 → 결과 확인 (에러 0건 + Success 응답)
 5. 후속 collector 호출로 컬럼 채움 검증
+
+> **Claude 가 크롬 확장으로 이 화면을 조종할 때**(세션677 리허설·운영 적용 — 사장님 로그인 1회 뒤): ① `DROP` 같은 파괴 명령은 「Potential issue detected」 확인 창이 뜬다 → 창 안 「Run query」 단추를 눌러야 실행되고, 창이 뜬 채 다른 키를 치면 대시보드 단축키로 엉뚱한 화면으로 넘어간다 ② 결과 칸 값은 내려받기 대신 **칸 클릭 + ctrl+c → PowerShell `Get-Clipboard` 로 UTF-8 파일**에 받는다(132KB JSON 도 됨 · 콘솔 표시가 깨져 보여도 파일은 정상) ③ 끝나면 연 탭을 닫는다(닫기가 응답 없으면 사장님께).
 
 ### 방법 C — Supabase MCP(`execute_sql`) — **사전 승인된 SQL 한 건**을 사장님이 자리에 없을 때 (세션653 2026-10-21 실사용)
 
