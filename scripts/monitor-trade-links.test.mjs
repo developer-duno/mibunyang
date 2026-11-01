@@ -124,6 +124,7 @@ describe("runDailyGuardedChecks 배선", () => {
     fetchTradeRows: async () => /** @type {Array<Record<string, any>>} */ ([]),
     fetchRegionRuns: async () => ({}),
     fetchAhRows: async () => /** @type {Array<Record<string, any>>} */ ([]),
+    fetchUnsourcedZero: async () => ({ rows: [], doc: { evidence: [], held: [], pending: [] } }), // ⑫(g)(세션684) — 운영 조회가 나가지 않게
     fetchFailureRuns: async () => /** @type {Array<Record<string, any>>} */ ([]),
     fetchKeyHealth: async () => ({ gapRows: /** @type {Array<Record<string, any>>} */ ([]), latestSuccess: { finished_at: new Date().toISOString() } }),
     fetchKaptWindowRuns: async () => ({}),

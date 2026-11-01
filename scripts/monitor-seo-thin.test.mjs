@@ -172,6 +172,7 @@ describe("runDailyGuardedChecks — ㉓ 가 매일 점검 묶음에 연결돼 �
     fetchTradeRows: async () => [],
     fetchRegionRuns: async () => ({}),
     fetchAhRows: async () => [],
+    fetchUnsourcedZero: async () => ({ rows: [], doc: { evidence: [], held: [], pending: [] } }), // ⑫(g)(세션684) — 운영 조회가 나가지 않게
     fetchFailureRuns: async () => [],
     fetchKeyHealth: async () => ({ gapRows: [], latestSuccess: { finished_at: new Date().toISOString() } }),
     fetchKaptWindowRuns: async () => ({}),

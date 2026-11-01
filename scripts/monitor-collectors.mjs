@@ -1433,8 +1433,11 @@ export const HOLD_BASELINE_IDS = Object.freeze([
   "ah-2021910123", "ah-2021910165", "ah-2022910170", "ah-2022910216",
   "ah-2022910265", // 세션636(2026-10-14) 사장님 결정 — 영통·수원10 3행: 묶음 전환 전이표 "hold 옆 출처 없는 0" → 자료 없음 보류(hold-plan-2026-10-14.json)
   "ah-2022910285", "ah-2022910303", "ah-2022910320", "ah-2022910325",
+  "ah-2022910330", // 세션684(2026-11-01) 사장님 결정 ⓑ — 출처 없는 0 근거 확인: 마지막 공고 신청 미달(docs/audits/zero-unsold-evidence.json held)
   "ah-2022910338", // 세션636 (같은 결정)
-  "ah-2022910363", "ah-2025910235", "ah-2025910236", "ah-2025910250",
+  "ah-2022910363",
+  "ah-2025910160", // 세션684(2026-11-01) 사장님 결정 ⓑ — 출처 없는 0 근거 확인: 마지막 공고 신청 미달(docs/audits/zero-unsold-evidence.json held)
+  "ah-2025910235", "ah-2025910236", "ah-2025910250",
   "ah-2025910274",
   "ah-2025930034", // 세션636 (같은 결정)
   "ap-6026677", // 세션577(2026-09-26) 음성아이파크 — 옛 배분값 280 은 근거 없음, 새 계산 82% 는 hold_ge50 차단 → 자료 없음 보류
@@ -1462,10 +1465,14 @@ export const HOLD_REVIEW_MONTHS = 6;
  * 사람 보류(hold, 세션570) 두 명단 — (a)(b)(c) 는 applyhome 만 보므로 hold 행이 섞여도 영향 없다:
  *   (d) DB 의 hold 명단 ≠ 기준 명단(`HOLD_BASELINE_IDS`) — 추가·해제된 id 를 펼친다
  *   (e) 보류일(unsold_as_of) + 6개월이 지난 hold — 재검토 알림(자동 해제 없음)
+ *   (f) 값(unsold)이나 률(unsold_rate)이 비어 있지 않은 hold — hold 는 "자료 없음"이라 둘 다 NULL 이어야 한다
+ *       (률 0 이 남으면 VIEW unsoldRate 0 → 위험 하위점수 10, 세션684)
+ *   (g) 출처 없는 0(unsold 0 · unsold_source NULL)인데 근거 명단(docs/audits/zero-unsold-evidence.json) 밖인 단지
+ *       — 따로 `checkUnsourcedZero`(조회·명단 파일이 달라 별도 fail-open 블록, 세션684)
  * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
  * (`ALWAYS_DEDUP_KINDS`, ⑨ 와 같은 방식).
  *
- * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
+ * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_rate?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
  *   applyhome·hold 출처 행(다른 출처가 섞여 있어도 걸러낸다).
  * @param {{ now?: Date, holdBaseline?: readonly string[] }} [opts] holdBaseline 없으면 HOLD_BASELINE_IDS
  * @returns {Issue[]}
@@ -1561,6 +1568,20 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
       at: `holdstale:${fingerprintIds(idsOf(holdStale))}`,
     });
   }
+  // (f) hold 인데 값·률이 남은 행(세션684) — 열쇠 접두 `holdval:` 은 (d) 의 `hold:` 와 겹치지 않는다
+  const holdWithValue = hold.filter((r) => r.unsold != null || r.unsold_rate != null);
+  if (holdWithValue.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(f) 사람 보류(hold)인데 값·률이 비어 있지 않은 단지 ${holdWithValue.length}곳 — ${sample(holdWithValue)}`,
+      lines: [
+        "hold 는 '자료 없음'이라 unsold·unsold_rate 가 둘 다 NULL 이어야 합니다. 률 0 이 남으면 화면 위험 점수가 '미분양 0%'로 계산됩니다.",
+        "률 0 행은 backfill-unsold-source.mjs 의 mark_hold_from_zero_rate0 로 걸어야 률까지 비웁니다. 누가 값을 썼는지 확인하세요.",
+      ],
+      at: `holdval:${fingerprintIds(idsOf(holdWithValue))}`,
+    });
+  }
   return issues;
 }
 
@@ -1581,10 +1602,72 @@ export function holdAlertResolved(ahIssues) {
  */
 async function fetchApplyhomeUnsoldRows() {
   return /** @type {Array<Record<string, any>>} */ (await selectAll(
-    (s) => s.from("apartments").select("id, name, unsold, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"]),
+    (s) => s.from("apartments").select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"]),
     getSupabase(),
     "id",
   ));
+}
+
+/** ⑫(g) 출처 없는 0 근거 명단(레포 정본, 세션684 사장님 결정 ⓑ) — 스크립트 위치에서 레포 루트 기준으로 찾는다. */
+const ZERO_UNSOLD_EVIDENCE_URL = new URL("../docs/audits/zero-unsold-evidence.json", import.meta.url);
+
+/**
+ * ⑫(g) 출처 없는 0(unsold 0 · unsold_source NULL)인데 근거 명단 밖인 단지 — 명단 = evidence[].id ∪ held[].id ∪ pending[].
+ * 밖이 생기면 "근거 없이 0 이 새로 생겼다"는 뜻이다(수집기가 새로 0 을 썼거나 누가 출처를 지웠다).
+ * `at` = 명단 밖 id 지문 — 같은 명단이면 dedup 으로 침묵, 바뀌면 다시 알린다(⑫ 다른 이슈와 같다).
+ * 접두 `zerosrc:` 는 (d) 해소 때 지우는 `hold:` 와 겹치지 않는다.
+ * @param {ReadonlyArray<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_source?: string|null }>} rows
+ * @param {{ evidence: Array<{ id: string }>, held: Array<{ id: string }>, pending: string[] }} doc
+ * @returns {Issue[]}
+ */
+export function checkUnsourcedZero(rows, doc) {
+  if (!Array.isArray(doc?.evidence) || !Array.isArray(doc?.held) || !Array.isArray(doc?.pending)) {
+    throw new Error("zero-unsold-evidence.json 에 evidence·held·pending 배열이 없습니다");
+  }
+  const known = new Set([
+    ...doc.evidence.map((e) => String(e?.id)),
+    ...doc.held.map((h) => String(h?.id)),
+    ...doc.pending.map((p) => String(p)),
+  ]);
+  const outside = rows
+    .filter((r) => r?.id && r.unsold === 0 && r.unsold_source == null && !known.has(String(r.id)))
+    .sort((a, b) => String(a.id).localeCompare(String(b.id)));
+  if (outside.length === 0) return [];
+  const shown = outside.slice(0, APPLYHOME_UNSOLD_SAMPLE_LIMIT).map((r) => `${r.name ?? r.id}(${r.id})`);
+  const rest = outside.length - shown.length;
+  return [{
+    kind: "applyhome-unsold",
+    collector: "unsold-applyhome",
+    detail: `(g) 출처 없는 미분양 0 인데 근거 명단 밖인 단지 ${outside.length}곳 — ${shown.join(" · ")}${rest > 0 ? ` 외 ${rest}곳` : ""}`,
+    lines: [
+      "unsold 0 · 출처(unsold_source) 없음인데 docs/audits/zero-unsold-evidence.json 의 evidence·held·pending 어디에도 없습니다.",
+      "청약홈 공고 경쟁률(apartments.competition_* · applyhome_cancel_respl)로 근거 확인 뒤 docs/audits/zero-unsold-evidence.json 에 추가하거나 hold",
+    ],
+    at: `zerosrc:${fingerprintIds(outside.map((r) => String(r.id)))}`,
+  }];
+}
+
+/**
+ * ⑫(g) 근거 명단 파일을 읽는다. 없거나 JSON 이 깨졌으면 던진다(삼키지 않는다 — fail-open 이 check-failed 로 알린다).
+ * @param {URL | string} [url] 시험용 — 생략하면 레포 정본
+ * @returns {any}
+ */
+export function loadZeroUnsoldEvidence(url = ZERO_UNSOLD_EVIDENCE_URL) {
+  return JSON.parse(readFileSync(url, "utf8"));
+}
+
+/**
+ * ⑫(g) 재료 — 출처 없는 0 행(id 커서) + 근거 명단 파일. 파일이 없거나 깨졌으면 던진다(fail-open 이 check-failed 로 알린다).
+ * @returns {Promise<{ rows: Array<Record<string, any>>, doc: any }>}
+ */
+async function fetchUnsourcedZeroInputs() {
+  const doc = loadZeroUnsoldEvidence();
+  const rows = /** @type {Array<Record<string, any>>} */ (await selectAll(
+    (s) => s.from("apartments").select("id, name, unsold, unsold_source").eq("unsold", 0).is("unsold_source", null),
+    getSupabase(),
+    "id",
+  ));
+  return { rows, doc };
 }
 
 /**
@@ -3626,7 +3709,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒ → ㉓, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648 + ㉓ 세션668)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑫(g) 세션684 → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒ → ㉓, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648 + ㉓ 세션668)을 돌려 이슈를 합친다.
  * ⑲(소유권 정본 대조, 세션617)는 KST 월요일에만 돌아 이 열 밖 `runOwnershipCheck` 로 main 이 바로 뒤에 부른다
  * (이 열에 넣으면 요일에 따라 이 열의 시험 결과가 달라진다).
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
@@ -3636,6 +3719,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchTradeRows?: () => ReturnType<typeof fetchTradeMonthRows>,
  *   fetchRegionRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchAhRows?: () => ReturnType<typeof fetchApplyhomeUnsoldRows>,
+ *   fetchUnsourcedZero?: () => ReturnType<typeof fetchUnsourcedZeroInputs>,
  *   fetchFailureRuns?: () => ReturnType<typeof fetchRecentFailureRuns>,
  *   fetchKeyHealth?: () => Promise<{ gapRows: Array<Record<string, any>>, latestSuccess: Record<string, any> | null, completionSuccess?: Record<string, any> | null, regulationSuccess?: Record<string, any> | null }>,
  *   fetchKaptWindowRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
@@ -3657,6 +3741,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchTradeRows = deps.fetchTradeRows ?? (() => fetchTradeMonthRows());
   const fetchRegionRuns = deps.fetchRegionRuns ?? fetchRegionUnresolvedRuns;
   const fetchAhRows = deps.fetchAhRows ?? fetchApplyhomeUnsoldRows;
+  const fetchUnsourcedZero = deps.fetchUnsourcedZero ?? fetchUnsourcedZeroInputs;
   const fetchFailureRuns = deps.fetchFailureRuns ?? (() => fetchRecentFailureRuns());
   const fetchKeyHealth = deps.fetchKeyHealth ?? fetchKeyAndCompletionHealth;
   const fetchTradeDeals = deps.fetchTradeDeals ?? (() => fetchTradeDealsHealth());
@@ -3726,6 +3811,15 @@ export async function runDailyGuardedChecks(deps = {}) {
     // 조회가 throw 한 날은 runFailOpenCheck 가 먼저 잡아 여기까지 안 온다(hold 0 을 해소로 오독하지 않는다).
     if (holdAlertResolved(ahIssues)) await clearHoldAlertKeys(HOLD_ALERT_KEY_PREFIX);
     return ahIssues;
+  }));
+
+  // ⑫(g) 출처 없는 0 이 근거 명단(docs/audits/zero-unsold-evidence.json) 밖에 생겼나 — 세션684. 매일 본다.
+  //    조회·파일이 ⑫ 와 달라 따로 fail-open — 이쪽이 실패해도 ⑫(d) 해소 판정은 영향 없다.
+  issues = issues.concat(await runFailOpenCheck("⑫(g) 출처 없는 0 근거 명단 점검", async () => {
+    const { rows, doc } = await fetchUnsourcedZero();
+    const zeroIssues = checkUnsourcedZero(rows, doc);
+    console.log(`[monitor] ⑫(g) 출처 없는 0 근거 명단 점검: 출처 없는 0 ${rows.length}곳 → 이상 ${zeroIssues.length}건`);
+    return zeroIssues;
   }));
 
   // ⑬ 로컬 수집기 실패 명단 — collector_runs.status=failure 는 ①②⑤ 어디에도 안 보였다(세션570).

@@ -519,3 +519,111 @@ describe("hold op 2종 추가 (세션571) — mark_hold_from_zero / release_hold
     expect(checkPlanRow(row, dbRow({ id: "ah-2022910303", unsold: 0, unsold_rate: null, unsold_source: null })).ok).toBe(false);
   });
 });
+
+// ── 세션684 — 률 0 행(출처 없는 0 중 19곳)용 보류 op + 되돌림 ──
+// 기존 mark_hold_from_zero 는 expect unsold_rate:null 이라 률 0 행을 거부하고, set 에 률이 없어 0 이 남는다
+// (VIEW unsoldRate 0 → 위험 하위점수 10). 새 op 는 률 0 을 기대하고 률까지 비운다.
+describe("hold op 2종 추가 (세션684) — mark_hold_from_zero_rate0 / release_hold_to_zero_rate0", () => {
+  it("mark_hold_from_zero_rate0 — expect 0·률 0·출처 NULL·기준일 NULL → set 값·률 NULL·출처 hold·보류일", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("mark_hold_from_zero_rate0", { id: "ah-x", date: "2026-11-02" });
+    expect(row).toEqual({
+      id: "ah-x", op: "mark_hold_from_zero_rate0",
+      expect: { unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null },
+      set: { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-02" },
+    });
+    expect(() => buildHoldPlanRow("mark_hold_from_zero_rate0", { id: "x" })).toThrow(/date/);
+    expect(() => buildHoldPlanRow("mark_hold_from_zero_rate0", { id: "x", date: "20261102" })).toThrow(/date/);
+  });
+
+  it("release_hold_to_zero_rate0 — expect 값 NULL·출처 hold → set 0·률 0·출처 NULL·기준일 NULL (되돌림)", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("release_hold_to_zero_rate0", { id: "ah-x" });
+    expect(row.expect).toEqual({ unsold: null, unsold_source: "hold" });
+    expect(row.set).toEqual({ unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null });
+    expect(checkPlanRow(row, dbRow({ id: "ah-x", unsold: null, unsold_rate: null, unsold_source: "hold" })).ok).toBe(true);
+    expect(checkPlanRow(row, dbRow({ id: "ah-x", unsold: 0, unsold_rate: 0, unsold_source: null })).ok).toBe(false);
+  });
+
+  it("률 0 행 — 기존 mark_hold_from_zero 는 unsold_rate 불일치로 거부, 새 op 는 통과 · 률 NULL 행은 새 op 가 거부", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const rate0 = dbRow({ id: "ah-x", unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null });
+    const old = checkPlanRow(buildHoldPlanRow("mark_hold_from_zero", { id: "ah-x", date: "2026-11-02" }), rate0);
+    expect(old.ok).toBe(false);
+    expect(old.reason).toBe("unsold_rate: DB=0 expect=null");
+    const next = buildHoldPlanRow("mark_hold_from_zero_rate0", { id: "ah-x", date: "2026-11-02" });
+    expect(checkPlanRow(next, rate0)).toEqual({ ok: true, reason: null });
+    const rateNull = checkPlanRow(next, dbRow({ id: "ah-x", unsold: 0, unsold_rate: null, unsold_source: null, unsold_as_of: null }));
+    expect(rateNull.ok).toBe(false);
+    expect(rateNull.reason).toBe("unsold_rate: DB=null expect=0");
+  });
+
+  it("--apply — 계획 파일의 새 op 행이 반영 대상으로 잡혀 값·률 NULL·출처 hold 로 바뀐다, 률 0 행의 옛 op 행은 불일치로 건너뜀(가짜 저장소)", async () => {
+    const os = await import("node:os");
+    const path = await import("node:path");
+    const { writeFileSync: wf, rmSync } = await import("node:fs");
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const planPath = path.join(os.tmpdir(), `s684_hold_rate0_plan_${Date.now()}.json`);
+    wf(planPath, JSON.stringify({ plan: [
+      buildHoldPlanRow("mark_hold_from_zero_rate0", { id: "a", date: "2026-11-02" }),
+      buildHoldPlanRow("mark_hold_from_zero", { id: "b", date: "2026-11-02" }),
+    ] }), "utf8");
+    selectAllMock.mockResolvedValueOnce([
+      { id: "a", unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null },
+      { id: "b", unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null },
+    ]);
+    const liveDb = {
+      a: { unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null },
+      b: { unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null },
+    };
+    /** @type {Array<Record<string, any>>} */
+    const wheres = [];
+    getSupabase.mockReturnValue({
+      from: () => ({
+        update: (/** @type {any} */ payload) => {
+          /** @type {string | null} */
+          let currentId = null;
+          /** @type {Record<string, any>} */
+          const where = {};
+          const builder = {
+            eq: (/** @type {string} */ col, /** @type {any} */ val) => { if (col === "id") currentId = val; else where[col] = val; return builder; },
+            is: (/** @type {string} */ col, /** @type {any} */ val) => { where[col] = val; return builder; },
+            select: () => {
+              wheres.push({ id: currentId, ...where });
+              const row = /** @type {any} */ (liveDb)[/** @type {string} */ (currentId)];
+              const matches = row && Object.entries(where).every(([k, v]) => row[k] === v);
+              if (matches) Object.assign(row, payload);
+              return Promise.resolve({ data: matches ? [{ id: currentId }] : [], error: null });
+            },
+          };
+          return builder;
+        },
+      }),
+    });
+    const originalArgv = process.argv;
+    process.argv = [...originalArgv, `--plan=${planPath}`, "--apply"];
+    /** @type {any} */
+    let result;
+    try {
+      result = await main();
+    } finally {
+      process.argv = originalArgv;
+      try { rmSync(planPath); } catch { /* noop */ }
+    }
+    expect(result.toApply).toBe(1);
+    expect(result.mismatches).toBe(1);
+    expect(result.applied).toBe(1);
+    expect(result.summary.mark_hold_from_zero_rate0.pass).toBe(1);
+    expect(result.summary.mark_hold_from_zero.failByReason.unsold_rate).toBe(1);
+    expect(liveDb.a).toEqual({ unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-02" });
+    expect(liveDb.b).toEqual({ unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null }); // 옛 op 는 안 건드린다
+    expect(wheres).toEqual([{ id: "a", unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null }]);
+  });
+
+  it("머리말 계약 — 새 op 2종 이름이 문서에 있다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./backfill-unsold-source.mjs", import.meta.url)), "utf8");
+    for (const op of ["`mark_hold_from_zero_rate0`", "`release_hold_to_zero_rate0`"]) expect(src).toContain(op);
+  });
+});
