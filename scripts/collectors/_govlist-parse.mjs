@@ -28,12 +28,13 @@
  *   area_band: string | null; total_units: number | null; unsold_units: number | null; hidden: boolean; approval_date: string | null }} GovRow
  * @typedef {{ complex_no: number; list_key: string; sgg: string | null; emd: string | null; location: string | null; raw_name: string | null;
  *   name_candidates: string[]; address: string | null; builder: string | null; developer: string | null; is_public: boolean | null;
- *   is_rental: boolean | null; total_units: number; unsold_units: number | null; unsold_partial: boolean; hidden: boolean;
- *   approval_date: string | null; row_nos: number[] }} GovComplex
+ *   is_rental: boolean | null; total_units: number | null; unsold_units: number | null; unsold_partial: boolean; unsold_over_total: boolean;
+ *   hidden: boolean; approval_date: string | null; row_nos: number[] }} GovComplex
  * @typedef {{ sheet: string; asOf: string; titleText: string; columns: Array<{ key: string; col: number }>; currentUnsoldKey: string;
- *   rows: GovRow[]; complexes: GovComplex[]; sggUniverse: string[];
+ *   rows: GovRow[]; complexes: GovComplex[]; sggUniverse: string[]; sggTotals: Record<string, number | null>;
  *   checks: { subtotalMismatch: Array<{ complex_no: number; sheet_row: number; subtotal: number; sum: number }>;
  *     sectionMismatch: Array<{ sheet_row: number; total: number; sum: number }>; sggFilled: Array<{ complex_no: number; sgg: string; from: string }>;
+ *     unsoldOverTotal: Array<{ complex_no: number; unsold: number; total: number }>;
  *     unlabeledRows: number[]; nonNumericUnsold: number[] } }} ParsedList
  */
 
@@ -175,14 +176,32 @@ export function pickCompanySheet(grids) {
  * @returns {string[]}
  */
 export function parseSggUniverse(grids) {
+  return Object.keys(parseSggTotals(grids));
+}
+
+/**
+ * 「총괄표」 시군구 → 당월 미분양 「계」(첫 「계」 칸 = 당월 묶음 — 대구·충남 실물: 2열 「계」 아래가 당월 · 7열 「계」가 전월).
+ * 같은 이름이 아래 표에 또 나오면 첫 줄만(대구 총괄표는 두 번째 표가 이어 붙어 있다). 「계」 칸을 못 찾으면 값은 null.
+ * 미등재→0 의 「총괄표엔 미분양이 있는데 명단 행이 0 인 시군구 = 미해소」 재료(세션687 G4).
+ * @param {Grid[]} grids
+ * @returns {Record<string, number | null>}
+ */
+export function parseSggTotals(grids) {
   const g = grids.find((x) => x.cells.slice(0, 4).flat().map(headText).join("|").includes("총괄"));
-  if (!g) return [];
-  /** @type {Set<string>} */ const out = new Set();
+  if (!g) return {};
+  let sumCol = -1;
+  for (const row of g.cells.slice(0, 6)) {
+    const i = row.findIndex((v) => headText(v) === "계");
+    if (i >= 0) { sumCol = i; break; }
+  }
+  /** @type {Record<string, number | null>} */ const out = {};
   for (const row of g.cells) {
     const t = text(row[0]);
-    if (/^[가-힣]+(?:\s[가-힣]+)?[시군구]$/.test(t)) out.add(t);
+    if (!/^[가-힣]+(?:\s[가-힣]+)?[시군구]$/.test(t) || Object.prototype.hasOwnProperty.call(out, t)) continue;
+    if (/^(?:서울|부산|대구|인천|광주|대전|울산|세종)$/.test(t)) continue; // 시도 합계 줄(대구 총괄표 첫 줄 「대구」)
+    out[t] = sumCol >= 0 ? toInt(row[sumCol] ?? null) : null;
   }
-  return [...out];
+  return out;
 }
 
 /** 칸 역할 — 머리 글자 정규식. pubType 은 충남 「택지종류(민간/공공)」와 가른다. */
@@ -274,6 +293,8 @@ export function parseGovlistWorkbook(grids, { source }) {
   const cur = unsoldCols.find((x) => /당해/.test(x.key))
     ?? [...unsoldCols].sort((a, b) => String(headerMonth(b.key) ?? "").localeCompare(String(headerMonth(a.key) ?? "")))[0];
   const curMonth = headerMonth(cur.key);
+  // 「당해」도 기준월도 못 읽으면 어느 칸이 당월인지 모른다 — 첫 칸(대개 전월)을 경고 없이 집지 않고 거부(세션687 G7④)
+  if (curMonth == null && !/당해/.test(cur.key)) throw new GovlistParseError(`미분양 칸의 당월을 못 정함(「당해」·기준월 글자 없음): ${unsoldCols.map((x) => x.key).join(" | ")}`);
   if (curMonth != null && curMonth !== asOf.slice(0, 7)) throw new GovlistParseError(`미분양 칸 기준월(${curMonth}) ≠ 제목 기준일(${asOf})`);
 
   /** 단지 공통 칸이 아닌 것(면적대마다 다른 칸). */
@@ -285,6 +306,7 @@ export function parseGovlistWorkbook(grids, { source }) {
     subtotalMismatch: /** @type {ParsedList["checks"]["subtotalMismatch"]} */ ([]),
     sectionMismatch: /** @type {ParsedList["checks"]["sectionMismatch"]} */ ([]),
     sggFilled: /** @type {ParsedList["checks"]["sggFilled"]} */ ([]),
+    unsoldOverTotal: /** @type {ParsedList["checks"]["unsoldOverTotal"]} */ ([]),
     unlabeledRows: /** @type {number[]} */ ([]), nonNumericUnsold: /** @type {number[]} */ ([]),
   };
   let sectionStart = 0;
@@ -315,9 +337,13 @@ export function parseGovlistWorkbook(grids, { source }) {
     const hidden = open.hiddenMark;
     const nums = bands.map((b) => b.unsold_units);
     cx.hidden = hidden;
-    cx.total_units = bands.reduce((s, b) => s + (b.total_units ?? 0), 0);
+    // 면적대 총분양이 하나라도 못 읽혔으면 합을 내지 않는다(일부만 더한 작은 합이 VIEW 50% 규칙을 흔든다 — 세션687 G7①)
+    cx.total_units = bands.some((b) => b.total_units == null) ? null : bands.reduce((s, b) => s + Number(b.total_units), 0);
     cx.unsold_partial = !hidden && nums.some((n) => n == null) && nums.some((n) => n != null);
     cx.unsold_units = hidden || nums.some((n) => n == null) ? null : nums.reduce((/** @type {number} */ s, n) => s + Number(n), 0);
+    // 미분양 > 총분양 — 원본 오기(충남 6월 공주 「석남리 270-1」 169/81 · 「393-1」 30/10). 계획이 쓰지 않는다(G7②)
+    cx.unsold_over_total = cx.unsold_units != null && cx.total_units != null && cx.unsold_units > cx.total_units;
+    if (cx.unsold_over_total) checks.unsoldOverTotal.push({ complex_no: cx.complex_no, unsold: Number(cx.unsold_units), total: Number(cx.total_units) });
     for (const b of bands) { b.hidden = hidden; if (hidden) b.unsold_units = null; }
     if (bands.length) complexes.push(cx);
     open = null;
@@ -338,7 +364,7 @@ export function parseGovlistWorkbook(grids, { source }) {
       if (!/^소\s*계/.test(totalLabel)) {
         // 합계 줄 = 그 시군구 구간의 총분양 합 — 단지를 빠뜨리거나 두 번 세면 여기서 어긋난다(파서 자기 검증).
         const st = toInt(dataValue(r, totalCol));
-        const sum = complexes.slice(sectionStart).reduce((s, c) => s + c.total_units, 0);
+        const sum = complexes.slice(sectionStart).reduce((s, c) => s + (c.total_units ?? 0), 0);
         if (st != null && st !== sum) checks.sectionMismatch.push({ sheet_row: r + 1, total: st, sum });
         fillMissingSgg(complexes.slice(sectionStart), /\(\s*([가-힣]+)\s*지역\s*\)/.exec(totalLabel)?.[1] ?? null);
         sectionStart = complexes.length;
@@ -374,7 +400,7 @@ export function parseGovlistWorkbook(grids, { source }) {
           raw_name: parsed.names[0] ?? null, name_candidates: parsed.names, address: parsed.address,
           builder: col.builder ? party(base[col.builder.key]) : null, developer: col.developer ? party(base[col.developer.key]) : null,
           is_public: pub ? pub === "공공" : null, is_rental: rent ? rent === "임대" : null,
-          total_units: 0, unsold_units: null, unsold_partial: false, hidden: false, // 비공개 판정은 hiddenMark 한 길로만(닫을 때 정함)
+          total_units: 0, unsold_units: null, unsold_partial: false, unsold_over_total: false, hidden: false, // 비공개 판정은 hiddenMark 한 길로만(닫을 때 정함)
           approval_date: col.approval ? parseListDate(base[col.approval.key] ?? null) : null, row_nos: [],
         },
       };
@@ -401,5 +427,5 @@ export function parseGovlistWorkbook(grids, { source }) {
   }
   close();
   fillMissingSgg(complexes.slice(sectionStart), null); // 마지막 구간(합계 줄 없음)
-  return { sheet: grid.name, asOf, titleText, columns, currentUnsoldKey: cur.key, rows, complexes, sggUniverse: parseSggUniverse(grids), checks };
+  return { sheet: grid.name, asOf, titleText, columns, currentUnsoldKey: cur.key, rows, complexes, sggUniverse: parseSggUniverse(grids), sggTotals: parseSggTotals(grids), checks };
 }

@@ -1,10 +1,43 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import {
-  planSource, listedValue, summarize, breaker, comparePlans, buildBackup, buildListRows, changeClass, cityKey,
-  GOVLIST_EXPIRY_MONTHS, GOVLIST_BREAKER_MAX_BUNDLES, VALUE_KEYS, RESTORE_EXPECT_KEYS,
+  planSource, listedValue, summarize, breaker, comparePlans, buildBackup, buildListRows, changeClass, cityKey, rowCheckViolations,
+  GOVLIST_EXPIRY_MONTHS, GOVLIST_BREAKER_MAX_BUNDLES, VALUE_KEYS, RESTORE_EXPECT_KEYS, GOVLIST_ROW_CHECKS,
 } from "./_govlist-plan.mjs";
-import { buildBundles } from "./_govlist-match.mjs";
+import { buildBundles, matchComplexes } from "./_govlist-match.mjs";
+
+// ── SQL CHECK 식을 3값 논리(참·거짓·NULL)로 돌리는 작은 해석기 — 마이그 글자를 그대로 평가해 JS 판정과 맞댄다(G1③) ──
+// 문법: OR · AND · NOT · 괄호 · <칸> IS [NOT] NULL · <칸> IS DISTINCT FROM '<글자>' · <칸> = '<글자>' · <칸> > <수> · <칸> IN ('a', …)
+/** @param {string} expr @param {Record<string, any>} row @returns {boolean} CHECK 통과(결과가 참 또는 NULL) */
+function sqlCheck(expr, row) {
+  const toks = expr.match(/'[^']*'|\(|\)|,|>|=|[A-Za-z_][A-Za-z_0-9]*|\d+/g) ?? [];
+  let i = 0;
+  const peek = () => toks[i], eat = (/** @type {string} */ t) => { if (toks[i]?.toUpperCase() !== t) throw new Error(`해석기: ${t} 기대, ${toks[i]}`); i++; };
+  const kw = (/** @type {string} */ t) => toks[i]?.toUpperCase() === t;
+  /** @returns {boolean | null} */ const orE = () => { let a = andE(); while (kw("OR")) { i++; const b = andE(); a = a === true || b === true ? true : a === null || b === null ? null : false; } return a; };
+  /** @returns {boolean | null} */ const andE = () => { let a = notE(); while (kw("AND")) { i++; const b = notE(); a = a === false || b === false ? false : a === null || b === null ? null : true; } return a; };
+  /** @returns {boolean | null} */ const notE = () => { if (kw("NOT")) { i++; const a = notE(); return a === null ? null : !a; } return prim(); };
+  /** @returns {boolean | null} */ const prim = () => {
+    if (peek() === "(") { i++; const a = orE(); eat(")"); return a; }
+    const col = toks[i++];
+    const v = row[col] ?? null;
+    if (kw("IS")) {
+      i++;
+      if (kw("NOT")) { i++; eat("NULL"); return v != null; }
+      if (kw("NULL")) { i++; return v == null; }
+      eat("DISTINCT"); eat("FROM"); const lit = toks[i++].slice(1, -1); return v !== lit; // IS DISTINCT FROM 는 NULL 을 안 낸다
+    }
+    if (peek() === "=") { i++; const lit = toks[i++].slice(1, -1); return v == null ? null : v === lit; }
+    if (peek() === ">") { i++; const n = Number(toks[i++]); return v == null ? null : v > n; }
+    if (kw("IN")) { i++; eat("("); const xs = []; while (peek() !== ")") { const t = toks[i++]; if (t !== ",") xs.push(t.slice(1, -1)); } eat(")"); return v == null ? null : xs.includes(v); }
+    throw new Error(`해석기: 모르는 꼴 ${col} ${peek()}`);
+  };
+  const r = orE();
+  if (i !== toks.length) throw new Error(`해석기: 남은 글자 ${toks.slice(i).join(" ")}`);
+  return r !== false;
+}
+const MIGRATION = readFileSync(new URL("../../supabase/migrations/20261102000000_unsold_gov_list.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
 
 /** @typedef {import("./_govlist-match.mjs").AptRow} AptRow */
 /** @typedef {import("./_govlist-match.mjs").MatchResult} MatchResult */
@@ -19,7 +52,7 @@ const apt = (o) => ({
 /** @param {Partial<GovComplex>} o @returns {GovComplex} */
 const cx = (o) => ({
   complex_no: 1, list_key: "daegu|달서구|a", sgg: "달서구", emd: null, location: null, raw_name: "a", name_candidates: ["a"], address: null,
-  builder: null, developer: null, is_public: false, is_rental: false, total_units: 52, unsold_units: null, unsold_partial: false, hidden: true,
+  builder: null, developer: null, is_public: false, is_rental: false, total_units: 52, unsold_units: null, unsold_partial: false, unsold_over_total: false, hidden: true,
   approval_date: null, row_nos: [1], ...o,
 });
 /** @param {Partial<MatchResult>} o @returns {MatchResult} */
@@ -92,8 +125,15 @@ describe("① 숫자 공개 · 분모 = 명단 총분양(Q9)", () => {
     expect(listedValue([cx({ hidden: false, unsold_units: 0, total_units: 0 })], AS_OF).six).toMatchObject({ unsold: 0, unsold_rate: null, unsold_listed_total: null });
     expect(byId(run({ complexes: [cx({ total_units: 0 })] }), "ah-2024000001").after.unsold_listed_total).toBeNull();
   });
-  it("숫자 칸이 하나라도 비면(충남 수청2 RH-3 6월 꼴) 비공개와 같은 값", () => {
-    expect(listedValue([cx({ hidden: false, unsold_units: null })], AS_OF).kind).toBe("hidden");
+  it("G7③ 비공개 표시 없이 미분양 칸이 빈칸(충남 수청2 RH-3 6월 꼴) → kind blank · 계획은 쓰지 않음(skip_unsold_blank — 「비공개」 둔갑 금지)", () => {
+    expect(listedValue([cx({ hidden: false, unsold_units: null })], AS_OF).kind).toBe("blank");
+    expect(byId(run({ complexes: [cx({ hidden: false, unsold_units: null })] }), "ah-2024000001")).toMatchObject({ action: "skip_unsold_blank", after: null });
+  });
+  it("G7② 미분양 > 총분양 단지 → 쓰지 않음(skip_list_inconsistent)", () => {
+    expect(byId(run({ complexes: [cx({ hidden: false, unsold_units: 169, total_units: 81, unsold_over_total: true })] }), "ah-2024000001").action).toBe("skip_list_inconsistent");
+  });
+  it("G7① 총분양 NULL 단지가 섞이면 listed_total NULL(일부만 더하지 않음)", () => {
+    expect(listedValue([cx({ total_units: 52 }), cx({ complex_no: 2, total_units: null })], AS_OF).six.unsold_listed_total).toBeNull();
   });
 });
 
@@ -108,10 +148,13 @@ describe("③ 미등재 → 0 — 기본 꺼짐 · 조건 (a)~(e) 전부", () =>
   it("꺼짐이면 not_listed(absent_zero_off)", () => {
     expect(byId(run(), "ah-2024000009")).toMatchObject({ action: "not_listed", reasons: ["absent_zero_off"] });
   });
-  it("켜고 조건 전부 → write_absent_zero(0 · 0 · govlist · as_of · listed 칸 비움)", () => {
+  it("켜고 조건 전부 → write_absent_zero(0 · 0 · govlist · as_of · listed 칸 비움) — G1① 새 CHECK(수가 있으면 listed_as_of 면제)를 지킨다", () => {
     const r = byId(run({ absentZero: true }), "ah-2024000009");
     expect(r.action).toBe("write_absent_zero");
     expect(r.after).toEqual({ unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: AS_OF, unsold_listed_as_of: null, unsold_listed_total: null });
+    expect(rowCheckViolations(r.after)).toEqual([]);
+    // 옛 CHECK(listed_as_of 늘 필수)라면 이 값은 거부됐다 — 그 사고를 다시 막는다
+    expect(sqlCheck("unsold_source IS DISTINCT FROM 'govlist' OR (unsold_as_of IS NOT NULL AND unsold_listed_as_of IS NOT NULL)", r.after)).toBe(false);
   });
   /** @type {Array<[string, Parameters<typeof run>[0], string]>} */
   const cases = [
@@ -209,5 +252,99 @@ describe("전이표 · 차단기 · 승인 대조 · 사본·역계획 · 명단
   it("cityKey: 시 아래 구는 시로 접는다", () => {
     expect(cityKey("천안시 서북구")).toBe("천안시");
     expect(cityKey("달서구")).toBe("달서구");
+  });
+});
+
+describe("G1③ 쓰기 값 ↔ DB CHECK 맞대기(마이그 글자 그대로 3값 논리로 평가)", () => {
+  it("GOVLIST_ROW_CHECKS 의 식 4개가 마이그에 `CONSTRAINT <이름>\\n  CHECK (<식>);` 꼴로 글자 그대로 있다", () => {
+    for (const [name, expr] of Object.entries(GOVLIST_ROW_CHECKS)) {
+      expect(MIGRATION.includes(`ADD CONSTRAINT ${name}\n  CHECK (${expr});`), name).toBe(true);
+    }
+  });
+  it("JS 판정(rowCheckViolations) = SQL 식 평가 — 6칸 값 조합 전부(출처 6 × 수 3 × 률 2 × 기준일 2 × 확인월 2 × 총분양 3 = 432)", () => {
+    let n = 0;
+    for (const unsold_source of [null, "kosis", "applyhome", "hold", "govlist", "weird"])
+      for (const unsold of [null, 0, 5]) for (const unsold_rate of [null, 10]) for (const unsold_as_of of [null, "2026-09-30"])
+        for (const unsold_listed_as_of of [null, "2026-09-30"]) for (const unsold_listed_total of [null, 0, 52]) {
+          const six = { unsold, unsold_rate, unsold_source, unsold_as_of, unsold_listed_as_of, unsold_listed_total };
+          const sql = Object.entries(GOVLIST_ROW_CHECKS).filter(([, e]) => !sqlCheck(e, six)).map(([k]) => k);
+          expect(rowCheckViolations(six), JSON.stringify(six)).toEqual(sql);
+          n++;
+        }
+    expect(n).toBe(432);
+  });
+  it("계획이 내는 모든 쓰는 행(꺼짐·켬 · 비공개·숫자·미등재 0 · 총분양 0)이 CHECK 4개를 지킨다", () => {
+    const plans = [
+      run(), run({ absentZero: true }), run({ complexes: [cx({ hidden: false, unsold_units: 2, total_units: 12 })] }),
+      run({ complexes: [cx({ total_units: 0 })] }), run({ complexes: [cx({ hidden: false, unsold_units: 0, total_units: 0 })] }),
+      run({ absentZero: true, zRow: { unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: "2026-08-31", unsold_listed_as_of: null } }),
+    ];
+    const writes = plans.flat().filter((r) => r.action.startsWith("write_"));
+    expect(writes.length).toBeGreaterThanOrEqual(7);
+    for (const r of writes) {
+      for (const [name, expr] of Object.entries(GOVLIST_ROW_CHECKS)) expect(sqlCheck(expr, /** @type {any} */ (r.after)), `${r.id} ${r.action} ${name}`).toBe(true);
+      expect(rowCheckViolations(/** @type {any} */ (r.after))).toEqual([]);
+    }
+  });
+  it("G1④ ownOldZero·dropped_from_list 가 이 표지로 맞게 돈다: 지난 회차 미등재 0(listed NULL) → 기준일 갱신 · 지난 회차 등재(listed 있음) → dropped", () => {
+    expect(byId(run({ absentZero: true, zRow: { unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: "2026-08-31", unsold_listed_as_of: null } }), "ah-2024000009").action).toBe("write_absent_zero");
+    expect(byId(run({ absentZero: true, zRow: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-08-31", unsold_listed_as_of: "2026-08-31", unsold_listed_total: 40 } }), "ah-2024000009").action).toBe("dropped_from_list");
+    // 같은 기준일 미등재 0 은 유효한 명단 값 → 다시 쓰지 않음(e_govlist_valid)
+    const same = byId(run({ absentZero: true, zRow: { unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: AS_OF, unsold_listed_as_of: null } }), "ah-2024000009");
+    expect(same).toMatchObject({ action: "not_listed", after: null });
+    expect(same.reasons).toContain("e_govlist_valid");
+  });
+});
+
+describe("G3·G4 거짓 0 길 막기(검사관 탐침 A·B·E 꼴)", () => {
+  const sup = (/** @type {string} */ id, /** @type {number} */ n) => ({ apartment_id: id, house_manage_no: id.slice(3), model_no: "1", general_supply: n, special_supply: 0, source: "apt" });
+  const sch = (/** @type {string} */ id, /** @type {string} */ d) => ({ apartment_id: id, house_manage_no: id.slice(3), recruit_date: d });
+  /** @param {AptRow[]} rows @param {any[]} sups @param {any[]} schs @param {GovComplex[]} cxs @param {string[]} universe @param {Record<string, number | null>} [totals] */
+  const go = (rows, sups, schs, cxs, universe, totals = {}) => {
+    const bundles = buildBundles(rows, sups, schs);
+    const results = matchComplexes(cxs, bundles);
+    return { results, plan: planSource({ source: "daegu", asOf: AS_OF, now: NOW, complexes: cxs, results, bundles, sggUniverse: universe, sggTotals: totals, listRowCount: 100, prevRowCount: null, absentZero: true }) };
+  };
+  it("A 쌍둥이 묶음: 한 단지가 K(원 공고 · strong)·Z(재공고만 · 세대 어긋남)로 갈리면 Z 는 후보였으므로 0 을 받지 않는다", () => {
+    const { results, plan } = go(
+      [apt({ id: "ah-2024000001", name: "행복마을아파트", complex_key: "K" }), apt({ id: "ah-2024000077", name: "행복마을 아파트", complex_key: "Z" })],
+      [sup("ah-2024000001", 500), sup("ah-2024000077", 30)], [sch("ah-2024000001", "2024-01-15"), sch("ah-2024000077", "2024-06-01")],
+      [cx({ raw_name: "행복마을", name_candidates: ["행복마을"], total_units: 500, approval_date: "2024-01-10" })], ["달서구"]);
+    // 두 묶음 다 0.9 이상 후보라 strong 도 주지 않는다(G3 — 1등 + 0.9 이상 하나뿐)
+    expect(results[0].state).toBe("weak");
+    expect(plan.filter((r) => r.action === "write_absent_zero")).toEqual([]);
+    expect(byId(plan, "ah-2024000077").reasons).toContain("d_candidate_of_list");
+  });
+  it("E 포함 규칙: 명단 「힐스테이트감삼」 ↔ 엉뚱한 「…감삼센트럴」(0.9·세대 맞음) + 진짜 「힐스테이트 감삼」(1.0·세대 어긋남) → strong 아님 · 진짜 짝 0 아님", () => {
+    const { results, plan } = go(
+      [apt({ id: "ah-2024000001", name: "힐스테이트감삼센트럴", complex_key: "K" }), apt({ id: "ah-2024000002", name: "힐스테이트 감삼", complex_key: "Z" })],
+      [sup("ah-2024000001", 500), sup("ah-2024000002", 30)], [sch("ah-2024000001", "2024-01-15"), sch("ah-2024000002", "2024-06-01")],
+      [cx({ raw_name: "힐스테이트감삼", name_candidates: ["힐스테이트감삼"], total_units: 500, approval_date: "2024-01-10" })], ["달서구"]);
+    expect(results[0]).toMatchObject({ state: "weak", bundle_key: null });
+    expect(plan.filter((r) => r.action.startsWith("write_"))).toEqual([]);
+  });
+  it("E′ 1등이 strong 이고 0.9 이상이 그 하나뿐이면 strong 은 그대로", () => {
+    const { results } = go(
+      [apt({ id: "ah-2024000001", name: "힐스테이트 감삼", complex_key: "K" }), apt({ id: "ah-2024000002", name: "감삼 래미안", complex_key: "Z" })],
+      [sup("ah-2024000001", 500)], [sch("ah-2024000001", "2024-01-15")],
+      [cx({ raw_name: "힐스테이트감삼", name_candidates: ["힐스테이트감삼"], total_units: 500, approval_date: "2024-01-10" })], ["달서구"]);
+    expect(results[0]).toMatchObject({ state: "strong", bundle_key: "K" });
+  });
+  it("B 명단 시군구 표기가 총괄표와 다름(「달서」) → 출처 전체 미등재→0 끔(d_list_sgg_unknown)", () => {
+    const { plan } = go([apt({ id: "ah-2024000001", name: "행복마을아파트", complex_key: "K" })], [sup("ah-2024000001", 500)], [sch("ah-2024000001", "2024-01-15")],
+      [cx({ sgg: "달서", raw_name: "행복마을", name_candidates: ["행복마을"], total_units: 500 })], ["달서구"]);
+    expect(plan[0]).toMatchObject({ action: "not_listed" });
+    expect(plan[0].reasons).toContain("d_list_sgg_unknown");
+  });
+  it("G4 총괄표엔 그 구 미분양 > 0 인데 명단 행 0 → 그 구는 미해소(d_sgg_unresolved) · 총괄표 0 이면 해소", () => {
+    const rows = [apt({ id: "ah-2024000001", name: "다른단지", gu: "중구", complex_key: "K" })];
+    const args = /** @type {const} */ ([[sup("ah-2024000001", 10)], [sch("ah-2024000001", "2024-01-15")]]);
+    const list = [cx({ sgg: "달서구", raw_name: "행복마을", name_candidates: ["행복마을"], total_units: 500 })];
+    const r1 = go(rows, [...args[0]], [...args[1]], list, ["달서구", "중구"], { 달서구: 10, 중구: 641 }).plan[0];
+    expect(r1.action).toBe("not_listed");
+    expect(r1.reasons).toContain("d_sgg_unresolved");
+    // 달서구 명단 단지가 none(미해소)이라도 중구는 별개 — 총괄표 중구 0 이면 중구 행은 0 을 받는다
+    const r2 = go(rows, [...args[0]], [...args[1]], list, ["달서구", "중구"], { 달서구: 10, 중구: 0 }).plan[0];
+    expect(r2.action).toBe("write_absent_zero");
   });
 });

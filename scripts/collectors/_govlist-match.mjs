@@ -203,7 +203,8 @@ export function scoreCandidate(cx, b) {
   if (best.sim < WEAK_SIM) return null;
   const notice = pickNotice(b.notices, cx.approval_date);
   const supply = notice?.supply ?? null;
-  const unitsOk = supply == null || !(cx.total_units > 0) ? null : Math.abs(cx.total_units - supply) <= UNITS_TOL * cx.total_units;
+  const tot = cx.total_units;
+  const unitsOk = supply == null || tot == null || !(tot > 0) ? null : Math.abs(tot - supply) <= UNITS_TOL * tot;
   const lb = [cx.builder, cx.developer].filter(Boolean).map((x) => builderKey(/** @type {string} */ (x)));
   const builderOk = b.members.some((m) => m.builder && lb.includes(builderKey(m.builder)));
   /** @type {string[]} */ const reasons = [];
@@ -247,7 +248,15 @@ export function matchComplexes(complexes, bundles, decisions = []) {
     if (!candidates.length) { out.push({ ...base, state: "none", bundle_key: null, apartment_id: null, method: "none", score: null, reasons: [] }); continue; }
     const block = cx.name_candidates.some(isBlockName);
     const strongs = candidates.filter((c) => isStrong(c, block));
-    if (strongs.length === 1) {
+    // G3(세션687 PR-2 검사 A🟠1-E): strong 은 그 묶음이 유사도 1등이고 0.9 이상 후보가 그 하나뿐일 때만 —
+    // 포함 규칙으로 0.9 를 받은 엉뚱한 묶음이 세대만 맞아 진짜 짝(유사도 1.0 · 세대 어긋남)을 밀어내는 길 차단
+    const highs = candidates.filter((c) => c.sim >= STRONG_SIM);
+    const soleTop = strongs.length === 1 && highs.length === 1 && candidates[0].bundle_key === strongs[0].bundle_key;
+    if (strongs.length === 1 && !soleTop) {
+      out.push({ ...base, state: "weak", bundle_key: null, apartment_id: null, method: "not_sole_top", score: candidates[0].score, reasons: ["not_sole_top", ...candidates[0].reasons] });
+      continue;
+    }
+    if (soleTop) {
       const b = /** @type {Bundle} */ (byKey.get(strongs[0].bundle_key));
       out.push({ ...base, state: "strong", bundle_key: b.key, apartment_id: b.repId, method: strongs[0].contain ? "name_contain+units" : "name+units", score: strongs[0].score, reasons: strongs[0].reasons });
       continue;

@@ -58,18 +58,50 @@ export const cityKey = (s) => String(s ?? "").trim().split(/\s+/)[0] ?? "";
 
 /**
  * 묶음에 붙은 명단 단지 → 쓸 값(②/①). 명단 단지가 둘(사람 판정 decided 합산)이면 Σ.
+ * - 총분양 Σ 는 단지 하나라도 못 읽혔으면 NULL(일부만 더한 합 금지 — G7①) · 0 이어도 NULL(CHECK > 0)
+ * - kind `blank` = 원문에 비공개 표시가 없는데 미분양 칸이 빈칸·「-」(쓰지 않는다 — 「비공개」로 둔갑 금지, G7③)
+ * - kind `over` = 미분양 > 총분양(원본 오기 — 쓰지 않는다, G7②)
  * @param {GovComplex[]} cxs @param {string} asOf
- * @returns {{ six: Six; kind: "hidden" | "number" }}
+ * @returns {{ six: Six; kind: "hidden" | "number" | "blank" | "over" }}
  */
 export function listedValue(cxs, asOf) {
-  const T = cxs.reduce((s, c) => s + (c.total_units ?? 0), 0);
-  const allNum = cxs.every((c) => !c.hidden && c.unsold_units != null);
-  if (!allNum) {
-    return { kind: "hidden", six: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: T > 0 ? T : null } };
+  const sumT = cxs.some((c) => c.total_units == null) ? null : cxs.reduce((s, c) => s + Number(c.total_units), 0);
+  const T = sumT != null && sumT > 0 ? sumT : null;
+  const kind = cxs.some((c) => c.unsold_over_total) ? "over"
+    : cxs.some((c) => !c.hidden && c.unsold_units == null) ? "blank"
+      : cxs.some((c) => c.hidden) ? "hidden" : "number";
+  if (kind !== "number") {
+    return { kind, six: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: T } };
   }
   const U = cxs.reduce((s, c) => s + Number(c.unsold_units), 0);
-  const rate = T > 0 ? clampUnsoldRate(Math.round((U / T) * 1000) / 10) : null;
-  return { kind: "number", six: { unsold: U, unsold_rate: rate, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: T > 0 ? T : null } };
+  const rate = T != null ? clampUnsoldRate(Math.round((U / T) * 1000) / 10) : null;
+  return { kind, six: { unsold: U, unsold_rate: rate, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: T } };
+}
+
+/**
+ * apartments 의 미분양 꼴 CHECK 4개 — 마이그 `20261102000000_unsold_gov_list.sql` 의 식과 **글자가 같다**
+ * (`_govlist-plan.test.mjs` 가 SQL 파일에서 `CHECK (<식>)` 을 찾아 맞대고, 같은 식을 3값 논리로 돌려 아래 JS 판정과 비교한다).
+ * 수집기는 쓰기 전에 계획의 모든 쓰는 행을 `rowCheckViolations` 로 돌려 DB 가 거부할 행을 미리 막는다(G1③).
+ */
+export const GOVLIST_ROW_CHECKS = Object.freeze({
+  apartments_unsold_source_check: "unsold_source IS NULL OR unsold_source IN ('kosis', 'applyhome', 'hold', 'govlist')",
+  apartments_unsold_listed_total_check: "unsold_listed_total IS NULL OR unsold_listed_total > 0",
+  apartments_unsold_govlist_asof_check: "unsold_source IS DISTINCT FROM 'govlist' OR (unsold_as_of IS NOT NULL AND (unsold IS NOT NULL OR unsold_listed_as_of IS NOT NULL))",
+  apartments_unsold_govlist_hidden_rate_check: "NOT (unsold_source = 'govlist' AND unsold IS NULL AND unsold_rate IS NOT NULL)",
+});
+
+/**
+ * 6칸 값이 위 CHECK 를 어기는 제약 이름(없으면 빈 배열). SQL CHECK 는 결과가 NULL 이어도 통과 — 여기 식은 그 결과와 같게 쓴다.
+ * @param {Six} s
+ * @returns {string[]}
+ */
+export function rowCheckViolations(s) {
+  /** @type {string[]} */ const v = [];
+  if (!(s.unsold_source == null || ["kosis", "applyhome", "hold", "govlist"].includes(s.unsold_source))) v.push("apartments_unsold_source_check");
+  if (!(s.unsold_listed_total == null || s.unsold_listed_total > 0)) v.push("apartments_unsold_listed_total_check");
+  if (!(s.unsold_source !== "govlist" || (s.unsold_as_of != null && (s.unsold != null || s.unsold_listed_as_of != null)))) v.push("apartments_unsold_govlist_asof_check");
+  if (s.unsold_source === "govlist" && s.unsold == null && s.unsold_rate != null) v.push("apartments_unsold_govlist_hidden_rate_check");
+  return v;
 }
 
 /**
@@ -110,7 +142,7 @@ export function absentZeroFails({ m, b, asOf, now, listOk, covered, unresolvedCi
 /**
  * 한 출처의 계획.
  * @param {{ source: string; asOf: string; now: Date; complexes: GovComplex[]; results: MatchResult[]; bundles: Bundle[];
- *   sggUniverse: string[]; listRowCount: number; prevRowCount: number | null; absentZero: boolean }} p
+ *   sggUniverse: string[]; sggTotals?: Record<string, number | null>; listRowCount: number; prevRowCount: number | null; absentZero: boolean }} p
  * @returns {PlanRow[]}
  */
 export function planSource(p) {
@@ -128,6 +160,14 @@ export function planSource(p) {
   const listOk = p.listRowCount > 0 && (p.prevRowCount == null || p.listRowCount >= p.prevRowCount * GOVLIST_DROP_RATIO);
   const covered = new Set([...p.sggUniverse.map(cityKey), ...complexes.map((c) => cityKey(c.sgg))].filter(Boolean));
   const unresolvedCities = new Set(results.filter((r) => !RESOLVED.has(r.state)).map((r) => cityKey(cxByNo.get(r.complex_no)?.sgg)));
+  // G4: 총괄표엔 미분양이 있는데 명단 행이 0 인 시군구 — 명단이 그 구를 빠뜨렸을 수 있다 → 미해소
+  const listCities = new Set(complexes.map((c) => cityKey(c.sgg)));
+  for (const [name, n] of Object.entries(p.sggTotals ?? {})) if (n != null && n > 0 && !listCities.has(cityKey(name))) unresolvedCities.add(cityKey(name));
+  // G4: 명단 단지의 시군구가 총괄표에 없으면(표기 어긋남 — 「달서」 vs 「달서구」) 어느 구를 덮는지 못 믿는다 → 출처 전체 끔
+  const universeCities = new Set(p.sggUniverse.map(cityKey));
+  const sggUnknown = complexes.some((c) => c.sgg && !universeCities.has(cityKey(c.sgg)));
+  // G3: 어느 명단 단지의 후보(유사도 ≥ WEAK_SIM)였던 묶음은 「명단에 없다」고 말할 수 없다 — 쌍둥이 묶음·이름 비슷한 진짜 짝이 0 을 받는 길 차단
+  const candidateBundles = new Set(results.flatMap((r) => r.candidates.map((c) => c.bundle_key)));
   const zeroOn = p.absentZero && ABSENT_ZERO_SOURCES.includes(source);
   // 시군구를 못 읽은 명단 단지가 하나라도 있으면 "그 시군구엔 명단 행이 없다"를 말할 수 없다 — 그 출처 전체의 미등재→0 을 끈다
   // (세션687 실 dry-run: 대구 동구 구간 시군구 칸이 비어 동구 명단 12단지가 매칭 0 → (d) 가 「동구 명단 0 = 해소」로 통과해
@@ -145,6 +185,8 @@ export function planSource(p) {
       if (listed) {
         if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [`as_of ${asOf} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`], after: null }); continue; }
         if (skip) { out.push({ ...head, action: skip, reasons: [], after: null }); continue; }
+        if (listed.kind === "blank") { out.push({ ...head, action: "skip_unsold_blank", reasons: ["명단에 실렸으나 미분양 칸 빈칸·「-」 — 비공개 표시 없음"], after: null }); continue; }
+        if (listed.kind === "over") { out.push({ ...head, action: "skip_list_inconsistent", reasons: ["명단 미분양 > 총분양(원본 오기)"], after: null }); continue; }
         if (sameSix(before, listed.six)) { out.push({ ...head, action: "unchanged", reasons: [listed.kind], after: listed.six }); continue; }
         out.push({ ...head, action: listed.kind === "hidden" ? "write_listed_hidden" : "write_listed_number", reasons: [], after: listed.six });
         continue;
@@ -157,6 +199,8 @@ export function planSource(p) {
       if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [], after: null }); continue; }
       if (skip) { out.push({ ...head, action: skip, reasons: ["absent"], after: null }); continue; }
       const fails = absentZeroFails({ m, b, asOf, now, listOk, covered, unresolvedCities });
+      if (candidateBundles.has(b.key)) fails.unshift("d_candidate_of_list");
+      if (sggUnknown) fails.unshift("d_list_sgg_unknown");
       if (sggMissing) fails.unshift("d_list_sgg_missing");
       if (fails.length) { out.push({ ...head, action: "not_listed", reasons: fails, after: null }); continue; }
       /** @type {Six} */ const zero = { unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: null, unsold_listed_total: null };

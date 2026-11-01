@@ -93,6 +93,8 @@ bundle_unsold AS (                    -- 묶음 미분양(사장님 결정 §6-9
                               WHERE g.bkey = m.bkey
                                 AND NOT g.is_off
                                 AND g.unsold_source = 'govlist'
+                                -- 명단에 **실린** 행만 청약홈을 막는다 — 「미등재 0」(listed_as_of NULL)은 약한 근거라 기준일 새 쪽에 맡긴다(세션687 G1②)
+                                AND g.unsold_listed_as_of IS NOT NULL
                                 AND g.unsold_as_of IS NOT NULL
                                 AND g.unsold_as_of + INTERVAL '6 months' >= (now() AT TIME ZONE 'Asia/Seoul')::date
                                 -- 날짜 조건은 겹으로 둔 조건 — 바로 뒤 기준일 정렬이 같은 결과를 내므로 이긴 행에 영향 없음

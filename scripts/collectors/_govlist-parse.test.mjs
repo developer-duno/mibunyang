@@ -94,13 +94,27 @@ describe("충남 2026-06 · 2026-02 (서식 다름 — 비공개 표시가 소�
     expect(byName(P.cn02, /수청2지구 RH-3/)[0]).toMatchObject({ hidden: false, unsold_units: 0 });
     expect(byName(P.cn06, /수청2지구 RH-3/)[0]).toMatchObject({ hidden: false, unsold_units: null }); // 6월은 칸이 비었다
   });
-  it("원본 합계 수식이 소계를 빠뜨린 곳은 경고로만 남는다(천안 행 162 · 논산 행 264)", () => {
-    expect(P.cn06.checks.sectionMismatch.map((x) => x.sheet_row)).toEqual([162, 264]);
+  it("원본 합계 수식이 소계를 빠뜨린 곳은 경고로만 남는다(천안 행 162 · 논산 행 264) · 당진 290 은 총분양 NULL 단지 때문", () => {
+    expect(P.cn06.checks.sectionMismatch.map((x) => x.sheet_row)).toEqual([162, 264, 290]);
     expect(P.cn06.checks.subtotalMismatch).toEqual([{ complex_no: expect.any(Number), sheet_row: 112, subtotal: 2518, sum: 977 }]);
   });
   it("부여 구간도 시군구 칸이 비어 있다 → 소재지 첫 낱말 「부여군」", () => {
     expect(P.cn06.checks.sggFilled).toEqual([{ complex_no: expect.any(Number), sgg: "부여군", from: "소재지 첫 낱말" }]);
     expect(P.cn06.complexes.find((c) => c.complex_no === P.cn06.checks.sggFilled[0].complex_no)).toMatchObject({ total_units: 413, emd: "부여읍" });
+  });
+  it("G7① 면적대 총분양이 하나라도 빈 단지는 총분양 NULL(일부 합 금지) — 한경크리스탈 84㎡ 45 + 빈칸 2줄", () => {
+    const h = byName(P.cn06, /한경크리스탈/)[0];
+    expect(h.total_units).toBeNull();
+    expect(P.cn06.rows.filter((r) => r.complex_no === h.complex_no).map((r) => r.total_units)).toEqual([45, null, null]);
+  });
+  it("G7② 미분양 > 총분양(원본 오기 · 공주 석남리 270-1 169/81 · 393-1 30/10) → checks 경고 · unsold_over_total", () => {
+    expect(P.cn06.checks.unsoldOverTotal.map((x) => [x.unsold, x.total])).toEqual([[169, 81], [30, 10]]);
+    expect(P.cn06.complexes.filter((c) => c.unsold_over_total)).toHaveLength(2);
+  });
+  it("G4 총괄표 시군구별 당월 미분양 「계」 — 시도 합계 줄은 뺀다", () => {
+    expect(P.dg09.sggTotals).toMatchObject({ 중구: 641, 동구: 455, 서구: 48, 남구: 512, 북구: 688, 수성구: 503, 달서구: 1021, 달성군: 21 });
+    expect(Object.keys(P.dg09.sggTotals)).not.toContain("대구");
+    expect(P.cn06.sggTotals).toMatchObject({ 천안시: 3939, 공주시: 201, 당진시: 13 });
   });
   it("2월: 기준일 2026-02-28 · 행 수", () => {
     expect([P.cn02.asOf, P.cn02.rows.length, P.cn02.complexes.length, P.cn02.complexes.filter((c) => c.hidden).length]).toEqual(["2026-02-28", 234, 66, 40]);
@@ -117,6 +131,13 @@ describe("머리줄이 바뀌면 GovlistParseError(→ GOVLIST_SKIP header)", ()
   it("시공사 칸이 사라짐", () => {
     const g = mutate((x) => { for (const s of x) for (const row of s.cells) for (let i = 0; i < row.length; i++) if (row[i] === "시공사") row[i] = "업체"; });
     expect(() => parseGovlistWorkbook(g, { source: "daegu" })).toThrow(/시공사|builder/);
+  });
+  it("G7④ 미분양 칸 머리에 「당해」도 기준월도 없으면 어느 칸이 당월인지 모른다 → 거부(첫 칸 = 전월을 집지 않음)", () => {
+    const g = mutate((x) => { for (const s of x) for (const row of s.cells) for (let i = 0; i < row.length; i++) {
+      if (typeof row[i] === "string" && /당해월/.test(String(row[i]))) row[i] = "이번";
+      else if (typeof row[i] === "string" && /전월\s*\(/.test(String(row[i]))) row[i] = "지난";
+    } });
+    expect(() => parseGovlistWorkbook(g, { source: "daegu" })).toThrow(/당월을 못 정함/);
   });
   it("당해월 칸의 달이 제목 기준일과 다름", () => {
     const g = mutate((x) => { for (const s of x) for (const row of s.cells) for (let i = 0; i < row.length; i++) if (typeof row[i] === "string" && /당해월/.test(String(row[i]))) row[i] = "당해월\n('26.8월)"; });

@@ -16,7 +16,7 @@ const apt = (o) => ({
 /** @param {Partial<GovComplex>} o @returns {GovComplex} */
 const cx = (o) => ({
   complex_no: 1, list_key: "daegu|달서구|x", sgg: "달서구", emd: null, location: null, raw_name: null, name_candidates: [], address: null,
-  builder: null, developer: null, is_public: false, is_rental: false, total_units: 0, unsold_units: null, unsold_partial: false, hidden: true,
+  builder: null, developer: null, is_public: false, is_rental: false, total_units: 0, unsold_units: null, unsold_partial: false, unsold_over_total: false, hidden: true,
   approval_date: null, row_nos: [1], ...o,
 });
 
