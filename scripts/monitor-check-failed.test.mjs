@@ -25,6 +25,7 @@ const LABELS = {
   fetchTradeRows: "⑧ 지역×월 거래 점검",
   fetchRegionRuns: "⑪ 시도 이름 못 맞춤 점검",
   fetchAhRows: "⑫ 청약홈 미분양 값 점검",
+  fetchUnsourcedZero: "⑫(g) 출처 없는 0 근거 명단 점검",
   fetchFailureRuns: "⑬ 로컬 수집기 실패 점검",
   fetchKeyHealth: "⑭ 묶음 열쇠 칸 점검",
   fetchKaptWindowRuns: "⑮ 2u 창 건너뜀 점검",
@@ -47,6 +48,11 @@ function okDeps() {
     fetchAhRows: async () => [
       { id: "ah-x", name: "만료단지", unsold: 10, unsold_source: "applyhome", unsold_as_of: "2020-01-01", competition_shortfall: 3 },
     ],
+    // 출처 없는 0 이 전부 근거 명단 안 — ⑫(g) 는 이상 없이 지나간다(세션684) · 운영 조회가 나가지 않게
+    fetchUnsourcedZero: async () => ({
+      rows: [{ id: "ah-z", name: "근거단지", unsold: 0, unsold_source: null }],
+      doc: { evidence: [{ id: "ah-z" }], held: [], pending: [] },
+    }),
     // 방금 끝난 차단기 실패 1행 — ⑬ 이 실제로 돌았다는 표지(이상 1건이 나와야 한다)
     fetchFailureRuns: async () => [
       { collector: "kosis-unsold", status: "failure", ok_count: 0, fail_count: 0, error_message: "차단기", finished_at: new Date().toISOString() },
@@ -104,16 +110,17 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     expect(issues.some((i) => i.kind === "applyhome-unsold")).toBe(true);
   });
 
-  it("열넷 다 실패하면 14건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) + ⑱(세션614) + ㉑(세션632) + ㉒(세션648) + ㉓(세션668) 그대로", async () => {
+  it("열다섯 다 실패하면 15건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑫(g)(세션684) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) + ⑱(세션614) + ㉑(세션632) + ㉒(세션648) + ㉓(세션668) 그대로", async () => {
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
-      fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchFailureRuns: boom, fetchKeyHealth: boom,
+      fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchUnsourcedZero: boom, fetchFailureRuns: boom, fetchKeyHealth: boom,
       fetchKaptWindowRuns: boom, fetchTradeDeals: boom, fetchTradeLinks: boom, fetchSgisMapRun: boom, fetchNoticeRuns: boom, fetchPriceHistoryCounts: boom,
       fetchSeoThin: boom,
       clearHoldAlertKeys: async () => {},
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
+      "⑫(g) 출처 없는 0 근거 명단 점검",
       "⑬ 로컬 수집기 실패 점검", "⑭ 묶음 열쇠 칸 점검", "⑮ 2u 창 건너뜀 점검", "⑯ trade_deals 점검", "⑰ 연결 표 점검",
       "⑱ SGIS 매핑 표시 점검", "㉑ 청약홈 공고 정리 표식 점검", "㉒ 시세 이력 바닥 점검", "㉓ 검색 제외 안전선",
     ]);

@@ -12,6 +12,9 @@ import {
   ALWAYS_DEDUP_KINDS,
   HOLD_BASELINE_IDS,
   HOLD_REVIEW_MONTHS,
+  HOLD_ALERT_KEY_PREFIX,
+  holdAlertResolved,
+  checkUnsourcedZero,
 } from "./monitor-collectors.mjs";
 import { formatIssue } from "./notify-telegram.mjs";
 
@@ -116,14 +119,15 @@ describe("⑫ main 배선 (소스)", () => {
 });
 
 describe("⑫ (d)(e) 사람 보류(hold) — 세션570", () => {
-  it("기준 명단은 결정된 17곳(정렬) 그대로 — 세션570 11곳 + 세션571 대표 2행(910303·910363) + 세션577 음성아이파크(ap-6026677) + 세션636 영통·수원10 3행(910265·910338·930034)", () => {
+  it("기준 명단은 결정된 19곳(정렬) 그대로 — 세션570 11곳 + 세션571 대표 2행(910303·910363) + 세션577 음성아이파크(ap-6026677) + 세션636 영통·수원10 3행(910265·910338·930034) + 세션684 ⓑ 2행(910330·2025910160)", () => {
     expect([...HOLD_BASELINE_IDS]).toEqual([
       "ah-2021910123", "ah-2021910165", "ah-2022910170", "ah-2022910216", "ah-2022910265", "ah-2022910285",
-      "ah-2022910303", "ah-2022910320", "ah-2022910325", "ah-2022910338", "ah-2022910363", "ah-2025910235",
+      "ah-2022910303", "ah-2022910320", "ah-2022910325", "ah-2022910330", "ah-2022910338", "ah-2022910363",
+      "ah-2025910160", "ah-2025910235",
       "ah-2025910236", "ah-2025910250", "ah-2025910274", "ah-2025930034",
       "ap-6026677",
     ]);
-    expect([...HOLD_BASELINE_IDS].length).toBe(17);
+    expect([...HOLD_BASELINE_IDS].length).toBe(19);
     expect([...HOLD_BASELINE_IDS]).toEqual([...HOLD_BASELINE_IDS].sort());
     expect(HOLD_REVIEW_MONTHS).toBe(6);
   });
@@ -244,5 +248,77 @@ describe("⑫ (f) 사람 보류(hold)인데 값·률이 남음 — 세션684", (
   it("(f) 열쇠 접두 holdval: 는 (d) 해소 판정·열쇠 정리 접두 hold: 와 겹치지 않는다", () => {
     const issues = checkApplyhomeUnsold([hold("h-1", { unsold_rate: 0 }), hold("h-2"), hold("h-3")], base);
     expect(issues.map((i) => String(i.at)).some((a) => a.startsWith("hold:"))).toBe(false);
+  });
+});
+
+describe("⑫(g) 출처 없는 0 인데 근거 명단 밖 — 세션684 사장님 결정 ⓑ", () => {
+  const doc = { evidence: [{ id: "ah-e1" }], held: [{ id: "ah-h1" }], pending: ["ah-p1"] };
+  /** @param {string} id @param {object} [o] */
+  const zero = (id, o = {}) => ({ id, name: `단지${id}`, unsold: 0, unsold_source: null, ...o });
+
+  it("(g) 명단 밖 ah-x 1행 → 이슈 1건 · at = zerosrc:<지문> · 조치 문구", () => {
+    const issues = checkUnsourcedZero([zero("ah-e1"), zero("ah-h1"), zero("ah-p1"), zero("ah-x")], doc);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].kind).toBe("applyhome-unsold");
+    expect(issues[0].detail).toContain("(g)");
+    expect(issues[0].detail).toContain("1곳");
+    expect(issues[0].detail).toContain("ah-x");
+    expect(issues[0].detail).not.toContain("ah-e1");
+    expect(issues[0].at).toBe(`zerosrc:${fingerprintIds(["ah-x"])}`);
+    expect(issues[0].lines?.join("\n")).toContain("docs/audits/zero-unsold-evidence.json 에 추가하거나 hold");
+    expect(formatIssue(/** @type {any} */ (issues[0]))).not.toContain("undefined");
+  });
+
+  it("(g) 출처 없는 0 이 전부 명단 안(evidence·held·pending 셋 다) → 0건", () => {
+    expect(checkUnsourcedZero([zero("ah-e1"), zero("ah-h1"), zero("ah-p1")], doc)).toEqual([]);
+  });
+
+  it("(g) held 에만 있는 id 도 명단 안이다 — held 를 빼면 걸린다", () => {
+    expect(checkUnsourcedZero([zero("ah-h1")], doc)).toEqual([]);
+    expect(checkUnsourcedZero([zero("ah-h1")], { ...doc, held: [] })).toHaveLength(1);
+  });
+
+  it("(g) unsold 0 이지만 출처가 있으면(kosis·applyhome) 무시 · unsold 가 0 이 아니면 무시", () => {
+    const rows = [zero("ah-k", { unsold_source: "kosis" }), zero("ah-a", { unsold_source: "applyhome" }), zero("ah-n", { unsold: 3 }), zero("ah-null", { unsold: null })];
+    expect(checkUnsourcedZero(rows, doc)).toEqual([]);
+  });
+
+  it("(g) 지문은 명단 순서와 무관 · 명단 밖이 바뀌면 지문도 바뀐다", () => {
+    const a = checkUnsourcedZero([zero("ah-x"), zero("ah-y")], doc)[0].at;
+    const b = checkUnsourcedZero([zero("ah-y"), zero("ah-x")], doc)[0].at;
+    const c = checkUnsourcedZero([zero("ah-x"), zero("ah-z")], doc)[0].at;
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+  });
+
+  it("(g) doc 꼴이 틀리면(배열 없음) throw — fail-open 이 실행 실패로 알린다", () => {
+    expect(() => checkUnsourcedZero([], /** @type {any} */ ({ evidence: [], held: [] }))).toThrow(/evidence·held·pending/);
+    expect(() => checkUnsourcedZero([], /** @type {any} */ ({ evidence: {}, held: [], pending: [] }))).toThrow();
+    expect(() => checkUnsourcedZero([], /** @type {any} */ (null))).toThrow();
+  });
+
+  it("(g) 열쇠 zerosrc: 는 (d) 해소 때 지우는 접두(applyhome-unsold|unsold-applyhome|hold:)에 안 걸리고, (d) 해소 판정도 안 막는다", () => {
+    const issues = checkUnsourcedZero([zero("ah-x")], doc);
+    expect(HOLD_ALERT_KEY_PREFIX).toBe("applyhome-unsold|unsold-applyhome|hold:");
+    expect(dedupKey(issues[0]).startsWith(HOLD_ALERT_KEY_PREFIX)).toBe(false);
+    expect(holdAlertResolved(issues)).toBe(true);
+  });
+
+  it("★ 실제 정본 파일 대조 — evidence 42 · held 2 · pending 64 · 세 집합 겹침 0 · held 2개 전부 HOLD_BASELINE_IDS 안 · 함수가 그 파일을 받는다", () => {
+    const real = JSON.parse(readFileSync(fileURLToPath(new URL("../docs/audits/zero-unsold-evidence.json", import.meta.url)), "utf8"));
+    const ev = real.evidence.map((/** @type {any} */ e) => String(e.id));
+    const he = real.held.map((/** @type {any} */ h) => String(h.id));
+    const pe = real.pending.map((/** @type {any} */ p) => String(p));
+    expect(ev).toHaveLength(42);
+    expect(he).toHaveLength(2);
+    expect(pe).toHaveLength(64);
+    const all = [...ev, ...he, ...pe];
+    expect(new Set(all).size).toBe(108); // 겹침 0(각 안의 중복도 0)
+    expect(he.sort()).toEqual(["ah-2022910330", "ah-2025910160"]);
+    for (const id of he) expect(HOLD_BASELINE_IDS).toContain(id);
+    // 정본 108곳을 그대로 넣으면 0건, 정본 밖 하나를 더하면 1건
+    const rows = all.map((id) => zero(id));
+    expect(checkUnsourcedZero(rows, real)).toEqual([]);
+    expect(checkUnsourcedZero([...rows, zero("ah-not-in-doc")], real)).toHaveLength(1);
   });
 });

@@ -1,0 +1,420 @@
+{
+ "_about": "출처 없는 미분양 0(apartments.unsold=0 · unsold_source null) 근거 명단 — 세션684(2026-11-01) 사장님 결정 ⓑ. 기준 = 그 공고의 모든 평형에서 청약 신청 ≥ 공급(apartments.competition_* 또는 applyhome_cancel_respl). 근거 있음 = 0 유지(DB 무변경), 근거 없음 = hold. 감시 ⑫(g)가 이 파일의 evidence·pending 밖에서 새로 생긴 출처 없는 0 을 알린다. 한계: 청약 단계까지만 확인(계약 포기 세대는 모름).",
+ "decidedAt": "2026-11-01",
+ "evidence": [
+  {
+   "id": "ah-2025910036",
+   "name": "의왕 월암지구 대방 디에트르 레이크파크",
+   "supply": 68,
+   "applicants": 882,
+   "units": 68,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022910051",
+   "name": "남악 오룡지구 40BL 오룡 푸르지오 파르세나",
+   "supply": 36,
+   "applicants": 185,
+   "units": 36,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022910161",
+   "name": "세종4-2생활권 L1블록 세종더휴예미지(새나루마을 4단지)",
+   "supply": 2,
+   "applicants": 9747,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022910373",
+   "name": "세종 한신더휴 리저브(2-4생활권 HO1블록)(세종거주, 무주택세대구성원만 해당)",
+   "supply": 1,
+   "applicants": 10200,
+   "units": 256,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2024930002",
+   "name": "매교역 푸르지오 SK VIEW(수원) 계약취소주택",
+   "supply": 3,
+   "applicants": 41,
+   "units": 3,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2022910374",
+   "name": "세종 한신더휴 리저브(2-4생활권 HO2블록)(세종거주, 무주택세대구성원만 해당)",
+   "supply": 3,
+   "applicants": 11992,
+   "units": 3,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022910375",
+   "name": "세종 한신더휴 리저브2(1-5생활권 H5블록)(세종거주, 무주택세대구성원만 해당)",
+   "supply": 4,
+   "applicants": 10472,
+   "units": 4,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2023910044",
+   "name": "파주 운정신도시 A39BL 호반써밋(임의공급 2차)",
+   "supply": 13,
+   "applicants": 811,
+   "units": 13,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2024910241",
+   "name": "힐스테이트 세종 리버파크(행정중심복합도시 3-3생활권 H4블록)",
+   "supply": 2,
+   "applicants": 628746,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2023910111",
+   "name": "시화 MTV 공동2블록 호반써밋 THE FIRST 시흥(무순위 1차)",
+   "supply": 1,
+   "applicants": 1708,
+   "units": 1,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025910098",
+   "name": "파주 운정3지구 A10블록 제일풍경채 2차 그랑베뉴",
+   "supply": 1,
+   "applicants": 331,
+   "units": 660,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2024910200",
+   "name": "세종 리첸시아 파밀리에 H2블록(산울마을7단지)(무순위1차)",
+   "supply": 1,
+   "applicants": 65161,
+   "units": 1,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025910063",
+   "name": "파주운정3지구 A42블록 신영지웰 운정신도시",
+   "supply": 2,
+   "applicants": 26852,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025910097",
+   "name": "파주 운정3지구 A7블록 제일풍경채 3차 그랑포레",
+   "supply": 3,
+   "applicants": 565,
+   "units": 3,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2020910002",
+   "name": "서초동　지에스타워　주상복합　（서울）",
+   "supply": 45,
+   "applicants": 659,
+   "units": 45,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2020910004",
+   "name": "위례신도시 A3-10BL 중흥S-클래스",
+   "supply": 2,
+   "applicants": 4043,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2021910017",
+   "name": "이안 엑소디움 에이펙스",
+   "supply": 35,
+   "applicants": 566,
+   "units": 35,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022910073",
+   "name": "세종자이ｅ편한세상(국민）",
+   "supply": 1,
+   "applicants": 5234,
+   "units": 983,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2023910108",
+   "name": "행정중심복합도시 1-1생활권 M8블럭 세종 한림풀에버 무순위(사후)",
+   "supply": 1,
+   "applicants": 29268,
+   "units": 1,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022910050",
+   "name": "남악 오룡지구 39BL 오룡 푸르지오 파르세나",
+   "supply": 68,
+   "applicants": 344,
+   "units": 68,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022930010",
+   "name": "하남감일 한양수자인(계약취소주택) ",
+   "supply": 2,
+   "applicants": 1470,
+   "units": 2,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2023910038",
+   "name": "흑석자이(무순위 1차)",
+   "supply": 1,
+   "applicants": 829801,
+   "units": 1772,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2022930009",
+   "name": "과천자이(취소후재공급)",
+   "supply": 12,
+   "applicants": 7809,
+   "units": 12,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2023910063",
+   "name": "동탄 A106블록 어울림파밀리에 무순위(1차)",
+   "supply": 1,
+   "applicants": 3057,
+   "units": 1,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2023910061",
+   "name": "동탄 A107블록 숨마데시앙 무순위(1차)",
+   "supply": 2,
+   "applicants": 4847,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2023930037",
+   "name": "동탄2신도시 A62블록 호반써밋 동탄(계약취소주택)",
+   "supply": 4,
+   "applicants": 2031,
+   "units": 4,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2023930053",
+   "name": "율동지구 한신더휴 C2블록 계약취소주택",
+   "supply": 1,
+   "applicants": 10,
+   "units": 1,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2024930003",
+   "name": "파주운정 경남아너스빌 디원(A18블록)",
+   "supply": 1,
+   "applicants": 98,
+   "units": 499,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2024910098",
+   "name": "세종 리첸시아 파밀리에 H3블록(산울마을6단지) (무순위1차)",
+   "supply": 2,
+   "applicants": 84382,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2024910240",
+   "name": "힐스테이트 세종 리버파크(행정중심복합도시 3-3생활권 H3블록)",
+   "supply": 1,
+   "applicants": 568735,
+   "units": 342,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2024930051",
+   "name": "무안 오룡지구 우미린 1차(43BL)",
+   "supply": 7,
+   "applicants": 84,
+   "units": 7,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2024930052",
+   "name": "무안 오룡지구 우미린 2차(44BL)",
+   "supply": 10,
+   "applicants": 87,
+   "units": 10,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2025910018",
+   "name": "수원 비셀토64",
+   "supply": 7,
+   "applicants": 129,
+   "units": 7,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025910179",
+   "name": "송파 위례 리슈빌 FIRST CLASS",
+   "supply": 1,
+   "applicants": 113874,
+   "units": 494,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025910029",
+   "name": "파주운정 경남아너스빌 리버(A48블록)(무순위)",
+   "supply": 2,
+   "applicants": 11156,
+   "units": 2,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025910096",
+   "name": "파주 운정3지구 A5블록 제일풍경채 그랑퍼스트",
+   "supply": 3,
+   "applicants": 2113,
+   "units": 3,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2025930015",
+   "name": "화성동탄2지구 C-2블록 동탄역 금강펜테리움 더 시글로",
+   "supply": 1,
+   "applicants": 5445,
+   "units": 380,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2025930001",
+   "name": "파주운정신도시 A49블록 시티프라디움",
+   "supply": 1,
+   "applicants": 748,
+   "units": 486,
+   "table": "applyhome_cancel_respl"
+  },
+  {
+   "id": "ah-2025910206",
+   "name": "세종 한신휴플러스,제일풍경채 M1블록(가온마을3단지 한신더휴)",
+   "supply": 1,
+   "applicants": 13347,
+   "units": 1,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2026910040",
+   "name": "창원 포레힐스 데시앙(구 창원 감계 데시앙)(2차)",
+   "supply": 7,
+   "applicants": 32,
+   "units": 7,
+   "table": "apartments.competition_*"
+  },
+  {
+   "id": "ah-2023910032",
+   "name": "동탄신도시 금강펜테리움 6차 센트럴파크(A59블럭) 무순위(1차)",
+   "supply": 7,
+   "applicants": 4529,
+   "units": 7,
+   "note": "같은 단지 다른 행 KOSIS 2 가 카드에 보임 — 자기 공고는 신청≥공급"
+  },
+  {
+   "id": "ah-2024910234",
+   "name": "의왕고천지구 대방 디에트르 센트럴(B1BL)",
+   "supply": 14,
+   "applicants": 1909,
+   "units": 14,
+   "table": "apartments.competition_*"
+  }
+ ],
+ "held": [
+  {
+   "id": "ah-2022910330",
+   "name": "인덕원 자이 SK VIEW (재당첨제한 10년 / 의왕시거주, 무주택세대구성원만 가능)",
+   "note": "세션684 ⓑ 사장님 결정(11/01) — 마지막 공고 평형별 신청 미달"
+  },
+  {
+   "id": "ah-2025910160",
+   "name": "대야미역 금강펜테리움 레이크포레(B1BL)",
+   "note": "세션684 ⓑ 사장님 결정(11/01) — 마지막 공고 평형별 신청 미달"
+  }
+ ],
+ "pending": [
+  "ah-2021910101",
+  "ah-2021910120",
+  "ah-2021910137",
+  "ah-2022910118",
+  "ah-2022910261",
+  "ah-2022910264",
+  "ah-2022910302",
+  "ah-2022910322",
+  "ah-2022910323",
+  "ah-2022910332",
+  "ah-2022910336",
+  "ah-2022910342",
+  "ah-2022910356",
+  "ah-2022910368",
+  "ah-2022910369",
+  "ah-2022930026",
+  "ah-2023910024",
+  "ah-2023910042",
+  "ah-2023930026",
+  "ah-2023930031",
+  "ah-2023930043",
+  "ah-2024910023",
+  "ah-2024910042",
+  "ah-2024910053",
+  "ah-2024910129",
+  "ah-2024910167",
+  "ah-2024910178",
+  "ah-2024910201",
+  "ah-2024910202",
+  "ah-2024910206",
+  "ah-2024910231",
+  "ah-2024930038",
+  "ah-2024930039",
+  "ah-2025910006",
+  "ah-2025910012",
+  "ah-2025910022",
+  "ah-2025910026",
+  "ah-2025910042",
+  "ah-2025910050",
+  "ah-2025910052",
+  "ah-2025910061",
+  "ah-2025910064",
+  "ah-2025910073",
+  "ah-2025910078",
+  "ah-2025910102",
+  "ah-2025910110",
+  "ah-2025910115",
+  "ah-2025910133",
+  "ah-2025910168",
+  "ah-2025910170",
+  "ah-2025910171",
+  "ah-2025910198",
+  "ah-2025910220",
+  "ah-2025910248",
+  "ah-2025910254",
+  "ah-2025930004",
+  "ah-2025930006",
+  "ah-2025930011",
+  "ah-2025930012",
+  "ah-2025930016",
+  "ah-2025930028",
+  "ah-2025930032",
+  "ah-2026910015",
+  "ah-2026910017"
+ ]
+}
