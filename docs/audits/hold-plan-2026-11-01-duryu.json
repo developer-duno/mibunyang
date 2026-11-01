@@ -1,0 +1,21 @@
+{
+  "_about": "세션686(2026-11-01) 사장님 결정 ③ — 두류센트레빌 더 파크 묶음 2행 임시 보류(hold). 근거·전이표 = docs/audits/2026-11-01-duryu-hold-transition.md. 적용 = node scripts/backfill-unsold-source.mjs --plan=docs/audits/hold-plan-2026-11-01-duryu.json [--apply]. 되돌림 = hold-plan-2026-11-01-duryu-REVERT.json. 두 행의 expect 값은 2026-11-01 22:3x KST 운영 DB 실측(.omc/artifacts/session686/probe-duryu.log).",
+  "plan": [
+    {
+      "id": "ah-2025910146",
+      "name": "두류센트레빌 더 파크(조합원 취소분)",
+      "op": "mark_hold_from_kosis",
+      "note": "세션686 사장님 결정(11/01) ③ — 대구시 2026-09말 단지별 미분양 명단에 등재(미분양 수는 건설사 요청 비공개 · 총분양 52) · KOSIS 비례배분 165 는 총분양을 넘어 틀림 → 새 출처(지자체 명단) 설계 전까지 자료 없음 보류",
+      "expect": { "unsold": 165, "unsold_rate": 38.1, "unsold_source": "kosis", "unsold_as_of": null },
+      "set": { "unsold": null, "unsold_rate": null, "unsold_source": "hold", "unsold_as_of": "2026-11-01" }
+    },
+    {
+      "id": "ah-2025910254",
+      "name": "두류센트레빌 더 파크(조합원 취소분)(2회차)",
+      "op": "mark_hold_from_zero_rate0",
+      "note": "세션686 사장님 결정(11/01) ③ — ⓑ 기준(신청≥공급)으론 근거 있음(공급 1·신청 8)이었으나 대구시 2026-09말 단지별 명단에 등재(수 비공개) = 공공 명단 반증 → 자료 없음 보류. 같은 꼴 12행(evidence 9·pending 3)은 반증이 없어 그대로",
+      "expect": { "unsold": 0, "unsold_rate": 0, "unsold_source": null, "unsold_as_of": null },
+      "set": { "unsold": null, "unsold_rate": null, "unsold_source": "hold", "unsold_as_of": "2026-11-01" }
+    }
+  ]
+}
