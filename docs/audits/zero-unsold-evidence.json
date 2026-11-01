@@ -1,5 +1,5 @@
 {
- "_about": "출처 없는 미분양 0(apartments.unsold=0 · unsold_source null) 근거 명단 — 세션684(2026-11-01) 사장님 결정 ⓑ. 기준 = 그 공고의 모든 평형에서 청약 신청 ≥ 공급(apartments.competition_* 또는 applyhome_cancel_respl). 근거 있음 = 0 유지(DB 무변경), 근거 없음 = hold. 감시 ⑫(g)가 이 파일의 evidence·pending 밖에서 새로 생긴 출처 없는 0 을 알린다. 한계: 청약 단계까지만 확인(계약 포기 세대는 모름).",
+ "_about": "출처 없는 미분양 0(apartments.unsold=0 · unsold_source null) 근거 명단 — 세션684(2026-11-01) 사장님 결정 ⓑ. 기준 = 그 공고의 모든 평형에서 청약 신청 ≥ 공급(apartments.competition_* 또는 applyhome_cancel_respl). 근거 있음 = 0 유지(DB 무변경), 근거 없음 = hold. 감시 ⑫(g)가 이 파일의 evidence·held·pending 밖에서 새로 생긴 출처 없는 0 을 알린다. 한계: 청약 단계까지만 확인(계약 포기 세대는 모름).",
  "decidedAt": "2026-11-01",
  "evidence": [
   {

@@ -1648,11 +1648,20 @@ export function checkUnsourcedZero(rows, doc) {
 }
 
 /**
+ * ⑫(g) 근거 명단 파일을 읽는다. 없거나 JSON 이 깨졌으면 던진다(삼키지 않는다 — fail-open 이 check-failed 로 알린다).
+ * @param {URL | string} [url] 시험용 — 생략하면 레포 정본
+ * @returns {any}
+ */
+export function loadZeroUnsoldEvidence(url = ZERO_UNSOLD_EVIDENCE_URL) {
+  return JSON.parse(readFileSync(url, "utf8"));
+}
+
+/**
  * ⑫(g) 재료 — 출처 없는 0 행(id 커서) + 근거 명단 파일. 파일이 없거나 깨졌으면 던진다(fail-open 이 check-failed 로 알린다).
  * @returns {Promise<{ rows: Array<Record<string, any>>, doc: any }>}
  */
 async function fetchUnsourcedZeroInputs() {
-  const doc = JSON.parse(readFileSync(ZERO_UNSOLD_EVIDENCE_URL, "utf8"));
+  const doc = loadZeroUnsoldEvidence();
   const rows = /** @type {Array<Record<string, any>>} */ (await selectAll(
     (s) => s.from("apartments").select("id, name, unsold, unsold_source").eq("unsold", 0).is("unsold_source", null),
     getSupabase(),

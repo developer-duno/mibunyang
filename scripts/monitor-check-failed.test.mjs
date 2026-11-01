@@ -234,3 +234,26 @@ describe("⑫(d) 해소 시 hold 열쇠 삭제(세션572)", () => {
     expect(dedupKeyOf(d[0]).startsWith(HOLD_ALERT_KEY_PREFIX)).toBe(true);
   });
 });
+
+// ⑫(g) 출처 없는 0 — runDailyGuardedChecks 가 실제로 checkUnsourcedZero 결과를 issues 에 싣는가(세션684 보완)
+describe("⑫(g) runDailyGuardedChecks 연결(세션684)", () => {
+  it("가짜 조회가 명단 밖 행 1개를 주면 결과에 zerosrc: 이슈가 정확히 1건 · 실행 실패 0건", async () => {
+    const deps = {
+      ...okDeps(),
+      fetchUnsourcedZero: async () => ({
+        rows: [{ id: "ah-out", unsold: 0, unsold_source: null }],
+        doc: { evidence: [{ id: "ah-e" }], held: [{ id: "ah-h" }], pending: ["ah-p"] },
+      }),
+    };
+    const issues = await runDailyGuardedChecks(deps);
+    const z = issues.filter((i) => String(i.at ?? "").startsWith("zerosrc:"));
+    expect(z).toHaveLength(1);
+    expect(z[0].detail).toContain("ah-out");
+    expect(failed(issues)).toEqual([]);
+  });
+
+  it("okDeps(전부 명단 안)면 zerosrc: 이슈 0건", async () => {
+    const issues = await runDailyGuardedChecks(okDeps());
+    expect(issues.some((i) => String(i.at ?? "").startsWith("zerosrc:"))).toBe(false);
+  });
+});

@@ -15,6 +15,7 @@ import {
   HOLD_ALERT_KEY_PREFIX,
   holdAlertResolved,
   checkUnsourcedZero,
+  loadZeroUnsoldEvidence,
 } from "./monitor-collectors.mjs";
 import { formatIssue } from "./notify-telegram.mjs";
 
@@ -320,5 +321,19 @@ describe("⑫(g) 출처 없는 0 인데 근거 명단 밖 — 세션684 사장�
     const rows = all.map((id) => zero(id));
     expect(checkUnsourcedZero(rows, real)).toEqual([]);
     expect(checkUnsourcedZero([...rows, zero("ah-not-in-doc")], real)).toHaveLength(1);
+  });
+
+  it("loadZeroUnsoldEvidence — 인자 없이 부르면 레포 정본을 읽는다(42·2·64 · 정본 108곳 넣으면 0건)", () => {
+    const doc = loadZeroUnsoldEvidence();
+    expect(doc.evidence).toHaveLength(42);
+    expect(doc.held).toHaveLength(2);
+    expect(doc.pending).toHaveLength(64);
+    const ids = [...doc.evidence.map((/** @type {any} */ e) => e.id), ...doc.held.map((/** @type {any} */ h) => h.id), ...doc.pending];
+    expect(checkUnsourcedZero(ids.map((/** @type {string} */ id) => zero(id)), doc)).toEqual([]);
+  });
+
+  it("loadZeroUnsoldEvidence — 없는 경로면 던진다(빈 명단으로 삼키지 않는다 — fail-open 이 실행 실패로 알린다)", () => {
+    const missing = new URL("../docs/audits/__no_such_zero_unsold_evidence__.json", import.meta.url);
+    expect(() => loadZeroUnsoldEvidence(missing)).toThrow(/ENOENT/);
   });
 });
