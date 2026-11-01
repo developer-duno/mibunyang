@@ -113,11 +113,15 @@ ALTER TABLE public.apartments ADD COLUMN IF NOT EXISTS unsold_listed_total integ
 ALTER TABLE public.apartments DROP CONSTRAINT IF EXISTS apartments_unsold_listed_total_check;
 ALTER TABLE public.apartments ADD CONSTRAINT apartments_unsold_listed_total_check
   CHECK (unsold_listed_total IS NULL OR unsold_listed_total > 0);   -- 0 이면 「공급 ≥ 50%」가 늘 참이 되어 거짓 0 이 명단 비공개를 이긴다
--- govlist 행 꼴(hold 제약과 같은 꼴 — PR-1 적대 검사관 🟡3): ① 기준월 두 칸이 반드시 있다(없으면 VIEW 가 만료를 못 재어 순위 0 에서 빠지고
---   감시도 못 본다) ② 비공개(값 NULL) 행에 미분양률만 남으면 화면 률과 「비공개」가 모순 — 률도 비운다. 지금 govlist 행 0 이라 통과한다.
+-- govlist 행 꼴(hold 제약과 같은 꼴 — PR-1 적대 검사관 🟡3): ① 기준일(unsold_as_of)은 늘 있다(없으면 VIEW 가 만료를 못 재어 순위 0 에서 빠지고
+--   감시도 못 본다) · 명단 확인 기준월(unsold_listed_as_of)은 수가 빈칸(비공개 등재)일 때만 필수 — 「미등재 0」(명단 커버 지역인데 명단에
+--   없음 → unsold 0 · unsold_listed_as_of NULL · unsold_listed_total NULL) 표지를 허용한다(세션687 PR-2 검사 A🔴·B🟠3 → 메인 판정 G1)
+--   ② 비공개(값 NULL) 행에 미분양률만 남으면 화면 률과 「비공개」가 모순 — 률도 비운다. 지금 govlist 행 0 이라 통과한다.
+--   ⚠️ 이 두 식은 scripts/collectors/_govlist-plan.mjs GOVLIST_ROW_CHECKS 와 글자가 같아야 한다(_govlist-plan.test.mjs 가 맞댄다 —
+--   수집기가 쓰기 전에 같은 식을 JS 로 돌려 CHECK 위반 행을 미리 막는다).
 ALTER TABLE public.apartments DROP CONSTRAINT IF EXISTS apartments_unsold_govlist_asof_check;
 ALTER TABLE public.apartments ADD CONSTRAINT apartments_unsold_govlist_asof_check
-  CHECK (unsold_source IS DISTINCT FROM 'govlist' OR (unsold_as_of IS NOT NULL AND unsold_listed_as_of IS NOT NULL));
+  CHECK (unsold_source IS DISTINCT FROM 'govlist' OR (unsold_as_of IS NOT NULL AND (unsold IS NOT NULL OR unsold_listed_as_of IS NOT NULL)));
 ALTER TABLE public.apartments DROP CONSTRAINT IF EXISTS apartments_unsold_govlist_hidden_rate_check;
 ALTER TABLE public.apartments ADD CONSTRAINT apartments_unsold_govlist_hidden_rate_check
   CHECK (NOT (unsold_source = 'govlist' AND unsold IS NULL AND unsold_rate IS NOT NULL));
@@ -127,7 +131,7 @@ COMMENT ON COLUMN public.apartments.unsold_source IS
 COMMENT ON COLUMN public.apartments.unsold_as_of IS
   '출처별 기준일 — applyhome=그 값을 만든 청약홈 공고의 공고일(공고일 + 6개월이 지나면 collect-unsold-kosis 가 KOSIS 추정으로 덮는다, C6) · hold=보류 결정일(6개월 지나면 감시 ⑫ 가 재검토 알림, 자동 해제 없음) · govlist=명단 기준월(as_of, + 6개월 = 만료). kosis·NULL 출처 행에서는 의미 없음';
 COMMENT ON COLUMN public.apartments.unsold_listed_as_of IS
-  '지자체 명단 등재 확인 기준월(공개·비공개 모두, 세션687) — 비공개 등재 행 = unsold NULL · unsold_rate NULL · unsold_source govlist · unsold_as_of = unsold_listed_as_of';
+  '지자체 명단 등재 확인 기준월(공개·비공개 모두, 세션687) — 비공개 등재 행 = unsold NULL · unsold_rate NULL · unsold_source govlist · unsold_as_of = unsold_listed_as_of · 미등재 0 행(명단 커버 지역인데 명단에 없음) = unsold 0 · unsold_source govlist · unsold_as_of = 명단 기준월 · 이 칸 NULL';
 COMMENT ON COLUMN public.apartments.unsold_listed_total IS
   '지자체 명단 총분양 Σ(그 단지 명단 행 전부 — govlist 행에만, 세션687 👤 Q9). VIEW apartments_flat 이 「청약홈 공급 ≥ 이 값의 50%」일 때만 청약홈 값이 명단 비공개를 이기게 판정한다(NULL 이면 못 이김)';
 

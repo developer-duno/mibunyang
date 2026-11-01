@@ -1,0 +1,5 @@
+{
+  "note": "지자체 단지별 미분양 명단 → 우리 묶음 짝짓기(scripts/collectors/collect-unsold-govlist.mjs · _govlist-match.mjs)의 사람 판정 명단 — 자동 규칙이 weak(세대 어긋남·이름 0.75~0.9·한쪽만 차수)·충돌(한 명단 단지가 두 묶음 · 두 명단 단지가 한 묶음)·블록 이름(RH-3·B-2BL·44B-1L)으로 남긴 줄만 사람이 원문(명단 xlsx·청약홈 공고)과 대조해 적는다. status 2종: active = 그 명단 단지를 그 묶음에 붙인다(decided — 미분양 값 반영) · rejected = bundle_key 가 있으면 그 짝을 절대 안 붙인다, null 이면 우리 목록에 그 단지가 없다(그 줄을 '해소'로 셈 — 미등재→0 조건 (d)). 한 줄 꼴 = {\"list_key\": \"<source>|<시군구 공백 뺀 것>|<소재지 공백·비공개 표기 뺀 것>\"(impact 의 sources[].matches[].list_key 그대로), \"bundle_key\": \"<묶음 열쇠 — impact 의 best.bundle_key>|null\", \"status\": \"active|rejected\", \"names\": \"명단 이름 ↔ 우리 행(사람이 읽을 것)\", \"why\": \"대조 근거\", \"decided_at\": \"YYYY-MM-DD\"}.",
+  "updatedAt": "2026-11-02",
+  "decisions": []
+}

@@ -33,6 +33,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "csv-parse": "^7.0.3",
     "date-fns": "^4.4.0",
+    "exceljs": "4.4.0",
     "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "react": "^19.3.1",

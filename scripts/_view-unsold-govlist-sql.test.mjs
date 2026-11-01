@@ -400,6 +400,16 @@ describe("bundle_unsold 순위 — SQL 글자를 해석기로 돌린다", () => 
       expect(pickNew(rows, "g", TODAY)).toMatchObject({ id: "h", b_listed_hidden: false });
     });
   });
+  it("G1② 미등재 0(govlist · 0 · 명단 확인 기준월 NULL) + 더 새 청약홈 3 → 청약홈이 이긴다(명단에 실린 행만 청약홈을 막는다)", () => {
+    const rows = [
+      { id: "z", unsold: 0, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_as_of: null, unsold_listed_total: null },
+      { id: "h", unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-10-15", competition_supply: 1 },
+    ];
+    expect(pickNew(rows, "z", TODAY)).toMatchObject({ id: "h", b_unsold: 3, b_unsold_source: "applyhome", b_listed_hidden: false });
+    // 미등재 0 이 더 새면 기준일 새 쪽(벌점 없이)으로 0 이 이긴다
+    const older = [{ ...rows[0] }, { ...rows[1], unsold_as_of: "2026-09-01" }];
+    expect(pickNew(older, "z", TODAY)).toMatchObject({ id: "z", b_unsold: 0, b_listed_hidden: false, b_listed_as_of: null });
+  });
   it("F1 경기형: 숫자 명단(9/30 미분양 4·총분양 40) vs 10/15 재공급 공급 1·값 0 → 명단 숫자 4 가 이김 · 공급 20(50%) 이면 청약홈", () => {
     const rows = (/** @type {number} */ supply) => [
       { id: "g", unsold: 4, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_as_of: "2026-09-30", unsold_listed_total: 40 },
@@ -496,7 +506,8 @@ describe("20261102000000 표·칸·CHECK 마이그", () => {
     expect(c).not.toContain("unsold_notice_kind");
   });
   it("F3 govlist 행 꼴 CHECK 2개(기준월 두 칸 · 비공개면 률도 NULL) + 자체검사가 세 제약을 센다", () => {
-    expect(c).toContain("ADD CONSTRAINT apartments_unsold_govlist_asof_check\n  CHECK (unsold_source IS DISTINCT FROM 'govlist' OR (unsold_as_of IS NOT NULL AND unsold_listed_as_of IS NOT NULL));");
+    // G1①(세션687 PR-2 보완): 기준일은 늘 필수 · 명단 확인 기준월은 수가 빈칸일 때만 필수(「미등재 0」 표지 허용)
+    expect(c).toContain("ADD CONSTRAINT apartments_unsold_govlist_asof_check\n  CHECK (unsold_source IS DISTINCT FROM 'govlist' OR (unsold_as_of IS NOT NULL AND (unsold IS NOT NULL OR unsold_listed_as_of IS NOT NULL)));");
     expect(c).toContain("ADD CONSTRAINT apartments_unsold_govlist_hidden_rate_check\n  CHECK (NOT (unsold_source = 'govlist' AND unsold IS NULL AND unsold_rate IS NOT NULL));");
     expect(c).toMatch(/conname IN \('apartments_unsold_govlist_asof_check', 'apartments_unsold_govlist_hidden_rate_check',\s+'apartments_unsold_listed_total_check'\)\) <> 3 THEN/);
   });
