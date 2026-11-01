@@ -55,8 +55,12 @@
 | `apartments_unsold_hold_null_check` | 그대로(hold 만) |
 | [v2] 되돌림 | govlist 수집기는 회차마다 **바꾸기 전 사본**(`id · 바뀌는 4칸 · unsold_listed_as_of`)과 **역계획**(`backfill-unsold-source.mjs --plan=` 꼴, expect = 새 값 → set = 옛 값)을 `.omc/artifacts/govlist/<as_of>/` 에 남긴다 |
 
+→ 👤 재확인 2026-11-02 01:37: 안 A — 원 공고 출처 applyhome 0건(11행 전부 무순위·재공급)이라 unsold_notice_kind 빼고 unsold_listed_total 칸으로 50% 판정 (PR-1: `apartments.unsold_listed_total INT NULL` = 명단 총분양 Σ, govlist 행에만 · 값이 있으면 > 0 · 마이그 `20261102000000_unsold_gov_list.sql` · 사본·역계획 칸에도 이 칸을 넣는다)
+
 ### 3-3. VIEW `apartments_flat`(`bundle_unsold`) [v2]
 - 순위: **0** 「단지별 실측」 = applyhome 유효(6개월) · govlist 유효(숫자·비공개 모두) → **1** 그 밖 값 있음(kosis) → **2** hold → **3** NULL. 순위 0 안에서는 **기준일이 새 쪽**(`unsold_as_of` 내림차순 — 명단 기준월 vs 공고일)이 이긴다 → 두류처럼 옛 재공급 공고 0 보다 새 명단 비공개가 이김(Q1 확장 · 사장님 결정 ① 「명단에 있음을 사실대로」). 같은 날이면 숫자 > 비공개. **단 명단은 한 달 늦게 나오므로**(v2 재검사 지적 2) 청약홈 값이 명단 비공개를 이기려면 그 공고가 **원 공고(`source=apt`)이거나 공급 세대가 명단 총분양의 50% 이상**이어야 한다 — 재공급·취소분(remndr) 공고의 0 은 명단 비공개를 못 이긴다(두류형 거짓 0 차단 · 시험 1건 고정 · VIEW 가 `applyhome_unit_supply`/`presale_schedule_official` 의 공고 종류·공급 합을 읽어야 하므로 재료 칸을 `apartments.unsold_as_of` 옆 `unsold_notice_kind TEXT`(apt/remndr) 로 seed 가 함께 적는다 — PR-1).
+  → 👤 재확인 2026-11-02 01:37: 안 A — 원 공고 출처 applyhome 0건(11행 전부 무순위·재공급)이라 unsold_notice_kind 빼고 unsold_listed_total 칸으로 50% 판정 (VIEW `20261102000002_view_unsold_govlist.sql`: 같은 묶음에 유효한 govlist 비공개 행이 있으면 청약홈 행은 **기준일이 같거나 새롭고** 공급(`competition_supply`, 없으면 `unsold`) × 2 ≥ 그 행 `unsold_listed_total` 일 때만 이김 · 총분양 NULL 이면 못 이김 · 같은 날도 이 규칙 — 보수 쪽)
+  → 👤 원문 대조 2026-11-02 03:0x: 50% 규칙은 숫자 명단 행에도(Q1·01:37 원문이 '명단' 전체) — PR-1 적대 검사관 🟠1
 - 새 칸(맨 끝): `unsoldSource`(이긴 행의 출처) · `unsoldListedHidden`(BOOLEAN — 이긴 행이 govlist 비공개이고 유효) · `unsoldListedAsOf`(이긴 행의 `unsold_listed_as_of`). 만료 판정은 VIEW(`GOVLIST_EXPIRY` SQL 상수)와 KOSIS 수집기(`shouldSkipKosisFill`) 두 곳에 같은 값이 불가피하다 → **두 값을 맞대는 시험 1건**(VIEW SQL 에서 숫자를 grep 해 `_shared.mjs` 상수와 같음)으로 묶는다 · 화면 JS 는 VIEW 값만 읽는다.
 - 2u 는 칸 이름으로 읽어 영향 0 · 새 칸은 맨 끝 · `WITH (security_invoker = on)` 명시 · 되돌림 `_rollbacks/` · VIEW 칸 추가가 그날 밤 공개 JSON 에 실린다(`supabase/CLAUDE.md:253`) → 화면 PR 과 같은 날.
 

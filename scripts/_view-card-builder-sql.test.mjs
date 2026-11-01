@@ -96,7 +96,8 @@ describe("20261031000000 카드 VIEW 마이그 — 직전 VIEW 대비 바뀐 줄
     expect(code(sql)).not.toMatch(/DROP\s+VIEW/i);
     expect(sql.trim().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true);
     const views = readdirSync(new URL("../supabase/migrations/", import.meta.url)).filter((f) => f.endsWith(".sql") && f.includes("view") && !f.includes("rollback")).sort();
-    expect(views[views.length - 1]).toBe(NEW_NAME);
+    // 세션687: 가장 새 view 마이그는 20261102000002(_view-unsold-govlist-sql.test.mjs 가 잠금) — 이 판은 그 직전 판으로 남는다
+    expect(views[views.length - 2]).toBe(NEW_NAME);
   });
 });
 
