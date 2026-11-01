@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated": "2026-10-31",
+  "updated": "2026-11-02",
   "note": "공유 Supabase 표·칸 소유권 정본(설계서 docs/superpowers/specs/2026-10-09-shared-db-ownership-registry-design.md). 바꾸는 법 = 이 파일 PR → CI ownership audit → 합치면 2u 에 통보 이슈 자동. 첫 판 = scripts/build-ownership.mjs(세션616 전수조사). writers 의 칸 목록은 기준선('*' = 표 전체, 미분양·2u 단독 표).",
   "repos": {
     "mibunyang": "developer-duno/mibunyang",
@@ -34,7 +34,7 @@
       "readers": [
         "2u"
       ],
-      "note": "미분양 단독 쓰기(수십 개 수집기 · 표가 넓어 칸 단위 생략). 2u 는 Apartment 모델 59칸을 읽는다(db_only 52칸은 2u 미사용). 새 칸 sgis_emd_cd·sgis_mapped_at = sgis-map-emd.mjs(화요일). FK 자식 10개 표가 ON DELETE CASCADE."
+      "note": "미분양 단독 쓰기(수십 개 수집기 · 표가 넓어 칸 단위 생략). 2u 는 Apartment 모델 59칸을 읽는다(db_only 52칸은 2u 미사용). 새 칸 sgis_emd_cd·sgis_mapped_at = sgis-map-emd.mjs(화요일). FK 자식 10개 표가 ON DELETE CASCADE(+ unsold_gov_list.apartment_id 는 ON DELETE SET NULL — 세션687, 명단 원문 행은 남김). 세션687(마이그 20261102000000): unsold_source CHECK 허용값에 'govlist'(지자체 단지별 미분양 명단) 추가 · 새 칸 unsold_listed_as_of DATE(명단 등재 확인 기준월) · unsold_listed_total INT(명단 총분양 Σ — govlist 행에만) — 둘 다 NULL 허용, 쓰는 곳은 앞으로 scripts/collectors/collect-unsold-govlist.mjs(PR-2, 아직 쓰기 없음). 2u 코드에서 unsold_source 를 읽는 곳 0건(11/02 확인) — 원표 unsold·unsold_history 값 변화는 첫 회차 반영 뒤 쪽지로."
     },
     "api_quota_log": {
       "owner": "mibunyang"
@@ -488,6 +488,10 @@
         "2u"
       ]
     },
+    "unsold_gov_list": {
+      "owner": "mibunyang",
+      "note": "미분양 소유(세션687 · 마이그 20261102000000) — 지자체 단지별 미분양 명단 원문 한 줄 = 한 행(대구·충남 xlsx · 경기 OpenAPI 면적대 1줄) · raw JSONB 원문 보존 · UNIQUE(source, as_of, batch_id, row_no) batch 교체 · RLS 켬·정책 0·service_role 만 S/I/U/D(+시퀀스) · 2u 읽기 없음 · 쓰는 곳 = scripts/collectors/collect-unsold-govlist.mjs(PR-2, 합치면 writers 대상 아님 — 미분양 단독 표). 설계서 docs/superpowers/plans/2026-11-01-govlist-unsold-source.md §3-1."
+    },
     "unsold_history": {
       "owner": "mibunyang",
       "readers": [
@@ -516,7 +520,7 @@
       "readers": [
         "2u"
       ],
-      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261031000000_view_card_builder.sql(세션676 PR-C — name 끝 회차·공고 종류 낱말 떼기 · builder = 공고 시공사(공동이면 「대표사 외 N」) · 부채비율 연결 = 대표사 DART 이름 · 184칸·2u 가 읽는 칸 그대로, 되돌림 _rollbacks/20261031000001 = 20261026000002 본문) · 그 전 20261026000002_view_add_range_cols.sql(세션661 범위 4칸 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax 추가, 되돌림 _rollbacks/20261026000003) — 묶음당 1행 구조는 20261013000000_view_one_card_bundle.sql 부터"
+      "note": "2u 가 전환 신호(collector_runs kosis-unsold 의 KOSIS_BUNDLE_APPLIED) 뒤 units·complexKey·memberIds 를 읽는다(2u 세션465 B22, 2026-10-14 — 세션617 '읽는 곳은 미분양뿐' 폐기). infra.nearby_facilities 를 SELECT * 로 노출. 정의 = supabase/migrations/20261102000002_view_unsold_govlist.sql(세션687 PR-1 — 20261031000000 본문 + 묶음 미분양 순위에 govlist(지자체 명단) 유효 6개월을 순위 0 에 · 순위 0 안 기준일 새 쪽 · 청약홈 값은 공급이 명단 총분양 50% 이상일 때만 명단 비공개를 이김 · 끝 새 칸 3 unsoldSource·unsoldListedHidden·unsoldListedAsOf → 187칸, 2u 가 읽는 칸 그대로 · 되돌림 _rollbacks/20261102000003 = 20261031000000 본문(DROP VIEW + GRANT)) · 그 전 20261031000000_view_card_builder.sql(세션676 PR-C — name 끝 회차·공고 종류 낱말 떼기 · builder = 공고 시공사(공동이면 「대표사 외 N」) · 부채비율 연결 = 대표사 DART 이름 · 184칸·2u 가 읽는 칸 그대로, 되돌림 _rollbacks/20261031000001 = 20261026000002 본문) · 그 전 20261026000002_view_add_range_cols.sql(세션661 범위 4칸 cmpMin·cmpMax·complexJeonseMin·complexJeonseMax 추가, 되돌림 _rollbacks/20261026000003) — 묶음당 1행 구조는 20261013000000_view_one_card_bundle.sql 부터"
     },
     "api_quota_daily": {
       "owner": "mibunyang",

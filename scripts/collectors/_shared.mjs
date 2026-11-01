@@ -705,6 +705,13 @@ export function hasSgisFirstRunPending(message) {
 export const APPLYHOME_EXPIRY_MONTHS = 6;
 
 /**
+ * govlist(지자체 단지별 미분양 명단) 값을 존중하는 기간(개월) — 명단 기준월(unsold_as_of) + 이 기간이 지나면
+ * KOSIS 가 다시 정한다(세션687 👤 Q2 「6개월」). VIEW apartments_flat 의 govlist `INTERVAL 'N months'` 와
+ * 같아야 한다 — scripts/_view-unsold-govlist-sql.test.mjs 가 두 값을 맞댄다.
+ */
+export const GOVLIST_EXPIRY_MONTHS = 6;
+
+/**
  * 공고일 + months 가 지났나(KST 날짜 기준, 경계 당일은 "안 지남").
  *
  * ⚠️ `new Date("YYYY-MM-DD")` 를 쓰지 않는다 — 형식이 조금만 어긋나도 엉뚱한 해가 조용히 통과한다
