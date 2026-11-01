@@ -1462,10 +1462,12 @@ export const HOLD_REVIEW_MONTHS = 6;
  * 사람 보류(hold, 세션570) 두 명단 — (a)(b)(c) 는 applyhome 만 보므로 hold 행이 섞여도 영향 없다:
  *   (d) DB 의 hold 명단 ≠ 기준 명단(`HOLD_BASELINE_IDS`) — 추가·해제된 id 를 펼친다
  *   (e) 보류일(unsold_as_of) + 6개월이 지난 hold — 재검토 알림(자동 해제 없음)
+ *   (f) 값(unsold)이나 률(unsold_rate)이 비어 있지 않은 hold — hold 는 "자료 없음"이라 둘 다 NULL 이어야 한다
+ *       (률 0 이 남으면 VIEW unsoldRate 0 → 위험 하위점수 10, 세션684)
  * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
  * (`ALWAYS_DEDUP_KINDS`, ⑨ 와 같은 방식).
  *
- * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
+ * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_rate?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
  *   applyhome·hold 출처 행(다른 출처가 섞여 있어도 걸러낸다).
  * @param {{ now?: Date, holdBaseline?: readonly string[] }} [opts] holdBaseline 없으면 HOLD_BASELINE_IDS
  * @returns {Issue[]}
@@ -1561,6 +1563,20 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
       at: `holdstale:${fingerprintIds(idsOf(holdStale))}`,
     });
   }
+  // (f) hold 인데 값·률이 남은 행(세션684) — 열쇠 접두 `holdval:` 은 (d) 의 `hold:` 와 겹치지 않는다
+  const holdWithValue = hold.filter((r) => r.unsold != null || r.unsold_rate != null);
+  if (holdWithValue.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-applyhome",
+      detail: `(f) 사람 보류(hold)인데 값·률이 비어 있지 않은 단지 ${holdWithValue.length}곳 — ${sample(holdWithValue)}`,
+      lines: [
+        "hold 는 '자료 없음'이라 unsold·unsold_rate 가 둘 다 NULL 이어야 합니다. 률 0 이 남으면 화면 위험 점수가 '미분양 0%'로 계산됩니다.",
+        "률 0 행은 backfill-unsold-source.mjs 의 mark_hold_from_zero_rate0 로 걸어야 률까지 비웁니다. 누가 값을 썼는지 확인하세요.",
+      ],
+      at: `holdval:${fingerprintIds(idsOf(holdWithValue))}`,
+    });
+  }
   return issues;
 }
 
@@ -1581,7 +1597,7 @@ export function holdAlertResolved(ahIssues) {
  */
 async function fetchApplyhomeUnsoldRows() {
   return /** @type {Array<Record<string, any>>} */ (await selectAll(
-    (s) => s.from("apartments").select("id, name, unsold, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"]),
+    (s) => s.from("apartments").select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"]),
     getSupabase(),
     "id",
   ));

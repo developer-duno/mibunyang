@@ -29,7 +29,7 @@ const byPrefix = (issues, prefix) => issues.find((i) => String(i.at).startsWith(
 /** (a)(b)(c) 시험은 hold 기준 명단을 비운다 — 그래야 (d)(명단 불일치)가 섞이지 않는다(세션570). */
 const NO_HOLD = /** @type {string[]} */ ([]);
 /** @param {string} id @param {object} [o] */
-const hold = (id, o = {}) => ({ id, name: `보류${id}`, unsold: null, unsold_source: "hold", unsold_as_of: "2026-09-24", competition_shortfall: null, ...o });
+const hold = (id, o = {}) => ({ id, name: `보류${id}`, unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-09-24", competition_shortfall: null, ...o });
 
 describe("checkApplyhomeUnsold — 세 명단 (a) 만료 (b) 공고일 없음 (c) 완판인데 값 남음", () => {
   it("정상 행만 있으면 이상 0건", () => {
@@ -109,7 +109,8 @@ describe("⑫ main 배선 (소스)", () => {
   });
 
   it("조회는 applyhome·hold 출처만, 판정에 쓰는 칸을 모두 가져온다(세션570)", () => {
-    expect(src).toContain('select("id, name, unsold, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"])');
+    // 세션684: (f) 가 률을 보므로 unsold_rate 도 가져온다
+    expect(src).toContain('select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"])');
     expect(src).not.toContain('.eq("unsold_source", "applyhome")');
   });
 });
@@ -203,5 +204,45 @@ describe("⑫ (d)(e) 사람 보류(hold) — 세션570", () => {
     expect(scoped).toHaveLength(2);
     const sent = new Set(scoped.map(dedupKey));
     expect(filterUnsent(dedupScope(issues, "daily"), sent)).toHaveLength(0);
+  });
+});
+
+describe("⑫ (f) 사람 보류(hold)인데 값·률이 남음 — 세션684", () => {
+  const base = { now: NOW, holdBaseline: ["h-1", "h-2", "h-3"] };
+
+  it("(f) 률 0 이 남은 hold(값은 NULL) → 이슈 1건, id 펼침 · at 은 명단 지문", () => {
+    const issues = checkApplyhomeUnsold([hold("h-1", { unsold_rate: 0 }), hold("h-2"), hold("h-3")], base);
+    const f = byPrefix(issues, "holdval:");
+    expect(f?.kind).toBe("applyhome-unsold");
+    expect(f?.detail).toContain("(f)");
+    expect(f?.detail).toContain("1곳");
+    expect(f?.detail).toContain("h-1");
+    expect(f?.detail).not.toContain("h-2");
+    expect(f?.at).toBe(`holdval:${fingerprintIds(["h-1"])}`);
+    expect(issues.filter((i) => String(i.at).startsWith("holdval:"))).toHaveLength(1);
+  });
+
+  it("(f) 값 0 이 남은 hold(률은 NULL) 도 같은 명단에 — 둘이면 지문도 둘의 것", () => {
+    const issues = checkApplyhomeUnsold([hold("h-1", { unsold_rate: 0 }), hold("h-2", { unsold: 0 }), hold("h-3")], base);
+    const f = byPrefix(issues, "holdval:");
+    expect(f?.detail).toContain("2곳");
+    expect(f?.at).toBe(`holdval:${fingerprintIds(["h-1", "h-2"])}`);
+  });
+
+  it("(f) 값·률 전부 NULL 이면 이상 0건", () => {
+    expect(checkApplyhomeUnsold([hold("h-1"), hold("h-2"), hold("h-3")], base)).toEqual([]);
+  });
+
+  it("(f) 는 hold 만 본다 — applyhome 행의 률(0 포함)은 걸리지 않는다", () => {
+    const issues = checkApplyhomeUnsold(
+      [ah({ id: "ah-r0", unsold: 0, unsold_rate: 0 }), ah({ id: "ah-r5", unsold_rate: 5 }), hold("h-1"), hold("h-2"), hold("h-3")],
+      base,
+    );
+    expect(byPrefix(issues, "holdval:")).toBeUndefined();
+  });
+
+  it("(f) 열쇠 접두 holdval: 는 (d) 해소 판정·열쇠 정리 접두 hold: 와 겹치지 않는다", () => {
+    const issues = checkApplyhomeUnsold([hold("h-1", { unsold_rate: 0 }), hold("h-2"), hold("h-3")], base);
+    expect(issues.map((i) => String(i.at)).some((a) => a.startsWith("hold:"))).toBe(false);
   });
 });
