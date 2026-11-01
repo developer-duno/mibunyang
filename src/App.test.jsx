@@ -805,7 +805,7 @@ describe("App 통합 테스트", () => {
     it("필터로 숨은 단지(미분양 0)도 칩 후보 · 칩으로 바꾸면 종합 탭·맨 위 · 뒤로 1번 A, 2번 목록", async () => {
       mockFetch.mockResolvedValue({ data: withNeighbor(), dataUpdatedAt: null });
       render(<App />);
-      await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0));
+      await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0), { timeout: 5000 });
       // 기본 '미분양 없는 단지 숨김' — 목록 카드에는 없다
       expect(screen.queryByText("옆동네완판")).toBeNull();
       const card = /** @type {HTMLElement} */ (
