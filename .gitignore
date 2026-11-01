@@ -101,6 +101,7 @@ schools-neis-errors.txt
 
 # 바이너리/데이터
 *.xlsx
+!scripts/collectors/__fixtures__/govlist/*.xlsx
 *.pdf
 *.doc
 *.docx
