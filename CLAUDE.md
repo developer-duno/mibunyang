@@ -29,6 +29,14 @@ npm run format:check      # prettier --check src/ (CI 게이트, endOfLine auto 
 
 > CI(`ci.yml`) = lint → format:check → typecheck×3 → audit×13(env-key·monitor·collector·fill-matrix·orphan-collectors·hooks-wiring·declared-deps·playwright-cache·cron-concurrency·node-esm-chain·rules-paths·customer-facing-excuses·shared-db-ownership) → test → build. 머지 전 전부 green 필수. ⚠️ 개수는 늘어난다 — 단정 전 `grep -oE 'scripts/audit-[a-z-]+\.mjs' .github/workflows/ci.yml | sort -u | wc -l` 로 실측(`node-esm-chain` 은 `--loader` 를 거쳐 실행돼 `run: node scripts/audit-` 만 세면 빠진다).
 
+## 머지 뒤 라이브 확인 (전역 §0-8 · 2026-11-02 실측 · 절차 상세 = `release` 스킬)
+
+- **배포 곳**: Vercel git 자동 배포 — main 에 들어간 커밋마다 Production 배포(`vercel[bot]`). 화면 데이터(`public/data`)는 `daily-deploy.yml`(03:0x KST)의 `data: daily refresh` 커밋이 같은 길로 배포.
+- **그 커밋 배포 성공 확인**(맨 위 기록 아님 · 전체 해시로): `gh api repos/developer-duno/mibunyang/commits/<전체 해시>/status --jq '.statuses[]|"\(.context) \(.state)"'` → `Vercel success` · 배포 기록은 `gh api "repos/developer-duno/mibunyang/deployments?sha=<전체 해시>" --jq '.[]|"\(.environment) \(.created_at)"'` → `Production`. `pending` 이면 끝날 때까지 스스로 끝나는 루프로.
+- **확인 주소**(기준 `https://www.xn--hg3bi2ac4o1ig57cnoa.com` · 맨 도메인은 307 로 www): `/` 200 · `/data/meta.json` 200(`fetchedAt` 이 그날 03시 뒤) · `/api/upcoming` 200 · 관리자 `/api/admin/collector-status` 비로그인 401 · `/api/auth/verify` GET 405. ⚠ 없는 `/api/…` 주소도 SPA 첫 화면으로 200 이 난다 — 200 만 보고 "있다" 단정 금지(크기·내용으로).
+- **바뀐 글자 확인**: 첫 화면 HTML 의 `assets/index-*.js` 번들을 받아 바뀐 문구 grep · 단지 정적 장은 `/apt/<id>` · DB·마이그만 바꾼 PR 은 "화면 변화 없음(운영 DB 적용은 따로)"이라 적는다.
+- **로그인 뒤 화면**: 카카오 OAuth 는 운영 도메인에서만 → `live-verify` 스킬의 번들 grep 또는 사장님 크롬 조종(로그인 토큰을 만들어 내지 않는다).
+
 ## 아키텍처 개요
 
 ```
