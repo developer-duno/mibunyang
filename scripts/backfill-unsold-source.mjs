@@ -50,6 +50,11 @@
  *                                   행용. rate 0 이 남으면 VIEW unsoldRate 0 → 위험 하위점수 10 이라 rate 도 같이 비운다)
  *   - `release_hold_to_zero_rate0` expect `{unsold:null, unsold_source:"hold"}`
  *                                 → set `{unsold:0, unsold_rate:0, unsold_source:null, unsold_as_of:null}` (mark_hold_from_zero_rate0 되돌림)
+ *   - `mark_hold_from_kosis`      expect `{unsold:<KOSIS 값>, unsold_rate:<KOSIS 률>, unsold_source:"kosis", unsold_as_of:null}`
+ *                                 → set `{unsold:null, unsold_rate:null, unsold_source:"hold", unsold_as_of:<보류 결정일>}` (세션686 — KOSIS 비례배분
+ *                                   값이 지자체 명단과 어긋나 보류. 값·률을 계획에 적어 그 사이 KOSIS 가 바꾼 행은 덮지 않는다)
+ *   - `release_hold_to_kosis`     expect `{unsold:null, unsold_source:"hold"}`
+ *                                 → set `{unsold, unsold_rate, unsold_source:"kosis", unsold_as_of:null}` (mark_hold_from_kosis 되돌림)
  * ⚠️ 배포 순서: mark_hold 는 새 수집기 코드가 본 폴더에 pull 된 **뒤에만** 반영한다 — 옛 코드는 hold 를
  * '값 없음'으로 보고 다음 회차에 0 으로 덮고 출처까지 kosis 로 바꾼다(마이그 20260924000600 머리말).
  * 감시 ⑫(d) 기준 명단(monitor-collectors.mjs HOLD_BASELINE_IDS)도 같은 PR 에서 고친다.
@@ -105,9 +110,10 @@ export function checkPlanRow(row, dbRow) {
 
 /**
  * 사람 보류(hold) 계획 행을 계약(머리말 "세션570" 절) 그대로 만든다. DB 접근 없는 순수 함수.
- * @param {"mark_hold" | "release_hold_to_null" | "release_hold_to_applyhome" | "mark_hold_from_zero" | "release_hold_to_zero" | "mark_hold_from_zero_rate0" | "release_hold_to_zero_rate0"} op
+ * @param {"mark_hold" | "release_hold_to_null" | "release_hold_to_applyhome" | "mark_hold_from_zero" | "release_hold_to_zero" | "mark_hold_from_zero_rate0" | "release_hold_to_zero_rate0" | "mark_hold_from_kosis" | "release_hold_to_kosis"} op
  * @param {{ id: string; name?: string; date?: string | null; unsold?: number; unsold_rate?: number; note?: string }} p
- *   date = mark_hold 의 보류 결정일 / release_hold_to_applyhome 의 공고일(YYYY-MM-DD)
+ *   date = mark_hold·mark_hold_from_* 의 보류 결정일 / release_hold_to_applyhome 의 공고일(YYYY-MM-DD)
+ *   unsold·unsold_rate = release_hold_to_applyhome·release_hold_to_kosis 의 set 값 / mark_hold_from_kosis 의 expect 값
  * @returns {PlanRow & { note?: string }}
  */
 export function buildHoldPlanRow(op, p) {
@@ -145,6 +151,22 @@ export function buildHoldPlanRow(op, p) {
       ...head,
       expect: { unsold: null, unsold_source: "hold" },
       set: { unsold: 0, unsold_rate: 0, unsold_source: null, unsold_as_of: null },
+    };
+  }
+  if (op === "mark_hold_from_kosis") {
+    if (typeof p.unsold !== "number" || typeof p.unsold_rate !== "number") throw new Error(`${op}: unsold·unsold_rate 숫자 필요 — ${p.id}`);
+    return {
+      ...head,
+      expect: { unsold: p.unsold, unsold_rate: p.unsold_rate, unsold_source: "kosis", unsold_as_of: null },
+      set: { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: needDate() },
+    };
+  }
+  if (op === "release_hold_to_kosis") {
+    if (typeof p.unsold !== "number" || typeof p.unsold_rate !== "number") throw new Error(`${op}: unsold·unsold_rate 숫자 필요 — ${p.id}`);
+    return {
+      ...head,
+      expect: { unsold: null, unsold_source: "hold" },
+      set: { unsold: p.unsold, unsold_rate: p.unsold_rate, unsold_source: "kosis", unsold_as_of: null },
     };
   }
   if (op === "release_hold_to_null") {

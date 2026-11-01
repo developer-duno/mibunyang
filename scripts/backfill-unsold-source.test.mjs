@@ -627,3 +627,71 @@ describe("hold op 2종 추가 (세션684) — mark_hold_from_zero_rate0 / releas
     for (const op of ["`mark_hold_from_zero_rate0`", "`release_hold_to_zero_rate0`"]) expect(src).toContain(op);
   });
 });
+
+// ── 세션686 — KOSIS 비례배분 값을 보류로(mark_hold_from_kosis) + 되돌림(release_hold_to_kosis) ──
+// 두류센트레빌 더 파크: KOSIS 배분 165 가 총분양 52 를 넘고 대구시 명단(수 비공개)과 어긋남 → 사장님 결정 ③ 임시 보류.
+describe("hold op 2종 추가 (세션686) — mark_hold_from_kosis / release_hold_to_kosis", () => {
+  it("mark_hold_from_kosis — expect KOSIS 값·률·출처 kosis·기준일 NULL → set 값·률 NULL·출처 hold·보류일", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("mark_hold_from_kosis", { id: "ah-2025910146", unsold: 165, unsold_rate: 38.1, date: "2026-11-01" });
+    expect(row).toEqual({
+      id: "ah-2025910146", op: "mark_hold_from_kosis",
+      expect: { unsold: 165, unsold_rate: 38.1, unsold_source: "kosis", unsold_as_of: null },
+      set: { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-01" },
+    });
+    // 지금 DB 가 그 KOSIS 값이면 통과, 그 사이 KOSIS 가 다른 값을 썼으면 덮지 않는다
+    expect(checkPlanRow(row, dbRow({ id: "ah-2025910146", unsold: 165, unsold_rate: 38.1, unsold_source: "kosis", unsold_as_of: null })).ok).toBe(true);
+    const r = checkPlanRow(row, dbRow({ id: "ah-2025910146", unsold: 160, unsold_rate: 36.9, unsold_source: "kosis", unsold_as_of: null }));
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe("unsold: DB=160 expect=165");
+    // 출처가 kosis 가 아니면(청약홈·사람 보류) 거절
+    expect(checkPlanRow(row, dbRow({ id: "ah-2025910146", unsold: 165, unsold_rate: 38.1, unsold_source: "applyhome", unsold_as_of: null })).ok).toBe(false);
+    // 숫자 빠지면·날짜 빠지면 throw
+    expect(() => buildHoldPlanRow("mark_hold_from_kosis", { id: "x", unsold_rate: 38.1, date: "2026-11-01" })).toThrow(/unsold/);
+    expect(() => buildHoldPlanRow("mark_hold_from_kosis", { id: "x", unsold: 165, date: "2026-11-01" })).toThrow(/unsold/);
+    expect(() => buildHoldPlanRow("mark_hold_from_kosis", { id: "x", unsold: 165, unsold_rate: 38.1 })).toThrow(/date/);
+    expect(() => buildHoldPlanRow("mark_hold_from_kosis", { id: "x", unsold: 165, unsold_rate: 38.1, date: "20261101" })).toThrow(/date/);
+  });
+
+  it("release_hold_to_kosis — expect 값 NULL·출처 hold → set KOSIS 값·률·출처 kosis·기준일 NULL (되돌림)", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const row = buildHoldPlanRow("release_hold_to_kosis", { id: "ah-2025910146", unsold: 165, unsold_rate: 38.1 });
+    expect(row.expect).toEqual({ unsold: null, unsold_source: "hold" });
+    expect(row.set).toEqual({ unsold: 165, unsold_rate: 38.1, unsold_source: "kosis", unsold_as_of: null });
+    expect(checkPlanRow(row, dbRow({ id: "ah-2025910146", unsold: null, unsold_rate: null, unsold_source: "hold" })).ok).toBe(true);
+    expect(checkPlanRow(row, dbRow({ id: "ah-2025910146", unsold: 165, unsold_rate: 38.1, unsold_source: "kosis" })).ok).toBe(false);
+    expect(() => buildHoldPlanRow("release_hold_to_kosis", { id: "x", unsold: 165 })).toThrow(/unsold/);
+    expect(() => buildHoldPlanRow("release_hold_to_kosis", { id: "x", unsold_rate: 38.1 })).toThrow(/unsold/);
+  });
+
+  it("★ 정본 계획 파일 대조 — hold-plan-2026-11-01-duryu(.json·-REVERT.json) 의 행마다 expect·set 이 buildHoldPlanRow 출력과 같다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    /** @param {string} name */
+    const load = (name) => JSON.parse(readFileSync(fileURLToPath(new URL(`../docs/audits/${name}`, import.meta.url)), "utf8"));
+    const KOSIS = { unsold: 165, unsold_rate: 38.1 }; // 146 행의 2026-10 KOSIS 값(전이표 실측)
+    const fwd = load("hold-plan-2026-11-01-duryu.json");
+    const rev = load("hold-plan-2026-11-01-duryu-REVERT.json");
+    // 명단·op 를 리터럴로 못 박는다(파일에서 읽은 op 를 그대로 넘기면 항등식이 된다)
+    expect(fwd.plan.map((/** @type {any} */ r) => [r.id, r.op])).toEqual([
+      ["ah-2025910146", "mark_hold_from_kosis"],
+      ["ah-2025910254", "mark_hold_from_zero_rate0"],
+    ]);
+    expect(rev.plan.map((/** @type {any} */ r) => [r.id, r.op])).toEqual([
+      ["ah-2025910146", "release_hold_to_kosis"],
+      ["ah-2025910254", "release_hold_to_zero_rate0"],
+    ]);
+    for (const r of [...fwd.plan, ...rev.plan]) {
+      const built = buildHoldPlanRow(r.op, { id: r.id, date: "2026-11-01", ...KOSIS });
+      expect({ id: r.id, op: r.op, expect: r.expect, set: r.set }).toEqual({ id: built.id, op: built.op, expect: built.expect, set: built.set });
+    }
+  });
+
+  it("머리말 계약 — 새 op 2종 이름이 문서에 있다", async () => {
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./backfill-unsold-source.mjs", import.meta.url)), "utf8");
+    for (const op of ["`mark_hold_from_kosis`", "`release_hold_to_kosis`"]) expect(src).toContain(op);
+  });
+});

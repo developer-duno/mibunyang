@@ -1,0 +1,19 @@
+{
+  "_about": "hold-plan-2026-11-01-duryu.json 의 되돌림 — 두 행을 보류 전 값으로. 적용 = node scripts/backfill-unsold-source.mjs --plan=docs/audits/hold-plan-2026-11-01-duryu-REVERT.json [--apply]. ⚠️ 146 행의 KOSIS 값(165 · 38.1)은 2026-10 회차 값이라, 되돌린 뒤 다음 KOSIS 정기 회차(매월 9일)가 다시 덮는다.",
+  "plan": [
+    {
+      "id": "ah-2025910146",
+      "name": "두류센트레빌 더 파크(조합원 취소분)",
+      "op": "release_hold_to_kosis",
+      "expect": { "unsold": null, "unsold_source": "hold" },
+      "set": { "unsold": 165, "unsold_rate": 38.1, "unsold_source": "kosis", "unsold_as_of": null }
+    },
+    {
+      "id": "ah-2025910254",
+      "name": "두류센트레빌 더 파크(조합원 취소분)(2회차)",
+      "op": "release_hold_to_zero_rate0",
+      "expect": { "unsold": null, "unsold_source": "hold" },
+      "set": { "unsold": 0, "unsold_rate": 0, "unsold_source": null, "unsold_as_of": null }
+    }
+  ]
+}
