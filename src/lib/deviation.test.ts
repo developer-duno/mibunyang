@@ -6,6 +6,7 @@ import {
   estimatedDeviation,
   resolveDeviationInput,
   deviationInputsEqual,
+  withMissingText,
 } from "./deviation";
 import {
   CARD_DEVIATION_FIELDS,
@@ -505,5 +506,40 @@ describe("deviationInputsEqual — memo 비교는 추정 재료까지 본다 (�
   it("필드 값이 바뀌면 '다르다', 아무것도 안 바뀌면 '같다'", () => {
     expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base, pp: 1300 })).toBe(false);
     expect(deviationInputsEqual(OVERVIEW_DEVIATION_FIELDS, base, { ...base })).toBe(true);
+  });
+
+  // 세션689: 미분양 줄 끝 글자 재료(명단 비공개)만 바뀌어도 카드가 다시 그려져야 옛 「미수집」이 안 남는다
+  it("빈 줄 끝 글자 재료(unsoldListedHidden)만 바뀌어도 '다르다' — 카드 3줄 목록에서도", () => {
+    const u = { ...base, unsoldRate: null };
+    expect(deviationInputsEqual(CARD_DEVIATION_FIELDS, u, { ...u, unsoldListedHidden: true })).toBe(false);
+    expect(deviationInputsEqual(CARD_DEVIATION_FIELDS, u, { ...u })).toBe(true);
+  });
+});
+
+// 세션689 PR-3(👤 11/04 「'비공개'로」) — 미분양 줄이 비었고 명단 비공개면 끝 글자만 「비공개」
+describe("withMissingText — 빈 줄 끝 글자 (세션689)", () => {
+  const missing = computeDeviation(unsoldSpec, null, "대구", null);
+  it("명단 비공개면 「비공개」 · 상태·막대(missing)는 그대로 · 스크린리더도 같은 사실", () => {
+    const d = withMissingText(unsoldSpec, { unsoldListedHidden: true }, missing);
+    expect(d).toEqual({ ...missing, text: "비공개" });
+    expect(deviationAriaLabel(unsoldSpec, d, "대구", "")).toBe("미분양 비공개.");
+  });
+  it("칸 없음·false 면 지금 그대로 「미수집」 · 「자료가 아직 없습니다」", () => {
+    for (const v of [undefined, null, false, "true"]) {
+      const d = withMissingText(unsoldSpec, { unsoldListedHidden: v }, missing);
+      expect(d.text).toBe("미수집");
+      expect(deviationAriaLabel(unsoldSpec, d, "대구", "")).toBe("미분양 자료가 아직 없습니다.");
+    }
+  });
+  it("값이 있는 줄·missingText 없는 줄은 손대지 않는다", () => {
+    const ok = computeDeviation(
+      unsoldSpec,
+      4,
+      "경기",
+      computeRegionalStats(Array.from({ length: 21 }, (_, i) => ({ region: "경기", unsoldRate: i }) as unknown as Apt))
+    );
+    expect(withMissingText(unsoldSpec, { unsoldListedHidden: true }, ok)).toBe(ok);
+    const pm = computeDeviation(priceSpec, null, "대구", null);
+    expect(withMissingText(priceSpec, { unsoldListedHidden: true }, pm).text).toBe("미수집");
   });
 });

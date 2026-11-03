@@ -165,6 +165,23 @@ describe("DeviationStrip — 전국 폴백 배지", () => {
   });
 });
 
+// 세션689 PR-3(👤 11/04) — 명단 등재·수 비공개 카드: 미분양 줄 끝 글자 「비공개」, 빗금 막대는 그대로
+describe("DeviationStrip — 미분양 명단 비공개 (세션689)", () => {
+  it("「비공개」 1줄 + 나머지 빈 줄은 「미수집」 그대로 · 줄 수 그대로", () => {
+    render(
+      <DeviationStrip
+        apt={apt({ price: null, unsoldRate: null, subwayDist: 9999, unsoldListedHidden: true })}
+        fields={CARD_DEVIATION_FIELDS}
+        regionStats={gyeonggiStats()}
+      />
+    );
+    expect(screen.getAllByText("비공개")).toHaveLength(1);
+    expect(screen.getAllByText("미수집")).toHaveLength(2);
+    expect(screen.getAllByRole("img")).toHaveLength(3);
+    expect(screen.getByRole("img", { name: "미분양 비공개." })).toBeTruthy();
+  });
+});
+
 describe("DeviationStrip — 통계가 없을 때", () => {
   it("regionStats 가 null 이면 전부 미수집으로 그린다 (크래시 0)", () => {
     render(<DeviationStrip apt={apt()} fields={CARD_DEVIATION_FIELDS} regionStats={null} />);

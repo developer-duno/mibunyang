@@ -89,6 +89,49 @@ describe("haversineKm", () => {
   });
 });
 
+// 세션689 PR-3(메인 판정 ① — 설계서 §6 「칩과 모순 금지」) — 이웃으로 뜬 명단 비공개 단지
+describe("인근 단지 칩 — 명단 등재·수 비공개 (세션689)", () => {
+  const HID = {
+    region: "대구",
+    gu: "달서구",
+    unsold: null,
+    unsoldSource: "govlist",
+    unsoldListedHidden: true,
+    unsoldListedAsOf: "2026-09-30",
+  };
+  it("글자 = 허브 줄과 같은 문구표 「미분양 비공개 (대구시 2026년 9월말 명단)」 · 명단 출처 0 = 「미분양 0 (… 명단 미등재)」", () => {
+    expect(nearbyUnsoldText(null, HID)).toBe("미분양 비공개 (대구시 2026년 9월말 명단)");
+    expect(nearbyUnsoldText(0, { ...HID, unsold: 0, unsoldListedHidden: false })).toBe(
+      "미분양 0 (대구시 2026-09 명단 미등재)"
+    );
+  });
+  it("칸이 없거나 false·govlist 아님이면 지금 그대로(남음·분양 완료·모름)", () => {
+    for (const a of [undefined, {}, { unsoldListedHidden: false, unsoldSource: "kosis" }]) {
+      expect(nearbyUnsoldText(29, a)).toBe("미분양 29세대");
+      expect(nearbyUnsoldText(0, a)).toBe("분양 완료");
+      expect(nearbyUnsoldText(null, a)).toBe("미분양 —");
+    }
+  });
+  it("비공개 이웃은 「남음」 쪽(굵게) — 가까운 모름보다 앞 · 칸 없는 모름은 지금처럼 뒤", () => {
+    const self = apt("s", 0, { region: "대구", gu: "달서구" });
+    const list = [
+      self,
+      apt("near-null", 0.2, { region: "대구", gu: "달서구", unsold: null }),
+      apt("far-hidden", 2.0, HID),
+      apt("mid-unsold", 1.0, { region: "대구", gu: "달서구" }),
+    ];
+    const chips = pickNearby(self, createNearbyIndex(list));
+    expect(chips.map((c) => [c.id, c.hasUnsold])).toEqual([
+      ["mid-unsold", true],
+      ["far-hidden", true],
+      ["near-null", false],
+    ]);
+    expect(chips[1].unsoldText).toBe("미분양 비공개 (대구시 2026년 9월말 명단)");
+    expect(chips[1].meta).toBe("2.0km · 미분양 비공개 (대구시 2026년 9월말 명단)");
+    expect(chips[2].unsoldText).toBe("미분양 —");
+  });
+});
+
 describe("pickNearby — 결정 41 후보·순서", () => {
   it("미분양 남은 단지 먼저(가까운 순) → 0·모름(가까운 순) → 6개까지", () => {
     const self = apt("s", 0);

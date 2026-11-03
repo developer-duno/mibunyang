@@ -169,6 +169,21 @@ describe("AptCard", () => {
     expect(container.textContent).toContain("다라건설 외 1");
   });
 
+  // 세션689 PR-3 — 명단 비공개 칩 재료(unsoldListedHidden·unsoldListedAsOf)만 바뀌어도 다시 그린다.
+  // ⚠️ 뮤테이션 대상: memo 비교에서 그 줄을 빼면 compare 가 true 가 되고 칩이 안 생겨 red.
+  it("같은 id 에서 명단 비공개 칸만 바뀌어도 다시 그린다 — 칩 「미분양 수 비공개 · 대구시 9월 명단」", () => {
+    const base = makeApt({ id: "ah-1", region: "대구", unsold: null, unsoldRate: null });
+    const listed = { ...base, unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30" };
+    const nextMonth = { ...listed, unsoldListedAsOf: "2026-10-31" };
+    const compare = /** @type {any} */ (AptCard).compare;
+    expect(compare(makeProps({ apt: base }), makeProps({ apt: listed }))).toBe(false);
+    expect(compare(makeProps({ apt: listed }), makeProps({ apt: nextMonth }))).toBe(false);
+    const { rerender, container } = render(<AptCard {...makeProps({ apt: base })} />);
+    expect(container.textContent).not.toContain("비공개");
+    rerender(<AptCard {...makeProps({ apt: listed })} />);
+    expect(container.textContent).toContain("미분양 수 비공개 · 대구시 9월 명단");
+  });
+
   it("혜택이 0이면 혜택 영역 미표시", () => {
     const res = makeRes();
     res.cats.benefit.totalWon = 0;

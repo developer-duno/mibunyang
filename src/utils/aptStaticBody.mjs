@@ -15,6 +15,8 @@
  * `.vercelignore` 는 `scripts/` 새 파일을 막고 `src/**\/*.mjs` 는 통과시킨다 — 그래서 여기(`src/utils/`)에 둔다.
  */
 
+import { unsoldFieldLabel } from "./unsoldState.mjs";
+
 /** 상세 창 종합 탭 맨 아래 출처 글 — 원본 `src/components/DetailModal.tsx` 출처 footer(글자 그대로 · 시험이 소스 대조) */
 export const SOURCE_TEXT =
   "출처: 청약홈(국토교통부) · 카카오 로컬 API · KOSIS(통계청) · 국토부 실거래가 · NEIS(교육부)";
@@ -87,11 +89,12 @@ export function hubUnitsText(units, unsold) {
 }
 
 /**
- * 미분양 표시 — 원본 fieldMeta.ts FIELD_META.unsold.fmt(0·모름은 "—").
- * @param {unknown} v @returns {string}
+ * 미분양 표시 — 원본 fieldMeta.ts FIELD_META.unsold.fmt(0·모름은 "—" · 세션689: 명단 등재·비공개 = 「비공개 (… 명단)」,
+ * 명단 출처 0 = 「0 (… 명단 미등재)」 — 글자는 문구표 `UNSOLD_STATE_LABEL`(unsoldState.mjs)).
+ * @param {unknown} v @param {Record<string, any>} [a] 단지 행(명단 칸을 읽는다 · 없으면 옛 그대로) @returns {string}
  */
-export function unsoldFieldText(v) {
-  return v != null && Number(v) > 0 ? `${Number(v).toLocaleString("ko-KR")}세대` : "—";
+export function unsoldFieldText(v, a) {
+  return unsoldFieldLabel(v, a);
 }
 
 /** 원본 format.ts ADDR_SIDO_SHORT */
@@ -962,7 +965,7 @@ export function basicLinesNode(a) {
   const price = fmtPriceNode(a.price);
   if (price !== "-") out.push(`분양가: ${price}${hasKnownAreaNode(a.area) ? ` (전용 ${fmtAreaNode(a.area)})` : ""}`);
   const units = hubUnitsText(a.units, a.unsold);
-  const unsold = unsoldFieldText(a.unsold);
+  const unsold = unsoldFieldText(a.unsold, a);
   const uu = [units !== "정보 없음" ? `총 ${units}` : null, unsold !== "—" ? `미분양 ${unsold}` : null].filter(Boolean);
   if (uu.length) out.push(uu.join(" · "));
   const moveIn = fmtMoveInNode(a.completion, a.presaleMoveIn);

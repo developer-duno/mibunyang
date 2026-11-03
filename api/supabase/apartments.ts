@@ -162,6 +162,11 @@ function sanitizeBasics(row: any) {
     unsoldRate: units <= 1 ? null
       : (row.unsoldRate != null && row.unsoldRate > 100) ? null
       : (row.unsoldRate ?? null),
+    // 세션689 PR-3: 미분양 상태 칸 3(VIEW 20261102000002 끝 3줄) — 허용목록이라 빠지면 이 응답에서 칩·상세 「비공개」가 사라진다.
+    //   칸이 없으면(옛 VIEW) null — 화면은 null/false 를 지금과 같게 그린다(src/utils/unsoldState.mjs).
+    unsoldSource: row.unsoldSource ?? null,
+    unsoldListedHidden: row.unsoldListedHidden === true,
+    unsoldListedAsOf: row.unsoldListedAsOf ?? null,
     updatedAt: row.updatedAt ?? null,
     completion: row.completion ?? "",
     heating: row.heating ?? null,
