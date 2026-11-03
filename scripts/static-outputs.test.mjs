@@ -129,6 +129,13 @@ describe("buildListData", () => {
   });
 });
 
+describe("buildListData — 지자체 명단 칸(세션691)", () => {
+  it("새 칸 3(unsoldSource·unsoldListedHidden·unsoldListedAsOf)은 목록에 남는다 — 상세 전용으로 옮기면 칩·필터·정적 장이 조용히 「—」가 된다(세션691 적대 🟡1)", () => {
+    const [row] = buildListData([makeApt("g", { unsoldSource: "govlist", unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30" })]);
+    expect(row).toMatchObject({ unsoldSource: "govlist", unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30" });
+  });
+});
+
 describe("buildDetailBuckets", () => {
   const apts = Array.from({ length: 200 }, (_, i) => makeApt(`ap-${i}`));
   const buckets = buildDetailBuckets(apts);
