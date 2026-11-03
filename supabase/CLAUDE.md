@@ -190,6 +190,8 @@ Supabase Advisor `security_definer_view`(WARN)·`function_search_path_mutable`(E
 
 ### 방법 A — supabase CLI 단발 적용 (세션 274 답습, 로컬 작업 시 권장)
 
+> ⚠ **이 PC 는 LINKED 가 아니다**(세션690 11/04 실측 — `supabase projects list` 에 ● 없음) → 방법 A 는 못 쓰고 **방법 B(Dashboard SQL Editor)** 로 적용했다. LINKED 로 만드는 것(`supabase link --project-ref rwdtljipvmqpazrimyns`, 비밀번호 입력)은 사장님 결정.
+
 로컬에 `supabase` CLI 가 로그인 + 프로젝트 LINKED 돼 있으면 (`supabase projects list`
 에 `rwdtljipvmqpazrimyns` ● LINKED):
 

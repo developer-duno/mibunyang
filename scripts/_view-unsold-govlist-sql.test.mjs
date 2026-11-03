@@ -469,6 +469,8 @@ describe("bundle_unsold 순위 — SQL 글자를 해석기로 돌린다", () => 
   it("만료 경계: 기준월 + 6개월 = 오늘이면 유효 · 하루 전 기준월이면 만료(Postgres 말일 맞춤)", () => {
     const at = (/** @type {string} */ asOf) => pickNew([{ id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: asOf }, { id: "k", unsold: 9, unsold_source: "kosis" }], "k", TODAY).id;
     expect(at("2026-05-02")).toBe("g"); // 05-02 + 6개월 = 11-02 ≥ 오늘
+    // 경계 당일 이긴 비공개 행은 「비공개」 표시도 켜져야 한다 — 순위와 b_listed_hidden 의 만료 판정이 어긋나면 하루 동안 「자료 없음」으로 보인다(세션691 적대 🟡2)
+    expect(pickNew([{ id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: "2026-05-02" }, { id: "k", unsold: 9, unsold_source: "kosis" }], "k", TODAY)).toMatchObject({ id: "g", b_listed_hidden: true });
     expect(at("2026-05-01")).toBe("k"); // 11-01 < 오늘
     // 말일: 04-30 + 6개월 = 10-30 · 08-31 + 6개월 = 02-28(해석기 자체 확인)
     expect(addMonths("2026-08-31", 6)).toBe("2027-02-28");
