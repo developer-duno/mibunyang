@@ -5,6 +5,8 @@ import { BUILDER_DEBT_TIERS } from "@/constants/scoringTiers";
 // 그 순간부터 둘이 어긋난다(이번 사고가 정확히 그 어긋남이었다).
 // 번들 비용 0: `scoreLocation` 이 이미 이 파일을 쓰고, 카드는 그 스코어링을 이미 로드한다.
 import { NOXIOUS_PENALTY, consortiumRep } from "@/constants/brands";
+// 미분양 상태 문구표 — 상세 「미분양 세대」·정적 장·점수 detail 과 같은 출처(세션689 PR-3). 작은 .mjs 한 장이라 첫 화면 번들 영향 미미.
+import { UNSOLD_STATE_LABEL, isUnsoldListedHidden, unsoldListSource } from "@/utils/unsoldState.mjs";
 import type { Apt } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -92,12 +94,17 @@ export const CHIP_ORDER: Readonly<Record<string, number>> = {
   crimeCaution: 16, // 치안주의 4등급 (−0.10 / 26.0%)
   noxiousNear: 17, // 혐오시설 1km 내 (−0.12 / 56.7%)
   // ── 약점: 계급 3 (엔진에 연결 자체가 없어 감점 0) ──
-  // 이 넷은 "사실"이지 "점수"가 아니다(scoring/ 전체 grep 0건). 그래서 맨 뒤다 —
+  // 이 다섯은 "사실"이지 "점수"가 아니다(scoring/ 전체 grep 0건 · 명단 비공개는 점수가 모름 40 그대로). 그래서 맨 뒤다 —
   // 그래도 손님이 알 값이라 지우지 않고 접힘 안에 남긴다.
   northFacing: 18, // 북향 계열 (+0.04 = 사실상 0 / 2.7%)
   corridor: 19, // 복도식 (0 / 3.9%)
-  heatLpg: 20, // LPG난방 (0 / 18.1%)
-  unsoldEvent: 21, // 추가 모집 (0 / 47.0%)
+  // 세션689 PR-3(👤 Q4 — 계급 규칙 그대로): 지자체 명단 등재·수 비공개. 점수는 모름 40 그대로(Q3)라 감점 0 → 계급 3.
+  //   노출률은 **추정**(첫 명단 반영 전 · DB 값 0): 대구 비공개 등재 실측 약 28곳 ~ 충남 등재가 6개월 만료 안에서 전부
+  //   붙을 때 최대 +92곳 → 28~120 / 1,696 = 1.7~7.1%(설계서 §10 첫 회차 상한 · 11/04 운영 카드 수). 상한 쪽으로 잡아
+  //   복도식(3.9%)과 LPG(18.1%) 사이 — 첫 회차 뒤 실측으로 다시 잰다. 그래도 추가 모집(47%)보다는 늘 앞이다.
+  unsoldListedHidden: 20,
+  heatLpg: 21, // LPG난방 (0 / 18.1%)
+  unsoldEvent: 22, // 추가 모집 (0 / 47.0%)
 
   // ── 강점 ── 돈으로 환산되는 것 → 입지 → 상품
   discount: 40, // 할인 — ⚠️ 2026-08-10 운영 1,646곳 중 **0곳**. 값이 안 들어와 렌더가 도달하지 않는다.
@@ -479,6 +486,14 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   }
   if (crime != null && crime <= 2) {
     out.push({ id: "crimeGood", text: "치안우수", tone: "green", layer: "good" });
+  }
+  // 세션689 PR-3: 지자체 명단에 올라 있으나 수는 비공개(VIEW `unsoldListedHidden` — 칸이 없거나 거짓이면 칩 없음).
+  //   수를 모르므로 「미분양 30%↑」 칩(unsoldRate null)은 안 뜨고, 상태 칩도 날짜만(moveInUnknown) 그대로다.
+  //   글자는 문구표 `UNSOLD_STATE_LABEL`(src/utils/unsoldState.mjs) — 상세·정적 장·점수 detail 과 같은 말.
+  if (isUnsoldListedHidden(a)) {
+    const chipText = UNSOLD_STATE_LABEL.hidden.chip;
+    if (chipText)
+      out.push({ id: "unsoldListedHidden", text: chipText(unsoldListSource(a)), tone: "amber", layer: "bad" });
   }
   // 무순위 공고 발생 단지 — ah- 단지만 (다른 prefix 는 0 의 의미가 "정보 없음")
   if (Number(a.unsoldEventCount ?? 0) > 0 && String(a.id ?? "").startsWith("ah-")) {

@@ -36,6 +36,9 @@ export type Deviation = {
   nationalFallback: boolean;
 };
 
+/** 값이 빈 줄의 기본 끝 글자 — spec `missingText` 가 아는 사실을 주면 그 글자로 바뀐다(`withMissingText`) */
+const MISSING_TEXT = "미수집";
+
 /** 이 안이면 "평균 수준"으로 본다 (백분위 50 기준 ±3) */
 const NEUTRAL_BAND = 3;
 /** 거리처럼 배수가 자연스러운 지표에서 "N배" 표현으로 넘어가는 기준 */
@@ -107,7 +110,13 @@ export function computeDeviation(
   region: string | null | undefined,
   stats: RegionalStats | null | undefined
 ): Deviation {
-  const missing: Deviation = { state: "missing", fav: null, text: "미수집", tone: "neutral", nationalFallback: false };
+  const missing: Deviation = {
+    state: "missing",
+    fav: null,
+    text: MISSING_TEXT,
+    tone: "neutral",
+    nationalFallback: false,
+  };
 
   const value = usableValue(spec.field, aptValue);
   if (value == null) return missing;
@@ -181,6 +190,16 @@ export function resolveDeviationInput(
 }
 
 /**
+ * 값이 빈 줄(`missing`)의 끝 글자 — spec 에 `missingText` 가 있고 그 재료가 사실을 알려 주면 「미수집」 대신 그 글자
+ * (세션689 PR-3 · 미분양 줄 「비공개」). 상태·막대 모양(회색 빗금)은 그대로. 그 밖의 상태·spec 은 받은 그대로 돌려준다.
+ */
+export function withMissingText(spec: DeviationFieldSpec, apt: Record<string, unknown>, dev: Deviation): Deviation {
+  if (dev.state !== "missing" || !spec.missingText) return dev;
+  const text = spec.missingText.text(...spec.missingText.from.map((f) => apt[f]));
+  return text ? { ...dev, text } : dev;
+}
+
+/**
  * 추정치 줄 — **지역 분포와 견주지 않는다**(세션576 D5-b, 사장님 결정).
  *
  * 검사관 실측: 주차 추정치와 실측값의 오차가 p10 −0.61 · p90 +0.69 인데 실측 분포의 사분위 폭은
@@ -213,6 +232,10 @@ export function deviationInputsEqual(
     for (const dep of f.fallback?.from ?? []) {
       if (a[dep] !== b[dep]) return false;
     }
+    // 세션689: 빈 줄 끝 글자 재료(`missingText.from` — 미분양 줄 「비공개」)도 같은 순회에서 본다
+    for (const dep of f.missingText?.from ?? []) {
+      if (a[dep] !== b[dep]) return false;
+    }
   }
   return true;
 }
@@ -233,7 +256,8 @@ export function deviationAriaLabel(
   const where = dev.nationalFallback ? "전국" : regionLabel;
   switch (dev.state) {
     case "missing":
-      return `${spec.label} 자료가 아직 없습니다.`;
+      // 세션689: 끝 글자가 아는 사실(`withMissingText` — 「비공개」)이면 「자료가 아직 없습니다」는 거짓이라 그 사실을 읽는다
+      return dev.text === MISSING_TEXT ? `${spec.label} 자료가 아직 없습니다.` : `${spec.label} ${dev.text}.`;
     case "sparse":
       return `${spec.label} ${formattedValue}. ${where}에 비교할 단지가 적어 견주지 못했습니다.`;
     case "uniform":

@@ -337,6 +337,39 @@ describe("hubAptOrder 경계", () => {
   });
 });
 
+// 세션689 PR-3(👤 Q8 · 설계서 govlist §6) — 명단 등재·수 비공개도 「미분양 남음」으로 센다 · 글자는 화면 상세와 같다
+describe("허브 — 명단 등재·수 비공개 (세션689)", () => {
+  const HID = { region: "대구", gu: "달서구", unsold: null, unsoldRate: null, unsoldSource: "govlist", unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30" };
+  it("단지 줄 글자 = 「미분양 비공개 (대구시 2026년 9월말 명단)」 = 「미분양 」 + 화면 상세(FIELD_META unsold)", () => {
+    const fmt = /** @type {(v: any, a: any) => string} */ (FIELD_META.unsold.fmt);
+    expect(hubUnsoldText(null, HID)).toBe("미분양 비공개 (대구시 2026년 9월말 명단)");
+    expect(hubUnsoldText(null, HID)).toBe(`미분양 ${fmt(null, HID)}`);
+    // 명단 출처 0 은 「분양 완료」가 아니라 미등재 사실
+    const z = { ...HID, unsold: 0, unsoldListedHidden: false };
+    expect(hubUnsoldText(0, z)).toBe(`미분양 ${fmt(0, z)}`);
+    expect(hubUnsoldText(0, z)).toBe("미분양 0 (대구시 2026-09 명단 미등재)");
+  });
+  it("칸이 없거나 false 면 지금 그대로(남음·0·모름)", () => {
+    for (const a of [undefined, {}, { unsoldListedHidden: false, unsoldSource: "kosis" }]) {
+      expect(hubUnsoldText(1234, a)).toBe("미분양 1,234세대");
+      expect(hubUnsoldText(0, a)).toBe("미분양 0 (분양 완료)");
+      expect(hubUnsoldText(null, a)).toBe("미분양 —");
+    }
+  });
+  it("정렬·제목 수 — 비공개 단지는 「남음」 쪽(모름보다 앞) · 제목 「미분양 남음」에 센다", () => {
+    const xs = [apt("a", { unsold: null, units: 900 }), apt("h", { ...HID, units: 10 }), apt("b", { unsold: 0, units: 500 })];
+    expect([...xs].sort(hubAptOrder).map((x) => x.id)).toEqual(["h", "a", "b"]);
+    const L = [
+      apt("d1", { ...HID, name: "두류단지", units: 433 }),
+      apt("d2", { region: "대구", gu: "달서구", name: "모름단지", unsold: null }),
+      apt("d3", { region: "대구", gu: "달서구", name: "남음단지", unsold: 4 }),
+    ];
+    const p = buildRegionPages(TEMPLATE, L).pages.find((q) => q.segments.join("/") === "대구/달서구");
+    expect(p?.html).toContain("<h1>대구 달서구 분양·미분양 아파트 3곳 (미분양 남음 2곳)</h1>");
+    expect(p?.html).toContain("미분양 비공개 (대구시 2026년 9월말 명단)");
+  });
+});
+
 describe("허브 장 틀 검사 — 단지 장과 같은 방식", () => {
   it("템플릿에 robots 메타가 있으면 throw", () => {
     const bad = TEMPLATE.replace("</head>", '<meta name="robots" content="all" /></head>');

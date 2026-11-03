@@ -1,5 +1,6 @@
 import { fmtPrice } from "@/lib/format";
 import { estimateParkingRatio } from "@/constants/parkingEstimate";
+import { UNSOLD_DEVIATION_HIDDEN_TEXT } from "@/utils/unsoldState.mjs";
 
 /**
  * 편차 스트립에 그릴 필드 정의 — 라벨·유불리 방향·양끝 한글 끝말·문장 조각을 한곳에 모은다.
@@ -79,6 +80,17 @@ export type DeviationFieldSpec = {
    * 산식은 여기에 쓰지 않고 점수 엔진이 쓰는 함수를 부른다 — 같은 모달에서 점수 탭과
    * 종합 탭이 다른 숫자를 말하지 않게(세션576 D5-b).
    */
+  /**
+   * 이 단지 값이 비었을 때(`missing`) 끝 글자를 「미수집」 대신 **아는 사실**로 바꾼다(세션689 PR-3 · 👤 11/04 「'비공개'로」).
+   * 값이 없는 이유를 우리가 알 때만 쓴다 — 미분양 줄: 지자체 명단에 올라 있으나 수는 비공개(`unsoldListedHidden`)면
+   * 「비공개」. `text` 는 `from` 에 적은 필드 값을 그 순서대로 받아 글자 또는 null(null 이면 「미수집」 그대로).
+   * 막대 모양(회색 빗금)·상태(`missing`)는 그대로이고 글자만 바뀐다. `AptCard` memo 비교도 같은 `from` 을 돈다
+   * (`deviationInputsEqual` — 재료만 바뀐 카드가 옛 글자로 남지 않게).
+   */
+  missingText?: {
+    from: readonly string[];
+    text: (..._values: unknown[]) => string | null;
+  };
   fallback?: {
     from: readonly string[];
     estimate: (..._values: unknown[]) => number | null;
@@ -133,6 +145,11 @@ export const CARD_DEVIATION_FIELDS: readonly DeviationFieldSpec[] = [
     goodWord: "낮음",
     badWord: "높음",
     neutral: true,
+    // 세션689 PR-3(👤 11/04): 지자체 명단 등재·수 비공개면 「미수집」이 거짓 — 「비공개」(글자 = unsoldState.mjs).
+    missingText: {
+      from: ["unsoldListedHidden"],
+      text: (hidden) => (hidden === true ? UNSOLD_DEVIATION_HIDDEN_TEXT : null),
+    },
   },
   {
     // 세션652(사장님 결정 ② 값 그대로): 재는 것 = 가장 가까운 역까지 거리의 백분위와 한가운데 값과의 차이.

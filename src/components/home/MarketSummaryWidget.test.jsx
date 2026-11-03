@@ -48,6 +48,14 @@ describe("buildBudgetBuckets — 가격대별 단지 수 (중위값을 내지 �
     const buckets = buildBudgetBuckets([mk("1", 40000, 5), mk("2", 40000, 5, { unsold: 0 })]);
     expect(buckets.find((b) => b.label === "3~5억")?.count).toBe(1);
   });
+  it("세션689: 명단 등재·수 비공개(unsold null)는 센다 — 목록 「미분양만 보기」와 같은 함수(👤 Q8)", () => {
+    // 되돌려서 옛 조건(unsold > 0 만)이면 이 기대값이 1 이 되어 red.
+    const hidden = mk("h", 40000, null, { unsold: null });
+    hidden.apt.unsoldListedHidden = true;
+    const plainNull = mk("n", 40000, null, { unsold: null });
+    const buckets = buildBudgetBuckets([mk("1", 40000, 5), hidden, plainNull]);
+    expect(buckets.find((b) => b.label === "3~5억")?.count).toBe(2);
+  });
   it("가격 없는 단지는 어느 구간에도 안 들어간다 — '3억 미만'에 쓸어 담지 않는다", () => {
     const buckets = buildBudgetBuckets([mk("1", null, 5), mk("2", 0, 5), mk("3", 40000, 5)]);
     expect(buckets.find((b) => b.label === "3억 미만")?.count).toBe(0);

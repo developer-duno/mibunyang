@@ -30,6 +30,8 @@ import {
   hubUnitsText,
 } from "../src/utils/aptStaticBody.mjs";
 import { DETAIL_BUCKET_COUNT, detailBucketName } from "../src/utils/bucketHash.mjs";
+// 미분양 상태 판정·문구표(세션689 PR-3) — 화면(목록 필터·카드 칩·상세)과 같은 구현을 쓴다(복사 금지).
+import { UNSOLD_STATE_LABEL, countsAsUnsold, unsoldListSource, unsoldStateOf } from "../src/utils/unsoldState.mjs";
 
 export { fmtMoveInNode, fmtPriceNode, hubUnitsText };
 
@@ -471,18 +473,26 @@ export function regionHubPath(sido, gu) {
 /**
  * 미분양 표시 — 남음이면 화면 상세(FIELD_META unsold)와 같은 "미분양 29세대", 0 이면 사장님이 시안
  * (`.omc/artifacts/session668/hub-mockup.html`)에서 확인한 말 "미분양 0 (분양 완료)", 모르면 화면처럼 "미분양 —".
- * @param {unknown} v @returns {string}
+ * 세션689 PR-3: 명단 등재·비공개 → "미분양 비공개 (대구시 2026년 9월말 명단)", 명단 출처 0 → "미분양 0 (… 명단 미등재)",
+ *   모름 → 문구표 그대로(`UNSOLD_STATE_LABEL` — 화면 상세·카드 칩과 같은 말). 단지 행 `a` 가 없으면 옛 그대로.
+ * @param {unknown} v @param {Record<string, any>} [a] @returns {string}
  */
-export function hubUnsoldText(v) {
-  if (v == null) return "미분양 —";
+export function hubUnsoldText(v, a) {
+  const st = unsoldStateOf({ ...(a ?? {}), unsold: v });
+  if (st === "hidden" || st === "listedZero") return UNSOLD_STATE_LABEL[st].hub(unsoldListSource(a));
+  if (v == null) return UNSOLD_STATE_LABEL.unknown.hub(unsoldListSource(a));
   const n = Number(v);
   if (n > 0) return `미분양 ${n.toLocaleString("ko-KR")}세대`;
   if (n === 0) return "미분양 0 (분양 완료)";
-  return "미분양 —";
+  return UNSOLD_STATE_LABEL.unknown.hub(unsoldListSource(a));
 }
 
-/** @param {Record<string, any>} a @returns {boolean} */
-const hasUnsold = (a) => Number(a.unsold) > 0;
+/**
+ * 「미분양 남음」 판정 — 정렬(hubAptOrder)과 제목 수(「미분양 남음 N곳」)가 같이 쓴다.
+ * 세션689 PR-3(👤 Q8): 명단 등재·수 비공개도 「있음」으로 센다 — 목록 「미분양만 보기」와 같은 함수(`countsAsUnsold`).
+ * @param {Record<string, any>} a @returns {boolean}
+ */
+const hasUnsold = (a) => countsAsUnsold(a);
 
 /**
  * 단지 줄 순서 — 미분양 남은 단지 먼저 → 총 세대수 많은 순(모름은 뒤) → 이름순.
@@ -507,7 +517,7 @@ export function hubAptOrder(x, y) {
 export function hubAptLine(a) {
   const parts = [
     `분양가 ${fmtPriceNode(a.price)}`,
-    `${hubUnsoldText(a.unsold)} / 총 ${hubUnitsText(a.units, a.unsold)}`,
+    `${hubUnsoldText(a.unsold, a)} / 총 ${hubUnitsText(a.units, a.unsold)}`,
     `입주 ${fmtMoveInNode(a.completion, a.presaleMoveIn)}`,
   ];
   return `<li><a href="/apt/${encodeURIComponent(a.id)}">${esc(a.name)}</a> · ${esc(parts.join(" · "))}</li>`;

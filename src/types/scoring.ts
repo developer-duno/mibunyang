@@ -126,6 +126,13 @@ export interface Apt {
   //   "미분양 단지 여부" 판정은 unsoldRate(null 가능) 가 아니라 unsold(수) 로 해야 함(R1/R2 회귀 가드).
   unsold?: number | null;
   unsoldRate?: number | null;
+  // 세션689 PR-3 — VIEW apartments_flat 끝 3칸(마이그 20261102000002). 운영 DB 적용 전 JSON 에는 없다(undefined = 지금 화면 그대로).
+  /** 이긴 미분양 행의 출처(applyhome·kosis·hold·govlist …) */
+  unsoldSource?: string | null;
+  /** 지자체 명단 등재 · 수 비공개(이긴 행이 govlist 비공개이고 유효) — 판정·글자는 src/utils/unsoldState.mjs */
+  unsoldListedHidden?: boolean | null;
+  /** 명단 기준월 말일(YYYY-MM-DD · 이긴 행이 govlist 일 때만) */
+  unsoldListedAsOf?: string | null;
   /** 세션513: 폴백 0 제거, null 보존(모름=중립). 값은 **구(區) 단위 6개월 거래 합계**. */
   recentTrades6m?: number | null;
   cancelRatio6m?: number | null;

@@ -4,6 +4,7 @@ import { REGIONS } from "@/constants/regions";
 import { calcCats, computeRegionalMedians, locationTotalForProfile } from "@/scoring/engine";
 import { classifyMoveIn, classifyTier, MOVEIN_VALUES, TIER_VALUES, NOW_YM } from "@/lib/classify";
 import { applyBaseFilters } from "@/lib/filterEngine";
+import { countsAsUnsold } from "@/utils/unsoldState.mjs";
 import { matchesQuery, normalizeQuery } from "@/lib/searchMatch";
 import type { LocationSubWeights } from "@/constants/scoringTiers";
 import type { Cats, ProfileWeights } from "@/types/scoring";
@@ -282,7 +283,8 @@ export function useDataPipeline({
     if (normalizedSearch) list = list.filter((x) => matchesQuery(x.apt, normalizedSearch));
     // "미분양만 보기"는 unsold(수)로 — unsoldRate 는 100% 초과 폭발값이 null 로 무력화돼 있을 수 있어
     //   미분양 단지가 목록에서 사라지던 회귀 방지 (세션 445). 잔여 미분양 세대가 있으면 표시.
-    if (hideNoUnsold) list = list.filter((x) => Number(x.apt.unsold ?? 0) > 0);
+    //   세션689 PR-3(👤 Q8): 지자체 명단 등재·수 비공개(unsoldListedHidden)도 「있음」으로 센다 — 규칙은 countsAsUnsold 한 곳.
+    if (hideNoUnsold) list = list.filter((x) => countsAsUnsold(x.apt));
     return [...list].sort(SORTERS[deferredSortKey] || SORTERS.total);
   }, [
     scored,
@@ -377,7 +379,7 @@ export function useDataPipeline({
     if (!scored.length) return null;
     let base = applyBaseFilters(scored, baseFilterArgs);
     // filtered(L140)과 동일하게 unsold(수) 기준 — 카운트 배지가 실제 필터 결과와 일치하도록 (세션 445).
-    if (hideNoUnsold) base = base.filter((x) => Number(x.apt.unsold ?? 0) > 0);
+    if (hideNoUnsold) base = base.filter((x) => countsAsUnsold(x.apt));
     // 단일 패스 leave-one-out 카운트 (5N→1N 최적화)
     const regionCounts = Object.create(null);
     const guCounts = Object.create(null);

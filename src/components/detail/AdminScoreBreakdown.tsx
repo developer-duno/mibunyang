@@ -4,6 +4,7 @@ import { PROFILES } from "@/constants/profiles";
 import { orderedCatEntries } from "@/constants/catOrder";
 import { CITY_TIER, REGIONS } from "@/constants/regions";
 import { DEV_NEUTRAL_BAND_PCT, TRADE_SCOPE_PEER_YEARS, TRADE_SCOPE_PER_M2_TOL_M2 } from "@/constants/scoringTiers";
+import { UNSOLD_STATE_LABEL, unsoldListSource, unsoldStateOf } from "@/utils/unsoldState.mjs";
 import type { Apt, Profile } from "@/types/scoring";
 import type { ScoringResult } from "@/types/components";
 
@@ -77,6 +78,14 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
     (apt.region ? (REGIONS as Record<string, { tier: string; gus: string[] }>)[apt.region]?.tier : null) || "C";
   const cityLabel = (CITY_TIER as Record<string, { label: string }>)[tier]?.label || tier;
 
+  // 세션689 PR-3: 미분양 상태 3(명단 등재·수 비공개 / 명단 미등재 0 / 모름) — 손님 화면(칩·상세·점수 detail)과 같은 문구표.
+  //   숫자(1 이상)는 표 밖이라 「N세대」. 출처는 VIEW unsoldSource 그대로(칸 없으면 「없음」).
+  const unsoldSt = unsoldStateOf(apt);
+  const unsoldStateText =
+    unsoldSt == null
+      ? `${Number(apt.unsold).toLocaleString("ko-KR")}세대`
+      : UNSOLD_STATE_LABEL[unsoldSt].admin(unsoldListSource(apt));
+
   const g = gr(res.total);
 
   return (
@@ -85,6 +94,9 @@ export const AdminScoreBreakdown = memo(function AdminScoreBreakdown({
         <div>
           <div style={{ fontSize: F.md, fontWeight: 800, color: C.indigo }}>점수 산출 과정 (관리자)</div>
           <div style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>도시등급: {cityLabel}</div>
+          <div data-testid="admin-unsold-state" style={{ fontSize: F.xs, color: C.muted, marginTop: 2 }}>
+            미분양 상태: {unsoldStateText} · 출처 {apt.unsoldSource ?? "없음"}
+          </div>
         </div>
         <button
           type="button"

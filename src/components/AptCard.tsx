@@ -483,6 +483,9 @@ export const AptCard = memo(
     if (pa.builderDebtRatio !== na.builderDebtRatio) return false;
     if (pa._fallbackBuilderDebt !== na._fallbackBuilderDebt) return false;
     if (pa.unsoldEventCount !== na.unsoldEventCount) return false;
+    // 세션689 PR-3 — 명단 비공개 칩 재료(있음·기준월). region 은 아래에서 따로 본다(칩 기관 이름도 region 에서 나온다).
+    //   편차 막대 「비공개」 끝 글자 재료는 아래 deviationInputsEqual 이 spec.missingText.from 으로 돈다.
+    if (pa.unsoldListedHidden !== na.unsoldListedHidden || pa.unsoldListedAsOf !== na.unsoldListedAsOf) return false;
     // 세션675 👤 바 ① — 제목 옆 「공고 N」 재료. 빠지면 묶음이 바뀌어도 옛 숫자를 재사용한다(시험이 잠근다).
     if (noticeCount(pa.siblingIds) !== noticeCount(na.siblingIds)) return false;
     // infoRow/alertRow 칩 신호 (세션 430) — 역세권·전세가율·주차·혐오안심
