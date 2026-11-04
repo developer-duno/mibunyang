@@ -132,6 +132,8 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         "lhzone-status.mjs",
         // 세션 614: SGIS 좌표→행정동 매핑(매주 화요일 `dow: 2`). GH 워크플로가 없어 여기 없으면 아예 안 돈다.
         "sgis-map-emd.mjs",
+        // 세션 693(PR-4b): 지자체 단지별 미분양 명단(대구) 평시 반영 — 매월 8일, 9일 KOSIS 앞.
+        "collect-unsold-govlist.mjs",
       ].sort(),
     );
   });
@@ -399,6 +401,15 @@ describe("행안부 인구 2종 이전 (세션 550)", () => {
     expect(dayOf("collect-market-stats.mjs")).toEqual([6]);
     expect(dayOf("migration.mjs")).toEqual([7]);
     expect(dayOf("collect-crime-safety.mjs")).toEqual([8]);
+  });
+
+  // 세션693 PR-4b: 지자체 명단은 9일 KOSIS **앞**(그 달 명단을 KOSIS 가 존중) · 출처는 대구만(👤 D2 — 충남 6월분 제외).
+  it("지자체 명단(govlist)은 매월 8일 한 줄 · crime-safety 다음 차례 · 인자 --apply --source=daegu · KOSIS 미분양은 9일", () => {
+    const rows = DAY_TABLE.filter((e) => e.script === "collect-unsold-govlist.mjs");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"] });
+    expect(DAY_TABLE.filter((e) => e.script === "collect-unsold-kosis.mjs").map((e) => e.day)).toEqual([9]);
+    expect(collectorsDueOn(at(2026, 11, 8))).toEqual(["collect-crime-safety.mjs", "collect-unsold-govlist.mjs", ...DAILY]); // 11/08 = 일요일(화요일 SGIS 안 낌)
   });
 
   it("6일은 market-stats → trades 순서 그대로다 (인구가 끼어들지 않았다 · molit-units 는 세션612 에 뺐다)", () => {

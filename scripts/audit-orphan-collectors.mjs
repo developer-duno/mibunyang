@@ -35,8 +35,8 @@ const DATA_FILL = "scripts/collectors/data-fill.mjs";
  * @type {Set<string>}
  */
 export const ALLOWLIST = new Set([
-  // 세션687 PR-2 dry-run 전용 — PR-4 에서 kosis-local-runner 8일 등재 때 이 줄을 뺀다.
-  "collect-unsold-govlist",
+  // 세션693 PR-4b: "collect-unsold-govlist" 를 **지웠다** — 위 항목이 적어 둔 조건(러너 8일 등재 때 뺀다)이 충족됐다
+  //   (kosis-local-runner DAY_TABLE 매월 8일 `--apply --source=daegu`). 남겨두면 진짜 고아가 됐을 때 이 감사가 침묵한다.
   // 세션559: 에어코리아 **최종확정 측정자료**(data.go.kr 15122830)를 집계한 JSON 을 DB 에 넣는 도구.
   // 원본이 **연 1회, 그것도 약 6개월 늦게** 나온다(2024년분이 2025-06 등록) — cron 을 걸 주기가 없다.
   // 게다가 XLSX 300~400MB × 3개를 사람이 내려받아 python 집계(air-annual-aggregate.py)를 먼저

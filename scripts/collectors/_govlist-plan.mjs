@@ -32,8 +32,18 @@ import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
  * 다시 내보내기만 한다(이 모듈에서 가져다 쓰던 시험·도구 호환).
  */
 export { GOVLIST_EXPIRY_MONTHS };
-/** 바뀔 단지(묶음) 수 차단기(설계서 §5-⑥). */
+/** 바뀔 단지(묶음) 수 차단기 — 경기 기준(설계서 §5-⑥ · :85 「경기만으로 50곳을 넘을 수 있어」). */
 export const GOVLIST_BREAKER_MAX_BUNDLES = 50;
+/**
+ * 출처별 차단 기준 — **값이 바뀌는** 묶음 수(「값 같음·칸만 바뀜」 = 이미 govlist 인 행의 기준월만 새로 쓰는 묶음은 안 센다 ·
+ * 「빈칸→비공개(새 등재)」·「값 같음·출처·비율 바뀜」은 센다)가 이 값을 넘으면 막는다.
+ * 대구·충남 = 10곳 **임시** — 12/08 첫 평시 회차 뒤 실측해 다시 정함(BACKLOG A-28). 👤 「기준은 첫 반영 실측 뒤 정함」 —
+ * 실측 전에는 멈춤이 더 잦은 쪽(사장님 승인이 늘 뿐 데이터는 안전)으로 둔다(세션693 검사 adv🟠1·blind🟠1).
+ * 표에 없는 출처는 가장 작은 기준(10)을 쓴다.
+ */
+export const GOVLIST_BREAKER_LIMITS = Object.freeze({ daegu: 10, chungnam: 10, gyeonggi: GOVLIST_BREAKER_MAX_BUNDLES });
+/** @param {string} source */
+export const breakerLimitOf = (source) => /** @type {Record<string, number>} */ (GOVLIST_BREAKER_LIMITS)[source] ?? Math.min(...Object.values(GOVLIST_BREAKER_LIMITS));
 /** 명단 행 수 급감 차단기 — 전 회차 대비 이 비율 미만이면 막는다(−50%). */
 export const GOVLIST_DROP_RATIO = 0.5;
 /** 미등재 → 0 을 판정할 수 있는 출처(경기는 비공개 행을 단지로 못 모아 "없다"를 말할 수 없다 — §5-③). */
@@ -226,8 +236,22 @@ export function changeClass(r) {
   if (a != null && b == null) return a > 0 ? "값>0→빈칸" : "0→빈칸";
   if (a != null && b != null && a > 0 && b === 0) return "값>0→0";
   if (a !== b) return "값→다른 값";
-  return "값 같음·칸만 바뀜";
+  // 여기부터 unsold 가 같다(둘 다 빈칸이거나 같은 수). 세션693 2차 보완 C1(재검사 adv🟠1): 「칸만 바뀜」은
+  //   앞이 이미 govlist + 비공개 여부 같음 + 비율 같음일 때만 — 나머지(새 비공개 등재 · 출처·비율만 바뀜)는 손님 화면이 바뀌므로 따로 센다.
+  const hiddenBefore = isHiddenSix(r.before), hiddenAfter = isHiddenSix(r.after);
+  if (!hiddenBefore && hiddenAfter) return NEW_HIDDEN_CLASS;
+  if (r.before.unsold_source === "govlist" && hiddenBefore === hiddenAfter && (r.before.unsold_rate ?? null) === (r.after.unsold_rate ?? null)) return SAME_VALUE_CLASS;
+  return "값 같음·출처·비율 바뀜";
 }
+/** govlist 비공개 등재(값 빈칸)인가. @param {Six | null} s */
+const isHiddenSix = (s) => !!s && s.unsold_source === "govlist" && s.unsold == null;
+/**
+ * 앞이 이미 govlist 이고 값·비율·비공개 여부가 그대로이며 기준월 등 칸만 바뀌는 쓰는 행의 꼴 이름 — 차단기는 이 꼴만 있는 묶음을 세지 않는다.
+ * (빈칸 → 비공개 = `NEW_HIDDEN_CLASS` · 다른 출처 → govlist 같은 값 = 「값 같음·출처·비율 바뀜」은 센다)
+ */
+export const SAME_VALUE_CLASS = "값 같음·칸만 바뀜";
+/** 모름(빈칸 — kosis·null·hold) → 등재·수 비공개(govlist 빈칸) — 새 비공개 등재. 칩·필터·점수 문구가 바뀌므로 차단기가 센다(C1). */
+export const NEW_HIDDEN_CLASS = "빈칸→비공개(새 등재)";
 
 /**
  * 전이표 요약(시도별 · 행동별 · 값 변화 꼴 · 출처 전이 · 바뀔 단지 수).
@@ -238,6 +262,7 @@ export function summarize(plan) {
   /** @type {Record<string, Record<string, number>>} */ const byChange = {};
   /** @type {Record<string, number>} */ const sourceShift = {};
   /** @type {Set<string>} */ const bundles = new Set();
+  /** 값이 바뀌는 묶음(출처별) — 「값 같음·칸만 바뀜」만 있는 묶음은 뺀다(차단기 재료). @type {Map<string, Set<string>>} */ const valueBundles = new Map();
   for (const r of plan) {
     const reg = r.region ?? "?";
     (byAction[reg] ??= {})[r.action] = (byAction[reg][r.action] ?? 0) + 1;
@@ -247,18 +272,29 @@ export function summarize(plan) {
     const k = `${r.before.unsold_source ?? "null"}→${r.after?.unsold_source ?? "null"}`;
     sourceShift[k] = (sourceShift[k] ?? 0) + 1;
     bundles.add(`${r.source}|${r.bundle_key}`);
+    if (c !== SAME_VALUE_CLASS) {
+      const s = valueBundles.get(r.source) ?? new Set();
+      s.add(r.bundle_key);
+      valueBundles.set(r.source, s);
+    }
   }
-  return { byAction, byChange, sourceShift, writeRows: plan.filter(isWrite).length, changedBundles: bundles.size };
+  /** @type {Record<string, number>} */ const valueChangedBySource = {};
+  for (const [s, set] of [...valueBundles].sort(([a], [b]) => a.localeCompare(b))) valueChangedBySource[s] = set.size;
+  return { byAction, byChange, sourceShift, writeRows: plan.filter(isWrite).length, changedBundles: bundles.size, valueChangedBySource };
 }
 
 /**
- * 차단기(설계서 §5-⑥): 바뀔 단지 > 50곳 · 명단 행 수가 전 회차의 50% 미만.
- * @param {{ changedBundles: number; lists: Array<{ source: string; rows: number; prevRows: number | null }> }} p
+ * 차단기(설계서 §5-⑥ · 세션693 보완 B1): 출처마다 **값이 바뀌는** 묶음 수 > 출처 기준(`GOVLIST_BREAKER_LIMITS` — 대구·충남 10 임시 · 경기 50)
+ * · 명단 행 수가 전 회차의 50% 미만. 기준월만 새로 쓰는 묶음(「값 같음·칸만 바뀜」)은 평시 달마다 있는 일이라 세지 않는다(쓰기는 그대로).
+ * @param {{ valueChangedBySource: Record<string, number>; lists: Array<{ source: string; rows: number; prevRows: number | null }> }} p
  * @returns {{ tripped: boolean; reasons: string[] }}
  */
-export function breaker({ changedBundles, lists }) {
+export function breaker({ valueChangedBySource, lists }) {
   /** @type {string[]} */ const reasons = [];
-  if (changedBundles > GOVLIST_BREAKER_MAX_BUNDLES) reasons.push(`바뀔 단지 ${changedBundles}곳 > ${GOVLIST_BREAKER_MAX_BUNDLES}곳`);
+  for (const [source, n] of Object.entries(valueChangedBySource)) {
+    const limit = breakerLimitOf(source);
+    if (n > limit) reasons.push(`${source} 값 바뀔 단지 ${n}곳 > ${limit}곳`);
+  }
   for (const l of lists) if (l.prevRows != null && l.rows < l.prevRows * GOVLIST_DROP_RATIO) reasons.push(`${l.source} 명단 행 ${l.rows} < 전 회차 ${l.prevRows} × ${GOVLIST_DROP_RATIO}`);
   return { tripped: reasons.length > 0, reasons };
 }
