@@ -20,6 +20,10 @@
  *   성공하면 출처마다 `GOVLIST_APPLIED <출처> 단지 N 행 M {값 변화 꼴:수,…}`(승인 반영도 같다).
  * - 쓰기 = ① `unsold_gov_list` 새 batch 넣기 → 행 수 = batch_rows 확인 → 같은 (출처, 기준일)의 옛 batch 지우기 ② apartments 6칸 조건부 갱신
  *   (이전 값이 그대로인 행만). ① 이 실패하면 ② 를 하지 않는다.
+ *   ③ 이력 점(세션695 PR-4c · 설계서 §5-④) — apartments 루프가 끝난 뒤, 이번에 갱신 "ok" 인 **숫자 행**(`write_listed_number`)과
+ *   `--resume` 의 이미 쓴 숫자 행에만 `unsold_history` 점 1개씩(base_month = 기준일의 YYYYMM · unsold_count = 묶음 Σ). 비공개·미등재→0 은 점 없음.
+ *   쓰기 전에 그 열쇠의 지금 행을 `history-before-<출처>-<ts>.json` 으로 뜬다(없으면 null). 실패하면 `GOVLIST_WRITE history_fail <N>` · failure
+ *   (apartments 는 이미 썼으니 되돌리지 않는다). dry-run 은 출처마다 `historyPoints`(쓸 점 수)만 impact 에 싣는다.
  * - 표식(`collector_runs.error_message`): `GOVLIST_SKIP <source> <이유>`(fetch · header · rows0 · not_newer) · `GOVLIST_BREAKER …` ·
  *   `GOVLIST_PLAN_MISMATCH …` · `GOVLIST_WRITE …`.
  * - 외부 호출: 출처마다 3회(목록·글·첨부). 공공데이터 API·카카오 0. DB 는 읽기(apartments·applyhome_unit_supply·presale_schedule_official·unsold_gov_list).
@@ -37,7 +41,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { ROOT, loadEnv, getSupabase, selectAll, log, logError, createReporter, recordCollectorRun } from "./_shared.mjs";
+import { ROOT, loadEnv, getSupabase, selectAll, log, logError, createReporter, recordCollectorRun, upsertBatch, today } from "./_shared.mjs";
 import { fetchLatestGovlist, SOURCE_REGION, GovlistFetchError } from "./_govlist-fetch.mjs";
 import { parseGovlistWorkbook, GovlistParseError } from "./_govlist-parse.mjs";
 import { buildBundles, matchComplexes, parseMatchDecisions } from "./_govlist-match.mjs";
@@ -306,6 +310,70 @@ export function appliedMarker(source, rows) {
   return `GOVLIST_APPLIED ${source} 단지 ${bundles} 행 ${rows.length} {${Object.keys(by).sort().map((k) => `${k}:${by[k]}`).join(",")}}`;
 }
 
+/** 이력 점 표(`supabase/migrations/20260313024159_init_mibunyang.sql` — UNIQUE(apartment_id, base_month)). */
+export const HISTORY_TABLE = "unsold_history";
+/** 이력 점을 받는 행동 — 숫자 행만(설계서 §5-④ 「숫자 행에만 점 · 비공개는 쓰지 않는다」). 비공개·미등재→0 은 점 없음. */
+export const HISTORY_ACTION = "write_listed_number";
+/** 이력 사본 파일 머리 한 줄(A5) — 되돌림 뜻. 새 되돌림 도구는 없다. */
+export const HISTORY_RESTORE_NOTE = "되돌림: before 가 null 이면 그 (단지·달) 행 삭제 · 값이 있으면 그 행으로 되돌려 upsert(onConflict apartment_id,base_month)";
+
+/**
+ * 기준일 "YYYY-MM-DD" → `unsold_history.base_month` 꼴 "YYYYMM". 꼴이 아니면 던진다(추측하지 않는다).
+ * @param {string} asOf
+ */
+export function historyMonthOf(asOf) {
+  const m = /^(\d{4})-(\d{2})-\d{2}$/.exec(String(asOf));
+  if (!m) throw new Error(`이력 점 기준월을 못 만듦 — 기준일 꼴이 YYYY-MM-DD 가 아님: ${asOf}`);
+  return `${m[1]}${m[2]}`;
+}
+
+/**
+ * 쓴(또는 이미 쓴) 계획 행 → 이력 점. 숫자 행(`HISTORY_ACTION`)만 · 묶음 구성원마다 같은 값(묶음 Σ — KOSIS 시계열과 같은 방식).
+ * @param {PlanRow[]} rows @param {string} asOf @param {string} recordedAt KST YYYY-MM-DD
+ */
+export function historyPointsOf(rows, asOf, recordedAt) {
+  const base_month = historyMonthOf(asOf);
+  return rows.filter((r) => r.action === HISTORY_ACTION).map((r) => ({
+    apartment_id: r.id, base_month, unsold_count: /** @type {import("./_govlist-plan.mjs").Six} */ (r.after).unsold,
+    post_completion_unsold: null, change: null, recorded_at: recordedAt,
+  }));
+}
+
+/**
+ * 이력 점 쓰기 — 바꾸기 전 사본(같은 열쇠의 지금 행 · 없으면 null)을 `<dir>/history-before-<출처>-<ts>.json`(새 파일로만) → upsert.
+ * 사본 조회가 실패하면 쓰지 않고 전부 실패로 센다.
+ * @param {any} sb @param {ReturnType<typeof historyPointsOf>} points
+ * @param {{ dir: string; source: string; ts: string; asOf: string; generatedAt: string }} meta
+ * @returns {Promise<{ written: number; failed: number; error?: string }>}
+ */
+export async function writeHistoryPoints(sb, points, { dir, source, ts, asOf, generatedAt }) {
+  if (!points.length) return { written: 0, failed: 0 };
+  const ids = [...new Set(points.map((p) => p.apartment_id))];
+  const months = [...new Set(points.map((p) => p.base_month))];
+  /** @type {Map<string, any>} */ const found = new Map();
+  // 한 (단지·달)에 행은 많아야 1개(UNIQUE) — id 200개씩이면 응답이 1,000행 상한에 닿지 않는다.
+  for (const bm of months) {
+    for (let i = 0; i < ids.length; i += 200) {
+      const { data, error } = await sb.from("unsold_history").select("apartment_id,base_month,unsold_count,post_completion_unsold,change,recorded_at").eq("base_month", bm).in("apartment_id", ids.slice(i, i + 200));
+      if (error || !Array.isArray(data)) return { written: 0, failed: points.length, error: `사본 조회 실패: ${error?.message ?? "data 없음"}` };
+      for (const r of data) found.set(`${r.apartment_id}|${r.base_month}`, { apartment_id: r.apartment_id, base_month: r.base_month, unsold_count: r.unsold_count ?? null, post_completion_unsold: r.post_completion_unsold ?? null, change: r.change ?? null, recorded_at: r.recorded_at ?? null });
+    }
+  }
+  const backup = {
+    note: HISTORY_RESTORE_NOTE, kind: "govlist-history-before", source, asOf, generatedAt,
+    rows: points.map((p) => ({ apartment_id: p.apartment_id, base_month: p.base_month, before: found.get(`${p.apartment_id}|${p.base_month}`) ?? null })),
+  };
+  writeFileSync(resolve(dir, `history-before-${source}-${ts}.json`), JSON.stringify(backup, null, 2), { encoding: "utf8", flag: "wx" });
+  log(PHASE, `[사본] ${dir} history-before-${source}-${ts}.json (점 ${points.length} · 지금 행 있음 ${found.size})`);
+  let written = 0;
+  try {
+    written = await upsertBatch(HISTORY_TABLE, points, "apartment_id,base_month", 500, sb);
+  } catch (e) {
+    return { written: 0, failed: points.length, error: `upsert 예외: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  return { written, failed: points.length - written, ...(written < points.length ? { error: `upsert ${written}/${points.length}` } : {}) };
+}
+
 /**
  * @param {{ argv?: string[]; sb?: any; fetchImpl?: typeof fetch; now?: Date; decisionsPath?: string; artifactsRoot?: string; applyEnabled?: boolean;
  *   loadGrids?: (buf: Buffer) => Promise<import("./_govlist-parse.mjs").Grid[]> }} [deps]
@@ -378,7 +446,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
   for (const source of args.sources) {
     if (rpt.interrupted()) break;
     const region = SOURCE_REGION[source];
-    /** @type {any} */ const rep = { source, region, markers: [] };
+    /** @type {any} */ const rep = { source, region, markers: [], historyPoints: 0 };
     sourceReports.push(rep);
     const skip = (/** @type {string} */ why) => { const m = `GOVLIST_SKIP ${source} ${why}`; rep.markers.push(m); markers.push(m); log(PHASE, `[건너뜀] ${m}`); };
     // ── 받기 ──
@@ -443,6 +511,9 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
     const off = notNewer ? [] : planSource({ ...common, absentZero: false });
     const on = notNewer ? [] : planSource({ ...common, absentZero: true });
     planOff.push(...off); planOn.push(...on);
+    // 이력 점 미리보기(A6) — 꺼짐 계획의 숫자 행 수(쓰기는 반영 때만 · plan 배열·승인 대조는 그대로)
+    rep.historyPoints = historyPointsOf(off, parsed.asOf, "").length;
+    log(PHASE, `[이력 점] ${source} 쓸 점 ${rep.historyPoints}`);
     // 대조군
     rep.controls = CONTROLS.filter((c) => c.source === source).map((c) => ({
       label: c.label,
@@ -498,6 +569,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
   const br = mode === "on" ? brOn : brOff;
   /** @type {PlanRow[]} */ let toWrite;
   /** 승인 계획(--apply-from 일 때만 — 평시 반영은 빈 배열로 두고 쓰지 않는다). @type {PlanRow[]} */ let approved = [];
+  /** `--resume` 에서 이미 쓴(done) 승인 행 id — 이력 점은 이 행들에도 쓴다(A1 · 지난 회차가 점 전에 끊겼을 수 있다). @type {string[]} */ let resumeDone = [];
   if (!args.applyFrom) {
     // 평시 반영(PR-4b · 👤 11/04 「자동 반영 + 차단기」) — parseArgs 가 --absent-zero·--resume 을 이미 막았다(꺼짐 계획만).
     // ① 첫 회차는 승인 파일로만: 이번에 쓸 출처에 반영된 완성 batch(전 회차)가 없으면 쓰기 0(러너 8일이 첫 반영보다 먼저 와도 안전)
@@ -544,6 +616,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
         return { impact, impactPath, wrote: 0 };
       }
       toWrite = rc.todo;
+      resumeDone = rc.done;
     } else {
       const cmp = comparePlans(plan, approved);
       if (!cmp.same) {
@@ -586,6 +659,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
     log(PHASE, `[사본] ${dir} before/restore-${w.source}-${ts}.json`);
   }
   let ok = 0, fail = 0, race = 0;
+  /** 이번에 apartments 갱신이 "ok" 인 행 — 이력 점 재료(race·fail 행은 점 없음). @type {PlanRow[]} */ const okRows = [];
   for (const w of writes) {
     if (rpt.interrupted()) break;
     if (!w.listAlready) {
@@ -600,17 +674,34 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
     for (const r of toWrite.filter((x) => x.source === w.source)) {
       if (rpt.interrupted()) break;
       const res = await updateApartment(sb, r, listedColsAll);
-      if (res === "ok") ok++; else if (res === "race") race++; else fail++;
+      if (res === "ok") { ok++; okRows.push(r); } else if (res === "race") race++; else fail++;
     }
   }
+  // ── 이력 점(세션695 PR-4c · 설계서 §5-④) — apartments 쓰기가 끝난 뒤. 숫자 행만 · 실패해도 apartments 는 되돌리지 않는다(A4).
+  //   도중 끊김(SIGTERM)이어도 이미 ok 인 행의 점은 쓴다 — 같은 열쇠 upsert 라 --resume 이 다시 써도 같은 값이다.
+  const doneSet = new Set(resumeDone);
+  const doneRows = approved.filter((r) => doneSet.has(r.id));
+  const recordedAt = today(); // KST(KOSIS 시계열과 같은 함수)
+  let historyWritten = 0, historyFail = 0;
+  for (const w of writes) {
+    const points = historyPointsOf([...okRows, ...doneRows].filter((r) => r.source === w.source), w.asOf, recordedAt);
+    if (!points.length) continue;
+    const dir = resolve(artifactsRoot, w.asOf);
+    mkdirSync(dir, { recursive: true });
+    const h = await writeHistoryPoints(sb, points, { dir, source: w.source, ts: stamp(now), asOf: w.asOf, generatedAt: now.toISOString() });
+    historyWritten += h.written; historyFail += h.failed;
+    if (h.error) logError(PHASE, `[${w.source}] 이력 점 실패 ${h.failed} — ${h.error} (apartments 는 이미 씀 · 되돌리지 않는다)`);
+  }
+  log(PHASE, `[이력 점] unsold_history ${historyWritten}점 저장${historyFail ? ` · 실패 ${historyFail}` : ""}`);
   const interrupted = rpt.interrupted();
   if (race) markers.push(`GOVLIST_WRITE race ${race}`);
   // 이어 쓰기 안내(세션693 보완 B6) — 같은 달 재실행은 not_newer 로 쓰기 0 이라 남은 행은 --resume 으로만 메운다
   //   출처가 하나면 --source 도 — 빼면 다른 출처에 같은 기준일 batch 가 없어 GOVLIST_RESUME_NO_BATCH 로 막힌다(2차 보완 C3)
   if (fail) markers.push(`GOVLIST_WRITE fail ${fail} — 이어 쓰기: --apply --apply-from=${args.applyFrom ?? impactPath} --resume${args.sources.length === 1 ? ` --source=${args.sources[0]}` : ""}`);
   if (interrupted) markers.push("GOVLIST_WRITE interrupted — --resume 으로 이어 쓴다");
-  log(PHASE, `=== 반영 끝 — apartments ${ok}행 · 경합 ${race} · 실패 ${fail}${interrupted ? " · 도중 끊김(partial)" : ""} ===`);
-  const status = interrupted ? "partial" : fail || race ? "failure" : "success";
+  if (historyFail) markers.push(`GOVLIST_WRITE history_fail ${historyFail}`);
+  log(PHASE, `=== 반영 끝 — apartments ${ok}행 · 경합 ${race} · 실패 ${fail} · 이력 점 ${historyWritten}${historyFail ? `(실패 ${historyFail})` : ""}${interrupted ? " · 도중 끊김(partial)" : ""} ===`);
+  const status = interrupted ? "partial" : fail || race || historyFail ? "failure" : "success";
   // 반영 요약(세션693 보완 B4) — 매달 무엇이 바뀌었는지 collector_runs 에 남긴다(status 그대로 · 실패 표식 없을 때만)
   if (status === "success") {
     for (const w of writes) {
