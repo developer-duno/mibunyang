@@ -142,14 +142,25 @@ export class GovlistFetchError extends Error {
   constructor(message) { super(message); this.name = "GovlistFetchError"; }
 }
 
+/** 누리집 호출 한 번의 시간 제한(ms) — 없으면 undici 기본 300초 × 3회를 러너가 기다린다(세션693 보완 B8 · adv🟡7). */
+export const GOVLIST_FETCH_TIMEOUT_MS = 60000;
+
 /**
  * @param {typeof fetch} fetchImpl
  * @param {string} url
  * @param {RequestInit} [init]
+ * @param {number} [timeoutMs]
  * @returns {Promise<Response>}
  */
-async function get(fetchImpl, url, init = {}) {
-  const r = await fetchImpl(url, { ...init, headers: { "User-Agent": UA, ...(init.headers ?? {}) } });
+async function get(fetchImpl, url, init = {}, timeoutMs = GOVLIST_FETCH_TIMEOUT_MS) {
+  /** @type {Response} */ let r;
+  try {
+    r = await fetchImpl(url, { ...init, headers: { "User-Agent": UA, ...(init.headers ?? {}) }, signal: AbortSignal.timeout(timeoutMs) });
+  } catch (e) {
+    const name = /** @type {any} */ (e)?.name;
+    if (name === "TimeoutError" || name === "AbortError") throw new GovlistFetchError(`시간 제한 ${timeoutMs >= 1000 ? `${Math.round(timeoutMs / 1000)}초` : `${timeoutMs}ms`} 넘김 ${url}`);
+    throw e;
+  }
   if (!r.ok) throw new GovlistFetchError(`HTTP ${r.status} ${url}`);
   return r;
 }
@@ -157,10 +168,12 @@ async function get(fetchImpl, url, init = {}) {
 /**
  * 가장 새 명단 파일을 받는다(호출 3회).
  * @param {GovlistSource} source
- * @param {{ fetchImpl?: typeof fetch }} [opts]
+ * @param {{ fetchImpl?: typeof fetch; timeoutMs?: number }} [opts] timeoutMs = 호출 한 번 시간 제한(기본 GOVLIST_FETCH_TIMEOUT_MS · 시험 주입용)
  * @returns {Promise<FetchedFile>}
  */
-export async function fetchLatestGovlist(source, { fetchImpl = fetch } = {}) {
+export async function fetchLatestGovlist(source, { fetchImpl = fetch, timeoutMs = GOVLIST_FETCH_TIMEOUT_MS } = {}) {
+  /** 호출마다 시간 제한(`timeoutMs`, 기본 60초)을 건다. @param {string} url @param {RequestInit} [init] */
+  const g = (url, init) => get(fetchImpl, url, init, timeoutMs);
   let calls = 0;
   /** @type {ListItem | null} */ let post = null;
   /** @type {Attachment[]} */ let files = [];
@@ -168,24 +181,24 @@ export async function fetchLatestGovlist(source, { fetchImpl = fetch } = {}) {
     const form = (/** @type {Record<string, string>} */ o) => new URLSearchParams(o).toString();
     const post1 = { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" } };
     calls++;
-    const listHtml = await (await get(fetchImpl, `${DAEGU_BASE}/index.do`, {
+    const listHtml = await (await g(`${DAEGU_BASE}/index.do`, {
       ...post1, body: form({ ...DAEGU_FORM, nttId: "0", pageIndex: "1", searchCnd: "0", searchWrd: "공동주택 미분양 현황" }),
     })).text();
     post = pickLatest(parseDaeguList(listHtml));
     if (!post) throw new GovlistFetchError("대구 목록에서 미분양 현황 글을 못 찾음");
     calls++;
-    const viewHtml = await (await get(fetchImpl, `${DAEGU_BASE}/index.do`, {
+    const viewHtml = await (await g(`${DAEGU_BASE}/index.do`, {
       ...post1, body: form({ menu_id: DAEGU_FORM.menu_id, menu_link: "/icms/bbs/selectBoardArticle.do", bbsId: DAEGU_FORM.bbsId, nttId: post.id }),
     })).text();
     files = parseDaeguView(viewHtml);
   } else if (source === "chungnam") {
     calls++;
-    const listHtml = await (await get(fetchImpl,
+    const listHtml = await (await g(
       `${CN_BASE}/cnportal/bbs/B0000134/list.do?menuNo=${CN_MENU}&pageIndex=1&searchCnd=1&searchWrd=${encodeURIComponent("미분양")}`)).text();
     post = pickLatest(parseChungnamList(listHtml));
     if (!post) throw new GovlistFetchError("충남 목록에서 미분양 주택현황 글을 못 찾음");
     calls++;
-    const viewHtml = await (await get(fetchImpl, `${CN_BASE}/cnportal/bbs/B0000134/view.do?nttId=${post.id}&menuNo=${CN_MENU}`)).text();
+    const viewHtml = await (await g(`${CN_BASE}/cnportal/bbs/B0000134/view.do?nttId=${post.id}&menuNo=${CN_MENU}`)).text();
     files = parseChungnamView(viewHtml);
   } else {
     throw new Error(`모르는 출처: ${source}`);
@@ -193,7 +206,7 @@ export async function fetchLatestGovlist(source, { fetchImpl = fetch } = {}) {
   const x = pickXlsx(files);
   if (!x) throw new GovlistFetchError(`${source} 글 ${post.id} 에 .xlsx 첨부 없음(${files.map((f) => f.name).join(", ") || "첨부 0"})`);
   calls++;
-  const buffer = Buffer.from(await (await get(fetchImpl, x.url)).arrayBuffer());
+  const buffer = Buffer.from(await (await g(x.url)).arrayBuffer());
   // xlsx = zip(PK\x03\x04). 오류 페이지(HTML)를 파일로 착각하지 않게.
   if (buffer.length < 4 || buffer.readUInt32BE(0) !== 0x504b0304) throw new GovlistFetchError(`${source} 첨부가 xlsx 가 아님(${buffer.length}B)`);
   return { source, title: post.title, titleAsOf: post.asOf, postId: post.id, fileName: x.name, fileUrl: x.url, buffer, calls };

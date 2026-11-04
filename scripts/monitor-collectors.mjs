@@ -1503,8 +1503,8 @@ export function parseGovlistMatch(message) {
 /**
  * ㉔-c 매칭 감시(설계서 §7 「매칭」 · PR-4b (e)) — `unsold-govlist` **가장 최근 실행**의 출처별 매칭 표식으로:
  *   (1) 충돌(한 명단 단지 ↔ 두 묶음 · 두 명단 단지 ↔ 한 묶음) ≥ 1 이면 1건
- *   (2) 판정 필요(weak·none) 수가 **그 출처 표식이 있는 바로 앞 실행**보다 늘면 1건(그대로·줄면 침묵 — 지금 33 이 매달 울지 않게 ·
- *       앞 실행이 없으면 비교하지 않는다).
+ *   (2) 판정 필요(weak·none) **시군구별 수 중 하나라도** 그 출처 표식이 있는 바로 앞 실행보다 늘면 1건(전부 그대로·줄면 침묵 —
+ *       지금 33 이 매달 울지 않게 · 합계가 같아도 한 시군구가 늘면 운다(세션693 B7) · 앞 실행이 없으면 비교하지 않는다).
  * dedup 은 ㉔ 와 같은 `govlist-health`(daily 에서도) — 지문 = 출처|수 해시 @ 그 실행 시각(같은 실행은 한 번만, 다음 회차가 또 늘면 다시).
  * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC)
  * @returns {Issue[]}
@@ -1534,19 +1534,22 @@ export function checkGovlistMatch(runs) {
       prev = parseGovlistMatch(r.error_message).find((x) => x.source === cur.source) ?? null;
       if (prev) break;
     }
-    if (!prev || !(cur.unresolved > prev.unresolved)) continue;
+    if (!prev) continue;
     const p = /** @type {{ bySgg: Record<string, number>, unresolved: number }} */ (prev);
-    const grown = Object.keys(cur.bySgg).sort().filter((k) => (cur.bySgg[k] ?? 0) > (p.bySgg[k] ?? 0)).map((k) => `${k} ${p.bySgg[k] ?? 0}→${cur.bySgg[k]}`);
+    // 시군구별 수 중 하나라도 늘면 운다 — 한 곳이 풀리고 다른 곳이 새로 weak 가 되면 합계는 그대로다(세션693 보완 B7 · blind🟡4)
+    const grownKeys = Object.keys(cur.bySgg).sort().filter((k) => (cur.bySgg[k] ?? 0) > (p.bySgg[k] ?? 0));
+    if (!grownKeys.length) continue;
+    const grown = grownKeys.map((k) => `${k} ${p.bySgg[k] ?? 0}→${cur.bySgg[k]}`);
     issues.push({
       kind: "govlist-health",
       collector: GOVLIST_COLLECTOR,
-      detail: `GOVLIST_MATCH_GROWTH ${cur.source} 판정 필요 단지 ${p.unresolved}→${cur.unresolved}곳 — 늘어난 시군구: ${grown.join(" · ") || "(시군구 표기 바뀜)"}`,
+      detail: `GOVLIST_MATCH_GROWTH ${cur.source} 판정 필요 단지 ${p.unresolved}→${cur.unresolved}곳 — 늘어난 시군구: ${grown.join(" · ")}`,
       lines: [
         "판정 필요(weak·none) 단지는 미등재→0 을 막고(§5-③(d)) 명단 값도 안 붙입니다. 늘었으면 새 단지·이름 바뀜·우리 쪽 행 변화를 봅니다.",
         "판정은 docs/audits/govlist-match-decisions.json 에 적습니다(active = 그 묶음에 붙임 · rejected = 짝 금지).",
         ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}`] : []),
       ],
-      at: `mgrow:${fingerprintIds([`${cur.source}|${p.unresolved}|${cur.unresolved}`])}@${when}`,
+      at: `mgrow:${fingerprintIds([`${cur.source}|${grown.join(",")}`])}@${when}`,
     });
   }
   return issues;
@@ -1565,14 +1568,15 @@ export const GOVLIST_LIVE_LIST_URL = "https://www.xn--hg3bi2ac4o1ig57cnoa.com/da
 /**
  * ㉔-d 「VIEW hidden 수 = 목록 JSON hidden 수」(설계서 PR-4b (f) — 검사관 맹점5 제안 그대로).
  *   - 양성 대조군: 원표에 **아직 유효한**(기준월 + 6개월 안) govlist 비공개 행이 1행 이상인데 VIEW hidden 0 → 1건(0=0 만으로는 아무것도 증명하지 못한다).
- *   - 비교: 라이브 meta.json `fetchedAt` 이 **오늘(KST) 03시 뒤**일 때만 · 굽기 시각과 지금 사이에 만료일이 낀 원표 행이 있으면 건너뜀 ·
- *     VIEW hidden ≠ 목록 JSON hidden → 1건. 라이브를 못 가져왔으면(live null) 비교만 건너뛴다(fail-open — 경고는 호출부 한 줄).
+ *   - 비교: 라이브 meta.json `fetchedAt` 이 **오늘(KST) 03시 뒤**일 때만 · unsold-govlist 최근 실행이 굽기보다 늦고 실제로 썼으면
+ *     (success 또는 ok>0) 건너뜀 · VIEW hidden ≠ 목록 JSON hidden → 1건. 라이브를 못 가져왔으면(live null) 비교만 건너뛴다(fail-open — 경고는 호출부 한 줄).
  * DB·네트워크 접근 없는 순수 함수.
  * @param {GovlistHiddenInputs | null | undefined} h
  * @param {Date} [now]
+ * @param {{ finished_at?: string | null, status?: string | null, ok_count?: number | null } | null} [lastRun] unsold-govlist 최근 실행(㉔ 재료 runs[0])
  * @returns {Issue[]}
  */
-export function checkGovlistHiddenParity(h, now = new Date()) {
+export function checkGovlistHiddenParity(h, now = new Date(), lastRun = null) {
   if (!h) return [];
   /** @type {Issue[]} */
   const issues = [];
@@ -1595,9 +1599,11 @@ export function checkGovlistHiddenParity(h, now = new Date()) {
   const kst = new Date(now.getTime() + 9 * 3600 * 1000);
   const today03 = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 3) - 9 * 3600 * 1000;
   if (!(fetchedMs >= today03)) return issues; // 오늘 굽기 전 — 비교하지 않는다
-  const bake = new Date(fetchedMs);
-  const crossing = h.rawAsOf.filter((a) => isApplyhomeExpired(a, bake, GOVLIST_EXPIRY_MONTHS) === false && isApplyhomeExpired(a, now, GOVLIST_EXPIRY_MONTHS) === true);
-  if (crossing.length) return issues; // 굽기와 지금 사이에 만료일이 낀 행 — 두 수가 달라도 정상
+  // 굽기 뒤에 수집기가 **실제로 썼으면**(success 또는 ok>0 — 매달 8일 05:30 러너 반영 · 사람 반영) VIEW 는 「지금」, JSON 은 「굽기 때」라
+  //   달라도 정상 — 건너뜀(세션693 보완 B2 · adv🟠2). 쓰기 0 인 실패 실행(차단기·첫 회차 막음) 뒤에는 비교한다(2차 보완 C2).
+  //   옛 「만료일이 낀 행」 거름은 날짜 단위 판정이라 걸릴 수 없어 지웠다(adv🟡1).
+  const wrote = !!lastRun && (lastRun.status === "success" || Number(lastRun.ok_count ?? 0) > 0);
+  if (wrote && typeof lastRun?.finished_at === "string" && new Date(lastRun.finished_at).getTime() > fetchedMs) return issues;
   if (h.viewHidden !== live.listHidden) {
     issues.push({
       kind: "govlist-health",
@@ -1699,14 +1705,19 @@ export async function fetchGovlistListRows(sb) {
 /**
  * ㉔ 재료 — 수집기 최근 실행(⑪ 과 같은 조회) + 명단 표(출처마다 최근 기준월 2개 · 칸 넷) + ㉔-d 비공개 수 대조 재료.
  * 표가 없으면(마이그 전) 던진다(fail-open). 라이브 가져오기 실패는 hidden.live = null(경고 한 줄 — 호출부).
- * @returns {Promise<{ runs: Array<{ status: string|null, error_message: string|null, finished_at: string|null }>, listRows: Array<Record<string, any>>, hidden?: GovlistHiddenInputs }>}
+ * ㉔-d 재료(VIEW·원표 조회) 실패는 던지지 않고 `hiddenError` 로 넘긴다 — 호출부가 ㉔-d 만 따로 실행 실패로 알리고 ㉔-a·b·c 는 그대로 돈다(세션693 B5).
+ * @param {{ sb?: any, fetchRuns?: typeof fetchRegionUnresolvedRuns, fetchHidden?: typeof fetchGovlistHiddenInputs }} [deps] 시험 주입용
+ * @returns {Promise<{ runs: Array<{ status: string|null, error_message: string|null, finished_at: string|null }>, listRows: Array<Record<string, any>>, hidden?: GovlistHiddenInputs, hiddenError?: string }>}
  */
-async function fetchGovlistHealthInputs() {
-  const runs = (await fetchRegionUnresolvedRuns([GOVLIST_COLLECTOR]))[GOVLIST_COLLECTOR] ?? [];
-  const sb = getSupabase();
+export async function fetchGovlistHealthInputs(deps = {}) {
+  const runs = (await (deps.fetchRuns ?? fetchRegionUnresolvedRuns)([GOVLIST_COLLECTOR]))[GOVLIST_COLLECTOR] ?? [];
+  const sb = deps.sb ?? getSupabase();
   const listRows = await fetchGovlistListRows(sb);
-  const hidden = await fetchGovlistHiddenInputs({ sb });
-  return { runs, listRows, hidden };
+  try {
+    return { runs, listRows, hidden: await (deps.fetchHidden ?? fetchGovlistHiddenInputs)({ sb }) };
+  } catch (err) {
+    return { runs, listRows, hiddenError: err instanceof Error ? err.message : String(err) };
+  }
 }
 
 /**
@@ -4125,7 +4136,8 @@ export async function runFailOpenCheck(label, run) {
  *   fetchSeoThin?: () => Promise<{ status: number, text: string }>,
  *   fetchGovlistHealth?: () => ReturnType<typeof fetchGovlistHealthInputs>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
- * }} [deps]
+ *   now?: Date,
+ * }} [deps] now = ㉔-d 의 「오늘 03시」 판정 시각(시험 주입용 · 생략하면 지금)
  * @returns {Promise<Issue[]>}
  */
 export async function runDailyGuardedChecks(deps = {}) {
@@ -4315,13 +4327,26 @@ export async function runDailyGuardedChecks(deps = {}) {
   }));
 
   // ㉔ 지자체 명단 수집 건전성 — 최근 실행의 GOVLIST_SKIP · 명단 행 수 전 기준월 대비 −50%(세션692 PR-4). 실행·명단 0행이면 침묵.
+  /** ㉔ 재료 — ㉔-d 블록이 같은 재료를 쓴다(조회 1회). @type {Awaited<ReturnType<typeof fetchGovlistHealth>> | null} */
+  let govInputs = null;
   issues = issues.concat(await runFailOpenCheck("㉔ 지자체 명단 점검", async () => {
-    const { runs, listRows, hidden } = await fetchGovlistHealth();
-    // ㉔-c 매칭(충돌·판정 필요 증가) · ㉔-d 비공개 수 대조(세션693 PR-4b) — 같은 govlist-health 로 dedup
-    const govIssues = checkGovlistSkips(runs).concat(checkGovlistDrop(listRows), checkGovlistMatch(runs), checkGovlistHiddenParity(hidden));
-    if (hidden?.liveError) console.log(`[monitor] ㉔-d 라이브 목록 JSON 가져오기 실패(비교만 건너뜀 · fail-open): ${hidden.liveError}`);
-    console.log(`[monitor] ㉔ 지자체 명단 점검: 실행 ${runs.length}행 · 명단 ${listRows.length}행${hidden ? ` · VIEW 비공개 ${hidden.viewHidden}곳 · 목록 JSON ${hidden.live ? `${hidden.live.listHidden}곳` : "못 가져옴"}` : ""} → 이상 ${govIssues.length}건`);
+    govInputs = await fetchGovlistHealth();
+    const { runs, listRows } = govInputs;
+    // ㉔-c 매칭(충돌·판정 필요 증가 — 세션693 PR-4b) — 같은 govlist-health 로 dedup
+    const govIssues = checkGovlistSkips(runs).concat(checkGovlistDrop(listRows), checkGovlistMatch(runs));
+    console.log(`[monitor] ㉔ 지자체 명단 점검: 실행 ${runs.length}행 · 명단 ${listRows.length}행 → 이상 ${govIssues.length}건`);
     return govIssues;
+  }));
+  // ㉔-d 비공개 수 대조 — 따로 fail-open(재료 조회가 실패해도 ㉔-a·b·c 는 위에서 이미 돌았다 · 세션693 B5). ㉔ 자체가 실패했으면 침묵(이미 알림).
+  issues = issues.concat(await runFailOpenCheck("㉔-d 지자체 명단 비공개 수 대조", async () => {
+    const g = /** @type {Awaited<ReturnType<typeof fetchGovlistHealth>> | null} */ (govInputs);
+    if (!g) return [];
+    if (g.hiddenError) throw new Error(g.hiddenError);
+    const hidden = g.hidden;
+    if (hidden?.liveError) console.log(`[monitor] ㉔-d 라이브 목록 JSON 가져오기 실패(비교만 건너뜀 · fail-open): ${hidden.liveError}`);
+    const hidIssues = checkGovlistHiddenParity(hidden, deps.now ?? new Date(), g.runs[0] ?? null);
+    if (hidden) console.log(`[monitor] ㉔-d 비공개 수 대조: VIEW ${hidden.viewHidden}곳 · 목록 JSON ${hidden.live ? `${hidden.live.listHidden}곳` : "못 가져옴"} → 이상 ${hidIssues.length}건`);
+    return hidIssues;
   }));
 
   return issues;
@@ -4696,7 +4721,7 @@ async function fetchRegionUnresolvedRuns(names) {
     names.map(async (name) => {
       const { data, error } = await sb
         .from("collector_runs")
-        .select("collector,status,error_message,finished_at")
+        .select("collector,status,error_message,finished_at,ok_count")
         .eq("collector", name)
         .order("finished_at", { ascending: false })
         .limit(REGION_UNRESOLVED_RUN_WINDOW);

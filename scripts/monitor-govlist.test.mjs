@@ -17,6 +17,7 @@ import {
   checkGovlistMatch,
   checkGovlistHiddenParity,
   fetchGovlistHiddenInputs,
+  fetchGovlistHealthInputs,
   fetchGovlistListRows,
   GOVLIST_LIST_MONTHS,
   GOVLIST_LIVE_META_URL,
@@ -190,6 +191,12 @@ describe("㉔-c 매칭 — 충돌 · 판정 필요 증가(세션693 PR-4b (e))",
     expect(checkGovlistMatch([run(M("daegu", 33, "달서구:5", 0), "2026-12-08T00:00:00Z")])).toEqual([]);
     expect(checkGovlistMatch([])).toEqual([]);
   });
+  it("세션693 B7 — 합계 33→33 이어도 한 시군구 +1(다른 시군구 −1)이면 경보 · 늘어난 시군구만 detail 에", () => {
+    const is = checkGovlistMatch([run(M("daegu", 33, "달서구:6,수성구:27", 0), "2026-12-08T00:00:00Z"), run(M("daegu", 33, "달서구:5,수성구:28", 0), "2026-11-08T00:00:00Z")]);
+    expect(is.map((i) => i.detail)).toEqual(["GOVLIST_MATCH_GROWTH daegu 판정 필요 단지 33→33곳 — 늘어난 시군구: 달서구 5→6"]);
+    // 새 시군구가 생겨도(앞 실행 0) 늘어난 것
+    expect(checkGovlistMatch([run(M("daegu", 33, "북구:1,수성구:32", 0), "2026-12-08T00:00:00Z"), run(M("daegu", 33, "수성구:33", 0), "2026-11-08T00:00:00Z")]).map((i) => i.detail)).toEqual(["GOVLIST_MATCH_GROWTH daegu 판정 필요 단지 33→33곳 — 늘어난 시군구: 북구 0→1"]);
+  });
   it("앞 실행은 **같은 출처 표식이 있는** 가장 가까운 실행(건너뜀·잠금 실행은 넘어간다) · 출처마다 따로", () => {
     const runs = [
       run(`${M("daegu", 34, "달서구:6", 0)} · ${M("chungnam", 10, "아산시:10", 0)}`, "2027-01-08T00:00:00Z"),
@@ -224,11 +231,20 @@ describe("㉔-d VIEW hidden = 목록 JSON hidden(세션693 PR-4b (f))", () => {
     expect(h("2026-12-08T18:00:00Z")).toHaveLength(1); // KST 03:00
     expect(checkGovlistHiddenParity({ viewHidden: 3, rawAsOf: ["2026-09-30"], live: null }, NOW)).toEqual([]); // 라이브 못 가져옴 = 비교 건너뜀
   });
-  it("만료일 경계 — 전날 굽기는 비교 안 함(만료일이 낄 수 있는 유일한 꼴) · 같은 날 굽기는 만료 판정이 같아 그대로 비교", () => {
-    // 기준월 06-09 + 6개월 = 12-09 까지 유효. 지금 KST 12-10 01:00 · 굽기 KST 12-09 03:05 → 「오늘 03시」 전이라 비교 안 함
-    expect(checkGovlistHiddenParity({ viewHidden: 1, rawAsOf: ["2026-06-09"], live: live("2026-12-08T18:05:00Z", 2) }, new Date("2026-12-09T16:00:00Z"))).toEqual([]);
-    // 같은 날(KST 12-09) 굽기 03:30 · 지금 23:00 — 만료 판정은 날짜 단위라 두 시각이 같다 → 비교한다
-    expect(checkGovlistHiddenParity({ viewHidden: 1, rawAsOf: ["2026-06-09"], live: live("2026-12-08T18:30:00Z", 2) }, new Date("2026-12-09T14:00:00Z"))).toHaveLength(1);
+  it("세션693 B2 — 굽기(03:05) 뒤에 수집기가 돌았으면(05:30 반영) VIEW 58 ≠ JSON 57 이어도 침묵 · 반영이 굽기 전이면 경보", () => {
+    const h = { viewHidden: 58, rawAsOf: Array(58).fill("2026-11-30"), live: live("2026-12-07T18:05:00Z", 57) }; // 굽기 KST 12-08 03:05
+    const now = new Date("2026-12-08T00:00:00Z"); // KST 12-08 09:00 감시
+    const ran = (/** @type {string} */ at, status = "success", ok = 1) => ({ finished_at: at, status, ok_count: ok });
+    expect(checkGovlistHiddenParity(h, now, ran("2026-12-07T20:30:00Z"))).toEqual([]); // 반영 KST 05:30 — 굽기 뒤
+    expect(checkGovlistHiddenParity(h, now, ran("2026-12-07T18:04:00Z")).map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_HIDDEN_MISMATCH"]); // 반영 KST 03:04 — 굽기 전
+    expect(checkGovlistHiddenParity(h, now, null)).toHaveLength(1); // 실행 기록 없음 → 그대로 비교
+  });
+  it("세션693 C2 — 굽기 뒤 실행이 쓰기 0 인 실패(차단기·첫 회차 막음)면 건너뛰지 않고 비교한다 · ok>0 인 partial 은 건너뜀", () => {
+    const h = { viewHidden: 58, rawAsOf: ["2026-11-30"], live: live("2026-12-07T18:05:00Z", 57) };
+    const now = new Date("2026-12-08T00:00:00Z");
+    expect(checkGovlistHiddenParity(h, now, { finished_at: "2026-12-07T20:30:00Z", status: "failure", ok_count: 0 }).map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_HIDDEN_MISMATCH"]);
+    expect(checkGovlistHiddenParity(h, now, { finished_at: "2026-12-07T20:30:00Z", status: "partial", ok_count: 3 })).toEqual([]);
+    expect(checkGovlistHiddenParity(h, now, { finished_at: "2026-12-07T20:30:00Z", status: "failure", ok_count: null })).toHaveLength(1);
   });
   it("양성 대조군 — 원표 유효 비공개 1행+ 인데 VIEW 0 → 따로 1건(라이브와 무관) · 원표 행이 만료됐으면 침묵 · 0=0 은 침묵", () => {
     const z = checkGovlistHiddenParity({ viewHidden: 0, rawAsOf: ["2026-09-30"], live: null }, NOW);
@@ -353,6 +369,38 @@ describe("㉔ 배선", () => {
     expect(loud.filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_MATCH_CONFLICT", "GOVLIST_MATCH_GROWTH", "GOVLIST_HIDDEN_VIEW_ZERO"]);
     const quietRun = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchGovlistHealth: async () => ({ runs: [], listRows: [] }) }));
     expect(quietRun.filter((i) => i.kind === "govlist-health" || i.kind === "check-failed")).toEqual([]);
+  });
+  it("세션693 B5 — ㉔-d 재료 조회가 실패해도(hiddenError) ㉔-a·b·c 는 그대로 나오고 ㉔-d 만 실행 실패 1건", async () => {
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({
+      ...quiet,
+      fetchGovlistHealth: async () => ({ runs: [run("GOVLIST_SKIP daegu not_newer · GOVLIST_MATCH daegu 판정필요 1{달서구:1} 충돌 1", "2026-12-08T00:00:00Z")], listRows: [], hiddenError: "VIEW 조회 실패" }),
+    }));
+    expect(issues.filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_SKIP", "GOVLIST_MATCH_CONFLICT"]);
+    expect(issues.filter((i) => i.kind === "check-failed").map((i) => i.detail)).toEqual(["㉔-d 지자체 명단 비공개 수 대조 실행 실패 — VIEW 조회 실패"]);
+  });
+  it("세션693 B5 — 운영 재료 함수(fetchGovlistHealthInputs)는 ㉔-d 조회 예외를 던지지 않고 hiddenError 로 넘긴다(㉔-a·b·c 재료는 그대로)", async () => {
+    const runs = [run("GOVLIST_SKIP daegu not_newer", "2026-12-08T00:00:00Z")];
+    const g = await fetchGovlistHealthInputs({
+      sb: fakeSb({ unsold_gov_list: [{ id: 1, source: "daegu", as_of: "2026-09-30", batch_id: "b", batch_rows: 1 }] }),
+      fetchRuns: /** @type {any} */ (async () => ({ [GOVLIST_COLLECTOR]: runs })),
+      fetchHidden: /** @type {any} */ (async () => { throw new Error("VIEW 조회 실패"); }),
+    });
+    expect(g).toEqual({ runs, listRows: [{ id: 1, source: "daegu", as_of: "2026-09-30", batch_id: "b", batch_rows: 1 }], hiddenError: "VIEW 조회 실패" });
+    const ok = await fetchGovlistHealthInputs({ sb: fakeSb({ unsold_gov_list: [] }), fetchRuns: /** @type {any} */ (async () => ({})), fetchHidden: /** @type {any} */ (async () => ({ viewHidden: 1, rawAsOf: [], live: null })) });
+    expect(ok).toEqual({ runs: [], listRows: [], hidden: { viewHidden: 1, rawAsOf: [], live: null } });
+  });
+  it("세션693 B2 배선 — runDailyGuardedChecks 가 unsold-govlist 최근 실행 시각을 ㉔-d 에 넘긴다(굽기 뒤 반영이면 침묵 · 굽기 전이면 경보)", async () => {
+    const now = new Date("2026-12-08T00:00:00Z"); // KST 12-08 09:00
+    const hidden = { viewHidden: 58, rawAsOf: ["2026-11-30"], live: { fetchedAt: "2026-12-07T18:05:00Z", listHidden: 57 } };
+    const go = (/** @type {string} */ at) => runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, now, fetchGovlistHealth: async () => ({ runs: [run(null, at)], listRows: [], hidden }) }));
+    expect((await go("2026-12-07T20:30:00Z")).filter((i) => i.kind === "govlist-health")).toEqual([]);
+    expect((await go("2026-12-07T18:00:00Z")).filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_HIDDEN_MISMATCH"]);
+  });
+  it("C4(B2c) 배선 — 「오늘 03시」 판정에 deps.now 를 쓴다(지난 날 now · 그날 굽기 → 비교해 경보 · 진짜 지금이면 낡은 굽기라 침묵했을 것)", async () => {
+    const now = new Date("2020-01-02T00:00:00Z"); // KST 2020-01-02 09:00
+    const hidden = { viewHidden: 3, rawAsOf: ["2019-12-31"], live: { fetchedAt: "2020-01-01T18:05:00Z", listHidden: 2 } }; // 굽기 KST 01-02 03:05
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, now, fetchGovlistHealth: async () => ({ runs: [], listRows: [], hidden }) }));
+    expect(issues.filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_HIDDEN_MISMATCH"]);
   });
   it("텔레그램 문구 — 제목·조치가 있고 undefined 가 없다", () => {
     const text = formatIssue(checkGovlistSkips([run("GOVLIST_SKIP chungnam not_newer", "2026-12-08T00:00:00Z")])[0]);

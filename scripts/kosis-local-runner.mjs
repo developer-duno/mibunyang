@@ -203,6 +203,8 @@ export const DAY_TABLE = [
   //   표 순서 = 실행 순서 · 서로 다른 표를 쓴다). 회차당 누리집 호출 3회(목록·글·첨부).
   //   `--source=daegu` = 👤 D2(11/04): 충남 6월분은 첫 반영에서 뺀다 — 6개월 규칙으로 12/30 만료 → 1/9 KOSIS 전까지 「모름」이 되어
   //   6주 만에 값이 오락가락. **충남 7월분 이후가 게시되면 이 인자를 푼다**(빼면 두 출처 모두).
+  //   ⚠️ `--source` 를 빼면 충남 첫 승인 반영(--apply-from) 전까지 **대구도 매달 멈춘다** — 첫 회차 막음은 출처 하나라도 걸리면 전체 쓰기 0
+  //   (세션693 검사 blind🟡6). 빼기 전에 충남을 승인 파일로 한 번 반영해 둔다.
   //   첫 회차는 수집기가 막는다 — 반영된 완성 batch 가 없으면 쓰기 0 · failure `GOVLIST_FIRST_NEEDS_APPROVAL` · exit 2
   //   (첫 반영은 사람이 `--apply --apply-from=<승인한 impact>` 로). 차단기(바뀔 단지 > 50 · 명단 행 < 전 회차 × 0.5)도 쓰기 0 · exit 1.
   { day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"] },

@@ -5,7 +5,7 @@ import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   parseDaeguList, parseDaeguView, parseChungnamList, parseChungnamView, pickLatest, pickXlsx, titleMonthEnd, monthEnd,
-  fetchLatestGovlist, GovlistFetchError,
+  fetchLatestGovlist, GovlistFetchError, GOVLIST_FETCH_TIMEOUT_MS,
 } from "./_govlist-fetch.mjs";
 
 const FX = resolve(dirname(fileURLToPath(import.meta.url)), "__fixtures__/govlist");
@@ -74,5 +74,21 @@ describe("fetchLatestGovlist — 호출 3회 · xlsx 아니면 거부", () => {
   it("첨부가 zip 이 아니면(오류 페이지) GovlistFetchError", async () => {
     const { f } = fake(Buffer.from("<html>오류</html>"));
     await expect(fetchLatestGovlist("daegu", { fetchImpl: f })).rejects.toBeInstanceOf(GovlistFetchError);
+  });
+  it("세션693 B8 — 호출 3곳 모두 시간 제한(기본 60초) signal 을 넘기고 · 시간이 넘으면 GovlistFetchError(시간 제한)", async () => {
+    expect(GOVLIST_FETCH_TIMEOUT_MS).toBe(60000);
+    const { f } = fake(zip);
+    /** @type {any[]} */ const signals = [];
+    const spy = /** @type {typeof fetch} */ (/** @type {any} */ (async (/** @type {string} */ url, /** @type {any} */ init) => { signals.push(init?.signal); return f(url, init); }));
+    await fetchLatestGovlist("daegu", { fetchImpl: spy });
+    expect(signals).toHaveLength(3);
+    expect(signals.every((s) => s instanceof AbortSignal && !s.aborted)).toBe(true);
+    // 응답이 안 오는 누리집 — signal 이 끊을 때까지 기다린다(시험은 20ms 로 주입)
+    const hang = /** @type {typeof fetch} */ (/** @type {any} */ ((/** @type {string} */ _u, /** @type {any} */ init) => new Promise((_, reject) => {
+      init.signal.addEventListener("abort", () => reject(init.signal.reason));
+    })));
+    const err = await fetchLatestGovlist("daegu", { fetchImpl: hang, timeoutMs: 20 }).catch((e) => e);
+    expect(err).toBeInstanceOf(GovlistFetchError);
+    expect(String(err.message)).toMatch(/^시간 제한 20ms 넘김 /);
   });
 });

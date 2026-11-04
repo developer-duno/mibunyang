@@ -13,9 +13,11 @@
  *   승인 계획 일치가 곧 승인이다.
  * - `--apply`(승인 파일 없음) = 평시 반영(PR-4b · 👤 11/04 「자동 반영 + 차단기」) — impact 는 늘 먼저 저장하고, 다음이면 쓰기 0 · failure:
  *   ① 이번에 쓸 출처에 이미 반영된 **완성** batch 가 하나도 없음(첫 회차는 승인 파일로만) — `GOVLIST_FIRST_NEEDS_APPROVAL <출처>` · exit 2
- *   ② 차단기(`breaker()` — 바뀔 단지 > 50 · 명단 행 < 전 회차 × 0.5) — `GOVLIST_BREAKER <이유>` · exit 1
- *   ③ DB CHECK 위반 행(승인 반영과 같은 `GOVLIST_WRITE check_violation`). `--absent-zero`·`--resume` 은 승인 파일과만(👤 Q5 꺼짐).
- *   그 밖엔 꺼짐 계획의 쓰는 행 전부를 사본·역계획 뒤에 쓴다.
+ *   ② 차단기(`breaker()` — 출처별 **값이 바뀌는** 묶음 > 기준(대구·충남 10 임시 · 경기 50) · 명단 행 < 전 회차 × 0.5)
+ *      — 표식을 맨 앞에 `GOVLIST_BREAKER 승인 필요 — dry-run 뒤 --apply-from · <이유>` · exit 1
+ *   ③ DB CHECK 위반 행(승인 반영과 같은 `GOVLIST_WRITE check_violation`) · exit 1. `--absent-zero`·`--resume` 은 승인 파일과만(👤 Q5 꺼짐).
+ *   그 밖엔 꺼짐 계획의 쓰는 행 전부를 사본·역계획 뒤에 쓴다. 일부 행 실패·경합으로 failure 면 exit 1(러너 텔레그램).
+ *   성공하면 출처마다 `GOVLIST_APPLIED <출처> 단지 N 행 M {값 변화 꼴:수,…}`(승인 반영도 같다).
  * - 쓰기 = ① `unsold_gov_list` 새 batch 넣기 → 행 수 = batch_rows 확인 → 같은 (출처, 기준일)의 옛 batch 지우기 ② apartments 6칸 조건부 갱신
  *   (이전 값이 그대로인 행만). ① 이 실패하면 ② 를 하지 않는다.
  * - 표식(`collector_runs.error_message`): `GOVLIST_SKIP <source> <이유>`(fetch · header · rows0 · not_newer) · `GOVLIST_BREAKER …` ·
@@ -39,7 +41,7 @@ import { ROOT, loadEnv, getSupabase, selectAll, log, logError, createReporter, r
 import { fetchLatestGovlist, SOURCE_REGION, GovlistFetchError } from "./_govlist-fetch.mjs";
 import { parseGovlistWorkbook, GovlistParseError } from "./_govlist-parse.mjs";
 import { buildBundles, matchComplexes, parseMatchDecisions } from "./_govlist-match.mjs";
-import { planSource, summarize, breaker, comparePlans, buildBackup, buildListRows, isWrite, rowCheckViolations, sameSix, sixOf, VALUE_KEYS, RESTORE_EXPECT_KEYS } from "./_govlist-plan.mjs";
+import { planSource, summarize, breaker, comparePlans, buildBackup, buildListRows, isWrite, rowCheckViolations, sameSix, sixOf, changeClass, VALUE_KEYS, RESTORE_EXPECT_KEYS } from "./_govlist-plan.mjs";
 
 /** @typedef {import("./_govlist-fetch.mjs").GovlistSource} GovlistSource */
 /** @typedef {import("./_govlist-plan.mjs").PlanRow} PlanRow */
@@ -59,6 +61,8 @@ export const EXIT_RESUME_NO_BATCH = 2;
 export const EXIT_FIRST_NEEDS_APPROVAL = 2;
 /** 평시 `--apply` 에서 차단기가 걸려 쓰기 0 으로 멈췄을 때의 종료 코드(data-changing-run-approval §2 — 실제 실행 발동 = exit 1). */
 export const EXIT_BREAKER = 1;
+/** 평시 `--apply` 가 CHECK 위반·일부 행 실패·경합으로 failure 를 남겼을 때의 종료 코드 — 러너 텔레그램을 타게(세션693 보완 B3). */
+export const EXIT_WRITE_FAILURE = 1;
 /** 양성 대조군(설계서 §4) — dry-run 로그·impact 에 결과를 찍는다. */
 export const CONTROLS = Object.freeze([
   { label: "두류 센트레빌 더파크(대구 9월 → 등재·비공개 기대)", source: "daegu", re: /두류\s*센트레빌/ },
@@ -290,6 +294,19 @@ export function matchMarker(source, matches) {
 }
 
 /**
+ * 반영 요약 표식(세션693 보완 B4 · blind🟡5) — `GOVLIST_APPLIED <출처> 단지 <N> 행 <M> {<값 변화 꼴>:<수>,…}`.
+ * 단지 = 쓴 묶음 수 · 행 = 쓴 행 수 · 꼴 = `changeClass`(값>0→빈칸·빈칸→값·값→다른 값·값>0→0·빈칸→비공개(새 등재)·
+ * 값 같음·출처·비율 바뀜·값 같음·칸만 바뀜 …) 이름순.
+ * @param {string} source @param {PlanRow[]} rows 이번에 쓴 행(그 출처)
+ */
+export function appliedMarker(source, rows) {
+  /** @type {Record<string, number>} */ const by = {};
+  for (const r of rows) { const c = changeClass(r); by[c] = (by[c] ?? 0) + 1; }
+  const bundles = new Set(rows.map((r) => r.bundle_key)).size;
+  return `GOVLIST_APPLIED ${source} 단지 ${bundles} 행 ${rows.length} {${Object.keys(by).sort().map((k) => `${k}:${by[k]}`).join(",")}}`;
+}
+
+/**
  * @param {{ argv?: string[]; sb?: any; fetchImpl?: typeof fetch; now?: Date; decisionsPath?: string; artifactsRoot?: string; applyEnabled?: boolean;
  *   loadGrids?: (buf: Buffer) => Promise<import("./_govlist-parse.mjs").Grid[]> }} [deps]
  * @returns {Promise<{ impact?: any; impactPath?: string; wrote: number; exitCode?: number }>}
@@ -443,7 +460,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
   // ── 전이표 · 차단기 · CHECK 사전 검사 ──
   const lists = writes.map((w) => ({ source: w.source, rows: w.listRows.length, prevRows: w.prevRows }));
   const sumOff = summarize(planOff), sumOn = summarize(planOn);
-  const brOff = breaker({ changedBundles: sumOff.changedBundles, lists }), brOn = breaker({ changedBundles: sumOn.changedBundles, lists });
+  const brOff = breaker({ valueChangedBySource: sumOff.valueChangedBySource, lists }), brOn = breaker({ valueChangedBySource: sumOn.valueChangedBySource, lists });
   const violationsOf = (/** @type {PlanRow[]} */ p) => p.filter((r) => isWrite(r) && r.after && rowCheckViolations(r.after).length).map((r) => ({ id: r.id, action: r.action, violations: rowCheckViolations(/** @type {any} */ (r.after)) }));
   const dOnly = dOnlyRows(planOn);
   /** @type {Record<string, number>} */ const dOnlyByRegion = {};
@@ -462,7 +479,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
     },
   };
   for (const [k, s, b] of /** @type {const} */ ([["꺼짐", sumOff, brOff], ["켬", sumOn, brOn]])) {
-    log(PHASE, `[전이표 ${k}] 쓰는 행 ${s.writeRows} · 바뀔 단지 ${s.changedBundles} · 값 변화 ${JSON.stringify(s.byChange)} · 출처 ${JSON.stringify(s.sourceShift)}${b.tripped ? ` · 차단기 ${b.reasons.join(" / ")}` : ""}`);
+    log(PHASE, `[전이표 ${k}] 쓰는 행 ${s.writeRows} · 바뀔 단지 ${s.changedBundles}(값 바뀜 ${JSON.stringify(s.valueChangedBySource)}) · 값 변화 ${JSON.stringify(s.byChange)} · 출처 ${JSON.stringify(s.sourceShift)}${b.tripped ? ` · 차단기 ${b.reasons.join(" / ")}` : ""}`);
   }
   log(PHASE, `[켬 상한] (d) 하나로만 막힌 행 ${dOnly.length}(${JSON.stringify(dOnlyByRegion)}) · CHECK 위반 꺼짐 ${impact.modes.off.checkViolations.length} · 켬 ${impact.modes.on.checkViolations.length}`);
   const impactPath = args.impactOut ?? resolve(artifactsRoot, `impact-${stamp(now)}.json`);
@@ -493,13 +510,14 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
     }
     // ② 차단기 — 승인 파일이 없으니 넘는 회차는 쓰지 않는다(넘는 달은 dry-run → 전이표 승인 → --apply-from)
     if (br.tripped) {
-      const m = `GOVLIST_BREAKER ${br.reasons.join(" / ")}`;
-      markers.push(m); logError(PHASE, `[차단기] ${m} — 쓰기 0 (impact ${impactPath} 로 전이표를 만들어 승인 뒤 --apply-from)`);
+      // 맨 앞에 둔다 — 감시 ⑬ 이 error_message 앞 80자만 보여 준다(세션693 검사 blind🟠1: 텔레그램에 「승인 필요」가 없었다)
+      const m = `GOVLIST_BREAKER 승인 필요 — dry-run 뒤 --apply-from · ${br.reasons.join(" / ")}`;
+      markers.unshift(m); logError(PHASE, `[차단기] ${m} — 쓰기 0 (impact ${impactPath} 로 전이표를 만들어 승인 뒤 --apply-from)`);
       await finish("failure", 0, 1);
       return { impact, impactPath, wrote: 0, exitCode: EXIT_BREAKER };
     }
     toWrite = plan.filter(isWrite);
-    log(PHASE, `[평시 반영] 차단기 통과 — 쓰는 행 ${toWrite.length} · 바뀔 단지 ${(mode === "on" ? sumOn : sumOff).changedBundles}`);
+    log(PHASE, `[평시 반영] 차단기 통과 — 쓰는 행 ${toWrite.length} · 바뀔 단지 ${(mode === "on" ? sumOn : sumOff).changedBundles} · 값 바뀜 ${JSON.stringify((mode === "on" ? sumOn : sumOff).valueChangedBySource)}`);
   } else {
     const ap = /** @type {any} */ (JSON.parse(readFileSync(args.applyFrom, "utf8")))?.modes?.[mode]?.plan;
     if (!Array.isArray(ap)) {
@@ -542,7 +560,7 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
   if (bad.length) {
     markers.push(`GOVLIST_WRITE check_violation ${bad.length}(${bad.slice(0, 5).map((r) => r.id).join(",")})`);
     await finish("failure", 0, 1);
-    return { impact, impactPath, wrote: 0 };
+    return { impact, impactPath, wrote: 0, ...(!args.applyFrom ? { exitCode: EXIT_WRITE_FAILURE } : {}) };
   }
   // 이어 쓰기도 다시 세운 계획과 맞댄다(승인 파일의 새 값을 그대로 믿지 않는다 — 재검사 🟠). CHECK 사전 검사 뒤에 두는 것은 G1③ 표식을 지키려는 순서일 뿐(둘 다 쓰기 0).
   if (args.resume) {
@@ -587,11 +605,23 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
   }
   const interrupted = rpt.interrupted();
   if (race) markers.push(`GOVLIST_WRITE race ${race}`);
-  if (fail) markers.push(`GOVLIST_WRITE fail ${fail}`);
+  // 이어 쓰기 안내(세션693 보완 B6) — 같은 달 재실행은 not_newer 로 쓰기 0 이라 남은 행은 --resume 으로만 메운다
+  //   출처가 하나면 --source 도 — 빼면 다른 출처에 같은 기준일 batch 가 없어 GOVLIST_RESUME_NO_BATCH 로 막힌다(2차 보완 C3)
+  if (fail) markers.push(`GOVLIST_WRITE fail ${fail} — 이어 쓰기: --apply --apply-from=${args.applyFrom ?? impactPath} --resume${args.sources.length === 1 ? ` --source=${args.sources[0]}` : ""}`);
   if (interrupted) markers.push("GOVLIST_WRITE interrupted — --resume 으로 이어 쓴다");
   log(PHASE, `=== 반영 끝 — apartments ${ok}행 · 경합 ${race} · 실패 ${fail}${interrupted ? " · 도중 끊김(partial)" : ""} ===`);
-  await finish(interrupted ? "partial" : fail || race ? "failure" : "success", ok, fail + race);
-  return { impact, impactPath, wrote: ok };
+  const status = interrupted ? "partial" : fail || race ? "failure" : "success";
+  // 반영 요약(세션693 보완 B4) — 매달 무엇이 바뀌었는지 collector_runs 에 남긴다(status 그대로 · 실패 표식 없을 때만)
+  if (status === "success") {
+    for (const w of writes) {
+      const rows = toWrite.filter((r) => r.source === w.source);
+      if (!rows.length) continue;
+      markers.push(appliedMarker(w.source, rows));
+    }
+  }
+  await finish(status, ok, fail + race);
+  // 평시 반영(사람이 안 보는 자동 회차)의 실패는 exit 1 — 러너 텔레그램을 타게(세션693 보완 B3)
+  return { impact, impactPath, wrote: ok, ...(status === "failure" && !args.applyFrom ? { exitCode: EXIT_WRITE_FAILURE } : {}) };
 }
 
 const isCLI = !!process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/\\/g, "/").split("/").pop() ?? "");
