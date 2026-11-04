@@ -59,7 +59,8 @@
  *                                 → set `{unsold:null, unsold_rate:null, unsold_source:"govlist", unsold_as_of:<명단 기준월>,
  *                                   unsold_listed_as_of:<명단 기준월>, unsold_listed_total:<명단 총분양 Σ>}` (세션692 PR-4 — 지자체 명단 등재·수 비공개로
  *                                   보류를 직행 해제. 두류 2행 첫 반영용. 총분양은 VIEW 50% 규칙·KOSIS 상한 재료라 같이 넣는다 — govlist 수집기 ② 와 같은 꼴)
- *                                   ⛔ `--apply` 는 수집기 반영 잠금(collect-unsold-govlist.mjs GOVLIST_APPLY_ENABLED)이 풀린 뒤(PR-4b)에만 — 잠겨 있으면 쓰기 전에 던진다
+ *                                   ⛔ `--apply` 는 수집기 반영 잠금(collect-unsold-govlist.mjs GOVLIST_APPLY_ENABLED — PR-4b 에서 풀림)이 풀렸을 때만 —
+ *                                   잠겨 있으면 SET 출처가 govlist 인 행(op 이름 무관)이 하나라도 있는 계획은 쓰기 전에 던진다
  *   - `mark_hold_from_govlist`    expect `{unsold:null, unsold_rate:null, unsold_source:"govlist", unsold_as_of:<명단 기준월>}`
  *                                 → set `{unsold:null, unsold_rate:null, unsold_source:"hold", unsold_as_of:<보류 결정일>,
  *                                   unsold_listed_as_of:null, unsold_listed_total:null}` (release_hold_to_govlist 되돌림 — 명단 칸 2개도 비운다)
@@ -241,9 +242,12 @@ export async function main(opts = {}) {
   // 세션692 PR-4 보완(맹점 🟠1) — 보류를 명단 값으로 푸는 op 는 수집기 반영 잠금이 풀린 뒤(PR-4b)에만 쓴다. 잠긴 채 쓰면
   //   ⑫(d) 기준 명단(21)과 DB 보류 수가 어긋나 헛경보가 나고, 본 폴더가 pull 되기 전 9일 KOSIS(옛 코드)가 다시 덮는다.
   //   되돌림(mark_hold_from_govlist)은 보류로 돌아가는 안전 쪽이라 잠금과 무관하게 허용. 미리보기(dry-run)는 쓰지 않으므로 막지 않는다.
-  const lockedRows = rows.filter((r) => r.op === "release_hold_to_govlist");
+  // 세션693 PR-4b(BACKLOG A-28 adv재검🟡3): op 이름이 아니라 **SET 절의 unsold_source 가 govlist 인 행**으로 판정한다 —
+  //   손으로 쓴 계획이 다른 op 이름으로 set.unsold_source="govlist" 를 넣어도 잠금이 걸리게(수집기 역계획 restore_govlist 포함).
+  const lockedRows = rows.filter((r) => r?.set?.unsold_source === "govlist");
   if (apply && lockedRows.length > 0 && !govlistApplyEnabled) {
-    throw new Error(`release_hold_to_govlist ${lockedRows.length}행 — 지자체 명단 반영 잠금(GOVLIST_APPLY_ENABLED=false) 중이라 쓰지 않습니다. PR-4b 잠금 해제 뒤에 반영하세요`);
+    const ops = [...new Set(lockedRows.map((r) => r.op))].sort().join(",");
+    throw new Error(`SET 출처 govlist ${lockedRows.length}행(op ${ops}) — 지자체 명단 반영 잠금(GOVLIST_APPLY_ENABLED=false) 중이라 쓰지 않습니다. 잠금을 푼 뒤에 반영하세요`);
   }
 
   const sb = getSupabase();

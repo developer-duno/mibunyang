@@ -13,7 +13,17 @@ import {
   checkGovlistSkips,
   checkGovlistDrop,
   parseGovlistSkips,
+  parseGovlistMatch,
+  checkGovlistMatch,
+  checkGovlistHiddenParity,
+  fetchGovlistHiddenInputs,
+  fetchGovlistListRows,
+  GOVLIST_LIST_MONTHS,
+  GOVLIST_LIVE_META_URL,
+  GOVLIST_LIVE_LIST_URL,
   GOVLIST_COLLECTOR,
+  EXTERNAL_API_COLLECTORS,
+  checkExternalApiStale,
   runDailyGuardedChecks,
   isAlwaysDedup,
 } from "./monitor-collectors.mjs";
@@ -143,6 +153,150 @@ describe("㉔-b 명단 행 수 전 기준월 대비 −50%", () => {
   });
 });
 
+describe("⑤ 등재 — unsold-govlist 월간 38 · ⑤-a 는 skip(명단 원문 행)으로 가른다(세션693 PR-4b A4 B 안)", () => {
+  const target = EXTERNAL_API_COLLECTORS.filter((c) => c.collector === GOVLIST_COLLECTOR);
+  const NOW = new Date("2027-02-20T00:00:00Z");
+  const r3 = (/** @type {number} */ skip) => ["2027-02-08", "2027-01-08", "2026-12-08", "2026-11-08"].map((d) => ({ status: "success", ok_count: 0, skip_count: skip, finished_at: `${d}T00:00:00Z` }));
+  it("등재 한 줄 · stale_days 38 · owner 에 대구·8일", () => {
+    expect(target).toHaveLength(1);
+    expect(target[0].stale_days).toBe(38);
+    expect(target[0].owner).toMatch(/대구.*8일/);
+  });
+  it("① 바뀜 0·명단 60행 success 3회+ → ⑤-a 침묵 · ② 명단 못 읽은 달(skip 0) success 3회+ → ⑤-a 경보", () => {
+    expect(checkExternalApiStale(target, { [GOVLIST_COLLECTOR]: r3(60) }, NOW)).toEqual([]);
+    const loud = checkExternalApiStale(target, { [GOVLIST_COLLECTOR]: r3(0) }, NOW);
+    expect(loud.map((i) => i.kind)).toEqual(["outage"]);
+    expect(loud[0].collector).toBe(GOVLIST_COLLECTOR);
+  });
+  it("⑤-b 미발화 — 마지막 실행 38일 넘으면 stale", () => {
+    expect(checkExternalApiStale(target, { [GOVLIST_COLLECTOR]: [{ status: "success", ok_count: 0, skip_count: 60, finished_at: "2026-11-08T00:00:00Z" }] }, new Date("2026-12-17T00:00:00Z")).map((i) => i.kind)).toEqual(["stale"]);
+    expect(checkExternalApiStale(target, { [GOVLIST_COLLECTOR]: [{ status: "success", ok_count: 0, skip_count: 60, finished_at: "2026-11-08T00:00:00Z" }] }, new Date("2026-12-15T00:00:00Z"))).toEqual([]);
+  });
+});
+
+describe("㉔-c 매칭 — 충돌 · 판정 필요 증가(세션693 PR-4b (e))", () => {
+  const M = (/** @type {string} */ s, /** @type {number} */ n, /** @type {string} */ sgg, /** @type {number} */ c) => `GOVLIST_MATCH ${s} 판정필요 ${n}{${sgg}} 충돌 ${c}`;
+  it("parseGovlistMatch — 다른 표식 사이에서 출처·수·시군구·충돌만 뽑는다", () => {
+    expect(parseGovlistMatch(`GOVLIST_SKIP chungnam not_newer · ${M("daegu", 33, "달서구:5,수성구:28", 0)}`)).toEqual([{ source: "daegu", unresolved: 33, bySgg: { 달서구: 5, 수성구: 28 }, conflicts: 0 }]);
+    expect(parseGovlistMatch(M("daegu", 0, "", 0))).toEqual([{ source: "daegu", unresolved: 0, bySgg: {}, conflicts: 0 }]);
+    expect(parseGovlistMatch(null)).toEqual([]);
+  });
+  it("brief 예시: 33 → 33 침묵 · 33 → 35 알림(늘어난 시군구) · 35 → 33 침묵 · 앞 실행 없으면 침묵", () => {
+    expect(checkGovlistMatch([run(M("daegu", 33, "달서구:5", 0), "2026-12-08T00:00:00Z"), run(M("daegu", 33, "달서구:5", 0), "2026-11-08T00:00:00Z")])).toEqual([]);
+    const up = checkGovlistMatch([run(M("daegu", 35, "달서구:7", 0), "2026-12-08T00:00:00Z"), run(M("daegu", 33, "달서구:5", 0), "2026-11-08T00:00:00Z")]);
+    expect(up.map((i) => i.detail)).toEqual(["GOVLIST_MATCH_GROWTH daegu 판정 필요 단지 33→35곳 — 늘어난 시군구: 달서구 5→7"]);
+    expect(isAlwaysDedup(up[0])).toBe(true);
+    expect(checkGovlistMatch([run(M("daegu", 33, "달서구:5", 0), "2026-12-08T00:00:00Z"), run(M("daegu", 35, "달서구:7", 0), "2026-11-08T00:00:00Z")])).toEqual([]);
+    expect(checkGovlistMatch([run(M("daegu", 33, "달서구:5", 0), "2026-12-08T00:00:00Z")])).toEqual([]);
+    expect(checkGovlistMatch([])).toEqual([]);
+  });
+  it("앞 실행은 **같은 출처 표식이 있는** 가장 가까운 실행(건너뜀·잠금 실행은 넘어간다) · 출처마다 따로", () => {
+    const runs = [
+      run(`${M("daegu", 34, "달서구:6", 0)} · ${M("chungnam", 10, "아산시:10", 0)}`, "2027-01-08T00:00:00Z"),
+      run("GOVLIST_APPLY_LOCKED x", "2026-12-08T00:00:00Z", "failure"),
+      run(`${M("daegu", 33, "달서구:5", 0)} · ${M("chungnam", 12, "아산시:12", 0)}`, "2026-11-08T00:00:00Z"),
+    ];
+    expect(checkGovlistMatch(runs).map((i) => i.detail.split(" ").slice(0, 2).join(" "))).toEqual(["GOVLIST_MATCH_GROWTH daegu"]);
+  });
+  it("충돌 ≥ 1 → 1건(앞 실행 없어도) · 0 이면 침묵 · 지문 = 출처|수 @ 실행 시각", () => {
+    expect(checkGovlistMatch([run(M("daegu", 33, "달서구:5", 0), "2026-12-08T00:00:00Z")])).toEqual([]);
+    const c = checkGovlistMatch([run(M("daegu", 33, "달서구:5", 2), "2026-12-08T00:00:00Z")]);
+    expect(c.map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_MATCH_CONFLICT"]);
+    expect(c[0].detail).toContain("매칭 충돌 2곳");
+    expect(c[0].at).toMatch(/^mconf:[0-9a-f]+@2026-12-08T00:00:00Z$/);
+    const again = checkGovlistMatch([run(M("daegu", 33, "달서구:5", 2), "2027-01-08T00:00:00Z")]);
+    expect(again[0].at).not.toBe(c[0].at); // 다음 회차에도 남아 있으면 다시
+  });
+});
+
+describe("㉔-d VIEW hidden = 목록 JSON hidden(세션693 PR-4b (f))", () => {
+  const NOW = new Date("2026-12-09T00:00:00Z"); // KST 09:00
+  const live = (/** @type {string} */ fetchedAt, /** @type {number} */ listHidden) => ({ fetchedAt, listHidden });
+  it("같으면 침묵 · 다르면 1건(오늘 03시 뒤 굽기일 때만)", () => {
+    expect(checkGovlistHiddenParity({ viewHidden: 3, rawAsOf: ["2026-09-30", "2026-09-30", "2026-09-30"], live: live("2026-12-08T18:05:00Z", 3) }, NOW)).toEqual([]);
+    const is = checkGovlistHiddenParity({ viewHidden: 3, rawAsOf: ["2026-09-30", "2026-09-30", "2026-09-30"], live: live("2026-12-08T18:05:00Z", 2) }, NOW);
+    expect(is.map((i) => i.detail)).toEqual(["GOVLIST_HIDDEN_MISMATCH VIEW 「수 비공개」 3곳 ≠ 라이브 목록 JSON 2곳"]);
+    expect(isAlwaysDedup(is[0])).toBe(true);
+  });
+  it("굽기가 오늘 03시(KST) 전이면 비교하지 않는다 — 경계 03:00 은 비교", () => {
+    const h = (/** @type {string} */ f) => checkGovlistHiddenParity({ viewHidden: 3, rawAsOf: ["2026-09-30"], live: live(f, 0) }, NOW);
+    expect(h("2026-12-08T17:59:59Z")).toEqual([]); // KST 02:59:59
+    expect(h("2026-12-08T18:00:00Z")).toHaveLength(1); // KST 03:00
+    expect(checkGovlistHiddenParity({ viewHidden: 3, rawAsOf: ["2026-09-30"], live: null }, NOW)).toEqual([]); // 라이브 못 가져옴 = 비교 건너뜀
+  });
+  it("만료일 경계 — 전날 굽기는 비교 안 함(만료일이 낄 수 있는 유일한 꼴) · 같은 날 굽기는 만료 판정이 같아 그대로 비교", () => {
+    // 기준월 06-09 + 6개월 = 12-09 까지 유효. 지금 KST 12-10 01:00 · 굽기 KST 12-09 03:05 → 「오늘 03시」 전이라 비교 안 함
+    expect(checkGovlistHiddenParity({ viewHidden: 1, rawAsOf: ["2026-06-09"], live: live("2026-12-08T18:05:00Z", 2) }, new Date("2026-12-09T16:00:00Z"))).toEqual([]);
+    // 같은 날(KST 12-09) 굽기 03:30 · 지금 23:00 — 만료 판정은 날짜 단위라 두 시각이 같다 → 비교한다
+    expect(checkGovlistHiddenParity({ viewHidden: 1, rawAsOf: ["2026-06-09"], live: live("2026-12-08T18:30:00Z", 2) }, new Date("2026-12-09T14:00:00Z"))).toHaveLength(1);
+  });
+  it("양성 대조군 — 원표 유효 비공개 1행+ 인데 VIEW 0 → 따로 1건(라이브와 무관) · 원표 행이 만료됐으면 침묵 · 0=0 은 침묵", () => {
+    const z = checkGovlistHiddenParity({ viewHidden: 0, rawAsOf: ["2026-09-30"], live: null }, NOW);
+    expect(z.map((i) => i.detail)).toEqual(["GOVLIST_HIDDEN_VIEW_ZERO 원표 govlist 비공개(유효) 1행인데 VIEW 「수 비공개」 카드 0곳"]);
+    expect(checkGovlistHiddenParity({ viewHidden: 0, rawAsOf: ["2026-01-31"], live: null }, NOW)).toEqual([]); // 07-31 만료
+    expect(checkGovlistHiddenParity({ viewHidden: 0, rawAsOf: [], live: live("2026-12-08T18:05:00Z", 0) }, NOW)).toEqual([]);
+    expect(checkGovlistHiddenParity(undefined, NOW)).toEqual([]);
+  });
+  it("fetchGovlistHiddenInputs — 가짜 sb·fetch: VIEW 임대형 제외 · 원표 기준월 · 라이브 hidden 수 · 가져오기 실패는 live null(던지지 않음)", async () => {
+    const tables = {
+      apartments_flat: [{ id: "a", name: "두류", presaleType: null, unsoldListedHidden: true }, { id: "b", name: "x 행복주택", presaleType: null, unsoldListedHidden: true }, { id: "c", name: "y", presaleType: null, unsoldListedHidden: false }],
+      apartments: [{ id: "a", unsold: null, unsold_source: "govlist", unsold_as_of: "2026-09-30" }, { id: "d", unsold: 5, unsold_source: "govlist", unsold_as_of: "2026-09-30" }, { id: "e", unsold: null, unsold_source: "hold", unsold_as_of: "2026-11-01" }],
+    };
+    /** @type {string[]} */ const urls = [];
+    const okFetch = /** @type {any} */ (async (/** @type {string} */ u) => { urls.push(u); return new Response(JSON.stringify(u.endsWith("meta.json") ? { fetchedAt: "2026-12-08T18:05:00Z" } : { data: [{ unsoldListedHidden: true }, { unsoldListedHidden: false }] })); });
+    const h = await fetchGovlistHiddenInputs({ sb: fakeSb(tables), fetchImpl: okFetch });
+    expect(h).toEqual({ viewHidden: 1, rawAsOf: ["2026-09-30"], live: { fetchedAt: "2026-12-08T18:05:00Z", listHidden: 1 }, liveError: null });
+    expect(urls).toEqual([GOVLIST_LIVE_META_URL, GOVLIST_LIVE_LIST_URL]);
+    expect(GOVLIST_LIVE_LIST_URL).toMatch(/^https:\/\/www\./);
+    const bad = await fetchGovlistHiddenInputs({ sb: fakeSb(tables), fetchImpl: /** @type {any} */ (async () => new Response("x", { status: 502 })) });
+    expect(bad.live).toBeNull();
+    expect(bad.liveError).toMatch(/HTTP 502/);
+  });
+});
+
+/** 작은 읽기 전용 가짜 Supabase(select·eq·is·in·gt·lt·order·limit) — 부른 조회를 calls 에 남긴다. @param {Record<string, any[]>} tables @param {any[]} [calls] */
+function fakeSb(tables, calls = []) {
+  return {
+    from: (/** @type {string} */ t) => {
+      /** @type {any} */ const q = { t, f: [], ord: [], lim: null, ops: [] };
+      /** @type {any} */ const api = {
+        select: () => api,
+        eq: (/** @type {string} */ k, /** @type {any} */ v) => { q.ops.push(`eq:${k}`); q.f.push((/** @type {any} */ r) => r[k] === v); return api; },
+        is: (/** @type {string} */ k, /** @type {any} */ v) => { q.f.push((/** @type {any} */ r) => (r[k] ?? null) === v); return api; },
+        in: (/** @type {string} */ k, /** @type {any[]} */ v) => { q.ops.push(`in:${k}=${v.join("|")}`); q.f.push((/** @type {any} */ r) => v.includes(r[k])); return api; },
+        gt: (/** @type {string} */ k, /** @type {any} */ v) => { q.f.push((/** @type {any} */ r) => r[k] > v); return api; },
+        lt: (/** @type {string} */ k, /** @type {any} */ v) => { q.f.push((/** @type {any} */ r) => r[k] < v); return api; },
+        order: (/** @type {string} */ k, /** @type {any} */ o) => { q.ord.push([k, o?.ascending !== false]); return api; },
+        limit: (/** @type {number} */ n) => { q.lim = n; return api; },
+        then: (/** @type {any} */ ok, /** @type {any} */ bad) => {
+          calls.push({ t, ops: q.ops });
+          let out = (tables[t] ?? []).filter((r) => q.f.every((/** @type {any} */ fn) => fn(r)));
+          for (const [k, asc] of [...q.ord].reverse()) out = [...out].sort((a, b) => (a[k] < b[k] ? -1 : a[k] > b[k] ? 1 : 0) * (asc ? 1 : -1));
+          if (q.lim != null) out = out.slice(0, q.lim);
+          return Promise.resolve({ data: out, error: null }).then(ok, bad);
+        },
+      };
+      return api;
+    },
+  };
+}
+
+describe("㉔-b 조회 범위 — 출처마다 최근 기준월 2개(세션693 PR-4b (g))", () => {
+  it("기준월 3개 있으면 가장 새 2개만 읽는다 · 출처마다 따로 · 판정은 그대로", async () => {
+    let id = 1;
+    const mk = (/** @type {string} */ source, /** @type {string} */ asOf, /** @type {number} */ n) => Array.from({ length: n }, () => ({ id: id++, source, as_of: asOf, batch_id: `${source}-${asOf}`, batch_rows: n }));
+    const rows = [...mk("daegu", "2026-08-31", 60), ...mk("daegu", "2026-09-30", 60), ...mk("daegu", "2026-10-31", 20), ...mk("chungnam", "2026-06-30", 90)];
+    /** @type {any[]} */ const calls = [];
+    const got = await fetchGovlistListRows(fakeSb({ unsold_gov_list: rows }, calls));
+    expect([...new Set(got.map((r) => `${r.source}|${r.as_of}`))].sort()).toEqual(["chungnam|2026-06-30", "daegu|2026-09-30", "daegu|2026-10-31"]);
+    expect(got).toHaveLength(60 + 20 + 90);
+    expect(calls.filter((c) => c.ops.some((/** @type {string} */ o) => o.startsWith("in:as_of="))).map((c) => c.ops.find((/** @type {string} */ o) => o.startsWith("in:")))).toEqual(["in:as_of=2026-06-30", "in:as_of=2026-10-31|2026-09-30"]);
+    expect(checkGovlistDrop(got).map((i) => i.detail.split(" ").slice(0, 2).join(" "))).toEqual(["GOVLIST_DROP daegu"]);
+    expect(GOVLIST_LIST_MONTHS).toBe(2);
+    expect(await fetchGovlistListRows(fakeSb({ unsold_gov_list: [] }))).toEqual([]);
+  });
+});
+
 describe("㉔ 배선", () => {
   const quiet = {
     fetchGuPairs: async () => ({ aptPairs: [], regionRows: [] }),
@@ -180,9 +334,25 @@ describe("㉔ 배선", () => {
     const src = readFileSync(fileURLToPath(new URL("./collectors/collect-unsold-govlist.mjs", import.meta.url)), "utf8");
     expect(src).toContain(`export const PHASE = "${GOVLIST_COLLECTOR}";`);
     expect(src).toContain("const m = `GOVLIST_SKIP ${source} ${why}`;");
-    expect(src).toContain('markers.join(" · ")');
+    expect(src).toContain('[...markers, ...matchMarkers].join(" · ")'); // 세션693: 매칭 표식(GOVLIST_MATCH)을 뒤에 붙여 같은 이음으로
     const mon = readFileSync(fileURLToPath(new URL("./monitor-collectors.mjs", import.meta.url)), "utf8");
-    expect(mon).toContain('s.from("unsold_gov_list").select("id, source, as_of, batch_id, batch_rows"),\n    getSupabase(),\n    "id",'.replace(/\n/g, mon.includes("\r\n") ? "\r\n" : "\n"));
+    // 세션693 (g): 출처마다 최근 기준월 2개로 좁힌 id 커서 조회
+    expect(mon).toContain('s.from("unsold_gov_list").select("id, source, as_of, batch_id, batch_rows").eq("source", source).in("as_of", months),\n      sb,\n      "id",'.replace(/\n/g, mon.includes("\r\n") ? "\r\n" : "\n"));
+    // 세션693 (e): 매칭 표식 꼴이 수집기와 같다
+    expect(src).toContain("return `GOVLIST_MATCH ${source} 판정필요 ${total}{${list}} 충돌 ${conflicts}`;");
+  });
+  it("세션693 ㉔-c·㉔-d 배선 — 같은 ㉔ 재료(runs·hidden)에서 매칭·비공개 대조가 실린다 · hidden 없으면(옛 재료) 침묵", async () => {
+    const loud = await runDailyGuardedChecks(/** @type {any} */ ({
+      ...quiet,
+      fetchGovlistHealth: async () => ({
+        runs: [run("GOVLIST_MATCH daegu 판정필요 35{달서구:5} 충돌 1", "2026-12-08T00:00:00Z"), run("GOVLIST_MATCH daegu 판정필요 33{달서구:3} 충돌 0", "2026-11-08T00:00:00Z")],
+        listRows: [],
+        hidden: { viewHidden: 0, rawAsOf: ["2099-01-31"], live: null, liveError: "boom" },
+      }),
+    }));
+    expect(loud.filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_MATCH_CONFLICT", "GOVLIST_MATCH_GROWTH", "GOVLIST_HIDDEN_VIEW_ZERO"]);
+    const quietRun = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchGovlistHealth: async () => ({ runs: [], listRows: [] }) }));
+    expect(quietRun.filter((i) => i.kind === "govlist-health" || i.kind === "check-failed")).toEqual([]);
   });
   it("텔레그램 문구 — 제목·조치가 있고 undefined 가 없다", () => {
     const text = formatIssue(checkGovlistSkips([run("GOVLIST_SKIP chungnam not_newer", "2026-12-08T00:00:00Z")])[0]);

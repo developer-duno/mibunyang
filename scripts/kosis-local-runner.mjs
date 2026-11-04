@@ -198,6 +198,14 @@ export const DAY_TABLE = [
   // 계속 올라 monitor 경보가 영구화되고 있었다. 8일 = 행 생성자(population 5일·
   // market-stats 6일) **뒤**여야 새 행을 덮는다([[regions-multicollector-recorded-at-lag]]).
   { day: 8, script: "collect-crime-safety.mjs" },
+  // 세션693 PR-4b: 지자체 단지별 미분양 명단(대구) 평시 반영 — 9일 KOSIS **앞**이어야 그 달 명단을 KOSIS 가 존중한다
+  //   (collect-unsold-kosis 규칙 2-b). 같은 날 crime-safety 와는 아래 main 루프가 spawnSync 로 **차례로** 돌린다(동시 아님 ·
+  //   표 순서 = 실행 순서 · 서로 다른 표를 쓴다). 회차당 누리집 호출 3회(목록·글·첨부).
+  //   `--source=daegu` = 👤 D2(11/04): 충남 6월분은 첫 반영에서 뺀다 — 6개월 규칙으로 12/30 만료 → 1/9 KOSIS 전까지 「모름」이 되어
+  //   6주 만에 값이 오락가락. **충남 7월분 이후가 게시되면 이 인자를 푼다**(빼면 두 출처 모두).
+  //   첫 회차는 수집기가 막는다 — 반영된 완성 batch 가 없으면 쓰기 0 · failure `GOVLIST_FIRST_NEEDS_APPROVAL` · exit 2
+  //   (첫 반영은 사람이 `--apply --apply-from=<승인한 impact>` 로). 차단기(바뀔 단지 > 50 · 명단 행 < 전 회차 × 0.5)도 쓰기 0 · exit 1.
+  { day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"] },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
   // 세션603: 옛 "10일 토요일 → 11일 보충"(세션515 이식)을 지웠다. 전제("토요일 2u 실거래가와

@@ -780,28 +780,38 @@ describe("hold op 2종 추가 (세션692) — release_hold_to_govlist / mark_hol
     /** @type {any[]} */ const wheres = [];
     selectAllMock.mockClear();
     await expect(applyPlan([buildHoldPlanRow("release_hold_to_govlist", { id: "ah-2025910146", date: "2026-09-30", listed_total: 52 })], liveDb, wheres, { govlistApplyEnabled: false }))
-      .rejects.toThrow(/release_hold_to_govlist 1행 — 지자체 명단 반영 잠금\(GOVLIST_APPLY_ENABLED=false\) 중이라 쓰지 않습니다\. PR-4b 잠금 해제 뒤/);
+      .rejects.toThrow(/SET 출처 govlist 1행\(op release_hold_to_govlist\) — 지자체 명단 반영 잠금\(GOVLIST_APPLY_ENABLED=false\) 중이라 쓰지 않습니다/);
     expect(wheres).toEqual([]);
     expect(liveDb["ah-2025910146"]).toEqual(start);
     expect(selectAllMock).not.toHaveBeenCalled();
     selectAllMock.mockReset(); // 던져서 안 쓰인 mockResolvedValueOnce 가 다음 시험으로 새지 않게
-    // 기본값(opts 없음)은 수집기 상수 — 지금은 잠겨 있다(PR-4b 에서 켠다)
+    // 기본값(opts 없음)은 수집기 상수 — PR-4b(세션693)에서 풀었다
     const { GOVLIST_APPLY_ENABLED } = await import("./collectors/collect-unsold-govlist.mjs");
-    expect(GOVLIST_APPLY_ENABLED).toBe(false);
+    expect(GOVLIST_APPLY_ENABLED).toBe(true);
   });
 
-  it("⛔ 옵션 없이 부르면 기본값(수집기 GOVLIST_APPLY_ENABLED=false)이 그대로 잠근다 — throw · 쓰기 0", async () => {
-    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+  it("⛔ 세션693 A9 — 잠금은 op 이름이 아니라 SET 출처 govlist 로 건다: 손으로 쓴 다른 op(restore_govlist)도 잠금 중이면 던진다 · 쓰기 0", async () => {
     const start = { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-01" };
     const liveDb = { "ah-2025910254": { ...start } };
     /** @type {any[]} */ const wheres = [];
     selectAllMock.mockClear();
-    await expect(applyPlan([buildHoldPlanRow("release_hold_to_govlist", { id: "ah-2025910254", date: "2026-09-30", listed_total: 52 })], liveDb, wheres, null))
-      .rejects.toThrow(/PR-4b 잠금 해제 뒤/);
+    const handRow = { id: "ah-2025910254", op: "restore_govlist", expect: { unsold: null, unsold_source: "hold" }, set: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-09-30" } };
+    await expect(applyPlan([handRow], liveDb, wheres, { govlistApplyEnabled: false }))
+      .rejects.toThrow(/SET 출처 govlist 1행\(op restore_govlist\)/);
     expect(wheres).toEqual([]);
     expect(liveDb["ah-2025910254"]).toEqual(start);
     expect(selectAllMock).not.toHaveBeenCalled();
     selectAllMock.mockReset(); // 던져서 안 쓰인 mockResolvedValueOnce 가 다음 시험으로 새지 않게
+  });
+
+  it("세션693 PR-4b — 옵션 없이 부르면 기본값(수집기 GOVLIST_APPLY_ENABLED=true)이라 잠기지 않고 반영된다", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const start = { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-01" };
+    const liveDb = { "ah-2025910254": { ...start } };
+    /** @type {any[]} */ const wheres = [];
+    const res = await applyPlan([buildHoldPlanRow("release_hold_to_govlist", { id: "ah-2025910254", date: "2026-09-30", listed_total: 52 })], liveDb, wheres, null);
+    expect(res.applied).toBe(1);
+    expect(liveDb["ah-2025910254"].unsold_source).toBe("govlist");
   });
 
   it("잠금 중에도 미리보기(dry-run)는 막지 않고 계획을 끝까지 대조한다 — 통과 1 · 쓰기 0", async () => {

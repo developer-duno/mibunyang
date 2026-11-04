@@ -4,7 +4,7 @@ import { readFileSync, writeFileSync, mkdtempSync, readdirSync, existsSync } fro
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { main, parseArgs, PHASE, GOVLIST_APPLY_ENABLED, EXIT_APPLY_LOCKED, EXIT_RESUME_NO_BATCH, writeListBatch, loadPrevBatch, dOnlyRows } from "./collect-unsold-govlist.mjs";
+import { main, parseArgs, PHASE, GOVLIST_APPLY_ENABLED, EXIT_APPLY_LOCKED, EXIT_RESUME_NO_BATCH, EXIT_FIRST_NEEDS_APPROVAL, EXIT_BREAKER, writeListBatch, loadPrevBatch, dOnlyRows, matchMarker } from "./collect-unsold-govlist.mjs";
 
 const FX = resolve(dirname(fileURLToPath(import.meta.url)), "__fixtures__/govlist");
 
@@ -130,7 +130,11 @@ describe("parseArgs — 허용 목록", () => {
     expect(() => parseArgs(["--dry-run", "--apply", "--impact-out=a"])).toThrow(/정확히 하나/);
     expect(() => parseArgs(["--impact-out=a"])).toThrow(/정확히 하나/);
     expect(() => parseArgs(["--dry-run"])).toThrow(/impact-out/);
-    expect(() => parseArgs(["--apply"])).toThrow(/apply-from/);
+    // 세션693 PR-4b: --apply 만 = 평시 반영(꺼짐 계획) · --absent-zero·--resume 은 승인 파일과만
+    expect(parseArgs(["--apply"])).toMatchObject({ apply: true, applyFrom: null, absentZero: false, resume: false });
+    expect(() => parseArgs(["--apply", "--absent-zero"])).toThrow(/--absent-zero 는 --apply-from/);
+    expect(() => parseArgs(["--apply", "--resume"])).toThrow(/--resume 은 --apply --apply-from/);
+    expect(parseArgs(["--apply", "--apply-from=x.json", "--absent-zero"]).absentZero).toBe(true);
     expect(() => parseArgs(["--apply", "--apply-from=x.json", "--impact-out=x.json"])).toThrow(/같은 파일/);
     expect(() => parseArgs(["--apply", "--apply-from=x.json", "--file=daegu:a.xlsx"])).toThrow(/미리보기/);
     expect(() => parseArgs(["--dry-run", "--impact-out=a", "--source=gyeonggi"])).toThrow(/--source/);
@@ -230,18 +234,20 @@ describe("main — --apply --apply-from", () => {
 });
 
 describe("G2 반영 잠금", () => {
-  it("GOVLIST_APPLY_ENABLED = false 면 --apply 는 쓰기 전에 거부 — exit 2 · 표식 GOVLIST_APPLY_LOCKED · apartments·명단 표 쓰기 0", async () => {
-    expect(GOVLIST_APPLY_ENABLED).toBe(false);
-    const db = fakeDb(seed({ listTable: true }));
-    const r = await go(["--apply", `--apply-from=${resolve(dir, "없는파일.json")}`, "--source=daegu"], db, { applyEnabled: undefined });
-    expect(r).toMatchObject({ wrote: 0, exitCode: EXIT_APPLY_LOCKED });
-    expect(db.writes.filter((w) => w.t !== "collector_runs")).toEqual([]);
-    expect(db.tables.collector_runs?.[0]).toMatchObject({ collector: PHASE, status: "failure" });
-    expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_APPLY_LOCKED /);
+  it("PR-4b(세션693): 상수는 풀림(true) — 다시 잠그면(applyEnabled:false 주입) --apply 는 쓰기 전에 거부 · exit 2 · 표식 GOVLIST_APPLY_LOCKED · apartments·명단 표 쓰기 0", async () => {
+    expect(GOVLIST_APPLY_ENABLED).toBe(true);
+    for (const argv of [["--apply", `--apply-from=${resolve(dir, "없는파일.json")}`, "--source=daegu"], ["--apply", "--source=daegu"]]) {
+      const db = fakeDb(seed({ listTable: true }));
+      const r = await go(argv, db, { applyEnabled: false });
+      expect(r).toMatchObject({ wrote: 0, exitCode: EXIT_APPLY_LOCKED });
+      expect(db.writes.filter((w) => w.t !== "collector_runs")).toEqual([]);
+      expect(db.tables.collector_runs?.[0]).toMatchObject({ collector: PHASE, status: "failure" });
+      expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_APPLY_LOCKED /);
+    }
   });
   it("잠금은 dry-run 을 막지 않는다", async () => {
     const db = fakeDb(seed());
-    const r = await go(["--dry-run", `--impact-out=${resolve(dir, "i.json")}`, "--source=daegu"], db, { applyEnabled: undefined });
+    const r = await go(["--dry-run", `--impact-out=${resolve(dir, "i.json")}`, "--source=daegu"], db, { applyEnabled: false });
     expect(r.exitCode).toBeUndefined();
     expect(r.impact.modes.off.plan.length).toBeGreaterThan(0);
   });
@@ -408,6 +414,97 @@ describe("G5 명단 표 넣기 실패 → 새 batch 지움 · 이어 쓰기(--re
     const db = fakeDb(st);
     await expect(go(["--dry-run", `--impact-out=${resolve(dir, "i.json")}`, "--source=daegu"], db)).rejects.toThrow();
     expect(db.tables.collector_runs).toEqual([]);
+  });
+});
+
+describe("PR-4b(세션693) 평시 --apply — 첫 회차 막음 · 차단기 · 반영", () => {
+  /** 그 출처에 이미 반영된 완성 batch(전 기준월) — n 행 · batch_rows n */
+  const prevBatch = (/** @type {number} */ n, asOf = "2026-08-31") => Array.from({ length: n }, (_, k) => ({ id: 7000 + k, source: "daegu", as_of: asOf, batch_id: `prev-${asOf}`, row_no: k + 1, batch_rows: n, fetched_at: "2026-10-08T00:00:00Z" }));
+  const routine = ["--apply", "--source=daegu"];
+  it("A2(i) 반영된 완성 batch 가 하나도 없으면(첫 회차) 쓰기 0 · failure GOVLIST_FIRST_NEEDS_APPROVAL daegu · exit 2 · impact 는 먼저 저장", async () => {
+    const db = fakeDb(seed({ listTable: true }));
+    const r = await go(routine, db);
+    expect(r).toMatchObject({ wrote: 0, exitCode: EXIT_FIRST_NEEDS_APPROVAL });
+    expect(EXIT_FIRST_NEEDS_APPROVAL).toBe(2);
+    expect(db.writes.filter((w) => w.t !== "collector_runs")).toEqual([]);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ collector: PHASE, status: "failure" });
+    expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_FIRST_NEEDS_APPROVAL daegu /);
+    expect(existsSync(String(r.impactPath))).toBe(true);
+    expect(existsSync(resolve(dir, "art", "2026-09-30"))).toBe(false); // 사본도 안 만든다
+  });
+  it("A2(i) 반쯤 쓰인 batch 만 있으면 완성 batch 0 으로 본다 → 같은 막음", async () => {
+    const half = prevBatch(4).slice(0, 2);
+    const db = fakeDb({ ...seed(), unsold_gov_list: half });
+    const r = await go(routine, db);
+    expect(r.exitCode).toBe(EXIT_FIRST_NEEDS_APPROVAL);
+    expect(db.writes.filter((w) => w.t === "apartments")).toEqual([]);
+  });
+  it("A2(ii) 차단기(명단 행 4 < 전 회차 10 × 0.5) — 쓰기 0 · failure GOVLIST_BREAKER · exit 1", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(10) });
+    const r = await go(routine, db);
+    expect(r).toMatchObject({ wrote: 0, exitCode: EXIT_BREAKER });
+    expect(EXIT_BREAKER).toBe(1);
+    expect(db.writes.filter((w) => w.t !== "collector_runs")).toEqual([]);
+    expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_BREAKER daegu 명단 행 4 < 전 회차 10 × 0\.5/);
+    expect(existsSync(resolve(dir, "art", "2026-09-30"))).toBe(false);
+  });
+  it("A2(v) 연결부 — 진짜 main() + 가짜 sb·fetch: 계획의 쓰는 행 id 를 그대로 update 에 넘기고 · 사본·역계획 → 새 batch → success · 매칭 표식", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) });
+    /** @type {string[]} */ const updatedIds = [];
+    const orig = db.client.from;
+    db.client.from = (/** @type {string} */ t) => {
+      const api = orig(t);
+      if (t !== "apartments") return api;
+      const up = api.update, eq = api.eq;
+      let isUpdate = false;
+      api.update = (/** @type {any} */ s) => { isUpdate = true; return up(s); };
+      api.eq = (/** @type {string} */ k, /** @type {any} */ v) => { if (isUpdate && k === "id") updatedIds.push(v); return eq(k, v); };
+      return api;
+    };
+    const r = await go(routine, db);
+    expect(r.exitCode).toBeUndefined();
+    const planIds = r.impact.modes.off.plan.filter((/** @type {any} */ p) => p.action.startsWith("write_")).map((/** @type {any} */ p) => p.id);
+    expect(planIds).toEqual(["ah-2022000777"]);
+    expect(updatedIds).toEqual(planIds);
+    expect(r.wrote).toBe(1);
+    expect(/** @type {any[]} */ (db.tables.apartments).find((a) => a.id === "ah-2022000777")).toMatchObject({ unsold: 24, unsold_source: "govlist", unsold_listed_total: 30 });
+    expect(/** @type {any[]} */ (db.tables.apartments).find((a) => a.id === "ah-2023000888")).toMatchObject({ unsold: 30, unsold_source: "kosis" }); // 꺼짐 계획
+    expect(readdirSync(resolve(dir, "art", "2026-09-30")).sort().map((f) => f.split("-")[0])).toEqual(["before", "restore"]);
+    expect(db.tables.unsold_gov_list?.filter((x) => x.as_of === "2026-09-30")).toHaveLength(4);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success", ok_count: 1, skip_count: 4 }); // A4 B 안: ok = apartments 갱신 · skip = 명단 원문 행
+    expect(String(db.tables.collector_runs?.[0].error_message)).toBe("GOVLIST_MATCH daegu 판정필요 0{} 충돌 0");
+    expect(r.impact.markers).toEqual([]); // 매칭 표식은 impact.markers(건너뜀·실패)와 섞지 않는다
+    expect(r.impact.sources[0].matchMarker).toBe("GOVLIST_MATCH daegu 판정필요 0{} 충돌 0");
+  });
+  it("평시 not_newer(같은 기준월 완성 batch 있음) — 쓸 것 0 · 막음 아님 · success · GOVLIST_SKIP 표식", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4, "2026-09-30") });
+    const r = await go(routine, db);
+    expect(r.exitCode).toBeUndefined();
+    expect(r.wrote).toBe(0);
+    expect(db.writes.filter((w) => w.t !== "collector_runs")).toEqual([]);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success", ok_count: 0, skip_count: 4 }); // 바뀜 0 이어도 명단은 읽음 → ⑤-a 침묵
+    expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_SKIP daegu not_newer.* · GOVLIST_MATCH daegu /);
+  });
+  it("A4 명단을 못 읽은 달(누리집 500) — success · ok 0 · skip 0(⑤-a 가 3달 이어지면 운다)", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) });
+    const r = await go(routine, db, { fetchImpl: /** @type {any} */ (async () => new Response("err", { status: 500 })) });
+    expect(r.wrote).toBe(0);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success", ok_count: 0, skip_count: 0 });
+    expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_SKIP daegu fetch\(HTTP 500 /);
+  });
+});
+
+describe("A6 매칭 표식 matchMarker", () => {
+  it("판정 필요 = weak·none 시군구별(빈칸 뗌·이름순) · 충돌 = two_bundles + bundle_shared", () => {
+    const m = matchMarker("chungnam", [
+      { sgg: "천안시 동남구", state: "weak", reasons: ["two_bundles"] },
+      { sgg: "천안시 동남구", state: "none", reasons: [] },
+      { sgg: "아산시", state: "weak", reasons: ["bundle_shared", "units_mismatch"] },
+      { sgg: "아산시", state: "strong", reasons: [] },
+      { sgg: null, state: "decided", reasons: ["decision_active"] },
+    ]);
+    expect(m).toBe("GOVLIST_MATCH chungnam 판정필요 3{아산시:1,천안시동남구:2} 충돌 2");
+    expect(matchMarker("daegu", [])).toBe("GOVLIST_MATCH daegu 판정필요 0{} 충돌 0");
   });
 });
 
