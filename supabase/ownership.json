@@ -496,7 +496,8 @@
       "owner": "mibunyang",
       "readers": [
         "2u"
-      ]
+      ],
+      "note": "단지별 월 미분양 점. 쓰는 곳 = KOSIS 수집기(추정 점) + govlist 수집기(지자체 명단 숫자 행의 기준월 점 · #866 · 표 이름이 변수라 감사 writers 에 아직 안 잡힘). 유효 govlist 행엔 KOSIS 가 점을 안 만든다. 명단 첫 달 이전 KOSIS 추정 점은 지운다(👤 세션696 — 대명헤리티지 4점 삭제 · 일반화는 PR-5 전 수집기 규칙)."
     },
     "user_profiles": {
       "owner": "2u"
