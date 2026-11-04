@@ -12,6 +12,7 @@
 4. **조회가 `null` 을 돌려주면 에러를 의심** — Supabase 는 데이터가 없으면 `[]`, `null` 이면 실패. 탐침에는 항상 `.error` 를 찍는다.
    - 없는 컬럼명이 섞이면 `data` 는 null → "행 없음"으로 오독. 컬럼을 모르면 `select("*")` 로.
    - `select("*", { count: "exact", head: true })` 는 없는 표에도 error=none·count=null → "표 없음"은 실제 `select("*").limit(1)` 의 에러 코드(PGRST205)로만, 있는 표/없는 표 대조군을 같이 돌린다.
+   - VIEW `apartments_flat` 칸은 따옴표 camelCase(`unsoldSource`), 시계열 표는 `base_month` — 원표 snake_case 이름으로 `eq` 하면 오류가 결과로 둔갑한다(세션694 탐침 2건).
 5. **날짜 문자열을 `new Date()` 에 넘기지 마라** — `new Date("202211-01")` 은 서기 202211년(에러도 NaN 도 아님). 정규식으로 형식을 강제하고 월 1~12 검사 + **월 단위 정수**로 비교. 이미 있는 `src/scoring/scorePrice.ts` `parseCompletionMonth` 를 먼저 찾는다. 분류가 한쪽으로 100% 나오면 그 자체가 의심 신호 — 실제 값 몇 개를 눈으로 찍어 본다.
 6. **`.find(name === ...)` 로 단정하지 않는다** — 동명이 흔하다. 이름으로 찾을 땐 전부 세고, 필요하면 좌표까지 본다.
 7. **오측정이 의심되면 결론이 아니라 도구를 먼저 재검한다** — 결과가 직전 실측과 모순되면 가설보다 탐침부터.

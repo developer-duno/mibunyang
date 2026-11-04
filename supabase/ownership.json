@@ -34,7 +34,7 @@
       "readers": [
         "2u"
       ],
-      "note": "미분양 단독 쓰기(수십 개 수집기 · 표가 넓어 칸 단위 생략). 2u 는 Apartment 모델 59칸을 읽는다(db_only 52칸은 2u 미사용). 새 칸 sgis_emd_cd·sgis_mapped_at = sgis-map-emd.mjs(화요일). FK 자식 10개 표가 ON DELETE CASCADE(+ unsold_gov_list.apartment_id 는 ON DELETE SET NULL — 세션687, 명단 원문 행은 남김). 세션687(마이그 20261102000000): unsold_source CHECK 허용값에 'govlist'(지자체 단지별 미분양 명단) 추가 · 새 칸 unsold_listed_as_of DATE(명단 등재 확인 기준월) · unsold_listed_total INT(명단 총분양 Σ — govlist 행에만) — 둘 다 NULL 허용, 쓰는 곳은 앞으로 scripts/collectors/collect-unsold-govlist.mjs(PR-2, 아직 쓰기 없음). 2u 코드에서 unsold_source 를 읽는 곳 0건(11/02 확인) — 원표 unsold·unsold_history 값 변화는 첫 회차 반영 뒤 쪽지로."
+      "note": "미분양 단독 쓰기(수십 개 수집기 · 표가 넓어 칸 단위 생략). 2u 는 Apartment 모델 59칸을 읽는다(db_only 52칸은 2u 미사용). 새 칸 sgis_emd_cd·sgis_mapped_at = sgis-map-emd.mjs(화요일). FK 자식 10개 표가 ON DELETE CASCADE(+ unsold_gov_list.apartment_id 는 ON DELETE SET NULL — 세션687, 명단 원문 행은 남김). 세션687(마이그 20261102000000): unsold_source CHECK 허용값에 'govlist'(지자체 단지별 미분양 명단) 추가 · 새 칸 unsold_listed_as_of DATE(명단 등재 확인 기준월) · unsold_listed_total INT(명단 총분양 Σ — govlist 행에만) — 둘 다 NULL 허용, 쓰는 곳 = scripts/collectors/collect-unsold-govlist.mjs(--apply · 첫 반영 2026-11-04 대구 9월말 명단 35행, 이후 로컬 러너 매달 8일 자동 반영 — 세션693 PR-4b) + scripts/backfill-unsold-source.mjs(hold↔govlist op). 2u 코드에서 unsold_source 를 읽는 곳 0건(11/02 확인) — 첫 반영 쪽지 = 2u 메모리 handoff_from_mibunyang_2026-11-04_govlist_first_apply.md."
     },
     "api_quota_log": {
       "owner": "mibunyang"
