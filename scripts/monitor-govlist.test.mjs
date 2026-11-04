@@ -11,6 +11,8 @@ import {
   holdAlertResolved,
   HOLD_BASELINE_IDS,
   checkGovlistSkips,
+  GOVLIST_LATE_DAYS,
+  govlistNotNewerAgeDays,
   checkGovlistDrop,
   parseGovlistSkips,
   parseGovlistMatch,
@@ -121,6 +123,48 @@ describe("㉔-a GOVLIST_SKIP — 최근 실행 1행", () => {
     const ab = checkGovlistSkips([run("GOVLIST_SKIP a x · GOVLIST_SKIP b y", "T")])[0].at;
     const ba = checkGovlistSkips([run("GOVLIST_SKIP b y · GOVLIST_SKIP a x", "T")])[0].at;
     expect(ab).toBe(ba);
+  });
+});
+
+describe("㉔-a 게시 지연 문턱(세션695 PR-4c · 👤 11/04 BACKLOG 441) — not_newer 는 저장 기준일 + 70일이 지나야 알림", () => {
+  // 수집기 collect-unsold-govlist.mjs:417 의 이유 꼴 그대로
+  const nn = "GOVLIST_SKIP daegu not_newer(파일 2026-09-30 ≤ 저장된 2026-09-30)";
+  /** KST 그날 아침 — 감시가 도는 09시(UTC 00시) @param {string} ymd */
+  const at = (ymd) => new Date(`${ymd}T00:00:00Z`);
+  it("문턱은 70일(리터럴)", () => {
+    expect(GOVLIST_LATE_DAYS).toBe(70);
+  });
+  it("경계 — 저장 2026-09-30: 11/09(40일)·12/08(69일)·12/09(70일) 조용 · 12/10(71일) 알림", () => {
+    expect(govlistNotNewerAgeDays("not_newer(파일 2026-09-30 ≤ 저장된 2026-09-30)", at("2026-12-10"))).toBe(71);
+    for (const d of ["2026-11-09", "2026-12-08", "2026-12-09"]) expect(checkGovlistSkips([run(nn, "2026-11-08T00:00:00Z")], at(d))).toEqual([]);
+    const is = checkGovlistSkips([run(nn, "2026-12-08T00:00:00Z")], at("2026-12-10"));
+    expect(is).toHaveLength(1);
+    expect(is[0].detail).toContain("daegu(not_newer(파일 2026-09-30 ≤ 저장된 2026-09-30))");
+    expect(is[0].lines).toContain("게시 지연(not_newer)은 저장된 기준일 + 70일이 지나야 알립니다.");
+  });
+  it("오늘은 KST 날짜로 센다 — 12/09 23:30 KST 는 70일(조용) · 12/10 00:30 KST 는 71일(알림)", () => {
+    expect(checkGovlistSkips([run(nn, "T")], new Date("2026-12-09T14:30:00Z"))).toEqual([]);
+    expect(checkGovlistSkips([run(nn, "T")], new Date("2026-12-09T15:30:00Z"))).toHaveLength(1);
+  });
+  it("저장 기준일을 못 읽으면 그대로 알린다(이유 꼴이 다름 · 없는 날짜 · 미래 날짜)", () => {
+    const now = at("2026-11-09");
+    expect(checkGovlistSkips([run("GOVLIST_SKIP daegu not_newer", "T")], now)).toHaveLength(1);
+    expect(checkGovlistSkips([run("GOVLIST_SKIP daegu not_newer(파일 2026-02-30 ≤ 저장된 2026-02-30)", "T")], now)).toHaveLength(1);
+    expect(checkGovlistSkips([run("GOVLIST_SKIP daegu not_newer(파일 2027-01-31 ≤ 저장된 2027-01-31)", "T")], now)).toHaveLength(1);
+    expect(govlistNotNewerAgeDays("not_newer(파일 2026-02-30 ≤ 저장된 2026-02-30)", now)).toBeNull();
+  });
+  it("header 와 조용한 not_newer 가 섞이면 header 만 알린다 · fetch·rows0 은 문턱과 무관", () => {
+    const now = at("2026-11-09");
+    const is = checkGovlistSkips([run(`GOVLIST_SKIP chungnam header(머리줄) · ${nn}`, "T")], now);
+    expect(is).toHaveLength(1);
+    expect(is[0].detail).toBe("GOVLIST_SKIP 지자체 명단 건너뜀 — chungnam(header(머리줄))");
+    expect(checkGovlistSkips([run("GOVLIST_SKIP daegu fetch(HTTP 500)", "T")], now)).toHaveLength(1);
+    expect(checkGovlistSkips([run("GOVLIST_SKIP daegu rows0", "T")], now)).toHaveLength(1);
+  });
+  it("dedup 구간 — 앞 달의 조용한 not_newer 실행은 구간 시작에 안 든다(그 뒤 header 가 첫 실행)", () => {
+    const now = at("2026-12-09");
+    const is = checkGovlistSkips([run("GOVLIST_SKIP daegu header(x)", "2026-12-08T00:00:00Z"), run(nn, "2026-11-08T00:00:00Z")], now);
+    expect(is[0].at).toMatch(/@2026-12-08T00:00:00Z$/);
   });
 });
 
@@ -332,6 +376,13 @@ describe("㉔ 배선", () => {
     fetchSeoThin: async () => ({ status: 200, text: '{"count":0,"ids":[],"names":[],"applied":true,"cap":15}' }),
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
+  it("세션695 PR-4c 배선 — runDailyGuardedChecks 가 deps.now 를 ㉔-a 게시 지연 문턱에 넘긴다(저장 9/30: 11/09 조용 · 12/10 알림)", async () => {
+    const nn = "GOVLIST_SKIP daegu not_newer(파일 2026-09-30 ≤ 저장된 2026-09-30)";
+    const go = (/** @type {string} */ d) => runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, now: new Date(`${d}T00:00:00Z`), fetchGovlistHealth: async () => ({ runs: [run(nn, "2026-11-08T00:00:00Z")], listRows: [] }) }));
+    const pick = (/** @type {any[]} */ is) => is.filter((i) => i.kind === "govlist-health" && String(i.detail).startsWith("GOVLIST_SKIP"));
+    expect(pick(await go("2026-11-09"))).toEqual([]);
+    expect(pick(await go("2026-12-10"))).toHaveLength(1);
+  });
   it("runDailyGuardedChecks 가 ㉔ 재료를 1회 물어 두 판정을 싣는다 · 0행이면 침묵", async () => {
     let n = 0;
     const silent = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchGovlistHealth: async () => { n++; return { runs: [], listRows: [] }; } }));

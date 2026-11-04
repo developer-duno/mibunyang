@@ -1395,21 +1395,62 @@ export function parseGovlistSkips(message) {
 }
 
 /**
- * ㉔-a 명단 건너뜀 — `unsold-govlist` 의 **가장 최근 실행 1행**에 `GOVLIST_SKIP` 이 있으면 1건(㉑ checkNoticeMarkers 와 같은 꼴).
+ * ㉔-a 「게시 지연」 문턱(일) — 👤 11/04 14:0x 결정(BACKLOG 441): `not_newer` 건너뜀은 저장된 기준일이 오늘(KST)−70일보다 낡았을 때만 알린다.
+ * 대구 9월말 명단이 11/08 러너 회차엔 아직 새 달이 아닌 것이 정상(게시가 한두 달 늦다)이라 그 달마다 울리던 헛경보를 끈다.
+ */
+export const GOVLIST_LATE_DAYS = 70;
+/** `not_newer(파일 <asOf> ≤ 저장된 <prevAsOf>)` — 수집기 `collect-unsold-govlist.mjs` 의 건너뜀 이유 꼴. */
+const GOVLIST_NOT_NEWER_RE = /^not_newer\(.*저장된 (\d{4})-(\d{2})-(\d{2})\)$/;
+
+/**
+ * not_newer 이유의 「저장된 기준일」부터 오늘(KST 날짜)까지 일수 — 못 읽으면(꼴이 다름·없는 날짜) null.
+ * @param {string} reason @param {Date} now
+ * @returns {number | null}
+ */
+export function govlistNotNewerAgeDays(reason, now) {
+  const m = GOVLIST_NOT_NEWER_RE.exec(reason);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const stored = Date.UTC(y, mo - 1, d);
+  const chk = new Date(stored);
+  if (chk.getUTCFullYear() !== y || chk.getUTCMonth() !== mo - 1 || chk.getUTCDate() !== d) return null; // 2026-02-30 같은 없는 날짜
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const todayKst = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+  return Math.round((todayKst - stored) / 86400000);
+}
+
+/**
+ * 알려야 할 건너뜀만 — not_newer 이면서 저장 기준일을 읽을 수 있고 0 ≤ 경과 ≤ GOVLIST_LATE_DAYS 인 것은 뺀다(게시 지연은 아직 정상).
+ * 읽지 못한 not_newer · fetch · header · rows0 은 그대로.
+ * @param {string | null | undefined} message @param {Date} now
+ */
+function alertingGovlistSkips(message, now) {
+  return parseGovlistSkips(message).filter((s) => {
+    if (!s.reason.startsWith("not_newer")) return true;
+    const age = govlistNotNewerAgeDays(s.reason, now);
+    return age == null || age < 0 || age > GOVLIST_LATE_DAYS;
+  });
+}
+
+/**
+ * ㉔-a 명단 건너뜀 — `unsold-govlist` 의 **가장 최근 실행 1행**에 알릴 `GOVLIST_SKIP` 이 있으면 1건(㉑ checkNoticeMarkers 와 같은 꼴).
+ * 게시 지연(not_newer)은 저장된 기준일 + GOVLIST_LATE_DAYS(70)일이 지나야 알린다(세션695 PR-4c · 👤 11/04 BACKLOG 441) — 그 안이면 그 건너뜀만 뺀다.
  * 실행 기록 0건(러너 등재 전 · dry-run 은 기록을 안 남긴다)이면 침묵. 사람이 출처를 봐야 풀리는 종류라 daily 에서도 dedup —
- * 지문 = 표식(출처+이유) 정렬 해시 @ 표식 없는 success 가 끊는 구간의 첫 실행 시각(같은 건너뜀이 다달이 이어지면 한 번만, 끊겼다 다시 나면 다시).
+ * 지문 = 알릴 표식(출처+이유) 정렬 해시 @ 알릴 표식 없는 success 가 끊는 구간의 첫 실행 시각(같은 건너뜀이 다달이 이어지면 한 번만, 끊겼다 다시 나면 다시).
  * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC)
+ * @param {Date} [now] 오늘(KST) 판정 시각 — 감시가 넘긴다(시험 주입용)
  * @returns {Issue[]}
  */
-export function checkGovlistSkips(runs) {
+export function checkGovlistSkips(runs, now = new Date()) {
   const latest = runs[0];
   if (!latest) return [];
-  const skips = parseGovlistSkips(latest.error_message);
+  const skips = alertingGovlistSkips(latest.error_message, now);
   if (skips.length === 0) return [];
   let streakStart = latest.finished_at ?? "";
   for (const r of runs) {
-    if (r.status === "success" && parseGovlistSkips(r.error_message).length === 0) break;
-    if (parseGovlistSkips(r.error_message).length) streakStart = r.finished_at ?? streakStart;
+    const rs = alertingGovlistSkips(r.error_message, now);
+    if (r.status === "success" && rs.length === 0) break;
+    if (rs.length) streakStart = r.finished_at ?? streakStart;
   }
   const fp = fingerprintIds(skips.map((s) => `${s.source}=${s.reason}`).sort());
   return [{
@@ -1418,6 +1459,7 @@ export function checkGovlistSkips(runs) {
     detail: `GOVLIST_SKIP 지자체 명단 건너뜀 — ${skips.map((s) => `${s.source}(${s.reason})`).join(" · ")}`,
     lines: [
       "이유: fetch = 누리집에서 파일을 못 받음 · header = 머리줄 글자가 바뀜 · rows0 = 행 0 · not_newer = 전 회차보다 새 기준월이 아님(게시 지연).",
+      `게시 지연(not_newer)은 저장된 기준일 + ${GOVLIST_LATE_DAYS}일이 지나야 알립니다.`,
       "그 출처 단지의 명단 값은 그대로 남고, 기준월 + 6개월이 지나면 KOSIS 가 다시 정합니다(⑫(h) 가 따로 알림).",
       ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
     ],
@@ -4332,7 +4374,7 @@ export async function runDailyGuardedChecks(deps = {}) {
     govInputs = await fetchGovlistHealth();
     const { runs, listRows } = govInputs;
     // ㉔-c 매칭(충돌·판정 필요 증가 — 세션693 PR-4b) — 같은 govlist-health 로 dedup
-    const govIssues = checkGovlistSkips(runs).concat(checkGovlistDrop(listRows), checkGovlistMatch(runs));
+    const govIssues = checkGovlistSkips(runs, deps.now ?? new Date()).concat(checkGovlistDrop(listRows), checkGovlistMatch(runs));
     console.log(`[monitor] ㉔ 지자체 명단 점검: 실행 ${runs.length}행 · 명단 ${listRows.length}행 → 이상 ${govIssues.length}건`);
     return govIssues;
   }));

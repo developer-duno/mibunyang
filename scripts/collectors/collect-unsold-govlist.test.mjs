@@ -4,12 +4,16 @@ import { readFileSync, writeFileSync, mkdtempSync, readdirSync, existsSync } fro
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { main, parseArgs, PHASE, GOVLIST_APPLY_ENABLED, EXIT_APPLY_LOCKED, EXIT_RESUME_NO_BATCH, EXIT_FIRST_NEEDS_APPROVAL, EXIT_BREAKER, EXIT_WRITE_FAILURE, writeListBatch, loadPrevBatch, dOnlyRows, matchMarker, appliedMarker } from "./collect-unsold-govlist.mjs";
+import { main, parseArgs, PHASE, GOVLIST_APPLY_ENABLED, EXIT_APPLY_LOCKED, EXIT_RESUME_NO_BATCH, EXIT_FIRST_NEEDS_APPROVAL, EXIT_BREAKER, EXIT_WRITE_FAILURE, writeListBatch, loadPrevBatch, dOnlyRows, matchMarker, appliedMarker, historyPointsOf, historyMonthOf, HISTORY_TABLE, HISTORY_RESTORE_NOTE } from "./collect-unsold-govlist.mjs";
+import { today } from "./_shared.mjs";
 
 const FX = resolve(dirname(fileURLToPath(import.meta.url)), "__fixtures__/govlist");
 
 // ── 작은 메모리 DB(Supabase 사슬 흉내 — 이 수집기가 부르는 메서드만) ──
-/** @param {Record<string, any[] | undefined>} tables @param {{ failInsertAt?: Record<string, number> }} [opts] 표 → 몇 번째 insert 호출을 실패시킬지(1부터) */
+/**
+ * @param {Record<string, any[] | undefined>} tables
+ * @param {{ failInsertAt?: Record<string, number>; failUpsert?: Record<string, boolean> }} [opts] failInsertAt = 표 → 몇 번째 insert 호출을 실패시킬지(1부터) · failUpsert = 표 → upsert 늘 실패
+ */
 function fakeDb(tables, opts = {}) {
   /** @type {Record<string, number>} */ const insertCalls = {};
   /** @type {any[]} */ const writes = [];
@@ -29,6 +33,8 @@ function fakeDb(tables, opts = {}) {
       limit: (/** @type {number} */ n) => { q.lim = n; return api; },
       update: (/** @type {any} */ s) => { q.op = "update"; q.set = s; return api; },
       insert: (/** @type {any} */ rows) => { q.op = "insert"; q.rows = Array.isArray(rows) ? rows : [rows]; return api; },
+      // 진짜 `upsertBatch`(_shared.mjs)가 부르는 꼴 — `.upsert(batch, { onConflict, ignoreDuplicates })`
+      upsert: (/** @type {any} */ rows, /** @type {any} */ o) => { q.op = "upsert"; q.rows = Array.isArray(rows) ? rows : [rows]; q.conflict = String(o?.onConflict ?? "id").split(","); return api; },
       delete: (/** @type {any} */ o) => { q.op = "delete"; q.count = o?.count === "exact"; return api; },
       then: (/** @type {any} */ ok, /** @type {any} */ bad) => Promise.resolve(run()).then(ok, bad),
     };
@@ -40,6 +46,15 @@ function fakeDb(tables, opts = {}) {
         insertCalls[t] = (insertCalls[t] ?? 0) + 1;
         if (opts.failInsertAt?.[t] === insertCalls[t]) return { data: null, error: { message: "가짜 넣기 실패" } };
         for (const r of q.rows) tb.push({ id: seq++, ...r }); writes.push({ op: "insert", t, n: q.rows.length }); return { data: null, error: null };
+      }
+      if (q.op === "upsert") {
+        writes.push({ op: "upsert", t, n: q.rows.length, conflict: q.conflict.join(","), rows: q.rows.map((/** @type {any} */ r) => ({ ...r })) });
+        if (opts.failUpsert?.[t]) return { data: null, error: { message: "가짜 upsert 실패" } };
+        for (const r of q.rows) {
+          const old = tb.find((x) => q.conflict.every((/** @type {string} */ k) => x[k] === r[k]));
+          if (old) Object.assign(old, r); else tb.push({ id: seq++, ...r });
+        }
+        return { data: null, error: null };
       }
       if (q.op === "update") { for (const r of hit) Object.assign(r, q.set); writes.push({ op: "update", t, n: hit.length, set: q.set }); return { data: q.ret ? hit.map((r) => ({ id: r.id })) : null, error: null }; }
       if (q.op === "delete") { tables[t] = tb.filter((r) => !hit.includes(r)); writes.push({ op: "delete", t, n: hit.length }); return { data: null, error: null, count: hit.length }; }
@@ -101,6 +116,7 @@ function bigSeed(n) {
     applyhome_unit_supply: ids.map((id) => ({ id: `${id}-s`, apartment_id: id, house_manage_no: id.slice(3), model_no: "01", general_supply: 20, special_supply: 10, source: "apt" })),
     presale_schedule_official: ids.map((id) => ({ id: `s-${id}`, apartment_id: id, house_manage_no: id.slice(3), recruit_date: "2022-07-20" })),
     collector_runs: [],
+    /** @type {any[]} */ unsold_history: [],
   };
 }
 
@@ -127,6 +143,7 @@ function seed(/** @type {{ listTable?: boolean }} */ o = {}) {
       { id: "s-888", apartment_id: "ah-2023000888", house_manage_no: "2023000888", recruit_date: "2023-05-01" },
     ],
     collector_runs: [],
+    /** @type {any[]} */ unsold_history: [],
     ...(o.listTable ? { unsold_gov_list: [] } : {}),
   };
 }
@@ -234,10 +251,11 @@ describe("main — --apply --apply-from", () => {
     const r = await go(["--apply", `--apply-from=${approvedPath}`, "--source=daegu"], db);
     expect(r.wrote).toBe(1);
     const bk = readdirSync(resolve(dir, "art", "2026-09-30")).sort();
-    expect(bk).toHaveLength(2);
+    expect(bk).toHaveLength(3); // 세션695 PR-4c: 숫자 행 이력 점 사본(history-before-) 이 하나 더
     expect(bk[0]).toMatch(/^before-daegu-\d{8}-\d{6}\.json$/);
-    expect(bk[1]).toMatch(/^restore-daegu-\d{8}-\d{6}\.json$/);
-    const restore = JSON.parse(readFileSync(resolve(dir, "art", "2026-09-30", bk[1]), "utf8"));
+    expect(bk[1]).toMatch(/^history-before-daegu-\d{8}-\d{6}\.json$/);
+    expect(bk[2]).toMatch(/^restore-daegu-\d{8}-\d{6}\.json$/);
+    const restore = JSON.parse(readFileSync(resolve(dir, "art", "2026-09-30", bk[2]), "utf8"));
     expect(restore.plan).toEqual([{ id: "ah-2022000777", name: "테스트 헤리티지", op: "restore_govlist",
       expect: { unsold: 24, unsold_rate: 80, unsold_source: "govlist", unsold_as_of: "2026-09-30" },
       set: { unsold: 30, unsold_rate: 30, unsold_source: "kosis", unsold_as_of: null, unsold_listed_as_of: null, unsold_listed_total: null } }]);
@@ -505,7 +523,7 @@ describe("PR-4b(세션693) 평시 --apply — 첫 회차 막음 · 차단기 · 
     expect(r.wrote).toBe(1);
     expect(/** @type {any[]} */ (db.tables.apartments).find((a) => a.id === "ah-2022000777")).toMatchObject({ unsold: 24, unsold_source: "govlist", unsold_listed_total: 30 });
     expect(/** @type {any[]} */ (db.tables.apartments).find((a) => a.id === "ah-2023000888")).toMatchObject({ unsold: 30, unsold_source: "kosis" }); // 꺼짐 계획
-    expect(readdirSync(resolve(dir, "art", "2026-09-30")).sort().map((f) => f.split("-")[0])).toEqual(["before", "restore"]);
+    expect(readdirSync(resolve(dir, "art", "2026-09-30")).sort().map((f) => f.split("-")[0])).toEqual(["before", "history", "restore"]); // PR-4c 이력 사본
     expect(db.tables.unsold_gov_list?.filter((x) => x.as_of === "2026-09-30")).toHaveLength(4);
     expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success", ok_count: 1, skip_count: 4 }); // A4 B 안: ok = apartments 갱신 · skip = 명단 원문 행
     expect(String(db.tables.collector_runs?.[0].error_message)).toBe("GOVLIST_APPLIED daegu 단지 1 행 1 {값→다른 값:1} · GOVLIST_MATCH daegu 판정필요 0{} 충돌 0"); // B4 반영 요약 · 매칭 표식
@@ -628,5 +646,159 @@ describe("G6① impact 재료 — (d) 하나로만 막힌 행 · 판정 필요 �
     expect(r.impact.modes.off.checkViolations).toEqual([]);
     expect(r.impact.modes.on.checkViolations).toEqual([]);
     expect(dOnlyRows(/** @type {any} */ ([{ action: "not_listed", reasons: ["d_sgg_unresolved"] }, { action: "not_listed", reasons: ["c_notice_not_before", "d_sgg_unresolved"] }, { action: "not_listed", reasons: [] }]))).toHaveLength(1);
+  });
+});
+
+describe("세션695 PR-4c 숫자 행 이력 점(unsold_history) — 설계서 §5-④ 「숫자 행에만 점 · 비공개는 쓰지 않는다」", () => {
+  const prevBatch = (/** @type {number} */ n) => Array.from({ length: n }, (_, k) => ({ id: 7000 + k, source: "daegu", as_of: "2026-08-31", batch_id: "prev", row_no: k + 1, batch_rows: n, fetched_at: "2026-10-08T00:00:00Z" }));
+  const routine = ["--apply", "--source=daegu"];
+  /** 두류 2행을 hold 가 아니게 — 명단에서 비공개(write_listed_hidden) 계획이 나온다 */
+  const seedHidden = () => {
+    const s = seed();
+    for (const a of s.apartments.filter((x) => x.complex_key === DURYU_KEY)) Object.assign(a, { unsold: 30, unsold_rate: 30, unsold_source: "kosis", unsold_as_of: null });
+    return s;
+  };
+  /** 「테스트 헤리티지」 묶음에 구성원을 하나 더(같은 complex_key) */
+  const seedTwoMembers = () => {
+    const s = seed();
+    s.apartments.push(A({ id: "ah-2022000779", name: "테스트 헤리티지", dong: "본리동", address: "대구 달서구 본리동 1", builder: "시온건설", complex_key: "테스트헤리티지#달서" }));
+    return s;
+  };
+  const histRows = (/** @type {ReturnType<typeof fakeDb>} */ db) => /** @type {any[]} */ (db.tables.unsold_history);
+  const histFile = () => {
+    const d = resolve(dir, "art", "2026-09-30");
+    const f = readdirSync(d).filter((x) => x.startsWith("history-before-daegu-"));
+    expect(f).toHaveLength(1);
+    return JSON.parse(readFileSync(resolve(d, f[0]), "utf8"));
+  };
+
+  it("A1·A2 historyPointsOf — 숫자 행만 · 기준일 2026-09-30 → \"202609\" · 묶음 Σ 그대로(예시 대명 25) · 비공개·미등재→0·unchanged 는 점 없음", () => {
+    const r = (/** @type {string} */ id, /** @type {string} */ action, /** @type {number | null} */ u) => /** @type {any} */ ({ id, action, after: { unsold: u } });
+    expect(historyPointsOf([r("ap-6026533", "write_listed_number", 25), r("h", "write_listed_hidden", null), r("z", "write_absent_zero", 0), r("u", "unchanged", 9)], "2026-09-30", "2026-11-08"))
+      .toEqual([{ apartment_id: "ap-6026533", base_month: "202609", unsold_count: 25, post_completion_unsold: null, change: null, recorded_at: "2026-11-08" }]);
+    expect(historyMonthOf("2026-12-31")).toBe("202612");
+    expect(() => historyMonthOf("2026-09")).toThrow(/YYYY-MM-DD/); // 꼴이 다르면 추측하지 않는다
+    expect(HISTORY_TABLE).toBe("unsold_history");
+  });
+
+  it("A1·A2·A3 연결부 — 진짜 main() + 진짜 upsertBatch · 가짜 sb: unsold_history 에 onConflict apartment_id,base_month 로 정확히 1점(숫자 행)", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) });
+    const r = await go(routine, db);
+    expect(r.exitCode).toBeUndefined();
+    const ups = db.writes.filter((w) => w.op === "upsert");
+    expect(ups).toEqual([{ op: "upsert", t: "unsold_history", n: 1, conflict: "apartment_id,base_month",
+      rows: [{ apartment_id: "ah-2022000777", base_month: "202609", unsold_count: 24, post_completion_unsold: null, change: null, recorded_at: today() }] }]);
+    expect(histRows(db).map(({ id: _i, ...x }) => x)).toEqual([{ apartment_id: "ah-2022000777", base_month: "202609", unsold_count: 24, post_completion_unsold: null, change: null, recorded_at: today() }]);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success" });
+    expect(String(db.tables.collector_runs?.[0].error_message)).not.toContain("history_fail");
+  });
+
+  it("A1 비공개(write_listed_hidden) 행은 apartments 는 쓰고 점은 없음 — 숫자 행 1점만", async () => {
+    const db = fakeDb({ ...seedHidden(), unsold_gov_list: prevBatch(4) });
+    const r = await go(routine, db);
+    const acts = Object.fromEntries(r.impact.modes.off.plan.map((/** @type {any} */ p) => [p.id, p.action]));
+    expect(acts["ah-2025910146"]).toBe("write_listed_hidden");
+    expect(r.wrote).toBe(3); // 비공개 2 + 숫자 1
+    expect(histRows(db).map((x) => x.apartment_id)).toEqual(["ah-2022000777"]);
+  });
+
+  it("A1 2구성원 묶음 → 같은 값 2점 · A6 dry-run 미리보기도 2", async () => {
+    const pre = await go(["--dry-run", `--impact-out=${resolve(dir, "i.json")}`, "--source=daegu"], fakeDb({ ...seedTwoMembers(), unsold_gov_list: prevBatch(4) }));
+    expect(pre.impact.sources[0].historyPoints).toBe(2);
+    const db = fakeDb({ ...seedTwoMembers(), unsold_gov_list: prevBatch(4) });
+    await go(routine, db);
+    expect(histRows(db).map((x) => [x.apartment_id, x.base_month, x.unsold_count]).sort()).toEqual([["ah-2022000777", "202609", 24], ["ah-2022000779", "202609", 24]]);
+  });
+
+  /** apartments update 를 가로챈다 — race = 쓰기 직전 그 행 값이 바뀜 · fail = 오류 응답 */
+  const hook = (/** @type {ReturnType<typeof fakeDb>} */ db, /** @type {"race" | "fail"} */ mode) => {
+    const orig = db.client.from;
+    db.client.from = (/** @type {string} */ t) => {
+      const api = orig(t);
+      if (t !== "apartments") return api;
+      const up = api.update;
+      api.update = (/** @type {any} */ s) => {
+        if (mode === "race") Object.assign(/** @type {any} */ ((db.tables.apartments ?? []).find((a) => a.id === "ah-2022000777")), { unsold: 31 });
+        else api.then = (/** @type {any} */ ok, /** @type {any} */ bad) => Promise.resolve({ data: null, error: { message: "가짜 갱신 실패" } }).then(ok, bad);
+        return up(s);
+      };
+      return api;
+    };
+  };
+  for (const mode of /** @type {const} */ (["race", "fail"])) {
+    it(`A1 apartments 갱신이 ${mode} 인 행은 점 없음 · 사본 파일도 없음`, async () => {
+      const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) });
+      hook(db, mode);
+      await go(routine, db);
+      expect(db.writes.filter((w) => w.op === "upsert")).toEqual([]);
+      expect(histRows(db)).toEqual([]);
+      expect(readdirSync(resolve(dir, "art", "2026-09-30")).filter((x) => x.startsWith("history-"))).toEqual([]);
+    });
+  }
+
+  it("A4 이력 upsert 실패 → GOVLIST_WRITE history_fail 1 · failure · exit 1 · apartments 는 그대로 씀(되돌리지 않음) · 반영 요약 없음", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) }, { failUpsert: { unsold_history: true } });
+    const r = await go(routine, db);
+    expect(r).toMatchObject({ wrote: 1, exitCode: EXIT_WRITE_FAILURE });
+    expect(/** @type {any[]} */ (db.tables.apartments).find((a) => a.id === "ah-2022000777")).toMatchObject({ unsold: 24, unsold_source: "govlist" });
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "failure" });
+    const em = String(db.tables.collector_runs?.[0].error_message);
+    expect(em).toContain("GOVLIST_WRITE history_fail 1");
+    expect(em).not.toContain("GOVLIST_APPLIED");
+  });
+
+  it("A4 사본 조회가 실패하면(표 없음) 쓰지 않고 history_fail · failure", async () => {
+    const st = /** @type {any} */ ({ ...seed(), unsold_gov_list: prevBatch(4) });
+    delete st.unsold_history;
+    const db = fakeDb(st);
+    const r = await go(routine, db);
+    expect(r.exitCode).toBe(EXIT_WRITE_FAILURE);
+    expect(db.writes.filter((w) => w.op === "upsert")).toEqual([]);
+    expect(String(db.tables.collector_runs?.[0].error_message)).toContain("GOVLIST_WRITE history_fail 1");
+  });
+
+  it("A5 사본 — 머리 한 줄 되돌림 뜻 · 지금 행 없으면 null", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) });
+    await go(routine, db);
+    const bk = histFile();
+    expect(Object.keys(bk)[0]).toBe("note");
+    expect(bk.note).toBe(HISTORY_RESTORE_NOTE);
+    expect(bk.note).toMatch(/null 이면 그 \(단지·달\) 행 삭제/);
+    expect(bk.rows).toEqual([{ apartment_id: "ah-2022000777", base_month: "202609", before: null }]);
+  });
+
+  it("A5·A3 사본 — 같은 열쇠의 KOSIS 추정 점이 있으면 그 행을 뜨고 덮는다(다른 달 점은 그대로)", async () => {
+    const kosis = { id: 1, apartment_id: "ah-2022000777", base_month: "202609", unsold_count: 30, post_completion_unsold: null, change: null, recorded_at: "2026-10-09" };
+    const other = { id: 2, apartment_id: "ah-2022000777", base_month: "202608", unsold_count: 29, post_completion_unsold: null, change: null, recorded_at: "2026-10-09" };
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4), unsold_history: [{ ...kosis }, { ...other }] });
+    await go(routine, db);
+    const { id: _k, ...kosisCols } = kosis;
+    expect(histFile().rows).toEqual([{ apartment_id: "ah-2022000777", base_month: "202609", before: kosisCols }]);
+    const rows = histRows(db);
+    expect(rows.find((x) => x.base_month === "202609")).toMatchObject({ unsold_count: 24, recorded_at: today() });
+    expect(rows.find((x) => x.base_month === "202608")).toEqual(other);
+  });
+
+  it("A6 dry-run — DB 쓰기 0 · 출처별 historyPoints(숫자 행 수 · 비공개 제외) · plan 행 꼴 그대로", async () => {
+    const db = fakeDb(seedHidden());
+    const r = await go(["--dry-run", `--impact-out=${resolve(dir, "i.json")}`, "--source=daegu"], db);
+    expect(db.writes).toEqual([]);
+    expect(r.impact.sources[0].historyPoints).toBe(1);
+    const KEYS = ["action", "after", "before", "bundle_key", "gu", "id", "list_keys", "name", "reasons", "region", "source"];
+    for (const mode of ["off", "on"]) for (const p of r.impact.modes[mode].plan) expect(Object.keys(p).sort()).toEqual(KEYS);
+    expect(Object.keys(r.impact.modes).sort()).toEqual(["off", "on"]);
+  });
+
+  it("A1 --resume — 이미 쓴(done) 숫자 행에도 점 · 남은 미등재→0 행은 점 없음", async () => {
+    const p = resolve(dir, "approved-on.json");
+    await go(["--dry-run", `--impact-out=${p}`, "--source=daegu"], fakeDb(seed({ listTable: true })));
+    const s = seed({ listTable: true });
+    /** @type {any} */ (s).unsold_gov_list = Array.from({ length: 4 }, (_, k) => ({ id: 500 + k, source: "daegu", as_of: "2026-09-30", batch_id: "done", row_no: k + 1, batch_rows: 4, fetched_at: "2026-11-01T17:00:00Z" }));
+    Object.assign(/** @type {any} */ (s.apartments.find((a) => a.id === "ah-2022000777")), { unsold: 24, unsold_rate: 80, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_as_of: "2026-09-30", unsold_listed_total: 30 });
+    const db = fakeDb(s);
+    const r = await go(["--apply", `--apply-from=${p}`, "--absent-zero", "--resume", "--source=daegu"], db);
+    expect(r.wrote).toBe(1); // 미등재→0 1행(ah-2023000888)
+    expect(histRows(db).map((x) => [x.apartment_id, x.base_month, x.unsold_count])).toEqual([["ah-2022000777", "202609", 24]]);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success" });
   });
 });
