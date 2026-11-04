@@ -123,7 +123,10 @@ describe("⑬ 알림 형태·dedup", () => {
 
   it("텔레그램 문구 — 제목·조치가 있고 undefined 가 없다", () => {
     const text = formatIssue(issue);
-    expect(text).toContain("🛑 <b>로컬 수집기 실패</b>");
+    expect(text).toContain("🛑 <b>수집기 실패(로컬·Actions)</b>");
+    // 세션696 맹점 🟠: Actions 수집기(infra 등) 실패에도 맞는 안내 — 로컬 러너 로그만 가리키면 빨강
+    //   (상세 줄에도 「GitHub Actions 수집기」가 있어 그 낱말로는 못 지킨다 — 안내 문구에만 있는 글자로)
+    expect(text).toContain("collect-infra.yml 실행 로그");
     expect(text).toContain("kosis-unsold");
     expect(text).toContain("[조치]");
     expect(text).not.toContain("undefined");

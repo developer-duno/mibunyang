@@ -23,6 +23,9 @@
  *   ㉓ 검색 제외 안전선 — 운영 /data/seo-thin.json 이 JSON·모양 맞음·applied=true 가 아니면(얇은 단지 > 안전선 15 · 파일 없음 · HTML 응답)(매일 · 세션668)
  *   ㉔ 지자체 명단 — unsold-govlist 최근 실행의 GOVLIST_SKIP · 명단 행 수 전 기준월 대비 −50%(실행·명단 0행이면 침묵 · 매일 · dedup · 세션692)
  *      + ㉔-c 매칭 충돌 ≥1 · 판정 필요 수 증가(GOVLIST_MATCH) · ㉔-d VIEW 비공개 수 = 라이브 목록 JSON 비공개 수(+ 양성 대조군) · 명단 조회는 출처마다 최근 기준월 2개(세션693 PR-4b)
+ *      + ㉔ 재료 조회가 실패하면 ㉔-d 도 실행 실패 1건(침묵하지 않음 · 세션696)
+ *   ㉕ 기준일 상수 만료 — src/constants/loanRules.ts STRESS_RATE_LOCAL_UNTIL 만료 14일 전부터 고칠 때까지 매일(kind rule-expiry · 파일 글자로 읽음 · 세션696)
+ *   ⑥-c 시세 범위 빈칸 — trade_stats 적정가(cmp_fair_price) 있음 + 최저가(cmp_min) 빈칸 > 0(⑥-b 바로 뒤 · 세션696)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -3153,7 +3156,7 @@ export function checkTradeRangeGap(fairNoMin) {
     detail: `trade_stats 적정가(cmp_fair_price)는 있는데 최저가(cmp_min)가 빈 행 ${fairNoMin}개 — 범위 계산 회귀 의심(기대 0)`,
     lines: [
       "수집기는 적정가를 정할 때 최저·최고를 늘 같이 채웁니다(scripts/collectors/_trade-scope.mjs). 빈 행은 범위 칩·시세 탭 범위 줄이 소리 없이 빠집니다.",
-      "[조치] 최근 trade-stats 회차 로그의 범위 건수(rangeN)·_trade-scope.mjs 의 cmp_min 채우는 줄을 확인",
+      "[조치] 최근 trade-stats 회차 로그의 「범위 있음 N」 줄·_trade-scope.mjs 의 cmp_min 채우는 줄을 확인 · 고친 뒤 Actions collect-trade-stats 를 수동 1회(정기 회차는 7·21일뿐이라 그때까지 매일 울림)",
     ],
   }];
 }
