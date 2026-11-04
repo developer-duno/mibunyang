@@ -169,29 +169,75 @@ export function planThin(list) {
  * 얇은 판정·허브·칩 후보는 목록만 본다 — 꾸러미(details)는 단지 장 본문에만 쓴다(세션672).
  * @param {string} template dist/index.html 원본 (프리렌더 주입 전)
  * @param {Array<Record<string, any>>} list
+ * 단지 한 곳의 본문이 던지면(세션697 — 세션674 맹점 🟠1) 그 장만 얇은 본문(buildAptThinHtml)으로 만들고 계속 간다 —
+ * 단지 하나가 빌드 전체(=그날 배포 전체)를 죽이지 않게. 실패 수·앞 20개 id 는 thin 기록(bodyErrors·bodyErrorIds)에, 오류 첫 줄은 errors 에.
+ * 템플릿 결함·꾸러미 지도 없음은 모든 장이 같이 깨지므로 지금처럼 던진다(main 이 빌드를 빨갛게).
  * @param {Map<string, Record<string, any>>} details 상세 꾸러미 id → 행(loadDetailMap) — 빠지면 던진다
- * @returns {{ pages: Array<{ id: string, html: string }>, sitemapIds: string[], thin: { count: number, ids: string[], names: string[], applied: boolean, cap: number } }}
+ * @returns {{ pages: Array<{ id: string, html: string }>, sitemapIds: string[], thin: AptPagesThin, errors: Array<{ id: string, message: string }> }}
  */
 export function buildAptPages(template, list, details) {
   if (!(details instanceof Map)) {
     throw new Error("[postbuild-prerender] buildAptPages 에 상세 꾸러미 지도(details)가 없습니다 — 단지 장 본문을 만들 수 없음");
   }
-  const thin = planThin(list);
-  const noindexIds = new Set(thin.applied ? thin.ids : []);
+  assertAptTemplate(template);
+  const plan = planThin(list);
+  const noindexIds = new Set(plan.applied ? plan.ids : []);
   // 같은 구 가까운 단지 칩의 후보 = 목록 전체(허브와 같은 목록 · 세션671)
   const nearby = createNearbyIndex(list);
   /** @type {Array<{ id: string, html: string }>} */
   const pages = [];
   /** @type {string[]} */
   const sitemapIds = [];
+  /** @type {Array<{ id: string, message: string }>} */
+  const errors = [];
   for (const a of list) {
     if (!a || !a.id || !a.name) continue;
     const id = String(a.id);
     const noindex = noindexIds.has(id);
-    pages.push({ id, html: buildAptHtml(template, a, { noindex, nearby, details }) });
+    let html;
+    try {
+      html = buildAptHtml(template, a, { noindex, nearby, details });
+    } catch (e) {
+      errors.push({ id, message: firstLine(e) });
+      html = buildAptThinHtml(template, a, { noindex, nearby });
+    }
+    pages.push({ id, html });
     if (!noindex) sitemapIds.push(id);
   }
-  return { pages, sitemapIds, thin };
+  const thin = { ...plan, bodyErrors: errors.length, bodyErrorIds: errors.slice(0, BODY_ERROR_IDS_MAX).map((e) => e.id) };
+  return { pages, sitemapIds, thin, errors };
+}
+
+/** seo-thin.json 에 싣는 본문 실패 id 수 상한(세션697 C3). */
+export const BODY_ERROR_IDS_MAX = 20;
+
+/** @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, bodyErrors: number, bodyErrorIds: string[] }} AptPagesThin */
+
+/** @param {unknown} e @returns {string} 오류 첫 줄(로그·기록용) */
+function firstLine(e) {
+  const msg = e instanceof Error ? e.message : String(e);
+  return msg.split(/\r?\n/)[0];
+}
+
+/**
+ * 운영에 쓰는 seo-thin.json 기록 — buildAptPages 의 thin + 빌드 시각(builtAt · 감시 ㉓ 가 main 의 daily refresh 커밋 시각과 맞댄다).
+ * @param {AptPagesThin} thin @param {Date} [now] @returns {AptPagesThin & { builtAt: string }}
+ */
+export function seoThinRecord(thin, now = new Date()) {
+  return { ...thin, builtAt: now.toISOString() };
+}
+
+/**
+ * 템플릿(dist/index.html) 결함 — 모든 단지 장이 같이 깨지므로 단지별 방어(얇은 본문)로 넘기지 않고 던진다(세션697 C4).
+ * @param {string} template
+ */
+export function assertAptTemplate(template) {
+  if (ROBOTS_META_RE.test(template)) {
+    throw new Error('[postbuild-prerender] 템플릿(index.html)에 이미 name="robots" 메타가 있습니다 — 단지 장 noindex 와 겹칩니다');
+  }
+  if (template.split("</head>").length !== 2) {
+    throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
+  }
 }
 
 /** 템플릿에 robots 메타가 이미 있는지 — 있으면 단지 장에 둘이 생기거나 전 장에 퍼진다. */
@@ -273,6 +319,61 @@ export function buildAptHtml(template, a, opts) {
     `<p>${esc(SOURCE_TEXT)}</p>` +
     `</main></div>`;
 
+  const ld = `<script type="application/ld+json">${buildAptJsonLd(a, url)}</script>`;
+  // 경로 줄 구조화 정보는 두 번째 스크립트로(허브 장과 같은 꼴 · 링크 있는 칸 + 단지 canonical)
+  const crumbLd = `<script type="application/ld+json">${buildAptBreadcrumbLd(block, url)}</script>`;
+  return fillAptTemplate(template, { url, title, desc, body, headExtra: `${ld}\n${crumbLd}\n`, noindex: opts.noindex });
+}
+
+/**
+ * 단지 장 얇은 본문(세션697 C2 — 본문 사본이 던진 단지 하나만). S3 시절 꼴: h1 · 요약 한 줄 · 경로 줄·가까운 단지 · 출처 한 줄.
+ * head(title·canonical·description·og·twitter)는 정상 장과 같은 규칙(제목 글자 같음 · 요약은 기본 정보 줄 없이).
+ * 가까운 단지 칩·JSON-LD 는 실패하면 뺀다 — 이 함수가 던지면 빌드 전체가 죽으므로.
+ * noindex·사이트맵 판정은 호출하는 buildAptPages 가 정상 장과 같은 규칙으로 한다.
+ * @param {string} template dist/index.html 원본 (assertAptTemplate 통과)
+ * @param {Record<string, any>} a 단지 1건(목록 행)
+ * @param {{ noindex?: boolean, nearby?: import("../src/utils/nearbyComplexes.mjs").NearbyIndex }} [opts]
+ * @returns {string}
+ */
+export function buildAptThinHtml(template, a, opts = {}) {
+  const where = [a.region, a.gu].filter(Boolean).join(" ");
+  const title = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 | 미분양 비교`;
+  const desc = `${a.name}${where ? ` (${where})` : ""} 분양가·미분양 정보.`;
+  const url = `${ORIGIN}/apt/${encodeURIComponent(a.id)}`;
+  let nearbyHtml = "";
+  let headExtra = "";
+  try {
+    headExtra += `<script type="application/ld+json">${buildAptJsonLd(a, url)}</script>\n`;
+  } catch {
+    // 구조화 정보 없이 간다
+  }
+  try {
+    const block = buildNearbyBlock(a, opts.nearby ?? createNearbyIndex([a]), NEARBY_HUB_RULES);
+    const blockHtml = nearbyBlockHtml(block);
+    const crumbLd = `<script type="application/ld+json">${buildAptBreadcrumbLd(block, url)}</script>\n`;
+    nearbyHtml = blockHtml;
+    headExtra += crumbLd;
+  } catch {
+    // 경로 줄·칩 없이 간다
+  }
+  const body =
+    `<div id="root" class="notranslate">` +
+    `<main style="max-width:960px;margin:0 auto;padding:24px;font-family:sans-serif">` +
+    `<h1>${esc(a.name)}</h1>` +
+    `<p>${esc(desc)}</p>` +
+    nearbyHtml +
+    `<p>${esc(SOURCE_TEXT)}</p>` +
+    `</main></div>`;
+  return fillAptTemplate(template, { url, title, desc, body, headExtra, noindex: opts.noindex });
+}
+
+/**
+ * 단지 장 공통 틀 채우기 — head 8곳 치환 + #root 교체 + `</head>` 앞에 구조화 정보·robots.
+ * @param {string} template
+ * @param {{ url: string, title: string, desc: string, body: string, headExtra: string, noindex?: boolean }} p
+ * @returns {string}
+ */
+function fillAptTemplate(template, { url, title, desc, body, headExtra, noindex }) {
   let html = template;
   // head 치환 — 각 태그는 index.html 에 정확히 1개씩 있다(빌드가 늘리지 않는다).
   html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(url)}" />`);
@@ -287,11 +388,8 @@ export function buildAptHtml(template, a, opts) {
   if (html.split("</head>").length !== 2) {
     throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
   }
-  const ld = `<script type="application/ld+json">${buildAptJsonLd(a, url)}</script>`;
-  // 경로 줄 구조화 정보는 두 번째 스크립트로(허브 장과 같은 꼴 · 링크 있는 칸 + 단지 canonical)
-  const crumbLd = `<script type="application/ld+json">${buildAptBreadcrumbLd(block, url)}</script>`;
-  const robots = opts.noindex ? `<meta name="robots" content="noindex,follow" />\n` : "";
-  html = html.replace("</head>", () => `${ld}\n${crumbLd}\n${robots}</head>`);
+  const robots = noindex ? `<meta name="robots" content="noindex,follow" />\n` : "";
+  html = html.replace("</head>", () => `${headExtra}${robots}</head>`);
   return html;
 }
 
@@ -833,7 +931,11 @@ function main() {
 
   // ── 단지별 정적 페이지 + sitemap (세션 504) ──
 
-  const { pages, sitemapIds, thin } = buildAptPages(template, list, details);
+  // 단지 한 곳의 본문 실패는 그 장만 얇은 본문(세션697) — 템플릿 결함은 여기서 던져 빌드가 빨개진다.
+  const { pages, sitemapIds, thin, errors } = buildAptPages(template, list, details);
+  for (const e of errors) {
+    console.error(`[postbuild-prerender] 단지 장 본문 실패 → 얇은 본문으로: ${e.id} — ${e.message}`);
+  }
   for (const p of pages) {
     const dir = join(DIST, "apt", p.id);
     mkdirSync(dir, { recursive: true });
@@ -846,9 +948,10 @@ function main() {
   }
 
   // 얇은 단지 기록 — 매 빌드 쓴다(감시 ㉓ 가 운영에서 읽는다 · 세션668).
-  writeFileSync(DIST_SEO_THIN, JSON.stringify(thin), "utf-8");
+  // builtAt(세션697) = 감시 ㉓ 가 main 의 마지막 daily refresh 커밋 시각과 맞대 「오늘 자료가 배포에 실렸나」를 본다.
+  writeFileSync(DIST_SEO_THIN, JSON.stringify(seoThinRecord(thin)), "utf-8");
   console.log(
-    `[postbuild-prerender] 얇은 단지 ${thin.count}곳 · applied=${thin.applied} (안전선 ${thin.cap}) · ${thin.ids.join(",") || "없음"}`,
+    `[postbuild-prerender] 얇은 단지 ${thin.count}곳 · applied=${thin.applied} (안전선 ${thin.cap}) · ${thin.ids.join(",") || "없음"} · 본문 실패 ${thin.bodyErrors}곳`,
   );
 
   // ── 지역 허브 정적 장 (세션669) ──

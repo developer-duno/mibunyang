@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { esc, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP } from "./postbuild-prerender.mjs";
+import { esc, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP, seoThinRecord } from "./postbuild-prerender.mjs";
 
 /** index.html 의 관련 태그만 추린 최소 틀 (실제 파일과 같은 형태) */
 const TEMPLATE = [
@@ -396,11 +396,16 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
     for (const t of ["t1", "t2", "t3", "t4", "t5"]) expect(urls.some((u) => u.endsWith(`/apt/${t}`))).toBe(false);
     expect(xml.includes("lastmod")).toBe(false);
   });
-  it("seo-thin 기록 모양 = {count, ids, applied, cap}", () => {
+  it("seo-thin 기록 모양 = {count, ids, names, applied, cap, bodyErrors, bodyErrorIds} (+ builtAt 은 seoThinRecord 가 · 세션697)", () => {
     expect(JSON.parse(JSON.stringify(r.thin))).toEqual({
       count: 5, ids: ["t1", "t2", "t3", "t4", "t5"], names: ["단지t1", "단지t2", "단지t3", "단지t4", "단지t5"], applied: true, cap: 15,
+      bodyErrors: 0, bodyErrorIds: [],
     });
-    expect(Object.keys(r.thin)).toEqual(["count", "ids", "names", "applied", "cap"]);
+    expect(Object.keys(r.thin)).toEqual(["count", "ids", "names", "applied", "cap", "bodyErrors", "bodyErrorIds"]);
+    expect(r.errors).toEqual([]);
+    const rec = seoThinRecord(r.thin, new Date("2026-11-05T18:05:00.000Z"));
+    expect(rec.builtAt).toBe("2026-11-05T18:05:00.000Z");
+    expect(Object.keys(rec)).toEqual(["count", "ids", "names", "applied", "cap", "bodyErrors", "bodyErrorIds", "builtAt"]);
   });
   it("names 는 ids 와 같은 순서·같은 길이(안전선 초과 날도)", () => {
     const many = Array.from({ length: 16 }, (_, i) => thin(`t${i}`));
@@ -415,12 +420,14 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
     const body = src.slice(start, end);
-    expect(body).toMatch(/const \{ pages, sitemapIds, thin \} = buildAptPages\(template, list, details\);/);
+    expect(body).toMatch(/const \{ pages, sitemapIds, thin, errors \} = buildAptPages\(template, list, details\);/);
+    // 본문 실패 단지마다 로그 한 줄(id·오류 첫 줄 · 세션697 C3)
+    expect(body).toMatch(/for \(const e of errors\) \{\r?\n\s+console\.error\(`\[postbuild-prerender\] 단지 장 본문 실패 → 얇은 본문으로: \$\{e\.id\} — \$\{e\.message\}`\);/);
     // 사이트맵 쓰기는 얇은 장을 뺀 목록만 — 전 장(pages·list)을 넘기면 빨강
     expect(body).toMatch(/writeFileSync\(DIST_SITEMAP, buildSitemap\(sitemapIds, region\.sitemapEntries\), "utf-8"\);/);
     expect((body.match(/buildSitemap\(/g) ?? []).length).toBe(1);
     // 기록 파일 쓰기는 main 맨 바깥 줄(들여쓰기 2칸)에 — 조건 한 줄(`if (…) writeFileSync`)이면 빨강
-    expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(thin\), "utf-8"\);\r?\n/);
+    expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(seoThinRecord\(thin\)\), "utf-8"\);\r?\n/);
     // 조건 블록 안으로 들어가면 그 앞까지 중괄호가 안 맞는다 — buildAptPages 부터 기록 쓰기까지 { 와 } 개수가 같아야 한다
     const between = body.slice(body.indexOf("buildAptPages(template, list, details)"), body.indexOf("writeFileSync(DIST_SEO_THIN"));
     expect((between.match(/\{/g) ?? []).length).toBe((between.match(/\}/g) ?? []).length);

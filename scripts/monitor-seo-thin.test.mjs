@@ -10,6 +10,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import {
   checkSeoThin, parseSeoThin, fetchSeoThinLive, loadSeoThinForBriefing, runDailyGuardedChecks, SEO_THIN_URL, isAlwaysDedup,
+  checkSeoThinBuiltAt, fetchLatestDailyRefresh,
 } from "./monitor-collectors.mjs";
 import { buildBriefing, seoThinBriefLine } from "./monitor-briefing.mjs";
 import { formatIssue } from "./notify-telegram.mjs";
@@ -20,6 +21,140 @@ const nameList = (n) => Array.from({ length: n }, (_, i) => `단지${i + 1}`);
 /** @param {number} n */
 const idList = (n) => Array.from({ length: n }, (_, i) => `ap-${i + 1}`);
 const OK_BODY = JSON.stringify({ count: 5, ids: IDS5, names: nameList(5), applied: true, cap: 15 });
+/** 세션697 새 칸이 든 기록 — 커밋 03:04 KST(18:04Z) 뒤 03:09 KST 에 빌드 */
+const NEW_BODY = JSON.stringify({ count: 5, ids: IDS5, names: nameList(5), applied: true, cap: 15, bodyErrors: 0, bodyErrorIds: [], builtAt: "2026-11-05T18:09:00.000Z" });
+const REFRESH = { at: "2026-11-05T18:04:00Z", sha: "0123456789abcdef0123" };
+
+describe("C7 parseSeoThin 새 칸(세션697) — 옛 기록도 정상, 틀린 새 칸은 그 칸만 무시 + 경고", () => {
+  it("옛 기록(새 칸 없음) → ok · 경고 0 · 새 칸 없음", () => {
+    const p = parseSeoThin(200, OK_BODY);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.warnings).toEqual([]);
+    expect(Object.keys(p.rec)).toEqual(["count", "ids", "names", "applied", "cap"]);
+  });
+  it("새 기록 → 새 칸 3개를 읽는다", () => {
+    const p = parseSeoThin(200, JSON.stringify({ ...JSON.parse(NEW_BODY), bodyErrors: 3, bodyErrorIds: ["a", 7] }));
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rec).toMatchObject({ bodyErrors: 3, bodyErrorIds: ["a", "7"], builtAt: "2026-11-05T18:09:00.000Z" });
+    expect(p.warnings).toEqual([]);
+  });
+  it("새 칸 모양이 틀리면 그 칸만 빼고 경고 — 기록 자체는 ok(모양 알림 없음)", () => {
+    const probes = [
+      [{ bodyErrors: -1 }, "bodyErrors"], [{ bodyErrors: "3" }, "bodyErrors"], [{ bodyErrors: 1.5 }, "bodyErrors"],
+      [{ bodyErrorIds: "ap-1" }, "bodyErrorIds"], [{ builtAt: "어제" }, "builtAt"], [{ builtAt: 1730851740000 }, "builtAt"], [{ builtAt: "2026" }, "builtAt"],
+    ];
+    for (const [extra, field] of probes) {
+      const p = parseSeoThin(200, JSON.stringify({ ...JSON.parse(OK_BODY), ...(/** @type {object} */ (extra)) }));
+      expect(p.ok).toBe(true);
+      if (!p.ok) continue;
+      expect(p.warnings).toHaveLength(1);
+      expect(p.warnings[0]).toContain(/** @type {string} */ (field));
+      expect(/** @type {any} */ (p.rec)[/** @type {string} */ (field)]).toBeUndefined();
+      expect(checkSeoThin(200, JSON.stringify({ ...JSON.parse(OK_BODY), ...(/** @type {object} */ (extra)) }))).toEqual([]);
+    }
+  });
+  it("아침 브리핑 — 새 기록도 읽는다", async () => {
+    expect(await loadSeoThinForBriefing(async () => ({ status: 200, text: NEW_BODY }))).toMatchObject({ count: 5, applied: true, builtAt: "2026-11-05T18:09:00.000Z" });
+  });
+});
+
+describe("C5 checkSeoThin bodyErrors(세션697) — 0 이면 조용, 넘으면 1건(명단)", () => {
+  /** @param {Record<string, any>} o */
+  const body = (o) => JSON.stringify({ ...JSON.parse(NEW_BODY), ...o });
+  it("bodyErrors 0 → []", () => {
+    expect(checkSeoThin(200, NEW_BODY)).toEqual([]);
+  });
+  it("bodyErrors 3 → 1건 · 수 · 명단", () => {
+    const issues = checkSeoThin(200, body({ bodyErrors: 3, bodyErrorIds: ["ap-1", "ap-2", "ap-3"] }));
+    expect(issues).toHaveLength(1);
+    expect(issues[0]).toMatchObject({ kind: "seo-thin", collector: "postbuild-prerender" });
+    expect(issues[0].detail).toBe("단지 장 본문 실패 3곳 — 그 장만 얇은 본문(h1·요약 한 줄)으로 배포됨");
+    expect(issues[0].lines?.[0]).toBe("명단: ap-1 · ap-2 · ap-3");
+  });
+  it("bodyErrors 25 · id 20개 → \"외 5곳\"", () => {
+    const issues = checkSeoThin(200, body({ bodyErrors: 25, bodyErrorIds: idList(20) }));
+    expect(issues[0].lines?.[0].endsWith(" 외 5곳")).toBe(true);
+  });
+  it("applied:false + bodyErrors 2 → 2건(각자)", () => {
+    const issues = checkSeoThin(200, body({ count: 40, ids: idList(40), names: nameList(40), applied: false, bodyErrors: 2, bodyErrorIds: ["x", "y"] }));
+    expect(issues).toHaveLength(2);
+    expect(issues[0].detail).toContain("안전선");
+    expect(issues[1].detail).toContain("본문 실패 2곳");
+  });
+});
+
+describe("C6 checkSeoThinBuiltAt(세션697) — builtAt ≥ main 마지막 daily refresh 커밋 시각", () => {
+  /** @param {string | undefined} builtAt */
+  const rec = (builtAt) => ({ count: 0, ids: [], names: [], applied: true, cap: 15, ...(builtAt === undefined ? {} : { builtAt }) });
+  it("커밋 03:04 · builtAt 03:09 → 조용", () => {
+    expect(checkSeoThinBuiltAt(rec("2026-11-05T18:09:00.000Z"), REFRESH)).toEqual([]);
+  });
+  it("같은 시각 → 조용(경계)", () => {
+    expect(checkSeoThinBuiltAt(rec("2026-11-05T18:04:00.000Z"), REFRESH)).toEqual([]);
+  });
+  it("builtAt 전날 → 1건 · 두 시각·커밋 앞 8글자", () => {
+    const issues = checkSeoThinBuiltAt(rec("2026-11-04T18:09:00.000Z"), REFRESH);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toBe("오늘 화면 자료 커밋이 배포에 안 실림 — 빌드 실패·롤백 고착 의심");
+    expect(issues[0].lines?.[0]).toBe("운영 빌드 시각 2026-11-04T18:09:00.000Z < main 마지막 daily refresh 커밋 2026-11-05T18:04:00Z (01234567)");
+  });
+  it("1초 이르면 1건(경계)", () => {
+    expect(checkSeoThinBuiltAt(rec("2026-11-05T18:03:59.000Z"), REFRESH)).toHaveLength(1);
+  });
+  it("builtAt 없음 → 1건(GitHub 조회 못 했어도)", () => {
+    expect(checkSeoThinBuiltAt(rec(undefined), null)).toHaveLength(1);
+    expect(checkSeoThinBuiltAt(rec(undefined), REFRESH)[0].detail).toContain("builtAt");
+  });
+  it("커밋 시각 모름(null) → 비교 건너뜀", () => {
+    expect(checkSeoThinBuiltAt(rec("2020-01-01T00:00:00.000Z"), null)).toEqual([]);
+  });
+});
+
+describe("C6 fetchLatestDailyRefresh — 가짜 GitHub 응답으로", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.unstubAllEnvs();
+  });
+  it("인증이 없으면 던진다(㉓ 가 잡아 비교만 건너뜀) · 호출 0", async () => {
+    vi.stubEnv("GITHUB_REPOSITORY", "");
+    vi.stubEnv("GITHUB_TOKEN", "");
+    let n = 0;
+    vi.stubGlobal("fetch", async () => { n++; return { ok: true, json: async () => [] }; });
+    await expect(fetchLatestDailyRefresh()).rejects.toThrow(/인증 없음/);
+    expect(n).toBe(0);
+  });
+  it("main·public/data 커밋을 1회 조회해 가장 최근 daily refresh 를 고른다(다른 커밋은 건너뜀)", async () => {
+    vi.stubEnv("GITHUB_REPOSITORY", "o/r");
+    vi.stubEnv("GITHUB_TOKEN", "t");
+    /** @type {any[]} */
+    const calls = [];
+    vi.stubGlobal("fetch", async (/** @type {string} */ url, /** @type {any} */ init) => {
+      calls.push([url, init]);
+      return {
+        ok: true,
+        json: async () => [
+          { sha: "aaa", commit: { message: "fix: 손으로 고친 자료", committer: { date: "2026-11-05T20:00:00Z" } } },
+          { sha: "bbb", commit: { message: "data: daily refresh 2026-11-05 (auto)", committer: { date: "2026-11-05T18:04:00Z" } } },
+          { sha: "ccc", commit: { message: "data: daily refresh 2026-11-04 (auto)", committer: { date: "2026-11-04T18:04:00Z" } } },
+        ],
+      };
+    });
+    expect(await fetchLatestDailyRefresh()).toEqual({ at: "2026-11-05T18:04:00Z", sha: "bbb" });
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe("https://api.github.com/repos/o/r/commits?sha=main&path=public/data&per_page=30");
+    expect(calls[0][1].headers.Authorization).toBe("Bearer t");
+  });
+  it("daily refresh 가 없으면 null · 응답이 실패면 던진다", async () => {
+    vi.stubEnv("GITHUB_REPOSITORY", "o/r");
+    vi.stubEnv("GITHUB_TOKEN", "t");
+    vi.stubGlobal("fetch", async () => ({ ok: true, json: async () => [{ sha: "a", commit: { message: "chore", committer: { date: "2026-11-05T18:04:00Z" } } }] }));
+    expect(await fetchLatestDailyRefresh()).toBeNull();
+    vi.stubGlobal("fetch", async () => ({ ok: false, status: 403, json: async () => ({}) }));
+    await expect(fetchLatestDailyRefresh()).rejects.toThrow(/403/);
+  });
+});
 
 describe("㉓ checkSeoThin — 정상은 JSON·모양·일관성·applied:true 일 때만", () => {
   it("정상 JSON → []", () => {
@@ -184,11 +319,45 @@ describe("runDailyGuardedChecks — ㉓ 가 매일 점검 묶음에 연결돼 �
     fetchGovlistHealth: async () => ({ runs: [], listRows: [] }), // ㉔(세션692) — 운영 조회가 나가지 않게
     clearHoldAlertKeys: async () => {},
   };
-  it("정상 기록 → ㉓ 이슈 0 · 조회 1회", async () => {
+  it("정상 기록(builtAt ≥ 마지막 daily refresh · 세션697) → ㉓ 이슈 0 · 기록 조회 1회 · 커밋 조회 1회", async () => {
     let n = 0;
-    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchSeoThin: async () => { n++; return { status: 200, text: OK_BODY }; } }));
+    let g = 0;
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({
+      ...quiet,
+      fetchSeoThin: async () => { n++; return { status: 200, text: NEW_BODY }; },
+      fetchDailyRefresh: async () => { g++; return REFRESH; },
+    }));
     expect(n).toBe(1);
+    expect(g).toBe(1);
     expect(issues.filter((i) => i.kind === "seo-thin")).toEqual([]);
+  });
+  it("C6: builtAt 이 마지막 daily refresh 보다 이르면 ㉓ 1건(배포에 안 실림)", async () => {
+    const body = JSON.stringify({ ...JSON.parse(NEW_BODY), builtAt: "2026-11-04T18:09:00.000Z" });
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchSeoThin: async () => ({ status: 200, text: body }), fetchDailyRefresh: async () => REFRESH }));
+    const t = issues.filter((i) => i.kind === "seo-thin");
+    expect(t).toHaveLength(1);
+    expect(t[0].detail).toContain("배포에 안 실림");
+  });
+  it("C6: GitHub 조회가 던지면(토큰 없음·403) 비교만 건너뜀 — ㉓ 이슈 0 · check-failed 0", async () => {
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({
+      ...quiet, fetchSeoThin: async () => ({ status: 200, text: NEW_BODY }), fetchDailyRefresh: async () => { throw new Error("GitHub 인증 없음(로컬 실행)"); },
+    }));
+    expect(issues.filter((i) => i.kind === "seo-thin" || i.kind === "check-failed")).toEqual([]);
+  });
+  it("C6: builtAt 없는 옛 기록 → GitHub 조회가 실패해도 ㉓ 1건(builtAt 없음)", async () => {
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({
+      ...quiet, fetchSeoThin: async () => ({ status: 200, text: OK_BODY }), fetchDailyRefresh: async () => { throw new Error("x"); },
+    }));
+    const t = issues.filter((i) => i.kind === "seo-thin");
+    expect(t).toHaveLength(1);
+    expect(t[0].detail).toContain("builtAt");
+  });
+  it("C5: bodyErrors 2 → ㉓ 1건(명단)", async () => {
+    const body = JSON.stringify({ ...JSON.parse(NEW_BODY), bodyErrors: 2, bodyErrorIds: ["ap-1", "ap-2"] });
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchSeoThin: async () => ({ status: 200, text: body }), fetchDailyRefresh: async () => REFRESH }));
+    const t = issues.filter((i) => i.kind === "seo-thin");
+    expect(t).toHaveLength(1);
+    expect(t[0].lines?.[0]).toBe("명단: ap-1 · ap-2");
   });
   it("200 + HTML → ㉓ 이슈 1건", async () => {
     const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchSeoThin: async () => ({ status: 200, text: "<!doctype html>" }) }));
