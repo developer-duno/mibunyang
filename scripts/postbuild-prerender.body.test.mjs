@@ -215,8 +215,8 @@ describe("꾸러미 지도는 필수 — 빠지면 던짐(빌드 빨강)", () =>
   });
   it("main() — 꾸러미를 목록 직후·첫 쓰기 전에 읽고, 실패면 exit 1", () => {
     const src = readFileSync(new URL("./postbuild-prerender.mjs", import.meta.url), "utf-8");
-    const body = src.slice(src.indexOf("function main() {"), src.indexOf("// CLI 로 직접 실행"));
-    const iLoad = body.indexOf('details = loadDetailMap(join(DIST, "data"), list);');
+    const body = src.slice(src.indexOf("export function main(dist = DIST) {"), src.indexOf("// CLI 로 직접 실행"));
+    const iLoad = body.indexOf('details = loadDetailMap(join(dist, "data"), list);');
     expect(iLoad).toBeGreaterThan(0);
     expect(iLoad).toBeLessThan(body.indexOf("writeFileSync(DIST_INDEX"));
     expect(body.slice(iLoad, body.indexOf("writeFileSync(DIST_INDEX"))).toMatch(/catch \(e\) \{[\s\S]*?process\.exit\(1\);/);

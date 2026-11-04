@@ -20,7 +20,7 @@
  *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(모든 묶음이 판정 파일 active 일 때만 제외 · KST 월요일 · 세션630)
  *   ㉑ 청약홈 공고 정리 경고 표식 — applyhome-detail 최신 실행의 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING(매일 · dedup · 세션632)
  *   ㉒ 시세 이력 바닥 — complex_price_history 의 2u 삭제 조건 밖 조각(A 8글자 옛 줄 · B 6글자 A1 area_no 있음)이 바닥 밑으로(매일 · 세션648)
- *   ㉓ 검색 제외 안전선 — 운영 /data/seo-thin.json 이 JSON·모양 맞음·applied=true 가 아니면(얇은 단지 > 안전선 15 · 파일 없음 · HTML 응답)(매일 · 세션668)
+ *   ㉓ 검색 제외 안전선 — 운영 /data/seo-thin.json 이 JSON·모양 맞음·applied=true 가 아니면(얇은 단지 > 안전선 15 · 파일 없음 · HTML 응답)(매일 · 세션668) · 단지 장 본문 실패(bodyErrors>0) · builtAt 없음 또는 main 마지막 daily refresh 커밋보다 이름(세션697)
  *   ㉔ 지자체 명단 — unsold-govlist 최근 실행의 GOVLIST_SKIP · 명단 행 수 전 기준월 대비 −50%(실행·명단 0행이면 침묵 · 매일 · dedup · 세션692)
  *      + ㉔-c 매칭 충돌 ≥1 · 판정 필요 수 증가(GOVLIST_MATCH) · ㉔-d VIEW 비공개 수 = 라이브 목록 JSON 비공개 수(+ 양성 대조군) · 명단 조회는 출처마다 최근 기준월 2개(세션693 PR-4b)
  *      + ㉔ 재료 조회가 실패하면 ㉔-d 도 실행 실패 1건(침묵하지 않음 · 세션696)
@@ -289,7 +289,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"|"seo-body-error"|"seo-built-at"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1282,7 +1282,11 @@ const SEO_THIN_COLLECTOR = "postbuild-prerender";
 /** ㉓ 알림에 펼칠 단지 명단 수 — 나머지는 "외 N곳". */
 const SEO_THIN_LIST_MAX = 20;
 
-/** @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number }} SeoThinRecord */
+/**
+ * 새 칸 3개(세션697)는 선택 — 옛 기록(칸 없음)도 정상으로 읽는다. 모양이 틀린 새 칸은 그 칸만 빼고 warnings 에 적는다.
+ * bodyErrors = 단지 장 본문이 던져 얇은 본문으로 만든 수 · bodyErrorIds = 그 앞 20개 · builtAt = 빌드 시각(ISO).
+ * @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, bodyErrors?: number, bodyErrorIds?: string[], builtAt?: string }} SeoThinRecord
+ */
 
 /**
  * 단지 명단 한 줄 — 앞 max 개 `id 이름`, 넘으면 "외 N곳".
@@ -1302,7 +1306,7 @@ export function formatSeoThinList(rec, max = SEO_THIN_LIST_MAX) {
  * 200 + index.html 이 온다. 던지지 않는다.
  * @param {number} status
  * @param {string} bodyText
- * @returns {{ ok: true, rec: SeoThinRecord } | { ok: false, detail: string, rec?: SeoThinRecord }}
+ * @returns {{ ok: true, rec: SeoThinRecord, warnings: string[] } | { ok: false, detail: string, rec?: SeoThinRecord }}
  */
 export function parseSeoThin(status, bodyText) {
   if (status !== 200) return { ok: false, detail: `검색 제외 기록 응답 ${status} — 오늘 빌드가 기록을 못 올렸거나 배포가 깨졌을 수 있음` };
@@ -1326,7 +1330,22 @@ export function parseSeoThin(status, bodyText) {
   if (!consistent) {
     return { ok: false, rec, detail: `검색 제외 기록 숫자가 서로 안 맞음(count ${rec.count} · ids ${rec.ids.length}개 · cap ${rec.cap} · applied ${rec.applied})` };
   }
-  return { ok: true, rec };
+  // 새 칸(세션697 C7) — 없으면 옛 기록 그대로 정상. 모양이 틀리면 그 칸만 빼고 경고(기록 전체는 살린다 — 아침 브리핑이 깨지지 않게).
+  /** @type {string[]} */
+  const warnings = [];
+  if (j.bodyErrors !== undefined) {
+    if (Number.isInteger(j.bodyErrors) && j.bodyErrors >= 0) rec.bodyErrors = j.bodyErrors;
+    else warnings.push(`bodyErrors 모양이 다름(0 이상 정수 아님: ${JSON.stringify(j.bodyErrors)}) — 무시`);
+  }
+  if (j.bodyErrorIds !== undefined) {
+    if (Array.isArray(j.bodyErrorIds)) rec.bodyErrorIds = j.bodyErrorIds.map(String);
+    else warnings.push("bodyErrorIds 모양이 다름(배열 아님) — 무시");
+  }
+  if (j.builtAt !== undefined) {
+    if (typeof j.builtAt === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(j.builtAt) && Number.isFinite(Date.parse(j.builtAt))) rec.builtAt = j.builtAt;
+    else warnings.push(`builtAt 모양이 다름(시각 글자 아님: ${JSON.stringify(j.builtAt)}) — 무시`);
+  }
+  return { ok: true, rec, warnings };
 }
 
 /**
@@ -1346,10 +1365,89 @@ export function checkSeoThin(status, bodyText) {
   }];
   const p = parseSeoThin(status, bodyText);
   if (!p.ok) return one(p.detail, p.rec);
+  /** @type {Issue[]} */
+  const out = [];
   if (p.rec.applied !== true) {
-    return one(`얇은 단지 ${p.rec.count}곳 > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec);
+    out.push(...one(`얇은 단지 ${p.rec.count}곳 > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec));
+  }
+  // C5(세션697) — 단지 장 본문이 던져 얇은 본문으로 만든 장. 빌드는 초록이라 여기서만 보인다.
+  const bodyErrors = p.rec.bodyErrors ?? 0;
+  if (bodyErrors > 0) {
+    const ids = p.rec.bodyErrorIds ?? [];
+    const rest = bodyErrors - ids.length;
+    out.push({
+      kind: "seo-body-error", // 제목·조치가 얇은 단지 안전선과 다르다(세션697 B6)
+      collector: SEO_THIN_COLLECTOR,
+      detail: `단지 장 본문 실패 ${bodyErrors}곳 — 그 장만 얇은 본문(h1·요약 한 줄 · 검색 제외)으로 배포됨`,
+      lines: [`명단: ${ids.join(" · ") || "없음"}${rest > 0 ? ` 외 ${rest}곳` : ""}`, `주소: ${SEO_THIN_URL}`],
+    });
+  }
+  return out;
+}
+
+/** ㉓ builtAt 판정 대상 커밋 — daily-deploy.yml 의 `git commit -m "data: daily refresh …"`. */
+const DAILY_REFRESH_PREFIX = "data: daily refresh";
+/** ㉓ builtAt 유예(분) — refresh 커밋 뒤 이 시간 안에는 비교하지 않는다(Vercel 빌드 도중 헛경보 방지 · 세션697 B8). */
+export const BUILT_AT_GRACE_MIN = 60;
+
+/** GitHub 인증이 없어(로컬 실행) builtAt 비교를 못 한 것 — ㉓ 는 이것만 조용히 건너뛰고, 그 밖 조회 실패는 실행 실패로 알린다(세션697 B7). */
+export class GithubAuthMissingError extends Error {
+  constructor() {
+    super("GitHub 인증 없음(로컬 실행)");
+    this.name = "GithubAuthMissingError";
+  }
+}
+
+/**
+ * ㉓ builtAt 판정(세션697 C6) — 운영 기록의 빌드 시각이 main 의 가장 최근 daily refresh 커밋보다 이르면
+ * 그 커밋(=오늘 화면 자료)이 배포에 안 실린 것(빌드 실패·롤백 고착 의심). builtAt 이 없으면(옛 빌드) 1건.
+ * refresh 가 null 이면(GitHub 조회 못 함) 비교만 건너뛴다 — builtAt 없음은 그래도 알린다.
+ * 커밋 뒤 BUILT_AT_GRACE_MIN 분 안이면 비교를 건너뛴다(그 커밋의 빌드가 아직 도는 중일 수 있음 · 세션697 B8).
+ * @param {SeoThinRecord} rec
+ * @param {{ at: string, sha: string } | null} refresh
+ * @param {Date} [now] 유예 판정 시각(시험 주입용)
+ * @returns {Issue[]}
+ */
+export function checkSeoThinBuiltAt(rec, refresh, now = new Date()) {
+  /** @param {string} detail @param {string[]} lines @returns {Issue[]} */
+  const one = (detail, lines) => [{ kind: "seo-built-at", collector: SEO_THIN_COLLECTOR, detail, lines: [...lines, `주소: ${SEO_THIN_URL}`] }];
+  if (rec.builtAt == null) {
+    return one("검색 제외 기록에 빌드 시각(builtAt)이 없거나 모양이 틀림 — 운영 배포가 옛 빌드일 수 있음(빌드 실패·롤백 고착 의심)", []);
+  }
+  if (!refresh) return [];
+  if (now.getTime() - Date.parse(refresh.at) < BUILT_AT_GRACE_MIN * 60_000) return [];
+  if (Date.parse(rec.builtAt) < Date.parse(refresh.at)) {
+    return one("오늘 화면 자료 커밋이 배포에 안 실림 — 빌드 실패·롤백 고착 의심", [
+      `운영 빌드 시각 ${rec.builtAt} < main 마지막 daily refresh 커밋 ${refresh.at} (${refresh.sha.slice(0, 8)})`,
+    ]);
   }
   return [];
+}
+
+/**
+ * ㉓ builtAt 재료 — main 의 가장 최근 `data: daily refresh` 커밋 시각(GitHub REST commits 1회 · public/data 를 바꾼 커밋만).
+ * 인증이 없으면(로컬) GithubAuthMissingError — ㉓ 블록이 이 판정만 건너뛴다. 응답 실패는 그냥 던진다(㉓ 가 실행 실패 1건). 목록에 없으면 null.
+ * @returns {Promise<{ at: string, sha: string } | null>}
+ */
+export async function fetchLatestDailyRefresh() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) throw new GithubAuthMissingError();
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/commits?sha=main&path=public/data&per_page=30`,
+    {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(20000),
+    },
+  );
+  if (!res.ok) throw new Error(`GitHub API /commits ${res.status} — contents:read 권한 확인`);
+  const list = /** @type {Array<{ sha?: string, commit?: { message?: string, committer?: { date?: string } } }>} */ (await res.json());
+  for (const c of Array.isArray(list) ? list : []) {
+    const msg = c.commit?.message ?? "";
+    const at = c.commit?.committer?.date;
+    if (msg.startsWith(DAILY_REFRESH_PREFIX) && typeof at === "string") return { at, sha: String(c.sha ?? "") };
+  }
+  return null;
 }
 
 /**
@@ -4398,6 +4496,7 @@ export async function runFailOpenCheck(label, run) {
  *   fetchNoticeRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchPriceHistoryCounts?: () => Promise<Partial<Record<"A" | "B", { count: number | null | undefined, error?: unknown }>>>,
  *   fetchSeoThin?: () => Promise<{ status: number, text: string }>,
+ *   fetchDailyRefresh?: () => Promise<{ at: string, sha: string } | null>,
  *   fetchGovlistHealth?: () => ReturnType<typeof fetchGovlistHealthInputs>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
  *   now?: Date,
@@ -4422,6 +4521,7 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchNoticeRuns = deps.fetchNoticeRuns ?? fetchRegionUnresolvedRuns;
   const fetchPriceHistoryCounts = deps.fetchPriceHistoryCounts ?? fetchPriceHistorySliceCounts;
   const fetchSeoThin = deps.fetchSeoThin ?? fetchSeoThinLive;
+  const fetchDailyRefresh = deps.fetchDailyRefresh ?? fetchLatestDailyRefresh;
   const fetchGovlistHealth = deps.fetchGovlistHealth ?? fetchGovlistHealthInputs;
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
@@ -4586,6 +4686,26 @@ export async function runDailyGuardedChecks(deps = {}) {
   issues = issues.concat(await runFailOpenCheck("㉓ 검색 제외 안전선", async () => {
     const { status, text } = await fetchSeoThin();
     const thinIssues = checkSeoThin(status, text);
+    // builtAt(세션697 C6) — 기록을 읽었을 때만. 토큰 없음(로컬)만 비교를 조용히 건너뛰고,
+    //   토큰이 있는데(Actions) 조회가 실패하면 실행 실패 1건 — 권한이 바뀌어 판정이 영영 꺼지지 않게(B7 · fetchRecentRuns 관례).
+    const parsed = parseSeoThin(status, text);
+    if (parsed.ok) {
+      for (const w of parsed.warnings) console.log(`[monitor] ㉓ 기록 새 칸 경고: ${w}`);
+      /** @type {{ at: string, sha: string } | null} */
+      let refresh = null;
+      try {
+        refresh = await fetchDailyRefresh();
+        if (!refresh) console.log("[monitor] ㉓ builtAt 비교 건너뜀: main 최근 커밋 30개에 daily refresh 없음");
+      } catch (err) {
+        if (err instanceof GithubAuthMissingError) {
+          console.log(`[monitor] ㉓ builtAt 비교 건너뜀: ${err.message}`);
+        } else {
+          console.log(`[monitor] ㉓ builtAt 커밋 조회 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+          thinIssues.push(checkFailedIssue("㉓ builtAt 커밋 조회", err));
+        }
+      }
+      thinIssues.push(...checkSeoThinBuiltAt(parsed.rec, refresh, deps.now ?? new Date()));
+    }
     console.log(`[monitor] ㉓ 검색 제외 안전선: 응답 ${status} → 이상 ${thinIssues.length}건`);
     return thinIssues;
   }));

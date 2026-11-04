@@ -35,6 +35,7 @@ const LABELS = {
   fetchNoticeRuns: "㉑ 청약홈 공고 정리 표식 점검",
   fetchPriceHistoryCounts: "㉒ 시세 이력 바닥 점검",
   fetchSeoThin: "㉓ 검색 제외 안전선",
+  fetchDailyRefresh: "㉓ builtAt 커밋 조회",
   fetchGovlistHealth: "㉔ 지자체 명단 점검",
 };
 
@@ -75,6 +76,7 @@ function okDeps() {
     fetchGovlistHealth: async () => ({ runs: [], listRows: [] }), // ㉔(세션692) — 운영 조회가 나가지 않게
     // 검색 제외 기록이 정상 — ㉓ 은 이상 없이 지나간다(세션668) · 운영 GET 이 나가지 않게
     fetchSeoThin: async () => ({ status: 200, text: JSON.stringify({ count: 0, ids: [], names: [], applied: true, cap: 15 }) }),
+    fetchDailyRefresh: async () => null, // ㉓ builtAt(세션697) — 환경에 토큰이 있어도 진짜 GitHub 를 부르지 않게
     // 운영 monitor_alert_state 를 절대 지우지 않게 — 시험은 항상 가짜(세션572)
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };

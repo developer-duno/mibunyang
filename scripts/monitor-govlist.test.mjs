@@ -387,6 +387,7 @@ describe("㉔ 배선", () => {
     fetchNoticeRuns: async () => ({}),
     fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }),
     fetchSeoThin: async () => ({ status: 200, text: '{"count":0,"ids":[],"names":[],"applied":true,"cap":15}' }),
+    fetchDailyRefresh: async () => null, // ㉓ builtAt(세션697) — 환경에 토큰이 있어도 진짜 GitHub 를 부르지 않게
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
   it("세션695 PR-4c 배선 — runDailyGuardedChecks 가 deps.now 를 ㉔-a 게시 지연 문턱에 넘긴다(저장 9/30: 11/09 조용 · 12/10 알림)", async () => {

@@ -115,6 +115,7 @@ describe("runDailyGuardedChecks — ⑮ 가 매일 점검 묶음에 연결돼 �
     fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }), // ㉒(세션648) — 같은 이유
     fetchGovlistHealth: async () => ({ runs: [], listRows: [] }), // ㉔(세션692) — 운영 조회가 나가지 않게
     fetchSeoThin: async () => ({ status: 200, text: '{"count":0,"ids":[],"names":[],"applied":true,"cap":15}' }), // ㉓(세션668) — 운영 GET 이 나가지 않게
+    fetchDailyRefresh: async () => null, // ㉓ builtAt(세션697) — 환경에 토큰이 있어도 진짜 GitHub 를 부르지 않게
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
 
