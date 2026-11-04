@@ -1,5 +1,6 @@
 import { BRAND_TIER, resolveBuilder } from "@/constants/brands";
 import type { Apt } from "@/types/scoring";
+import { countsAsUnsold, isUnsoldListedHidden } from "@/utils/unsoldState.mjs";
 
 /** 현재 연월 "YYYYMM" (AptCard·moveInSoon 정렬 공용 단일 출처) */
 export const NOW_YM = `${new Date().getFullYear()}${String(new Date().getMonth() + 1).padStart(2, "0")}`;
@@ -35,8 +36,10 @@ export function classifyMoveIn(apt: Apt): string | null {
   //   미분양 단지가 입주완료로 오분류되던 회귀 방지 (세션 445). 단지 잔여 미분양이 남았으면 미입주.
   // unsold 가 null(모름)이면 0 으로 보지 않는다 — 모르는 것을 "입주완료"로 단정하지 않는다
   //   (백로그 A-10 2차 E1, 세션573 조사 — cardChips.ts 와 같은 판정).
-  if (apt.unsold == null) return null;
-  if (apt.unsold > 0) return MOVEIN_STATUS.NOT_MOVED;
+  // 단 지자체 명단 등재·수 비공개(unsoldListedHidden)는 「미분양 있음」으로 센다 — 👤 D3(세션691 11/04) ·
+  //   「미분양만 보기」(Q8)와 같은 셈법이라 규칙은 countsAsUnsold 한 곳(세션692 PR-4).
+  if (apt.unsold == null && !isUnsoldListedHidden(apt)) return null;
+  if (countsAsUnsold(apt)) return MOVEIN_STATUS.NOT_MOVED;
   return MOVEIN_STATUS.COMPLETED;
 }
 

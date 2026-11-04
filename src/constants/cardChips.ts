@@ -94,7 +94,7 @@ export const CHIP_ORDER: Readonly<Record<string, number>> = {
   crimeCaution: 16, // 치안주의 4등급 (−0.10 / 26.0%)
   noxiousNear: 17, // 혐오시설 1km 내 (−0.12 / 56.7%)
   // ── 약점: 계급 3 (엔진에 연결 자체가 없어 감점 0) ──
-  // 이 다섯은 "사실"이지 "점수"가 아니다(scoring/ 전체 grep 0건 · 명단 비공개는 점수가 모름 40 그대로). 그래서 맨 뒤다 —
+  // 이 다섯은 "사실"이지 "점수"가 아니다(감점 0 — 명단 비공개는 scoreRisk.ts 가 모름 문구 글자로만 쓰고 점수는 모름 40 그대로). 그래서 맨 뒤다 —
   // 그래도 손님이 알 값이라 지우지 않고 접힘 안에 남긴다.
   northFacing: 18, // 북향 계열 (+0.04 = 사실상 0 / 2.7%)
   corridor: 19, // 복도식 (0 / 3.9%)
@@ -219,9 +219,11 @@ export function buildCardChips(apt: Apt, res: ScoringResult, opts: BuildChipsOpt
   const completion = a.completion as string | undefined;
   const completionPast = completion ? completion < nowYm : false;
   // 준공 + 미분양 0 = 입주완료. 판정은 unsold(수)로 — unsoldRate(%)는 100% 초과 폭발값이 null 로
-  // 무력화돼 있을 수 있어, 미분양 단지가 "입주완료"로 둔갑하던 회귀 방지(세션 445, classify.ts:33 일치).
+  // 무력화돼 있을 수 있어, 미분양 단지가 "입주완료"로 둔갑하던 회귀 방지(세션 445 · 숫자 판정은 classify.ts classifyMoveIn 과 같다).
   // unsold 가 null(모름)이면 0 으로 보지 않는다 — 모르는 것을 "입주완료"로 단정하지 않는다
   // (백로그 A-10 2차 E1, 세션573 조사).
+  // ⚠️ 의도된 차이(세션692 PR-4 · 👤 D3): 지자체 명단 등재·수 비공개(unsoldListedHidden)는 「미입주」 필터·개수(classifyMoveIn)에는
+  //   「미분양 있음」으로 들지만, 이 상태 칩은 수를 모르므로 날짜만(moveInUnknown) 그대로다 — 비공개 사실은 따로 「미분양 수 비공개」 칩이 말한다.
   const unsoldUnknown = a.unsold == null;
   const moveInDone = completionPast && !unsoldUnknown && Number(a.unsold) === 0;
   // 잘린 값(`"2029 미"`)은 네이버 원문(`"2029 미정"`)으로 대체해 보여준다 (세션530).

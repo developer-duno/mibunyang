@@ -18,7 +18,7 @@
  * 사람 보류 hold(세션570): `unsold_source = 'hold'` 행은 계획에서 skip_hold, DB 쓰기 WHERE 로도 막고,
  * unsold_history 도 만들지 않는다. 분모에는 남긴다. 해제는 backfill-unsold-source.mjs 계획 파일로만.
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 import { foldForUnsold } from "./_unsold-bundle.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -160,6 +160,8 @@ export function calcProportionalUnsold(guUnsold, aptUnits, totalUnitsInGu) {
  * 2. `unsold_source === "applyhome"` → 존중(청약홈 단지별 실측은 구 단위 비례배분보다 정확) — **단 C6(세션569)**:
  *    공고일(`unsold_as_of`) + 6개월이 지났으면 존중하지 않는다(KOSIS 가 정한다). 공고일이 비었으면
  *    판정할 수 없으므로 존중을 유지한다(호출부가 `skip_applyhome_no_date` 로 세고 경고 마커를 남긴다).
+ * 2-b. `unsold_source === "govlist"`(지자체 명단 — 숫자·비공개 등재) → 존중, 단 기준월(`unsold_as_of`) + GOVLIST_EXPIRY_MONTHS(6)가
+ *    지나면 KOSIS 가 다시 정한다(세션692 PR-4 · 설계서 §5-②④ · 👤 Q2). 판정은 govlistStatus(applyhome 과 같은 꼴). 존중해도 묶음 분모에는 남는다.
  * 3. `unsold === 0 && unsold_source == null` → 존중(옛 완판 실측 — 출처가 없던 시절의 값이라도
  *    "0"은 계측이지 빈칸이 아니다. **출처가 kosis/applyhome 이면 이 규칙에 해당 안 됨** — applyhome
  *    은 2번에서 이미 걸러졌고, kosis 는 자기 값이므로 KOSIS 최신 회차가 덮는다(자기잠금 방지))
@@ -175,6 +177,9 @@ export function shouldSkipKosisFill(apt, now = new Date()) {
   if (!apt.region || !guOk || !apt.units || apt.units <= 1) return true;
   // 청약홈 실측은 공고일 + 6개월까지만 존중(C6). 공고일이 없으면(null) 판정 불가 → 존중 유지.
   if (apt.unsold_source === "applyhome") return applyhomeStatus(apt, now) !== "expired";
+  // 지자체 명단(govlist)도 기준월 + GOVLIST_EXPIRY_MONTHS 까지만 존중(세션692 PR-4 · 설계서 §5-②). 날짜 없음은 applyhome 과 같은 원칙(존중 유지 —
+  //   DB CHECK apartments_unsold_govlist_asof_check 가 govlist 행의 기준일을 늘 채우게 해 실제로는 생기지 않는다).
+  if (apt.unsold_source === "govlist") return govlistStatus(apt, now) !== "expired";
   // ⚠️ `unsold === 0` 은 옛 "다 팔렸다"는 단지별 실측이다 — 단, **출처가 없을 때만**(NULL).
   //    출처가 kosis 면 자기 자신이 쓴 0 이므로 최신 KOSIS 회차가 덮어써야 한다(자기잠금 방지,
   //    검사관 M3 지적). applyhome 은 위 2번에서 이미 걸러졌다.
@@ -193,6 +198,87 @@ export function applyhomeStatus(apt, now) {
   const expired = isApplyhomeExpired(apt.unsold_as_of, now, APPLYHOME_EXPIRY_MONTHS);
   if (expired == null) return "no_date";
   return expired ? "expired" : "valid";
+}
+
+/**
+ * govlist(지자체 명단) 값의 만료 상태(세션692 PR-4 · 👤 Q2 「6개월」). applyhomeStatus 와 같은 꼴 — 판정 함수는 isApplyhomeExpired 하나를
+ * 같이 쓰고 기간만 GOVLIST_EXPIRY_MONTHS(VIEW `INTERVAL '6 months'` 와 시험이 맞댐). DB 접근 없는 순수 함수.
+ * @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt
+ * @param {Date} now
+ * @returns {"not_govlist" | "no_date" | "valid" | "expired"}
+ */
+export function govlistStatus(apt, now) {
+  if (apt.unsold_source !== "govlist") return "not_govlist";
+  const expired = isApplyhomeExpired(apt.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS);
+  if (expired == null) return "no_date";
+  return expired ? "expired" : "valid";
+}
+
+/** 시계열·상한 판정용 — govlist 행을 KOSIS 가 존중하나(유효 또는 날짜 없음). @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt @param {Date} now */
+export const isGovlistRespected = (apt, now) => apt.unsold_source === "govlist" && govlistStatus(apt, now) !== "expired";
+
+/**
+ * 묶음의 명단 총분양 상한(세션692 PR-4 · 👤 Q10 「상한 둔다」 · 설계서 §5-④) — 구성원 중 `unsold_listed_total` 이 있는 행의 가장 큰 값.
+ * 총분양은 단지의 물리 공급 수라 명단이 만료돼도 「미분양 ≤ 총분양」은 참이다 → 만료·출처와 무관하게 값이 있으면 쓴다.
+ * 여러 값이면 가장 큰 값(상한이 손님 숫자를 깎는 쪽이라 덜 깎는 쪽 — 보수). 없으면 null(상한 없음). DB 접근 없는 순수 함수.
+ * @param {ReadonlyArray<Record<string, unknown>>} members 묶음 구성원(apartments 행 — unsold_listed_total 칸만 본다)
+ * @returns {number | null}
+ */
+export function listedCapOf(members) {
+  /** @type {number | null} */
+  let cap = null;
+  for (const m of members) {
+    const v = m.unsold_listed_total;
+    if (typeof v === "number" && Number.isFinite(v) && v > 0 && (cap == null || v > cap)) cap = v;
+  }
+  return cap;
+}
+
+/**
+ * KOSIS 추정에 명단 총분양 상한을 씌운다. 상한을 넘으면 추정 = 상한 · 률 = 상한 / 묶음 세대수(calcProportionalUnsold 와 같은 반올림).
+ * 상한이 없거나 넘지 않으면 그대로. DB 접근 없는 순수 함수.
+ * @param {{ estimated: number; unsoldRate: number }} result
+ * @param {number | null} cap
+ * @param {number} units 묶음 세대수(분자 쪽 — calcProportionalUnsold 의 aptUnits)
+ * @returns {{ estimated: number; unsoldRate: number; capped: boolean }}
+ */
+export function applyListedCap(result, cap, units) {
+  if (cap == null || result.estimated <= cap) return { ...result, capped: false };
+  return { estimated: cap, unsoldRate: Math.round(cap / units * 1000) / 10, capped: true };
+}
+
+/** KOSIS 추정이 명단 총분양 상한에 걸린 회차가 `collector_runs.error_message` 에 남기는 표식(세션692 PR-4). */
+export const KOSIS_LISTED_CAP_MARKER = "KOSIS_LISTED_CAP";
+
+/** 상한 표식에 펼칠 id 수 — 나머지는 "…". */
+const LISTED_CAP_ID_LIMIT = 20;
+
+/**
+ * 상한 표식 한 줄(`KOSIS_LISTED_CAP n=<수>: id, …`) — 걸린 행이 없으면 null. DB 접근 없는 순수 함수.
+ * @param {string[]} ids
+ * @returns {string | null}
+ */
+export function formatListedCap(ids) {
+  if (!ids || ids.length === 0) return null;
+  const shown = ids.slice(0, LISTED_CAP_ID_LIMIT);
+  return `${KOSIS_LISTED_CAP_MARKER} n=${ids.length}: ${shown.join(", ")}${ids.length > shown.length ? ", …" : ""}`;
+}
+
+/**
+ * 기준월(unsold_as_of)이 빈 govlist 행 표식 — 만료를 못 재어 존중이 굳는다(applyhome APPLYHOME_NO_DATE 와 같은 결 · 세션692 PR-4 메인 덧붙임).
+ * 수집기는 늘 기준월을 쓰고 DB CHECK(apartments_unsold_govlist_asof_check)도 막아 정상이면 0건 — 생기면 손으로 쓴 행이다.
+ */
+export const GOVLIST_NO_DATE_MARKER = "GOVLIST_NO_DATE";
+
+/**
+ * 날짜 없는 govlist 행 표식 한 줄(`GOVLIST_NO_DATE n=<수>: id, …`) — 없으면 null. DB 접근 없는 순수 함수.
+ * @param {string[]} ids
+ * @returns {string | null}
+ */
+export function formatGovlistNoDate(ids) {
+  if (!ids || ids.length === 0) return null;
+  const shown = ids.slice(0, LISTED_CAP_ID_LIMIT);
+  return `${GOVLIST_NO_DATE_MARKER} n=${ids.length}: ${shown.join(", ")}${ids.length > shown.length ? ", …" : ""}`;
 }
 
 /**
@@ -286,7 +372,7 @@ export function kosisPairOf(byRegion) {
  * §6-9). 무효(규칙 1) 판정의 세대수도 행이 아니라 묶음 세대수다. 계획 행에 `bundleKey`·`bundleUnits`·`bundleSize`.
  *
  * @param {{
- *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null; unsold_as_of?: string | null; complex_key?: string | null; naver_presale_no?: string | null; unit_source?: string | null }>;
+ *   apartments: Array<{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type?: string | null; unsold_source?: string | null; unsold_as_of?: string | null; unsold_listed_total?: number | null; complex_key?: string | null; naver_presale_no?: string | null; unit_source?: string | null }>;
  *   unsoldByRegionGu: UnsoldByRegionGu;
  *   now?: Date;
  * }} params  now = applyhome 만료 판정 기준 시각(없으면 지금 — main 은 항상 넣는다)
@@ -302,6 +388,8 @@ export function kosisPairOf(byRegion) {
  *   currentRate: number | null;
  *   currentSource: string | null;
  *   applyhomeExpired: boolean;
+ *   govlistExpired: boolean;
+ *   listedCap: number | null; capped: boolean;
  *   bundleKey: string; bundleUnits: number | null; bundleSize: number;
  *   rowUnits: number | null;
  * }>}
@@ -345,6 +433,8 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       currentUnsold: apt.unsold, currentRate: apt.unsold_rate,
       currentSource: apt.unsold_source ?? null,
       applyhomeExpired: applyhomeStatus(apt, now) === "expired",
+      govlistExpired: govlistStatus(apt, now) === "expired",
+      listedCap: listedCapOf(b.members), capped: false,
       bundleKey: b.key, bundleUnits: b.units, bundleSize: b.members.length,
       rowUnits: apt.units, // 세션636 F8 — 그 행 세대수(미분양 > 행 세대수 명단을 impact 만으로 뽑게)
     };
@@ -385,12 +475,14 @@ export function planUnsoldUpdates({ apartments, unsoldByRegionGu, now = new Date
       plan.push({ ...base, action: "skip_no_estimate", kosisKey, guUnsold, totalUnitsInGu });
       continue;
     }
-    const { estimated, unsoldRate } = result;
-    if (unsoldRate >= UNRELIABLE_RATE_THRESHOLD) {
-      plan.push({ ...base, action: "hold_ge50", kosisKey, guUnsold, totalUnitsInGu, newEstimate: estimated, newRate: unsoldRate });
+    // 50% 보류 판정은 상한 **전** 추정으로(옛 동작 그대로 — 상한은 값을 깎기만 하고 믿을 수 없던 추정을 쓰게 만들지 않는다).
+    if (result.unsoldRate >= UNRELIABLE_RATE_THRESHOLD) {
+      plan.push({ ...base, action: "hold_ge50", kosisKey, guUnsold, totalUnitsInGu, newEstimate: result.estimated, newRate: result.unsoldRate });
       continue;
     }
-    plan.push({ ...base, action: "write", kosisKey, guUnsold, totalUnitsInGu, newEstimate: estimated, newRate: unsoldRate });
+    // 세션692 PR-4(👤 Q10) — 등재 단지 묶음은 명단 총분양 Σ 를 넘지 않는다(두류 165 > 52 같은 거짓 차단).
+    const { estimated, unsoldRate, capped } = applyListedCap(result, base.listedCap, b.units);
+    plan.push({ ...base, action: "write", kosisKey, guUnsold, totalUnitsInGu, newEstimate: estimated, newRate: unsoldRate, capped });
   }
   return plan;
 
@@ -434,6 +526,9 @@ export function summarizePlanFold(plan) {
  * KOSIS 가 단지 값을 쓸 때의 UPDATE 내용(write·write_zero 공용). DB 접근 없는 순수 함수.
  * `unsold_as_of` 는 null 로 비운다(세션569 C6 검사관) — 만료된 applyhome 행을 덮을 때 출처 kosis 인 행에
  * 옛 공고일이 남으면 감시 ⑫·다음 판정이 그 날짜를 청약홈 값의 공고일로 오해한다.
+ * 명단 칸 2개(`unsold_listed_as_of`·`unsold_listed_total`)는 **일부러 싣지 않는다**(세션692 PR-4 · 검사관 적대 🟡1·맹점 🟡1) — 만료된 govlist 행을
+ * KOSIS 가 덮어도 명단 총분양은 안 바뀌는 사실이라 다음 회차의 상한(listedCapOf)이 계속 걸리게 남긴다. 마이그 20261102000000:136 의
+ * 「govlist 행에만」은 **쓰는 쪽**(govlist 수집기·backfill op) 규칙이고, 만료 뒤 남는 것은 상한 유지 목적이다(화면 VIEW 는 출처가 govlist 일 때만 그 칸을 본다).
  * @param {number | null} unsold
  * @param {number | null} unsoldRate
  * @param {string} [nowIso]
@@ -642,6 +737,8 @@ export async function main() {
   let errorMessage = /** @type {string | undefined} */ (undefined);
   /** C6 공고일 빈 applyhome 경고 마커(세션569) — status 는 그대로 두고 error_message 에만 남긴다. @type {string | null} */
   let noDateMarker = null;
+  /** 지자체 명단 표식(세션692 PR-4 — 날짜 없는 govlist · 명단 총분양 상한) — status 는 그대로, error_message 에만. @type {string | null} */
+  let govlistMarkers = null;
   /** F6(세션636) — `--apply-from` 반영이 끝난 회차면 true(성공 기록에 KOSIS_BUNDLE_APPLIED 표식). */
   let bundleApplied = false;
   try {
@@ -770,12 +867,12 @@ export async function main() {
     // 2. apartments unsold 추정 (KOSIS 비례배분) — 계획만 세운다, 아직 쓰지 않는다.
     // 세션549: 무정렬 select 는 3,068행 표에서 1,000행만 매칭한다(unordered-pagination-loses-rows.md §1).
     // 세션566: apartments 는 selectAll(..., "id") 로 전수 확보한다(1,000행 컷 수리).
-    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null; unsold_as_of: string | null; complex_key: string | null; naver_presale_no: string | null; unit_source: string | null }} AptRow */
+    /** @typedef {{ id: string; name: string; region: string | null; gu: string | null; units: number | null; unsold: number | null; unsold_rate: number | null; naver_sell_count: number | null; presale_type: string | null; unsold_source: string | null; unsold_as_of: string | null; unsold_listed_total: number | null; complex_key: string | null; naver_presale_no: string | null; unit_source: string | null }} AptRow */
     /** @type {AptRow[]} */
     let apartmentsTyped;
     try {
       apartmentsTyped = /** @type {any} */ (
-        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of, complex_key, naver_presale_no, unit_source"), sb, "id")
+        await selectAll((s) => s.from("apartments").select("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of, unsold_listed_total, complex_key, naver_presale_no, unit_source"), sb, "id")
       );
     } catch (e) {
       // 세션569 검사관: return 하면 finally 가 success ok=0 으로 조용히 기록한다(마이그보다 머지가 먼저라
@@ -811,6 +908,19 @@ export async function main() {
     if (noDateMarker) {
       logError(PHASE, `[경고][C6 공고일 없음] applyhome ${noDateIds.length}건은 만료를 판정할 수 없어 존중 유지 — unsold_as_of 를 채워야 한다: ${noDateIds.join(", ")}`);
     }
+
+    // 세션692 PR-4 — 지자체 명단(govlist) 존중·만료·명단 총분양 상한(👤 Q2·Q10). 명단(id)을 남긴다([[expect-ids-not-counts]]).
+    // 날짜 없는 govlist 는 존중이 굳는다 — 존중은 그대로 두되 명단을 경고 로그·표식으로 올린다(applyhome C6 「공고일 없음」과 같은 결).
+    const govlistNoDateIds = apartmentsTyped.filter((a) => govlistStatus(a, now) === "no_date").map((a) => a.id);
+    const govlistNoDateSet = new Set(govlistNoDateIds);
+    // 존중(유효) 건수에는 날짜 없음을 섞지 않는다 — 따로 센다(메인 덧붙임 세션692).
+    const govlistRespectedIds = plan.filter((p) => p.currentSource === "govlist" && !p.govlistExpired && !govlistNoDateSet.has(p.id)).map((p) => p.id);
+    const govlistExpiredWrites = plan.filter((p) => p.govlistExpired && (p.action === "write" || p.action === "write_zero"));
+    log(PHASE, `[govlist] 존중 ${govlistRespectedIds.length}건 · 날짜 없음 ${govlistNoDateIds.length}건(존중 유지) · 만료(${GOVLIST_EXPIRY_MONTHS}개월)되어 KOSIS 로 씀 ${govlistExpiredWrites.length}건${govlistExpiredWrites.length > 0 ? `: ${govlistExpiredWrites.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate}`).join(", ")}` : ""}`);
+    if (govlistNoDateIds.length > 0) logError(PHASE, `[경고][govlist 기준월 없음] ${govlistNoDateIds.length}건은 만료를 판정할 수 없어 존중 유지 — unsold_as_of 를 채워야 한다: ${govlistNoDateIds.join(", ")}`);
+    const cappedPlans = plan.filter((p) => p.capped);
+    govlistMarkers = joinRunMessage(formatGovlistNoDate(govlistNoDateIds), formatListedCap(cappedPlans.map((p) => p.id))) ?? null;
+    if (cappedPlans.length > 0) log(PHASE, `[명단 총분양 상한] ${cappedPlans.length}건 — ${cappedPlans.map((p) => `${p.name}(${p.id}) →${p.newEstimate}(상한 ${p.listedCap})`).join(", ")}`);
 
     const heldIds = plan.filter((p) => p.action === "hold_ge50").map((p) => `${p.name}(${p.id})`);
     if (heldIds.length > 0) {
@@ -984,6 +1094,8 @@ export async function main() {
     let heldHistoryCount = 0;
     const todayDate = today(); // KST 고정 (루프 밖 1회 — 자정 경계 중복 0)
     let holdHistoryExcluded = 0;
+    let govlistHistoryExcluded = 0;
+    let historyCappedCount = 0;
     for (const b of historyBundles) {
       if (!b.region || !b.units || b.units <= 1 || b.lease) continue;
       const monthMap = allMonthsMap[b.region];
@@ -993,18 +1105,27 @@ export async function main() {
       if (!periodMap) continue;
       const totalUnitsInGu = unitsByGuForHistory[`${b.region}::${kosisKey}`] || b.units;
       // 받는 행 = hold 가 아닌 구성원 전부(존중 행도 시계열은 KOSIS 계열 그대로 — 지금 설계).
-      const targets = b.members.filter((m) => m.unsold_source !== "hold").map((m) => m.id);
+      // 세션692 PR-4(설계서 §5-④) — 단 유효한 govlist 행에는 점을 만들지 않는다(같은 열쇠 (단지·달)라 9일 KOSIS 가 8일 명단 점을 덮는 경합 차단).
+      //   만료된 govlist 행은 다시 점을 받는다. 분모(b.units·unitsByGuForHistory)는 그대로 — 위 접기에서 이미 셌다.
+      const targets = b.members.filter((m) => m.unsold_source !== "hold" && !isGovlistRespected(m, now)).map((m) => m.id);
       holdHistoryExcluded += b.holds.length;
+      govlistHistoryExcluded += b.members.filter((m) => isGovlistRespected(m, now)).length;
+      // 헤드라인 값과 같은 명단 총분양 상한(👤 Q10) — 차트가 상한 넘는 추정을 그리지 않게.
+      const historyCap = listedCapOf(b.members);
       for (const [period, guUnsold] of Object.entries(periodMap)) {
-        const result = calcProportionalUnsold(/** @type {number} */ (guUnsold), b.units, totalUnitsInGu);
-        if (!result) continue;
-        if (result.unsoldRate >= UNRELIABLE_RATE_THRESHOLD) { heldHistoryCount += targets.length; continue; }
+        const raw = calcProportionalUnsold(/** @type {number} */ (guUnsold), b.units, totalUnitsInGu);
+        if (!raw) continue;
+        if (raw.unsoldRate >= UNRELIABLE_RATE_THRESHOLD) { heldHistoryCount += targets.length; continue; }
+        const result = applyListedCap(raw, historyCap, b.units);
+        if (result.capped) historyCappedCount += targets.length;
         for (const apartment_id of targets) {
           historyRows.push({ apartment_id, base_month: period, unsold_count: result.estimated, post_completion_unsold: null, change: null, recorded_at: todayDate });
         }
       }
     }
     if (holdHistoryExcluded > 0) log(PHASE, `unsold_history hold 제외: ${holdHistoryExcluded}건`);
+    if (govlistHistoryExcluded > 0) log(PHASE, `unsold_history govlist(유효) 제외: ${govlistHistoryExcluded}건`);
+    if (historyCappedCount > 0) log(PHASE, `unsold_history 명단 총분양 상한 걸림: ${historyCappedCount}건`);
 
     if (heldHistoryCount > 0) log(PHASE, `unsold_history 보류(≥${UNRELIABLE_RATE_THRESHOLD}%): ${heldHistoryCount}건 — 저장 안 함`);
 
@@ -1028,9 +1149,9 @@ export async function main() {
     errorMessage = err instanceof Error ? err.message : String(err);
     throw err;
   } finally {
-    const successMessage = joinRunMessage(bundleApplied ? KOSIS_BUNDLE_APPLIED_MARKER : null, noDateMarker);
+    const successMessage = joinRunMessage(joinRunMessage(bundleApplied ? KOSIS_BUNDLE_APPLIED_MARKER : null, noDateMarker) ?? null, govlistMarkers);
     await recordCollectorRun(PHASE, errorMessage
-      ? { ok, status: "failure", errorMessage: joinRunMessage(errorMessage, noDateMarker) }
+      ? { ok, status: "failure", errorMessage: joinRunMessage(joinRunMessage(errorMessage, noDateMarker) ?? null, govlistMarkers) }
       : (successMessage ? { ok, errorMessage: successMessage } : { ok }));
   }
 }
