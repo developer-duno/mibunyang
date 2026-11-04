@@ -7,12 +7,13 @@
  * grep 은 줄 단위라 첫 줄만 봤다). 글자 대조 시험은 그 변이에 초록이다.
  *
  * 방법: yml 을 읽어 「Collect school data」 단계의 run 을 꺼내 `${{ inputs.dry_run }}` 만 값으로 바꾸고, 앞에 `node` 셸 함수를
- * 붙여(실제 수집기는 안 돈다 — 받은 인자만 찍는다) GitHub Actions 기본 셸과 같은 `bash --noprofile --norc -eo pipefail` 로 돌린다.
+ * 붙여(실제 수집기는 안 돈다 — 받은 인자만 찍는다) `bash --noprofile --norc -eo pipefail` 로 돌린다(Actions 는 shell 을 안 정하면 `bash -e {0}` — 검사관 탐침에서 두 셸 결과가 같았다).
  * limit·ids 는 워크플로처럼 환경변수(LIMIT·IDS)로 넣는다. 외부 호출 0.
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
 import * as yaml from "js-yaml";
 
 const YML_PATH = new URL("../.github/workflows/collect-schools.yml", import.meta.url);
@@ -40,8 +41,11 @@ function runStep({ limit = "", ids = "", dryRun = false }) {
   const script = run.split("${{ inputs.dry_run }}").join(dryRun ? "true" : "false");
   if (script.includes("${{")) throw new Error("run 안에 dry_run 말고 다른 ${{ }} 가 남았다 — 입력을 셸에 직접 끼우면 안 된다");
   const stub = `node() { echo "${NODE_ARGS_PREFIX}$*"; }\n`;
+  // 안전: 레포 밖(임시 폴더)에서 · 비밀값 없는 최소 환경으로 — yml 이 `command node`·`env node` 꼴로 바뀌어
+  // 가짜 node 를 건너뛰어도 진짜 수집기 파일을 못 찾고 운영 키도 없다(세션696 검사관 🟡1).
   const r = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", stub + script], {
-    env: { ...process.env, LIMIT: limit, IDS: ids },
+    cwd: tmpdir(),
+    env: { PATH: process.env.PATH ?? "", SYSTEMROOT: process.env.SYSTEMROOT ?? "", LIMIT: limit, IDS: ids },
     encoding: "utf8",
   });
   if (r.error) throw r.error; // bash 가 없으면 시끄럽게(건너뛰지 않는다)
