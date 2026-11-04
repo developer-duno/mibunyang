@@ -315,7 +315,7 @@ export const HISTORY_TABLE = "unsold_history";
 /** 이력 점을 받는 행동 — 숫자 행만(설계서 §5-④ 「숫자 행에만 점 · 비공개는 쓰지 않는다」). 비공개·미등재→0 은 점 없음. */
 export const HISTORY_ACTION = "write_listed_number";
 /** 이력 사본 파일 머리 한 줄(A5) — 되돌림 뜻. 새 되돌림 도구는 없다. */
-export const HISTORY_RESTORE_NOTE = "되돌림: before 가 null 이면 그 (단지·달) 행 삭제 · 값이 있으면 그 행으로 되돌려 upsert(onConflict apartment_id,base_month)";
+export const HISTORY_RESTORE_NOTE = "되돌림: before 가 null 이면 그 (단지·달) 행 삭제 · 값이 있으면 그 행으로 되돌려 upsert(onConflict apartment_id,base_month) · 같은 열쇠를 여러 번 썼으면(--resume 재쓰기 등) 맨 처음 사본으로 되돌린다(뒤 사본의 before 는 이미 govlist 점이다)";
 
 /**
  * 기준일 "YYYY-MM-DD" → `unsold_history.base_month` 꼴 "YYYYMM". 꼴이 아니면 던진다(추측하지 않는다).
@@ -341,7 +341,7 @@ export function historyPointsOf(rows, asOf, recordedAt) {
 
 /**
  * 이력 점 쓰기 — 바꾸기 전 사본(같은 열쇠의 지금 행 · 없으면 null)을 `<dir>/history-before-<출처>-<ts>.json`(새 파일로만) → upsert.
- * 사본 조회가 실패하면 쓰지 않고 전부 실패로 센다.
+ * 사본 조회·사본 파일 쓰기가 실패하면 쓰지 않고 전부 실패로 센다(던지지 않는다).
  * @param {any} sb @param {ReturnType<typeof historyPointsOf>} points
  * @param {{ dir: string; source: string; ts: string; asOf: string; generatedAt: string }} meta
  * @returns {Promise<{ written: number; failed: number; error?: string }>}
@@ -363,7 +363,13 @@ export async function writeHistoryPoints(sb, points, { dir, source, ts, asOf, ge
     note: HISTORY_RESTORE_NOTE, kind: "govlist-history-before", source, asOf, generatedAt,
     rows: points.map((p) => ({ apartment_id: p.apartment_id, base_month: p.base_month, before: found.get(`${p.apartment_id}|${p.base_month}`) ?? null })),
   };
-  writeFileSync(resolve(dir, `history-before-${source}-${ts}.json`), JSON.stringify(backup, null, 2), { encoding: "utf8", flag: "wx" });
+  // 사본 쓰기 실패(`wx` 충돌·디스크)도 history_fail 길로 — 점은 안 쓰고, apartments 결과·이어 쓰기 표식은 그대로 기록되게(세션696 adv🟡3 ·
+  //   던지면 main 의 catch 가 GOVLIST_ERROR·ok 0 으로 덮는다)
+  try {
+    writeFileSync(resolve(dir, `history-before-${source}-${ts}.json`), JSON.stringify(backup, null, 2), { encoding: "utf8", flag: "wx" });
+  } catch (e) {
+    return { written: 0, failed: points.length, error: `사본 쓰기 실패: ${e instanceof Error ? e.message : String(e)}` };
+  }
   log(PHASE, `[사본] ${dir} history-before-${source}-${ts}.json (점 ${points.length} · 지금 행 있음 ${found.size})`);
   let written = 0;
   try {
@@ -699,7 +705,8 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
   //   출처가 하나면 --source 도 — 빼면 다른 출처에 같은 기준일 batch 가 없어 GOVLIST_RESUME_NO_BATCH 로 막힌다(2차 보완 C3)
   if (fail) markers.push(`GOVLIST_WRITE fail ${fail} — 이어 쓰기: --apply --apply-from=${args.applyFrom ?? impactPath} --resume${args.sources.length === 1 ? ` --source=${args.sources[0]}` : ""}`);
   if (interrupted) markers.push("GOVLIST_WRITE interrupted — --resume 으로 이어 쓴다");
-  if (historyFail) markers.push(`GOVLIST_WRITE history_fail ${historyFail}`);
+  // 복구 안내(세션696 adv🟡4) — 평시 회차는 다음 달까지 not_newer 라 그 점을 저절로 다시 안 쓴다. --resume 은 이미 쓴(done) 숫자 행에도 점을 쓴다.
+  if (historyFail) markers.push(`GOVLIST_WRITE history_fail ${historyFail} — 복구: --apply --apply-from=${args.applyFrom ?? impactPath} --resume${args.sources.length === 1 ? ` --source=${args.sources[0]}` : ""}`);
   log(PHASE, `=== 반영 끝 — apartments ${ok}행 · 경합 ${race} · 실패 ${fail} · 이력 점 ${historyWritten}${historyFail ? `(실패 ${historyFail})` : ""}${interrupted ? " · 도중 끊김(partial)" : ""} ===`);
   const status = interrupted ? "partial" : fail || race || historyFail ? "failure" : "success";
   // 반영 요약(세션693 보완 B4) — 매달 무엇이 바뀌었는지 collector_runs 에 남긴다(status 그대로 · 실패 표식 없을 때만)

@@ -1,6 +1,6 @@
 // @ts-check
 import { describe, it, expect, beforeEach } from "vitest";
-import { readFileSync, writeFileSync, mkdtempSync, readdirSync, existsSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdtempSync, mkdirSync, readdirSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -734,6 +734,32 @@ describe("세션695 PR-4c 숫자 행 이력 점(unsold_history) — 설계서 §
       expect(histRows(db)).toEqual([]);
       expect(readdirSync(resolve(dir, "art", "2026-09-30")).filter((x) => x.startsWith("history-"))).toEqual([]);
     });
+    // 세션696 adv🟡1 — 승인 파일 길에서도 race·fail 숫자 행은 점 없음. 이력 재료가 「이번에 ok 인 행 + --resume 의 done 행」뿐임을 지킨다
+    //   (변이 M2 = doneRows 를 승인의 쓰는 행 전부로 바꾸면 이 두 시험이 빨강)
+    it(`A1 --apply-from 에서 숫자 행 갱신이 ${mode} 면 점 없음`, async () => {
+      const p = resolve(dir, "approved.json");
+      await go(["--dry-run", `--impact-out=${p}`, "--source=daegu"], fakeDb(seed({ listTable: true })));
+      const db = fakeDb(seed({ listTable: true }));
+      hook(db, mode);
+      const r = await go(["--apply", `--apply-from=${p}`, "--source=daegu"], db);
+      expect(r.wrote).toBe(0);
+      expect(r.impact.modes.off.plan.find((/** @type {any} */ x) => x.id === "ah-2022000777")?.action).toBe("write_listed_number"); // 대조군 — 숫자 행이 승인 계획에 있다
+      expect(db.writes.filter((w) => w.op === "upsert")).toEqual([]);
+      expect(histRows(db)).toEqual([]);
+    });
+    it(`A1 --resume 에서 남은(todo) 숫자 행 갱신이 ${mode} 면 점 없음`, async () => {
+      const p = resolve(dir, "approved.json");
+      await go(["--dry-run", `--impact-out=${p}`, "--source=daegu"], fakeDb(seed({ listTable: true })));
+      const s = seed({ listTable: true });
+      /** @type {any} */ (s).unsold_gov_list = Array.from({ length: 4 }, (_, k) => ({ id: 500 + k, source: "daegu", as_of: "2026-09-30", batch_id: "done", row_no: k + 1, batch_rows: 4, fetched_at: "2026-11-01T17:00:00Z" }));
+      const db = fakeDb(s);
+      hook(db, mode);
+      const r = await go(["--apply", `--apply-from=${p}`, "--resume", "--source=daegu"], db);
+      expect(r.wrote).toBe(0);
+      expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(new RegExp(`GOVLIST_WRITE ${mode} 1`)); // 대조군 — 이어 쓰기가 그 숫자 행을 실제로 쓰려 했다
+      expect(db.writes.filter((w) => w.op === "upsert")).toEqual([]);
+      expect(histRows(db)).toEqual([]);
+    });
   }
 
   it("A4 이력 upsert 실패 → GOVLIST_WRITE history_fail 1 · failure · exit 1 · apartments 는 그대로 씀(되돌리지 않음) · 반영 요약 없음", async () => {
@@ -745,6 +771,40 @@ describe("세션695 PR-4c 숫자 행 이력 점(unsold_history) — 설계서 §
     const em = String(db.tables.collector_runs?.[0].error_message);
     expect(em).toContain("GOVLIST_WRITE history_fail 1");
     expect(em).not.toContain("GOVLIST_APPLIED");
+  });
+
+  it("A4 history_fail 표식에 복구 명령 — 그 명령대로 --resume 하면 이미 쓴 숫자 행에 점이 들어간다(세션696 adv🟡4)", async () => {
+    const opts = { failUpsert: { unsold_history: true } };
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) }, opts);
+    const r = await go(routine, db);
+    const em = String(db.tables.collector_runs?.[0].error_message);
+    const want = `GOVLIST_WRITE history_fail 1 — 복구: --apply --apply-from=${r.impactPath} --resume --source=daegu`;
+    expect(em).toContain(want);
+    expect(histRows(db)).toEqual([]);
+    // 표식의 인자 그대로 다시 돌린다(1분 뒤 — 사본 이름이 겹치지 않게) · 이번엔 upsert 가 된다
+    opts.failUpsert.unsold_history = false;
+    const argv = want.split(" — 복구: ")[1].split(" ");
+    const r2 = await go(argv, db, { now: new Date(NOW.getTime() + 60_000) });
+    expect(r2.exitCode).toBeUndefined();
+    expect(histRows(db).map((x) => [x.apartment_id, x.base_month, x.unsold_count])).toEqual([["ah-2022000777", "202609", 24]]);
+    expect(db.tables.collector_runs?.[1]).toMatchObject({ status: "success" });
+  });
+
+  it("A6 history-before 사본 쓰기가 실패해도(wx 충돌) 던지지 않고 history_fail 길 — 점 0 · apartments 결과·ok 그대로 · GOVLIST_ERROR 없음(세션696 adv🟡3)", async () => {
+    const d = resolve(dir, "art", "2026-09-30");
+    mkdirSync(d, { recursive: true });
+    writeFileSync(resolve(d, "history-before-daegu-20261102-020000.json"), "{}"); // stamp(NOW) 와 같은 이름 — wx 가 충돌한다
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4) });
+    const r = await go(routine, db);
+    expect(r).toMatchObject({ wrote: 1, exitCode: EXIT_WRITE_FAILURE });
+    expect(db.writes.filter((w) => w.op === "upsert")).toEqual([]);
+    expect(/** @type {any[]} */ (db.tables.apartments).find((a) => a.id === "ah-2022000777")).toMatchObject({ unsold: 24, unsold_source: "govlist" });
+    expect(db.tables.collector_runs).toHaveLength(1);
+    expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "failure", ok_count: 1 });
+    const em = String(db.tables.collector_runs?.[0].error_message);
+    expect(em).toContain("GOVLIST_WRITE history_fail 1 — 복구:");
+    expect(em).not.toContain("GOVLIST_ERROR");
+    expect(readFileSync(resolve(d, "history-before-daegu-20261102-020000.json"), "utf8")).toBe("{}"); // 미리 있던 파일은 덮지 않았다
   });
 
   it("A4 사본 조회가 실패하면(표 없음) 쓰지 않고 history_fail · failure", async () => {
@@ -764,6 +824,7 @@ describe("세션695 PR-4c 숫자 행 이력 점(unsold_history) — 설계서 §
     expect(Object.keys(bk)[0]).toBe("note");
     expect(bk.note).toBe(HISTORY_RESTORE_NOTE);
     expect(bk.note).toMatch(/null 이면 그 \(단지·달\) 행 삭제/);
+    expect(bk.note).toMatch(/같은 열쇠를 여러 번 썼으면.*맨 처음 사본으로 되돌린다/); // 세션696 adv🟡5
     expect(bk.rows).toEqual([{ apartment_id: "ah-2022000777", base_month: "202609", before: null }]);
   });
 
