@@ -206,7 +206,7 @@ export const DAY_TABLE = [
   //   ⚠️ `--source` 를 빼면 충남 첫 승인 반영(--apply-from) 전까지 **대구도 매달 멈춘다** — 첫 회차 막음은 출처 하나라도 걸리면 전체 쓰기 0
   //   (세션693 검사 blind🟡6). 빼기 전에 충남을 승인 파일로 한 번 반영해 둔다.
   //   첫 회차는 수집기가 막는다 — 반영된 완성 batch 가 없으면 쓰기 0 · failure `GOVLIST_FIRST_NEEDS_APPROVAL` · exit 2
-  //   (첫 반영은 사람이 `--apply --apply-from=<승인한 impact>` 로). 차단기(바뀔 단지 > 50 · 명단 행 < 전 회차 × 0.5)도 쓰기 0 · exit 1.
+  //   (첫 반영은 사람이 `--apply --apply-from=<승인한 impact>` 로). 차단기(바뀔 단지 > `_govlist-plan.mjs` GOVLIST_BREAKER_LIMITS(대구·충남 10 · 임시, 12/08 재측정) · 명단 행 < 전 회차 × 0.5)도 쓰기 0 · exit 1.
   { day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"] },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
