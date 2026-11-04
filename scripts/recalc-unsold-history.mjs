@@ -38,7 +38,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { createSemaphore, fetchWithRetry, getSupabase, selectAll } from "./collectors/_shared.mjs";
-import { calcProportionalUnsold, kosisPairOf, parseKosisRowsAllMonths, resolveKosisGuKey } from "./collectors/collect-unsold-kosis.mjs";
+import { calcProportionalUnsold, isGovlistRespected, kosisPairOf, parseKosisRowsAllMonths, resolveKosisGuKey } from "./collectors/collect-unsold-kosis.mjs";
 import { foldForUnsold } from "./collectors/_unsold-bundle.mjs";
 
 /** 수집기 collect-unsold-kosis.mjs:38 의 비공개 상수와 같은 값(export 안 돼 복사 — 바뀌면 같이 바꾼다). */
@@ -114,10 +114,12 @@ export const sha16 = (text) => createHash("sha256").update(text).digest("hex").s
 
 /**
  * 수집기 시계열 루프(collect-unsold-kosis.mjs 957~1006)를 그대로 옮긴 계산 — step157/sim.mjs `historyMap` 과 같다.
- * @param {any[]} apartments @param {KosisRow[]} kosisRows
+ * 유효한 govlist(지자체 명단) 행은 수집기(collect-unsold-kosis.mjs 시계열 루프 · 세션692 PR-4)처럼 계산 밖 — 명단 점(세션695 PR-4c)을
+ * 덮지 않는다(세션696 · BACKLOG A-28 「recalc :146」). 판정은 수집기의 `isGovlistRespected` 그대로 · 분모에는 남는다.
+ * @param {any[]} apartments @param {KosisRow[]} kosisRows @param {Date} [now] govlist 만료 판정 기준 시각(호출부가 넣는다)
  * @returns {Map<string, { estimated: number; unsoldRate: number; held: boolean; gk: string }>} `${apartment_id}|${YYYYMM}` → 값
  */
-export function historyMap(apartments, kosisRows) {
+export function historyMap(apartments, kosisRows, now = new Date()) {
   const allMonthsMap = parseKosisRowsAllMonths(kosisRows);
   const historyBundles = foldForUnsold(/** @type {any} */ (apartments), { isRespected: () => false, pairOf: kosisPairOf(allMonthsMap) });
   /** @type {Map<string, string | null>} */
@@ -143,7 +145,7 @@ export function historyMap(apartments, kosisRows) {
     const periodMap = /** @type {any} */ (monthMap)[kosisKey];
     if (!periodMap) continue;
     const totalUnitsInGu = unitsByGuForHistory[`${b.region}::${kosisKey}`] || b.units;
-    const targets = b.members.filter((m) => m.unsold_source !== "hold").map((m) => m.id);
+    const targets = b.members.filter((m) => m.unsold_source !== "hold" && !isGovlistRespected(m, now)).map((m) => m.id);
     for (const [period, guUnsold] of Object.entries(periodMap)) {
       const result = calcProportionalUnsold(/** @type {number} */ (guUnsold), b.units, totalUnitsInGu);
       if (!result) continue;
@@ -168,10 +170,10 @@ export function diffBucket(oldV, newV) {
 
 /**
  * 계획(순수). 새 값 없음 → orphan(그대로) · held(률≥50) → 그대로 · 같음 → same · 다름 → rows.
- * @param {{ apartments: any[]; history: HistRow[]; kosisRows: KosisRow[] }} input
+ * @param {{ apartments: any[]; history: HistRow[]; kosisRows: KosisRow[]; now?: Date }} input
  */
-export function planHistoryRecalc({ apartments, history, kosisRows }) {
-  const map = historyMap(apartments, kosisRows);
+export function planHistoryRecalc({ apartments, history, kosisRows, now }) {
+  const map = historyMap(apartments, kosisRows, now);
   const aptById = new Map(apartments.map((a) => [a.id, a]));
   /** @type {PlanRow[]} */
   const rows = [];
@@ -332,7 +334,7 @@ async function runDry(args, { sb, fetchKosis = defaultFetchKosis, log = console.
 
   const { apartments, history, aptCount, histCount } = await readInputs(sb);
   log(`apartments ${apartments.length}(count ${aptCount}) · history ${history.length}(count ${histCount})`);
-  const { rows, summary } = planHistoryRecalc({ apartments, history, kosisRows });
+  const { rows, summary } = planHistoryRecalc({ apartments, history, kosisRows, now: now() });
   const breakers = checkBreakers({ kosisRows, apartments, history, aptCount, histCount, minApartments, minHistory });
   const preview = {
     generatedAt: now().toISOString(), mode: "dry",
@@ -392,13 +394,13 @@ async function runApply(args, { sb, log = console.log, err = console.error, now 
   const breakers = checkBreakers({ kosisRows, apartments, history, aptCount, histCount, minApartments, minHistory });
   if (breakers.length) { for (const b of breakers) err(`[차단] ${b}`); err("차단기 — 쓰기 0"); return 1; }
   // ① --from 행마다 지금 계산한 새 값(현재 값과 무관 — 일부 반영 뒤 다시 돌려도 같다) ② 지금 계산엔 고칠 줄인데 --from 에 없는 행
-  const map = historyMap(apartments, kosisRows);
+  const map = historyMap(apartments, kosisRows, now());
   const diffNew = planRows.filter((p) => {
     const v = map.get(`${p.apartment_id}|${p.base_month}`);
     return !v || v.held || v.estimated !== p.new;
   });
   const fromIds = new Set(planRows.map((p) => p.id));
-  const extra = planHistoryRecalc({ apartments, history, kosisRows }).rows.filter((r) => !fromIds.has(r.id));
+  const extra = planHistoryRecalc({ apartments, history, kosisRows, now: now() }).rows.filter((r) => !fromIds.has(r.id));
   if (diffNew.length || extra.length) {
     const sample = [
       ...diffNew.slice(0, 5).map((p) => { const v = map.get(`${p.apartment_id}|${p.base_month}`); return { id: p.id, kind: "새 값 다름", from: p.new, now: v ? (v.held ? "held" : v.estimated) : "계산 대상 아님" }; }),
