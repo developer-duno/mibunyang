@@ -13,12 +13,12 @@
  *
  * 청약홈(applyhome) 값 만료 C6(세션569): applyhome 값은 공고일(unsold_as_of) + 6개월까지만 존중하고,
  * 지나면 KOSIS 가 덮는다. 공고일이 비면 존중을 유지하되 APPLYHOME_NO_DATE 마커로 기록한다
- * (규칙 정본 = shouldSkipKosisFill·planUnsoldUpdates 머리말, 기간·판정 함수 = _shared.mjs isApplyhomeExpired).
+ * (규칙 정본 = shouldSkipKosisFill·planUnsoldUpdates 머리말, 기간·판정 함수 = _shared.mjs asOfRespectState — 만료·미래 기준일).
  *
  * 사람 보류 hold(세션570): `unsold_source = 'hold'` 행은 계획에서 skip_hold, DB 쓰기 WHERE 로도 막고,
  * unsold_history 도 만들지 않는다. 분모에는 남긴다. 해제는 backfill-unsold-source.mjs 계획 파일로만.
  */
-import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
+import { loadEnv, getSupabase, log, logError, REGION_MAP, resolveRegionName, fetchWithRetry, upsertBatch, recordApiQuota, recordCollectorRun, setupGracefulShutdown, today, selectAll, asOfRespectState, kstDayOf, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS, formatApplyhomeNoDate, joinRunMessage } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 import { foldForUnsold } from "./_unsold-bundle.mjs";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -176,10 +176,11 @@ export function shouldSkipKosisFill(apt, now = new Date()) {
   const guOk = !!apt.gu || apt.region === "세종"; // 세션567: 세종은 gu=null 이 정상 구조
   if (!apt.region || !guOk || !apt.units || apt.units <= 1) return true;
   // 청약홈 실측은 공고일 + 6개월까지만 존중(C6). 공고일이 없으면(null) 판정 불가 → 존중 유지.
-  if (apt.unsold_source === "applyhome") return applyhomeStatus(apt, now) !== "expired";
+  //   기준일이 오늘(KST) 뒤인 「미래」 행도 존중하지 않는다(세션697 👤 결정 ① — 만료와 같은 길 · 감시 ⑫(i) 가 따로 알린다).
+  if (apt.unsold_source === "applyhome") return isRespectedState(applyhomeStatus(apt, now));
   // 지자체 명단(govlist)도 기준월 + GOVLIST_EXPIRY_MONTHS 까지만 존중(세션692 PR-4 · 설계서 §5-②). 날짜 없음은 applyhome 과 같은 원칙(존중 유지 —
   //   DB CHECK apartments_unsold_govlist_asof_check 가 govlist 행의 기준일을 늘 채우게 해 실제로는 생기지 않는다).
-  if (apt.unsold_source === "govlist") return govlistStatus(apt, now) !== "expired";
+  if (apt.unsold_source === "govlist") return isRespectedState(govlistStatus(apt, now));
   // ⚠️ `unsold === 0` 은 옛 "다 팔렸다"는 단지별 실측이다 — 단, **출처가 없을 때만**(NULL).
   //    출처가 kosis 면 자기 자신이 쓴 0 이므로 최신 KOSIS 회차가 덮어써야 한다(자기잠금 방지,
   //    검사관 M3 지적). applyhome 은 위 2번에서 이미 걸러졌다.
@@ -188,34 +189,36 @@ export function shouldSkipKosisFill(apt, now = new Date()) {
 }
 
 /**
- * applyhome 값의 만료 상태(세션569 C6). DB 접근 없는 순수 함수.
+ * 존중 상태 중 존중하는 것 — 유효(valid)·날짜 없음(no_date, 판정 불가라 존중 유지). 만료(expired)·미래 기준일(future)은 KOSIS 가 정한다(세션697).
+ * @param {string} s applyhomeStatus·govlistStatus 결과
+ */
+const isRespectedState = (s) => s === "valid" || s === "no_date";
+
+/**
+ * applyhome 값의 만료 상태(세션569 C6 · 세션697 미래 기준일 = "future"). 판정은 _shared.mjs asOfRespectState 하나. DB 접근 없는 순수 함수.
  * @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt
  * @param {Date} now
- * @returns {"not_applyhome" | "no_date" | "valid" | "expired"}
+ * @returns {"not_applyhome" | "no_date" | "valid" | "expired" | "future"}
  */
 export function applyhomeStatus(apt, now) {
   if (apt.unsold_source !== "applyhome") return "not_applyhome";
-  const expired = isApplyhomeExpired(apt.unsold_as_of, now, APPLYHOME_EXPIRY_MONTHS);
-  if (expired == null) return "no_date";
-  return expired ? "expired" : "valid";
+  return asOfRespectState(apt.unsold_as_of, now, APPLYHOME_EXPIRY_MONTHS);
 }
 
 /**
- * govlist(지자체 명단) 값의 만료 상태(세션692 PR-4 · 👤 Q2 「6개월」). applyhomeStatus 와 같은 꼴 — 판정 함수는 isApplyhomeExpired 하나를
- * 같이 쓰고 기간만 GOVLIST_EXPIRY_MONTHS(VIEW `INTERVAL '6 months'` 와 시험이 맞댐). DB 접근 없는 순수 함수.
+ * govlist(지자체 명단) 값의 만료 상태(세션692 PR-4 · 👤 Q2 「6개월」 · 세션697 미래 기준일 = "future"). applyhomeStatus 와 같은 꼴 — 판정 함수는
+ * asOfRespectState 하나를 같이 쓰고 기간만 GOVLIST_EXPIRY_MONTHS(VIEW `INTERVAL '6 months'` 와 시험이 맞댐). DB 접근 없는 순수 함수.
  * @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt
  * @param {Date} now
- * @returns {"not_govlist" | "no_date" | "valid" | "expired"}
+ * @returns {"not_govlist" | "no_date" | "valid" | "expired" | "future"}
  */
 export function govlistStatus(apt, now) {
   if (apt.unsold_source !== "govlist") return "not_govlist";
-  const expired = isApplyhomeExpired(apt.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS);
-  if (expired == null) return "no_date";
-  return expired ? "expired" : "valid";
+  return asOfRespectState(apt.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS);
 }
 
-/** 시계열·상한 판정용 — govlist 행을 KOSIS 가 존중하나(유효 또는 날짜 없음). @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt @param {Date} now */
-export const isGovlistRespected = (apt, now) => apt.unsold_source === "govlist" && govlistStatus(apt, now) !== "expired";
+/** 시계열·상한 판정용 — govlist 행을 KOSIS 가 존중하나(유효 또는 날짜 없음 · 만료·미래 기준일은 아님). @param {{ unsold_source?: string | null; unsold_as_of?: string | null }} apt @param {Date} now */
+export const isGovlistRespected = (apt, now) => apt.unsold_source === "govlist" && isRespectedState(govlistStatus(apt, now));
 
 /**
  * 묶음의 명단 총분양 상한(세션692 PR-4 · 👤 Q10 「상한 둔다」 · 설계서 §5-④) — 구성원 중 `unsold_listed_total` 이 있는 행의 가장 큰 값.
@@ -262,6 +265,21 @@ export function formatListedCap(ids) {
   if (!ids || ids.length === 0) return null;
   const shown = ids.slice(0, LISTED_CAP_ID_LIMIT);
   return `${KOSIS_LISTED_CAP_MARKER} n=${ids.length}: ${shown.join(", ")}${ids.length > shown.length ? ", …" : ""}`;
+}
+
+/**
+ * error_message 에서 상한 표식을 읽는다(formatListedCap 의 짝 · 감시 ㉖ 가 쓴다 · 세션697). 앞뒤에 다른 표식·실패 문구가 ` | ` 로 붙어 있어도 찾는다.
+ * `truncated` = 표식이 앞 LISTED_CAP_ID_LIMIT(20)개로 잘려 안 보이는 id 가 있다(n > ids 수).
+ * @param {string | null | undefined} message
+ * @returns {{ n: number, ids: string[], truncated: boolean } | null}
+ */
+export function parseListedCap(message) {
+  if (typeof message !== "string") return null;
+  const m = new RegExp(`${KOSIS_LISTED_CAP_MARKER} n=([0-9]+): ([^|]*)`).exec(message);
+  if (!m) return null;
+  const n = Number(m[1]);
+  const ids = m[2].split(", ").map((x) => x.trim()).filter((x) => x && x !== "…");
+  return { n, ids, truncated: n > ids.length };
 }
 
 /**
@@ -914,7 +932,11 @@ export async function main() {
     const govlistNoDateIds = apartmentsTyped.filter((a) => govlistStatus(a, now) === "no_date").map((a) => a.id);
     const govlistNoDateSet = new Set(govlistNoDateIds);
     // 존중(유효) 건수에는 날짜 없음을 섞지 않는다 — 따로 센다(메인 덧붙임 세션692).
-    const govlistRespectedIds = plan.filter((p) => p.currentSource === "govlist" && !p.govlistExpired && !govlistNoDateSet.has(p.id)).map((p) => p.id);
+    // 세션697 👤 결정 ① — 기준일이 오늘(KST) 뒤인 applyhome·govlist 는 존중하지 않았다(KOSIS 가 정함). 명단을 경고 로그로 남긴다(감시 ⑫(i) 가 DB 를 직접 본다).
+    const futureApts = apartmentsTyped.filter((a) => applyhomeStatus(a, now) === "future" || govlistStatus(a, now) === "future");
+    const futureSet = new Set(futureApts.map((a) => a.id));
+    if (futureApts.length > 0) logError(PHASE, `[경고][미래 기준일] ${futureApts.length}건은 기준일이 오늘(KST ${kstDayOf(now)}) 뒤라 존중하지 않음(KOSIS 가 정함): ${futureApts.map((a) => `${a.name}(${a.id}) ${a.unsold_source} as_of ${a.unsold_as_of}`).join(", ")}`);
+    const govlistRespectedIds = plan.filter((p) => p.currentSource === "govlist" && !p.govlistExpired && !govlistNoDateSet.has(p.id) && !futureSet.has(p.id)).map((p) => p.id);
     const govlistExpiredWrites = plan.filter((p) => p.govlistExpired && (p.action === "write" || p.action === "write_zero"));
     log(PHASE, `[govlist] 존중 ${govlistRespectedIds.length}건 · 날짜 없음 ${govlistNoDateIds.length}건(존중 유지) · 만료(${GOVLIST_EXPIRY_MONTHS}개월)되어 KOSIS 로 씀 ${govlistExpiredWrites.length}건${govlistExpiredWrites.length > 0 ? `: ${govlistExpiredWrites.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate}`).join(", ")}` : ""}`);
     if (govlistNoDateIds.length > 0) logError(PHASE, `[경고][govlist 기준월 없음] ${govlistNoDateIds.length}건은 만료를 판정할 수 없어 존중 유지 — unsold_as_of 를 채워야 한다: ${govlistNoDateIds.join(", ")}`);

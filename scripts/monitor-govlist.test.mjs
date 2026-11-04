@@ -422,12 +422,15 @@ describe("㉔ 배선", () => {
     expect(src).toContain("return `GOVLIST_MATCH ${source} 판정필요 ${total}{${list}} 충돌 ${conflicts}`;");
   });
   it("세션693 ㉔-c·㉔-d 배선 — 같은 ㉔ 재료(runs·hidden)에서 매칭·비공개 대조가 실린다 · hidden 없으면(옛 재료) 침묵", async () => {
+    // 세션697: 옛 재료는 「언제 돌려도 유효」하라고 기준월 2099-01-31(미래)을 썼다 — 이제 미래 기준일은 존중하지 않아(👤 결정 ①)
+    //   유효 비공개가 아니다. 시각을 밖에서 넣고(now) 그때 유효한 기준월로 바꾼다(2026-09-30 + 6개월 = 2027-03-30 ≥ 12/09).
     const loud = await runDailyGuardedChecks(/** @type {any} */ ({
       ...quiet,
+      now: new Date("2026-12-09T00:00:00Z"),
       fetchGovlistHealth: async () => ({
         runs: [run("GOVLIST_MATCH daegu 판정필요 35{달서구:5} 충돌 1", "2026-12-08T00:00:00Z"), run("GOVLIST_MATCH daegu 판정필요 33{달서구:3} 충돌 0", "2026-11-08T00:00:00Z")],
         listRows: [],
-        hidden: { viewHidden: 0, rawAsOf: ["2099-01-31"], live: null, liveError: "boom" },
+        hidden: { viewHidden: 0, rawAsOf: ["2026-09-30"], live: null, liveError: "boom" },
       }),
     }));
     expect(loud.filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_MATCH_CONFLICT", "GOVLIST_MATCH_GROWTH", "GOVLIST_HIDDEN_VIEW_ZERO"]);

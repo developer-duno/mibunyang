@@ -10,8 +10,10 @@
  *   (§5-① 「hold 행은 건드리지 않음」 · 청약홈 유효 값과의 우열은 VIEW 순위 0 이 기준일로 가린다 — 행 값을 덮지 않는다).
  * - ③ 미등재 → 0: 기본 꺼짐 · 대구·충남만 · 조건 (a)~(e) 전부(§5-③ 원문). dry-run 은 꺼짐·켬 두 계획을 같이 만든다.
  * - 만료(Q2 6개월): 이번 명단 기준일 + 6개월이 이미 지났으면 쓰지 않는다(`skip_expired_source`). 지난 명단 값의 만료 뒤 처리는 KOSIS(PR-4).
+ * - 미래 기준일(세션697 👤 결정 ① 「무시+경보」): 이번 명단 기준일이 오늘(KST) 뒤면 만료와 같은 `skip_expired_source`(사유 「미래 기준일」) ·
+ *   기존 행의 청약홈·명단 값도 기준일이 미래면 존중하지 않는다(판정 = `_shared.mjs` asOfRespectState — KOSIS 수집기와 같은 함수).
  */
-import { clampUnsoldRate, isApplyhomeExpired, GOVLIST_EXPIRY_MONTHS } from "./_shared.mjs";
+import { clampUnsoldRate, asOfRespectState, kstDayOf, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 
 /** @typedef {import("./_govlist-match.mjs").AptRow} AptRow */
@@ -32,6 +34,8 @@ import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
  * 다시 내보내기만 한다(이 모듈에서 가져다 쓰던 시험·도구 호환).
  */
 export { GOVLIST_EXPIRY_MONTHS };
+/** asOfRespectState 중 존중하는 상태(유효·날짜 없음) — KOSIS 수집기 isRespectedState 와 같은 뜻. @param {string} s */
+const isRespected = (s) => s === "valid" || s === "no_date";
 /** 바뀔 단지(묶음) 수 차단기 — 경기 기준(설계서 §5-⑥ · :85 「경기만으로 50곳을 넘을 수 있어」). */
 export const GOVLIST_BREAKER_MAX_BUNDLES = 50;
 /**
@@ -122,8 +126,10 @@ export function rowCheckViolations(s) {
 export function skipReason(m, asOf, now) {
   if (m.unsold_source === "hold") return "skip_hold";
   if (isLeaseUnit(m)) return "skip_lease";
-  if (m.unsold_source === "applyhome" && isApplyhomeExpired(m.unsold_as_of, now) !== true) return "skip_applyhome";
-  if (m.unsold_source === "govlist" && typeof m.unsold_as_of === "string" && m.unsold_as_of > asOf) return "skip_newer_govlist";
+  if (m.unsold_source === "applyhome" && isRespected(asOfRespectState(m.unsold_as_of, now, APPLYHOME_EXPIRY_MONTHS))) return "skip_applyhome";
+  // 기준일이 미래인 명단 값은 「더 새」 값이 아니라 존중하지 않는 값이다(세션697)
+  if (m.unsold_source === "govlist" && typeof m.unsold_as_of === "string" && m.unsold_as_of > asOf
+    && asOfRespectState(m.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) !== "future") return "skip_newer_govlist";
   return null;
 }
 
@@ -146,7 +152,7 @@ export function absentZeroFails({ m, b, asOf, now, listOk, covered, unresolvedCi
   // (e) 유효한 명단 값은 덮지 않는다 — 단 이 수집기가 지난 회차에 쓴 「미등재 0」(listed_as_of 없음 · 더 옛 기준일)은 기준일만 새로 한다
   // (안 그러면 6개월 뒤 만료 → KOSIS 가 채움 → 다음 회차 다시 0 으로 오락가락한다).
   const ownOldZero = m.unsold === 0 && m.unsold_listed_as_of == null && typeof m.unsold_as_of === "string" && m.unsold_as_of < asOf;
-  if (m.unsold_source === "govlist" && !ownOldZero && isApplyhomeExpired(m.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) !== true) f.push("e_govlist_valid");
+  if (m.unsold_source === "govlist" && !ownOldZero && isRespected(asOfRespectState(m.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS))) f.push("e_govlist_valid");
   return f;
 }
 
@@ -167,7 +173,10 @@ export function planSource(p) {
     attached.set(r.bundle_key, [...(attached.get(r.bundle_key) ?? []), cx]);
     keysOf.set(r.bundle_key, [...(keysOf.get(r.bundle_key) ?? []), cx.list_key]);
   }
-  const expiredSource = isApplyhomeExpired(asOf, now, GOVLIST_EXPIRY_MONTHS) === true;
+  // 이번 명단의 기준일이 만료됐거나 미래(세션697 — 오늘 KST 뒤)면 쓰지 않는다. 형식 불량(no_date)은 지금처럼 막지 않는다(파서가 형식을 강제).
+  const sourceState = asOfRespectState(asOf, now, GOVLIST_EXPIRY_MONTHS);
+  const expiredSource = sourceState === "expired" || sourceState === "future";
+  const sourceSkipReason = sourceState === "future" ? `as_of ${asOf} = 미래 기준일(오늘 ${kstDayOf(now)})` : `as_of ${asOf} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`;
   const listOk = p.listRowCount > 0 && (p.prevRowCount == null || p.listRowCount >= p.prevRowCount * GOVLIST_DROP_RATIO);
   const covered = new Set([...p.sggUniverse.map(cityKey), ...complexes.map((c) => cityKey(c.sgg))].filter(Boolean));
   const unresolvedCities = new Set(results.filter((r) => !RESOLVED.has(r.state)).map((r) => cityKey(cxByNo.get(r.complex_no)?.sgg)));
@@ -194,7 +203,7 @@ export function planSource(p) {
       const head = { source, id: m.id, name: m.name, region: m.region, gu: m.gu, bundle_key: b.key, before, list_keys: keysOf.get(b.key) ?? [] };
       const skip = skipReason(m, asOf, now);
       if (listed) {
-        if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [`as_of ${asOf} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`], after: null }); continue; }
+        if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [sourceSkipReason], after: null }); continue; }
         if (skip) { out.push({ ...head, action: skip, reasons: [], after: null }); continue; }
         if (listed.kind === "blank") { out.push({ ...head, action: "skip_unsold_blank", reasons: ["명단에 실렸으나 미분양 칸 빈칸·「-」 — 비공개 표시 없음"], after: null }); continue; }
         if (listed.kind === "over") { out.push({ ...head, action: "skip_list_inconsistent", reasons: ["명단 미분양 > 총분양(원본 오기)"], after: null }); continue; }
@@ -207,7 +216,7 @@ export function planSource(p) {
         continue;
       }
       if (!zeroOn) { out.push({ ...head, action: "not_listed", reasons: [p.absentZero ? "absent_zero_not_for_source" : "absent_zero_off"], after: null }); continue; }
-      if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [], after: null }); continue; }
+      if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: sourceState === "future" ? [sourceSkipReason] : [], after: null }); continue; }
       if (skip) { out.push({ ...head, action: skip, reasons: ["absent"], after: null }); continue; }
       const fails = absentZeroFails({ m, b, asOf, now, listOk, covered, unresolvedCities });
       if (candidateBundles.has(b.key)) fails.unshift("d_candidate_of_list");

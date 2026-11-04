@@ -2167,7 +2167,8 @@ describe("govlist 존중·시계열 건너뜀·명단 총분양 상한 (세션69
       const shared = /** @type {any} */ (await import("./_shared.mjs"));
       expect(shared.GOVLIST_EXPIRY_MONTHS).toBe(6);
       const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
-      expect(src).toContain("isApplyhomeExpired(apt.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS)");
+      // 세션697: 판정 함수가 isApplyhomeExpired → asOfRespectState(만료 + 미래 기준일 · 같은 기간 인자)로 바뀌었다
+      expect(src).toContain("asOfRespectState(apt.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS)");
     });
   });
 
