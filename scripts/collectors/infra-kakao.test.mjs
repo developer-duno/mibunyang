@@ -4,7 +4,7 @@
  *
  * 대상: createSemaphore
  */
-import { describe, it, expect, vi } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { readFileSync } from "node:fs";
 
 // _shared.mjs 모킹
@@ -18,6 +18,7 @@ vi.mock("./_shared.mjs", async (importOriginal) => {
     logError: vi.fn(),
     fetchWithRetry: vi.fn(),
     sleep: vi.fn(),
+    recordCollectorRun: vi.fn(), // 세션696: handleMainFailure 가짜 호출 시험용(실제 DB 기록 0)
     createReporter: vi.fn(() => ({
       success: vi.fn(), fail: vi.fn(), skip: vi.fn(),
       summary: vi.fn(() => ({ elapsed: "0.0", ok: 0, fail: 0, skip: 0, total: 0 })),
@@ -298,7 +299,7 @@ describe("단지 처리 오류 — 절반 이상이면 실패로 센다 (세션5
 // ── 세션679: 한 회차 상한 — 오래된 순 N곳만, 넘친 수는 기록, 굶주림 없음 ──────────
 // 사건: infra.updated_at 공유 시계 때문에 3,440행 중 3,255행이 같은 초(2026-10-18T13:59:24Z)로 묶여
 // KST 11/20 회차 한 번에 3,264단지 × 9콜이 몰릴 예정이었다(transition-b2.md ②-b). 사장님 결정 = 한 회차 상한.
-const { selectInfraTargets, parseMaxApts, resolveMaxApts, countClockStats, DEFAULT_MAX_APTS, INFRA_DEFERRED_MARKER } = await import("./infra-kakao.mjs");
+const { selectInfraTargets, parseMaxApts, resolveMaxApts, countClockStats, DEFAULT_MAX_APTS, INFRA_DEFERRED_MARKER, buildInfraRow, handleMainFailure } = await import("./infra-kakao.mjs");
 
 /** @param {string} id */
 const apt = (id) => ({ id, name: id, lat: 37.5, lng: 127.0 });
@@ -422,16 +423,63 @@ describe("카카오 시계 배선 — main(소스 확인 · 세션681)", () => {
     expect(m?.[1] ?? "").toContain('"kakao_updated_at"');
     expect(m?.[1] ?? "").toContain('"updated_at"'); // 관찰 로그용으로 남김(설계서 §6 Q1)
   });
-  it("upsert 행에 kakao_updated_at 을 같은 시각으로 쓴다", () => {
-    expect(body).toMatch(/const row = \{ apartment_id: apt\.id, updated_at: now, kakao_updated_at: now \};/);
+  // 세션696(BACKLOG 421 (a) M4b): 소스 글자 대조 대신 떼어 낸 buildInfraRow 를 가짜 카카오 응답으로 불러 행 모양을 단언.
+  it("upsert 행 모양 — apartment_id · updated_at · kakao_updated_at(같은 시각) · 8종 개수·거리 · subway_dist", async () => {
+    /** @type {any} */ (shared.fetchWithRetry).mockImplementation(async (/** @type {string} */ url) => ({
+      json: async () => url.includes("category.json")
+        ? { meta: { total_count: 1 }, documents: [{ x: "127", y: "37", distance: "812.6" }] }
+        : { meta: { total_count: 7 }, documents: [{ x: "127", y: "37", distance: "123.4" }] },
+    }));
+    const now = "2026-11-04T07:00:00.000Z";
+    const row = await buildInfraRow({ id: "ap-9", name: "가", lat: 37.5, lng: 127.0 }, now);
+    const expected = { apartment_id: "ap-9", updated_at: now, kakao_updated_at: now, subway_dist: 813 };
+    for (const k of ["hospital", "mart", "conv", "cafe", "culture", "bank", "pharmacy", "park"]) {
+      Object.assign(expected, { [k]: 7, [`${k}_dist`]: 123 });
+    }
+    expect(row).toEqual(expected);
+  });
+  it("buildInfraRow — 0건이면 거리 null · 지하철 없음 9999", async () => {
+    /** @type {any} */ (shared.fetchWithRetry).mockResolvedValue({ json: async () => ({ meta: { total_count: 0 }, documents: [] }) });
+    const row = await buildInfraRow({ id: "ap-0", name: "나", lat: 37.5, lng: 127.0 }, "2026-11-04T07:00:00.000Z");
+    expect(row.hospital).toBe(0);
+    expect(row.hospital_dist).toBeNull();
+    expect(row.subway_dist).toBe(9999);
+  });
+  it("main 의 단지 처리는 buildInfraRow 로 행을 만든다(배선)", () => {
+    expect(body).toMatch(/const row = await buildInfraRow\(apt, new Date\(\)\.toISOString\(\)\);/);
   });
   it("관찰 로그 — 남의 시계 최신 M행 / kakao 시계 NULL K행", () => {
     expect(body).toMatch(/const clock = countClockStats\(infraRows\);/);
     expect(body).toContain("남의 시계(updated_at) 최신");
   });
-  it("main().catch 가 실패 1행을 collector_runs 에 남긴 뒤 exit 1", () => {
-    const tail = COLLECTOR_SRC.slice(COLLECTOR_SRC.indexOf("if (isCLI) main().catch("));
-    expect(tail).toMatch(/await recordCollectorRun\(PHASE, \{ ok: 0, fail: 1, skip: 0, errorMessage: msg \}\);[\s\S]*process\.exit\(1\);/);
+  // 세션696(BACKLOG 421 (a) M7b): 옛 정규식은 기록 앞에 process.exit 가 끼어도 통과했다 → catch 를 떼어 가짜 호출로 순서를 잰다.
+  it("main().catch 는 handleMainFailure 로 넘긴다(배선)", () => {
+    expect(COLLECTOR_SRC).toMatch(/^if \(isCLI\) main\(\)\.catch\(handleMainFailure\);$/m);
+  });
+});
+
+describe("handleMainFailure — 실패 1행 기록 뒤 exit 1 (세션681 · 세션696 가짜 호출)", () => {
+  /** @type {import('vitest').MockInstance} */ let exitSpy;
+  const rec = /** @type {import('vitest').Mock} */ (/** @type {unknown} */ (shared.recordCollectorRun));
+  beforeEach(() => {
+    rec.mockReset();
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(/** @type {any} */ (() => undefined));
+  });
+  afterEach(() => { exitSpy.mockRestore(); });
+
+  it("collector_runs 에 failure 1행(PHASE infra · 오류 문구)을 남기고, 그 **뒤** exit(1)", async () => {
+    await handleMainFailure(new Error("select 실패"));
+    expect(rec).toHaveBeenCalledTimes(1);
+    expect(rec).toHaveBeenCalledWith("infra", { ok: 0, fail: 1, skip: 0, errorMessage: "select 실패" });
+    expect(exitSpy).toHaveBeenCalledTimes(1);
+    expect(exitSpy).toHaveBeenCalledWith(1);
+    expect(rec.mock.invocationCallOrder[0]).toBeLessThan(exitSpy.mock.invocationCallOrder[0]);
+  });
+  it("기록이 던져도 삼키고 exit(1) · Error 가 아닌 값도 문구로", async () => {
+    rec.mockRejectedValueOnce(new Error("db down"));
+    await expect(handleMainFailure("문자열 오류")).resolves.toBeUndefined();
+    expect(rec).toHaveBeenCalledWith("infra", { ok: 0, fail: 1, skip: 0, errorMessage: "문자열 오류" });
+    expect(exitSpy).toHaveBeenCalledWith(1);
   });
 });
 

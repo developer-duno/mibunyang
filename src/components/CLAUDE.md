@@ -164,6 +164,13 @@ Hook + useMemo + 콜백 + 탭 라우팅 + isDesktop prop 스레딩 + trackEvent
 ## 세션662 (2026-10-26) — 시세 탭 평형별 표
 - `detail/AreaTradeTable` + `lib/areaGroups.ts groupAreaRows` — 묶기 = 매매·전세 면적(둘째 반올림)을 합쳐 오름차순, 직전과 1㎡ 이내면 한 줄(사슬), 이름 = 가장 작은 면적 정수부 · ★ = `apt.area` 둘째 반올림과 1㎡ 이내 면적의 줄(여럿이면 가장 가까운 줄), 위 상자 범위 없음(`effectiveScope`)이면 ★ 끔 · 숨김 = 위 상자와 정말 같을 때만(같은 단지·같은 면적·범위 있음·줄 1개·★·매매 면적 1개) · 전세만 있는 평형도 줄(매매 "—"), 표 전체에 전세가 없으면 전세 칸을 빼고 2칸 꼴 · 상세 창에서 단지를 바꿀 때 옛 버킷이 붙지 않게 `detail.id === apt.id` 일 때만 병합본을 넘긴다.
 
+## 세션671 (2026-10-28) — 상세 맨 아래 경로 줄 + 같은 구 가까운 단지 칩 (PR-S3 #832)
+- **계산은 한 곳** `src/utils/nearbyComplexes.mjs` — 앱 상세 창(`detail/NearbyBlock`)과 정적 단지 장(`scripts/postbuild-prerender.mjs` `buildAptHtml`)이 같이 import 한다(복사 금지 — 두 화면이 같은 단지·같은 순서·같은 글자여야 한다). 묶음 = 같은 (시도, 구), 구가 빈 단지는 시도 전체(`nearbyGroup`) · 같은 단지 묶음은 뺌(`sameBundle`) · 미분양 남은 단지 먼저, 그다음 가까운 순, 같으면 id 순 · 최대 `NEARBY_MAX` 6개 · 허브 판정(시도·`badDirName`)과 「전체 보기」 N 도 여기(`buildNearbyBlock`).
+- **자리**: `DetailModal` 모든 탭 공통 — 탭 패널(관리자 포함) 뒤, 문의 여백·CTA 바 앞(`nearbyIndex` 가 있을 때만). 칩 칸 = 휴대폰 2열 · PC(`isDesktop`) 3열. 이 블록의 링크는 마지막 포커서블이 아니다(포커스 트랩 불변식 — 시험 `DetailModal.nearby.test.jsx`).
+- **누르기**: 칩을 그냥 누르면 `onOpenApt` 로 화면 안 상세를 바꾸고, 수정 키(Ctrl·Cmd·Shift·Alt)·가운데 클릭은 브라우저 기본(새 탭). 경로 줄·전체 보기는 보통 링크.
+- **App**: 후보 색인 = 필터 **전** 전체 목록 `useMemo(createNearbyIndex(apartments))` — 필터로 숨은 단지(미분양 0)도 칩 후보 · `DetailModal key={detail.detailAptId}` 라 칩으로 바꾸면 창을 새로 띄운 것과 같다(종합 탭·맨 위·펼침 닫힘). 그래서 뒤로 가서 앞 단지로 돌아와도 종합 탭·맨 위다.
+- 남은 후속(칩 클릭 출처 기록 없음 · 앱↔정적 목록 정리 차이 · `buildAptHtml` 은 `nearby` 없이 부르면 조용히 칩 없음)은 BACKLOG S3 후속 줄.
+
 ## 세션675~677 (2026-10-30~31) — 금융 탭·다른 탭·카드 제목/시공사 (PR-A #838 · PR-B #839 · PR-C #840)
 - **지운 것**: PR-A = `api/finlife/rent-loans.ts`·`hooks/useRentLoanRates.ts`(전세대출 금리) · PR-B = `detail/PriceTable`·`charts/AreaPriceScatter`·`charts/StepBars`(그 구 전체 값 표·그림 — 이 단지 값이 아니라서). 코드 실사용 0 · 남은 이름 흔적(`.vercelignore:26` · `docs/prompts/cache-key-and-visual-verification.md:244`)은 BACKLOG A-27 · `PriceTable` 을 부르는 주석 4곳은 「지웠다」로 이미 고침.
 - **금융 탭(PR-A)**: `FundingPlanner`·`LoanAnalysis`·`BankLoanBlocks` — 금융사 종류별 안내 · 평수 단추 맨 위 · 법률 접힘 기준일. 문구 잠금 시험 = `detail/FinanceTabWording.test.tsx`.

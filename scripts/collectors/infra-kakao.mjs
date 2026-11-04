@@ -240,6 +240,46 @@ async function searchKakaoCategory(lat, lng, categoryCode, radius) {
   return assertKakaoShape(await res.json(), categoryCode).documents;
 }
 
+/**
+ * 한 단지의 infra upsert 행을 만든다(카카오 8종 + 지하철 — 세션696 main 에서 떼어 시험이 행 모양을 단언한다).
+ * updated_at 직접 쓰기는 효과 없음(INSERT 는 DEFAULT NOW · UPDATE 는 트리거) — ownership 기준선 유지용 · 시계는 kakao_updated_at
+ * @param {InfraAptRow} apt
+ * @param {string} now ISO 시각 — updated_at·kakao_updated_at 둘 다 이 값
+ * @returns {Promise<Record<string, unknown>>}
+ */
+export async function buildInfraRow(apt, now) {
+  /** @type {Record<string, unknown>} */
+  const row = { apartment_id: apt.id, updated_at: now, kakao_updated_at: now };
+
+  for (const cat of CATEGORIES) {
+    const { count, nearest } = await searchKakao(Number(apt.lat), Number(apt.lng), cat.keyword, cat.radius);
+    row[cat.key] = count;
+    row[`${cat.key}_dist`] = nearest ? Math.round(Number(nearest.distance)) : null;
+    await sleep(120);
+  }
+
+  // 지하철역 검색 (SW8 카테고리, 반경 10km)
+  const subways = await searchKakaoCategory(Number(apt.lat), Number(apt.lng), "SW8", 10000);
+  const firstSubway = subways[0];
+  row.subway_dist = firstSubway ? Math.round(Number(firstSubway.distance)) : 9999;
+  await sleep(120);
+  return row;
+}
+
+/**
+ * main 이 던진 오류(시작도 못 한 회차 — select 실패·칸 없음·인자 오류) 처리(세션681 · 세션696 떼어 냄).
+ * collector_runs 에 failure 1행을 남긴 **뒤** exit 1 → 감시 ⑬ 이 다음 날 잡는다.
+ * 기록 실패는 다시 던지지 않는다(recordCollectorRun 이 안에서 로그만 남김 · 그래도 던지면 삼킨다).
+ * @param {unknown} err
+ */
+export async function handleMainFailure(err) {
+  const msg = err instanceof Error ? err.message : String(err);
+  logError(PHASE, msg);
+  try { await recordCollectorRun(PHASE, { ok: 0, fail: 1, skip: 0, errorMessage: msg }); }
+  catch (e) { logError(PHASE, `실패 기록도 실패: ${e instanceof Error ? e.message : String(e)}`); }
+  process.exit(1);
+}
+
 async function main() {
   const dryRun = process.argv.includes("--dry-run");
   // 세션679: 한 회차 상한 — 인자 없으면 기본 DEFAULT_MAX_APTS · 세션681: --force 는 --max-apts 와 함께만(단독이면 던짐)
@@ -279,23 +319,7 @@ async function main() {
    */
   const processApt = async (apt, i) => sem(async () => {
     try {
-      // updated_at 직접 쓰기는 효과 없음(INSERT 는 DEFAULT NOW · UPDATE 는 트리거) — ownership 기준선 유지용 · 시계는 kakao_updated_at
-      const now = new Date().toISOString();
-      /** @type {Record<string, unknown>} */
-      const row = { apartment_id: apt.id, updated_at: now, kakao_updated_at: now };
-
-      for (const cat of CATEGORIES) {
-        const { count, nearest } = await searchKakao(Number(apt.lat), Number(apt.lng), cat.keyword, cat.radius);
-        row[cat.key] = count;
-        row[`${cat.key}_dist`] = nearest ? Math.round(Number(nearest.distance)) : null;
-        await sleep(120);
-      }
-
-      // 지하철역 검색 (SW8 카테고리, 반경 10km)
-      const subways = await searchKakaoCategory(Number(apt.lat), Number(apt.lng), "SW8", 10000);
-      const firstSubway = subways[0];
-      row.subway_dist = firstSubway ? Math.round(Number(firstSubway.distance)) : 9999;
-      await sleep(120);
+      const row = await buildInfraRow(apt, new Date().toISOString());
 
       if (dryRun) {
         log(PHASE, `  [DRY] ${apt.name}: 병원${row.hospital} 마트${row.mart} 편의점${row.conv} 지하철${row.subway_dist}m`);
@@ -340,12 +364,5 @@ async function main() {
 
 const argv1 = process.argv[1];
 const isCLI = argv1 && import.meta.url.endsWith((argv1.replace(/\\/g, "/").split("/").pop()) || "");
-// 세션681: 시작도 못 한 회차(select 실패·칸 없음·인자 오류)도 collector_runs 에 failure 1행을 남긴다 → 감시 ⑬ 이 다음 날 잡는다.
-//   기록 실패는 다시 던지지 않는다(recordCollectorRun 이 안에서 로그만 남김 · 그래도 던지면 삼킨다).
-if (isCLI) main().catch(async (err) => {
-  const msg = err instanceof Error ? err.message : String(err);
-  logError(PHASE, msg);
-  try { await recordCollectorRun(PHASE, { ok: 0, fail: 1, skip: 0, errorMessage: msg }); }
-  catch (e) { logError(PHASE, `실패 기록도 실패: ${e instanceof Error ? e.message : String(e)}`); }
-  process.exit(1);
-});
+// 세션681: 시작도 못 한 회차(select 실패·칸 없음·인자 오류)도 collector_runs 에 failure 1행을 남긴다 → 감시 ⑬ 이 다음 날 잡는다(handleMainFailure).
+if (isCLI) main().catch(handleMainFailure);
