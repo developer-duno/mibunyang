@@ -9,12 +9,17 @@
  *   ① 꾸러미 지도에 그 단지 행이 없음(buildAptHtml 이 던짐 — main 은 loadDetailMap 이 먼저 막지만 buildAptPages 단독으로는 열림)
  *   ② 꾸러미 행의 칸을 읽는 순간 예외(본문 사본 버그 흉내 — getter 가 던진다)
  */
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, afterAll } from "vitest";
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import {
-  buildAptPages, buildAptHtml, buildAptThinHtml, assertAptTemplate, seoThinRecord, BODY_ERROR_IDS_MAX,
+  buildAptPages, buildAptHtml, buildAptThinHtml, assertAptTemplate, seoThinRecord, BODY_ERROR_IDS_MAX, buildRegionPages, SEO_THIN_CAP, esc,
 } from "./postbuild-prerender.mjs";
 import { SOURCE_TEXT } from "../src/utils/aptStaticBody.mjs";
 import { createNearbyIndex } from "../src/utils/nearbyComplexes.mjs";
+import { DETAIL_BUCKET_COUNT, detailBucketName } from "../src/utils/bucketHash.mjs";
 
 const TEMPLATE = [
   `<!DOCTYPE html><html lang="ko"><head>`,
@@ -88,9 +93,12 @@ describe("C1 단지별 방어 — 한 곳이 던져도 나머지는 정상 장, 
     expect(html).toContain('"@type":"BreadcrumbList"');
     expect(html).toContain('<nav aria-label="breadcrumb">');
   });
-  it("사이트맵 판정은 그대로 — 얇지 않은 실패 장은 사이트맵에 남고 robots 없음", () => {
-    expect(r.sitemapIds).toEqual(["a1", "bad", "a3"]);
-    expect(r.pages.every((p) => !p.html.includes('name="robots"'))).toBe(true);
+  it("B2: 실패 장은 noindex 1개 + 사이트맵 제외 · 정상 장은 robots 없음 · 얇은 단지 기록(count·ids·applied)은 그대로", () => {
+    expect(r.sitemapIds).toEqual(["a1", "a3"]);
+    const bad = /** @type {string} */ (r.pages.find((p) => p.id === "bad")?.html);
+    expect(countOf(bad, '<meta name="robots" content="noindex,follow" />')).toBe(1);
+    expect(r.pages.filter((p) => p.id !== "bad").every((p) => !p.html.includes('name="robots"'))).toBe(true);
+    expect(r.thin).toMatchObject({ count: 0, ids: [], names: [], applied: true });
   });
 });
 
@@ -170,5 +178,122 @@ describe("C2 — 얇은 본문 만들기 자체는 던지지 않는다(칩·구�
   });
   it("noindex 를 주면 robots 1개", () => {
     expect(countOf(buildAptThinHtml(TEMPLATE, full("z2"), { noindex: true }), 'name="robots"')).toBe(1);
+  });
+});
+
+describe("B3 — 이름·구에 치환 특수 글자($' $&)가 있어도 head 가 깨지지 않는다(함수 치환)", () => {
+  for (const name of ["가$'나", "가$&나", "가$`나"]) {
+    it(`이름 ${name} — 정상 장·얇은 장 모두 </head> 1개 · 제목·og:title 에 글자 그대로`, () => {
+      const a = full("d1", { name });
+      const normal = buildAptHtml(TEMPLATE, a, { details: D([a]) });
+      const thin = buildAptThinHtml(TEMPLATE, a);
+      const e = esc(name); // & 는 HTML 이스케이프(&amp;)로 들어가는 게 정상 — $ 패턴이 치환 원문을 끌어오지 않는지가 요점
+      for (const html of [normal, thin]) {
+        expect(countOf(html, "</head>")).toBe(1);
+        expect(pick(html, "title")).toBe(`${e} (서울 강서구) 분양가·미분양 | 미분양 비교`);
+        expect(html).toContain(`<meta property="og:title" content="${e} (서울 강서구) 분양가·미분양 | 미분양 비교" />`);
+        expect(html).toContain(`<meta name="description" content="${e} (서울 강서구) 분양가·미분양 정보.`);
+        expect(html).not.toContain("미분양 비교 엔진 v3.0"); // $& 가 옛 태그를 끌어오면 남는다
+      }
+    });
+  }
+  it("구 이름 가$'구 — 구 허브 장도 </head> 1개 · 제목에 글자 그대로", () => {
+    const r = buildRegionPages(TEMPLATE, [full("h1", { gu: "가$'구" }), full("h2", { gu: "가$'구" })]);
+    const gu = r.pages.find((p) => p.segments.length === 2);
+    expect(gu).toBeTruthy();
+    const html = /** @type {string} */ (gu?.html);
+    expect(countOf(html, "</head>")).toBe(1);
+    expect(pick(html, "title")).toContain("가$'구");
+    for (const p of r.pages) expect(countOf(p.html, "</head>")).toBe(1);
+  });
+});
+
+// ── main() 을 실제로 돌려 exit 코드를 본다(세션697 B1·B5) — 임시 폴더에 가짜 dist 를 만들고 자식 프로세스로 ──
+const MOD = new URL("./postbuild-prerender.mjs", import.meta.url).href;
+/** @type {string[]} */
+const tmpDirs = [];
+afterAll(() => {
+  for (const d of tmpDirs) rmSync(d, { recursive: true, force: true });
+});
+/** String() 이 던지는 칸 — JSON 으로 실을 수 있는 본문 사본 예외(적대 검사관 재현 꼴) */
+const BOMB = { toString: 1, valueOf: 1 };
+/**
+ * @param {Array<Record<string, any>>} list
+ * @param {Array<Record<string, any>>} details 전부 0번 꾸러미에(loadDetailMap 은 꾸러미 번호를 안 본다)
+ * @param {{ dropBucket?: number }} [opt]
+ */
+function makeDist(list, details, opt = {}) {
+  const dir = mkdtempSync(join(tmpdir(), "pb-defense-"));
+  tmpDirs.push(dir);
+  mkdirSync(join(dir, "data"), { recursive: true });
+  writeFileSync(join(dir, "index.html"), TEMPLATE);
+  writeFileSync(join(dir, "data", "apartments-list.json"), JSON.stringify(list));
+  for (let i = 0; i < DETAIL_BUCKET_COUNT; i++) {
+    if (i === opt.dropBucket) continue;
+    writeFileSync(join(dir, "data", detailBucketName(i, DETAIL_BUCKET_COUNT)), JSON.stringify(i === 0 ? details : []));
+  }
+  return dir;
+}
+/** @param {string} dir */
+function runMain(dir) {
+  const r = spawnSync(process.execPath, ["--input-type=module", "-e", `import { main } from ${JSON.stringify(MOD)}; main(${JSON.stringify(dir)});`], { encoding: "utf-8", timeout: 60000 });
+  return { status: r.status, err: String(r.stderr ?? "") };
+}
+/** 본문 실패 n곳 + 정상 1곳 @param {number} n */
+function bombDist(n) {
+  const list = [full("ok"), ...Array.from({ length: n }, (_, i) => full(`b${i}`))];
+  const details = list.map((a, i) => (i === 0 ? { id: a.id } : { id: a.id, busStopNames: BOMB }));
+  return makeDist(list, details);
+}
+
+describe("B1 — 본문 실패가 안전선(SEO_THIN_CAP 15)을 넘으면 빌드를 멈춘다(👤 11/04 결정 ①)", () => {
+  it("15곳 실패 → exit 0 · seo-thin bodyErrors 15 · 실패 장은 noindex · 사이트맵 씀", () => {
+    expect(SEO_THIN_CAP).toBe(15);
+    const dir = bombDist(15);
+    const r = runMain(dir);
+    expect(r.status).toBe(0);
+    const rec = JSON.parse(readFileSync(join(dir, "data", "seo-thin.json"), "utf-8"));
+    expect(rec.bodyErrors).toBe(15);
+    expect(rec.bodyErrorIds).toHaveLength(15);
+    expect(typeof rec.builtAt).toBe("string");
+    expect(readFileSync(join(dir, "apt", "b0", "index.html"), "utf-8")).toContain('<meta name="robots" content="noindex,follow" />');
+    const xml = readFileSync(join(dir, "sitemap.xml"), "utf-8");
+    expect(xml).toContain("/apt/ok<");
+    expect(xml).not.toContain("/apt/b0<");
+    expect((r.err.match(/단지 장 본문 실패 → 얇은 본문으로: /g) ?? []).length).toBe(15);
+  });
+  it("16곳 실패 → exit 1 · 오류에 수·안전선·앞 id · 사이트맵·seo-thin 안 씀(어제 배포 유지)", () => {
+    const dir = bombDist(16);
+    const r = runMain(dir);
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("단지 장 본문 실패 16곳 > 안전선 15");
+    expect(r.err).toContain("b0,b1,b2");
+    expect(existsSync(join(dir, "sitemap.xml"))).toBe(false);
+    expect(existsSync(join(dir, "data", "seo-thin.json"))).toBe(false);
+  });
+});
+
+describe("B5 — 꾸러미 파일 문제(loadDetailMap 예외)는 main 이 exit 1 로(단지별 방어가 삼키지 않게)", () => {
+  it("꾸러미 파일 하나 없음 → exit 1 · 오류 문구 · 단지 장 0", () => {
+    const list = [full("a1"), full("a2"), full("a3")];
+    const dir = makeDist(list, list.map((a) => ({ id: a.id })), { dropBucket: 3 });
+    const r = runMain(dir);
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("상세 꾸러미");
+    expect(existsSync(join(dir, "apt"))).toBe(false);
+  });
+  it("꾸러미 행 합이 목록과 다름 → exit 1", () => {
+    const list = [full("a1"), full("a2"), full("a3")];
+    const dir = makeDist(list, [{ id: "a1" }, { id: "a2" }]);
+    const r = runMain(dir);
+    expect(r.status).toBe(1);
+    expect(r.err).toContain("행 합");
+  });
+  it("대조군 — 꾸러미가 맞으면 exit 0 · 이름에 $' 가 있어도 exit 0(B3)", () => {
+    const list = [full("a1"), full("a2", { name: "가$'나" })];
+    const dir = makeDist(list, list.map((a) => ({ id: a.id })));
+    const r = runMain(dir);
+    expect(r.status).toBe(0);
+    expect(JSON.parse(readFileSync(join(dir, "data", "seo-thin.json"), "utf-8")).bodyErrors).toBe(0);
   });
 });

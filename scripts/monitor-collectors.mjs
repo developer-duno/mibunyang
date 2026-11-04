@@ -289,7 +289,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"|"seo-body-error"|"seo-built-at"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1376,9 +1376,9 @@ export function checkSeoThin(status, bodyText) {
     const ids = p.rec.bodyErrorIds ?? [];
     const rest = bodyErrors - ids.length;
     out.push({
-      kind: "seo-thin",
+      kind: "seo-body-error", // 제목·조치가 얇은 단지 안전선과 다르다(세션697 B6)
       collector: SEO_THIN_COLLECTOR,
-      detail: `단지 장 본문 실패 ${bodyErrors}곳 — 그 장만 얇은 본문(h1·요약 한 줄)으로 배포됨`,
+      detail: `단지 장 본문 실패 ${bodyErrors}곳 — 그 장만 얇은 본문(h1·요약 한 줄 · 검색 제외)으로 배포됨`,
       lines: [`명단: ${ids.join(" · ") || "없음"}${rest > 0 ? ` 외 ${rest}곳` : ""}`, `주소: ${SEO_THIN_URL}`],
     });
   }
@@ -1387,22 +1387,35 @@ export function checkSeoThin(status, bodyText) {
 
 /** ㉓ builtAt 판정 대상 커밋 — daily-deploy.yml 의 `git commit -m "data: daily refresh …"`. */
 const DAILY_REFRESH_PREFIX = "data: daily refresh";
+/** ㉓ builtAt 유예(분) — refresh 커밋 뒤 이 시간 안에는 비교하지 않는다(Vercel 빌드 도중 헛경보 방지 · 세션697 B8). */
+export const BUILT_AT_GRACE_MIN = 60;
+
+/** GitHub 인증이 없어(로컬 실행) builtAt 비교를 못 한 것 — ㉓ 는 이것만 조용히 건너뛰고, 그 밖 조회 실패는 실행 실패로 알린다(세션697 B7). */
+export class GithubAuthMissingError extends Error {
+  constructor() {
+    super("GitHub 인증 없음(로컬 실행)");
+    this.name = "GithubAuthMissingError";
+  }
+}
 
 /**
  * ㉓ builtAt 판정(세션697 C6) — 운영 기록의 빌드 시각이 main 의 가장 최근 daily refresh 커밋보다 이르면
  * 그 커밋(=오늘 화면 자료)이 배포에 안 실린 것(빌드 실패·롤백 고착 의심). builtAt 이 없으면(옛 빌드) 1건.
  * refresh 가 null 이면(GitHub 조회 못 함) 비교만 건너뛴다 — builtAt 없음은 그래도 알린다.
+ * 커밋 뒤 BUILT_AT_GRACE_MIN 분 안이면 비교를 건너뛴다(그 커밋의 빌드가 아직 도는 중일 수 있음 · 세션697 B8).
  * @param {SeoThinRecord} rec
  * @param {{ at: string, sha: string } | null} refresh
+ * @param {Date} [now] 유예 판정 시각(시험 주입용)
  * @returns {Issue[]}
  */
-export function checkSeoThinBuiltAt(rec, refresh) {
+export function checkSeoThinBuiltAt(rec, refresh, now = new Date()) {
   /** @param {string} detail @param {string[]} lines @returns {Issue[]} */
-  const one = (detail, lines) => [{ kind: "seo-thin", collector: SEO_THIN_COLLECTOR, detail, lines: [...lines, `주소: ${SEO_THIN_URL}`] }];
+  const one = (detail, lines) => [{ kind: "seo-built-at", collector: SEO_THIN_COLLECTOR, detail, lines: [...lines, `주소: ${SEO_THIN_URL}`] }];
   if (rec.builtAt == null) {
     return one("검색 제외 기록에 빌드 시각(builtAt)이 없거나 모양이 틀림 — 운영 배포가 옛 빌드일 수 있음(빌드 실패·롤백 고착 의심)", []);
   }
   if (!refresh) return [];
+  if (now.getTime() - Date.parse(refresh.at) < BUILT_AT_GRACE_MIN * 60_000) return [];
   if (Date.parse(rec.builtAt) < Date.parse(refresh.at)) {
     return one("오늘 화면 자료 커밋이 배포에 안 실림 — 빌드 실패·롤백 고착 의심", [
       `운영 빌드 시각 ${rec.builtAt} < main 마지막 daily refresh 커밋 ${refresh.at} (${refresh.sha.slice(0, 8)})`,
@@ -1413,13 +1426,13 @@ export function checkSeoThinBuiltAt(rec, refresh) {
 
 /**
  * ㉓ builtAt 재료 — main 의 가장 최근 `data: daily refresh` 커밋 시각(GitHub REST commits 1회 · public/data 를 바꾼 커밋만).
- * 인증이 없으면(로컬) 던진다 — ㉓ 블록이 잡아 이 판정만 건너뛴다. 목록에 없으면 null.
+ * 인증이 없으면(로컬) GithubAuthMissingError — ㉓ 블록이 이 판정만 건너뛴다. 응답 실패는 그냥 던진다(㉓ 가 실행 실패 1건). 목록에 없으면 null.
  * @returns {Promise<{ at: string, sha: string } | null>}
  */
 export async function fetchLatestDailyRefresh() {
   const repo = process.env.GITHUB_REPOSITORY;
   const token = process.env.GITHUB_TOKEN;
-  if (!repo || !token) throw new Error("GitHub 인증 없음(로컬 실행)");
+  if (!repo || !token) throw new GithubAuthMissingError();
   const res = await fetch(
     `https://api.github.com/repos/${repo}/commits?sha=main&path=public/data&per_page=30`,
     {
@@ -4673,7 +4686,8 @@ export async function runDailyGuardedChecks(deps = {}) {
   issues = issues.concat(await runFailOpenCheck("㉓ 검색 제외 안전선", async () => {
     const { status, text } = await fetchSeoThin();
     const thinIssues = checkSeoThin(status, text);
-    // builtAt(세션697 C6) — 기록을 읽었을 때만. GitHub 조회 실패·토큰 없음(로컬)은 비교만 건너뛰고 한 줄 남긴다.
+    // builtAt(세션697 C6) — 기록을 읽었을 때만. 토큰 없음(로컬)만 비교를 조용히 건너뛰고,
+    //   토큰이 있는데(Actions) 조회가 실패하면 실행 실패 1건 — 권한이 바뀌어 판정이 영영 꺼지지 않게(B7 · fetchRecentRuns 관례).
     const parsed = parseSeoThin(status, text);
     if (parsed.ok) {
       for (const w of parsed.warnings) console.log(`[monitor] ㉓ 기록 새 칸 경고: ${w}`);
@@ -4683,9 +4697,14 @@ export async function runDailyGuardedChecks(deps = {}) {
         refresh = await fetchDailyRefresh();
         if (!refresh) console.log("[monitor] ㉓ builtAt 비교 건너뜀: main 최근 커밋 30개에 daily refresh 없음");
       } catch (err) {
-        console.log(`[monitor] ㉓ builtAt 비교 건너뜀: ${err instanceof Error ? err.message : String(err)}`);
+        if (err instanceof GithubAuthMissingError) {
+          console.log(`[monitor] ㉓ builtAt 비교 건너뜀: ${err.message}`);
+        } else {
+          console.log(`[monitor] ㉓ builtAt 커밋 조회 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+          thinIssues.push(checkFailedIssue("㉓ builtAt 커밋 조회", err));
+        }
       }
-      thinIssues.push(...checkSeoThinBuiltAt(parsed.rec, refresh));
+      thinIssues.push(...checkSeoThinBuiltAt(parsed.rec, refresh, deps.now ?? new Date()));
     }
     console.log(`[monitor] ㉓ 검색 제외 안전선: 응답 ${status} → 이상 ${thinIssues.length}건`);
     return thinIssues;

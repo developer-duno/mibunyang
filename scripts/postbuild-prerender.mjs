@@ -37,10 +37,6 @@ export { fmtMoveInNode, fmtPriceNode, hubUnitsText };
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const DIST = resolve(__dirname, "..", "dist");
-const DIST_INDEX = resolve(DIST, "index.html");
-const DIST_LIST = resolve(DIST, "data", "apartments-list.json");
-const DIST_SITEMAP = resolve(DIST, "sitemap.xml");
-const DIST_SEO_THIN = resolve(DIST, "data", "seo-thin.json");
 
 /** 운영 도메인 (index.html 의 canonical·og:url 과 같아야 한다) */
 const ORIGIN = "https://www.xn--hg3bi2ac4o1ig57cnoa.com";
@@ -171,6 +167,7 @@ export function planThin(list) {
  * @param {Array<Record<string, any>>} list
  * 단지 한 곳의 본문이 던지면(세션697 — 세션674 맹점 🟠1) 그 장만 얇은 본문(buildAptThinHtml)으로 만들고 계속 간다 —
  * 단지 하나가 빌드 전체(=그날 배포 전체)를 죽이지 않게. 실패 수·앞 20개 id 는 thin 기록(bodyErrors·bodyErrorIds)에, 오류 첫 줄은 errors 에.
+ * 실패 장은 noindex + 사이트맵 제외. 실패가 SEO_THIN_CAP 을 넘으면 main 이 빌드를 멈춘다(👤 11/04 결정 ①).
  * 템플릿 결함·꾸러미 지도 없음은 모든 장이 같이 깨지므로 지금처럼 던진다(main 이 빌드를 빨갛게).
  * @param {Map<string, Record<string, any>>} details 상세 꾸러미 id → 행(loadDetailMap) — 빠지면 던진다
  * @returns {{ pages: Array<{ id: string, html: string }>, sitemapIds: string[], thin: AptPagesThin, errors: Array<{ id: string, message: string }> }}
@@ -193,12 +190,15 @@ export function buildAptPages(template, list, details) {
   for (const a of list) {
     if (!a || !a.id || !a.name) continue;
     const id = String(a.id);
-    const noindex = noindexIds.has(id);
+    let noindex = noindexIds.has(id);
     let html;
     try {
       html = buildAptHtml(template, a, { noindex, nearby, details });
     } catch (e) {
       errors.push({ id, message: firstLine(e) });
+      // 본문 실패 장 = h1·한 줄뿐이라 검색 제외 + 사이트맵 빼기(👤 11/04 결정 ② · planThin 의 noindex 와 같은 꼴).
+      // thin.count·ids·applied 의 뜻은 그대로 — 실패 장은 bodyErrors 쪽으로만 센다.
+      noindex = true;
       html = buildAptThinHtml(template, a, { noindex, nearby });
     }
     pages.push({ id, html });
@@ -376,14 +376,14 @@ export function buildAptThinHtml(template, a, opts = {}) {
 function fillAptTemplate(template, { url, title, desc, body, headExtra, noindex }) {
   let html = template;
   // head 치환 — 각 태그는 index.html 에 정확히 1개씩 있다(빌드가 늘리지 않는다).
-  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(url)}" />`);
-  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(url)}" />`);
-  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(title)}" />`);
-  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(desc)}" />`);
-  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(title)}" />`);
-  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(desc)}" />`);
-  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(desc)}" />`);
-  html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(title)}</title>`);
+  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, () => `<link rel="canonical" href="${esc(url)}" />`);
+  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, () => `<meta property="og:url" content="${esc(url)}" />`);
+  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, () => `<meta property="og:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, () => `<meta property="og:description" content="${esc(desc)}" />`);
+  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, () => `<meta name="twitter:title" content="${esc(title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, () => `<meta name="twitter:description" content="${esc(desc)}" />`);
+  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, () => `<meta name="description" content="${esc(desc)}" />`);
+  html = html.replace(/<title>[^<]*<\/title>/, () => `<title>${esc(title)}</title>`);
   html = html.replace(ROOT_RE, () => body);
   if (html.split("</head>").length !== 2) {
     throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — JSON-LD 를 넣을 자리를 못 정함");
@@ -668,14 +668,14 @@ function buildHubHtml(template, o) {
     throw new Error('[postbuild-prerender] 템플릿(index.html)에 이미 name="robots" 메타가 있습니다 — 허브 장 noindex 와 겹칩니다');
   }
   let html = template;
-  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, `<link rel="canonical" href="${esc(o.url)}" />`);
-  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, `<meta property="og:url" content="${esc(o.url)}" />`);
-  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, `<meta property="og:title" content="${esc(o.title)}" />`);
-  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, `<meta property="og:description" content="${esc(o.desc)}" />`);
-  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, `<meta name="twitter:title" content="${esc(o.title)}" />`);
-  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, `<meta name="twitter:description" content="${esc(o.desc)}" />`);
-  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, `<meta name="description" content="${esc(o.desc)}" />`);
-  html = html.replace(/<title>[^<]*<\/title>/, `<title>${esc(o.title)}</title>`);
+  html = html.replace(/<link rel="canonical" href="[^"]*"\s*\/>/, () => `<link rel="canonical" href="${esc(o.url)}" />`);
+  html = html.replace(/<meta property="og:url" content="[^"]*"\s*\/>/, () => `<meta property="og:url" content="${esc(o.url)}" />`);
+  html = html.replace(/<meta property="og:title" content="[^"]*"\s*\/>/, () => `<meta property="og:title" content="${esc(o.title)}" />`);
+  html = html.replace(/<meta property="og:description" content="[^"]*"\s*\/>/, () => `<meta property="og:description" content="${esc(o.desc)}" />`);
+  html = html.replace(/<meta name="twitter:title" content="[^"]*"\s*\/>/, () => `<meta name="twitter:title" content="${esc(o.title)}" />`);
+  html = html.replace(/<meta name="twitter:description" content="[^"]*"\s*\/>/, () => `<meta name="twitter:description" content="${esc(o.desc)}" />`);
+  html = html.replace(/<meta name="description" content="[^"]*"\s*\/>/, () => `<meta name="description" content="${esc(o.desc)}" />`);
+  html = html.replace(/<title>[^<]*<\/title>/, () => `<title>${esc(o.title)}</title>`);
   html = html.replace(ROOT_RE, () => o.body);
   if (html.split("</head>").length !== 2) {
     throw new Error("[postbuild-prerender] 템플릿에 </head> 가 정확히 1개가 아닙니다 — 허브 JSON-LD 를 넣을 자리를 못 정함");
@@ -875,7 +875,15 @@ export function loadDetailMap(dir, list, n = DETAIL_BUCKET_COUNT) {
   return map;
 }
 
-function main() {
+/**
+ * postbuild 본체. dist = 빌드 산출물 폴더(시험은 임시 폴더를 넘겨 실제 exit 코드를 본다 · 세션697 B1·B5).
+ * @param {string} [dist]
+ */
+export function main(dist = DIST) {
+  const DIST_INDEX = resolve(dist, "index.html");
+  const DIST_LIST = resolve(dist, "data", "apartments-list.json");
+  const DIST_SITEMAP = resolve(dist, "sitemap.xml");
+  const DIST_SEO_THIN = resolve(dist, "data", "seo-thin.json");
   if (!existsSync(DIST_INDEX)) {
     console.error(`[postbuild-prerender] dist/index.html 없음: ${DIST_INDEX}`);
     process.exit(1);
@@ -913,7 +921,7 @@ function main() {
   /** @type {Map<string, Record<string, any>>} */
   let details;
   try {
-    details = loadDetailMap(join(DIST, "data"), list);
+    details = loadDetailMap(join(dist, "data"), list);
   } catch (e) {
     console.error(`[postbuild-prerender] ${e instanceof Error ? e.message : String(e)}`);
     process.exit(1);
@@ -924,7 +932,7 @@ function main() {
   console.log("[postbuild-prerender] dist/index.html #root 에 검색봇용 골격 주입 완료");
 
   // ── /upcoming 정적 페이지 ──
-  const upcomingDir = join(DIST, "upcoming");
+  const upcomingDir = join(dist, "upcoming");
   mkdirSync(upcomingDir, { recursive: true });
   writeFileSync(join(upcomingDir, "index.html"), buildUpcomingHtml(template), "utf-8");
   console.log("[postbuild-prerender] dist/upcoming/index.html 프리렌더 주입 완료");
@@ -936,8 +944,15 @@ function main() {
   for (const e of errors) {
     console.error(`[postbuild-prerender] 단지 장 본문 실패 → 얇은 본문으로: ${e.id} — ${e.message}`);
   }
+  // 대량 실패 = 단지 자료가 아니라 코드·자료 모양 결함 — 그날 배포를 멈춰 어제 화면을 유지한다(👤 11/04 결정 ① · 15 = SEO_THIN_CAP).
+  if (thin.bodyErrors > SEO_THIN_CAP) {
+    console.error(
+      `[postbuild-prerender] 단지 장 본문 실패 ${thin.bodyErrors}곳 > 안전선 ${SEO_THIN_CAP} — 코드·자료 모양 결함 의심, 빌드를 멈춥니다(어제 배포 유지). 앞 ${thin.bodyErrorIds.length}곳: ${thin.bodyErrorIds.join(",")}`,
+    );
+    process.exit(1);
+  }
   for (const p of pages) {
-    const dir = join(DIST, "apt", p.id);
+    const dir = join(dist, "apt", p.id);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "index.html"), p.html, "utf-8");
   }
@@ -957,7 +972,7 @@ function main() {
   // ── 지역 허브 정적 장 (세션669) ──
   const region = buildRegionPages(template, list);
   for (const p of region.pages) {
-    const dir = join(DIST, "region", ...p.segments);
+    const dir = join(dist, "region", ...p.segments);
     mkdirSync(dir, { recursive: true });
     writeFileSync(join(dir, "index.html"), p.html, "utf-8");
   }

@@ -415,7 +415,7 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
   });
   it("main() 연결부 — 사이트맵은 buildAptPages 가 준 sitemapIds 로, 기록 파일은 applied 와 무관하게 늘 쓴다(세션668 보완 F3)", () => {
     const src = readFileSync(new URL("./postbuild-prerender.mjs", import.meta.url), "utf-8");
-    const start = src.indexOf("function main() {");
+    const start = src.indexOf("export function main(dist = DIST) {");
     const end = src.indexOf("// CLI 로 직접 실행");
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
