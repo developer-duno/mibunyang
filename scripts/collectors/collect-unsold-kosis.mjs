@@ -907,11 +907,13 @@ export async function main() {
     }
 
     // 세션692 PR-4 — 지자체 명단(govlist) 존중·만료·명단 총분양 상한(👤 Q2·Q10). 명단(id)을 남긴다([[expect-ids-not-counts]]).
-    const govlistRespectedIds = plan.filter((p) => p.currentSource === "govlist" && !p.govlistExpired).map((p) => p.id);
-    const govlistExpiredWrites = plan.filter((p) => p.govlistExpired && (p.action === "write" || p.action === "write_zero"));
-    log(PHASE, `[govlist] 존중 ${govlistRespectedIds.length}건 · 만료(${GOVLIST_EXPIRY_MONTHS}개월)되어 KOSIS 로 씀 ${govlistExpiredWrites.length}건${govlistExpiredWrites.length > 0 ? `: ${govlistExpiredWrites.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate}`).join(", ")}` : ""}`);
     // 날짜 없는 govlist 는 존중이 굳는다 — 존중은 그대로 두되 명단을 경고 로그·표식으로 올린다(applyhome C6 「공고일 없음」과 같은 결).
     const govlistNoDateIds = apartmentsTyped.filter((a) => govlistStatus(a, now) === "no_date").map((a) => a.id);
+    const govlistNoDateSet = new Set(govlistNoDateIds);
+    // 존중(유효) 건수에는 날짜 없음을 섞지 않는다 — 따로 센다(메인 덧붙임 세션692).
+    const govlistRespectedIds = plan.filter((p) => p.currentSource === "govlist" && !p.govlistExpired && !govlistNoDateSet.has(p.id)).map((p) => p.id);
+    const govlistExpiredWrites = plan.filter((p) => p.govlistExpired && (p.action === "write" || p.action === "write_zero"));
+    log(PHASE, `[govlist] 존중 ${govlistRespectedIds.length}건 · 날짜 없음 ${govlistNoDateIds.length}건(존중 유지) · 만료(${GOVLIST_EXPIRY_MONTHS}개월)되어 KOSIS 로 씀 ${govlistExpiredWrites.length}건${govlistExpiredWrites.length > 0 ? `: ${govlistExpiredWrites.map((p) => `${p.name}(${p.id}) ${p.currentUnsold}→${p.newEstimate}`).join(", ")}` : ""}`);
     if (govlistNoDateIds.length > 0) logError(PHASE, `[경고][govlist 기준월 없음] ${govlistNoDateIds.length}건은 만료를 판정할 수 없어 존중 유지 — unsold_as_of 를 채워야 한다: ${govlistNoDateIds.join(", ")}`);
     const cappedPlans = plan.filter((p) => p.capped);
     govlistMarkers = joinRunMessage(formatGovlistNoDate(govlistNoDateIds), formatListedCap(cappedPlans.map((p) => p.id))) ?? null;

@@ -2297,8 +2297,9 @@ describe("govlist 존중·시계열 건너뜀·명단 총분양 상한 (세션69
       expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 2, errorMessage: "KOSIS_LISTED_CAP n=1: k-1" });
     });
     it("기준월 빈 govlist 1행 → 존중 유지(쓰기·점 0) + 기록 표식 GOVLIST_NO_DATE n=1 · 경고 로그", async () => {
-      const { logError: logErrorMock } = /** @type {any} */ (await import("./_shared.mjs"));
+      const { logError: logErrorMock, log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
       logErrorMock.mockClear();
+      logMock.mockClear();
       const { history, updateCalls } = await runApply([
         r({ id: "g-nd", complex_key: "K", unsold_source: "govlist", unsold_as_of: null, unsold_listed_as_of: "2026-09-30" }),
         r({ id: "o-1", units: 1500 }),
@@ -2307,13 +2308,16 @@ describe("govlist 존중·시계열 건너뜀·명단 총분양 상한 (세션69
       expect(history.map((/** @type {any[]} */ h) => h[0])).toEqual(["o-1"]);
       expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1, errorMessage: "GOVLIST_NO_DATE n=1: g-nd" });
       expect(logErrorMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).startsWith("[경고][govlist 기준월 없음] 1건"))).toBe(true);
+      expect(logMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).startsWith("[govlist] 존중 0건 · 날짜 없음 1건(존중 유지)"))).toBe(true);
     });
     it("기준월 빈 govlist 0행 → 날짜 없음 표식·경고 없음(침묵)", async () => {
-      const { logError: logErrorMock } = /** @type {any} */ (await import("./_shared.mjs"));
+      const { logError: logErrorMock, log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
       logErrorMock.mockClear();
+      logMock.mockClear();
       await runApply([r({ id: "g-ok", unsold_source: "govlist", unsold_as_of: VALID_ASOF }), r({ id: "o-1", units: 1500 })], "200");
       expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
       expect(logErrorMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).includes("govlist 기준월 없음"))).toBe(false);
+      expect(logMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).startsWith("[govlist] 존중 1건 · 날짜 없음 0건(존중 유지)"))).toBe(true);
     });
     it("상한에 안 걸리면 표식 없음(옛 기록 꼴 그대로)", async () => {
       await runApply([r({ id: "k-1", unsold_listed_total: 999 }), r({ id: "o-1", units: 1500 })], "200");
