@@ -151,13 +151,14 @@ export function writeLastProcessed(/** @type {string} */ dateStr, statePath = ST
  *   daily            true 면 날짜·요일과 무관하게 매일 실행(세션605). `day`·`dow` 와 같이 쓰지 않는다
  *   months           있으면 해당 월에만 (분기 cron 이식)
  *   args             수집기에 넘길 고정 인자 (GH yml 이 넘기던 것 보존)
+ *   noDryRun         true 면 러너 `--dry-run` 때 이 항목을 건너뛴다(로그 한 줄 · 실패로 안 셈 — `planEntryRun`, 세션696)
  *   (세션603: 쓰는 항목이 없어진 요일 게이트 skipIfDow·onlyIfPrevDayDow 는 코드째 삭제)
  *
  * ⚠️ **GH cron 을 이식할 땐 UTC→KST(+9h) 로 날짜·요일을 다시 계산한다.** 러너는 KST 05:30 에
  * 도는데 이 표도 KST 기준이라, cron 의 숫자를 그대로 베끼면 하루/한 요일이 밀린다.
  * 실례(세션519): `0 22 16 * *`(UTC 16일 22시)는 **KST 17일** 07시고,
  * `0 15 * * 1`(UTC 월 15시)은 **KST 화요일** 00시다.
- * @type {Array<{ day?: number, dow?: number, daily?: boolean, script: string, months?: number[], args?: string[] }>}
+ * @type {Array<{ day?: number, dow?: number, daily?: boolean, script: string, months?: number[], args?: string[], noDryRun?: boolean }>}
  */
 export const DAY_TABLE = [
   { day: 2, script: "collect-housing-supply-ratio.mjs" },
@@ -207,7 +208,9 @@ export const DAY_TABLE = [
   //   (세션693 검사 blind🟡6). 빼기 전에 충남을 승인 파일로 한 번 반영해 둔다.
   //   첫 회차는 수집기가 막는다 — 반영된 완성 batch 가 없으면 쓰기 0 · failure `GOVLIST_FIRST_NEEDS_APPROVAL` · exit 2
   //   (첫 반영은 사람이 `--apply --apply-from=<승인한 impact>` 로). 차단기(바뀔 단지 > `_govlist-plan.mjs` GOVLIST_BREAKER_LIMITS(대구·충남 10 · 임시, 12/08 재측정) · 명단 행 < 전 회차 × 0.5)도 쓰기 0 · exit 1.
-  { day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"] },
+  //   `noDryRun` = 러너 `--dry-run` 때 이 항목은 부르지 않는다(세션696 B3 · BACKLOG 442 adv🟡6) — 수집기는 `--apply` 와 `--dry-run` 을
+  //   같이 못 받고 미리보기엔 `--impact-out` 이 꼭 필요해 덧붙이면 인자 오류였다. 미리보기는 수집기 단독 `--dry-run --impact-out=<경로>`.
+  { day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"], noDryRun: true },
   { day: 9, script: "collect-unsold-kosis.mjs" },
   { day: 10, script: "collect-fertility-rate.mjs" },
   // 세션603: 옛 "10일 토요일 → 11일 보충"(세션515 이식)을 지웠다. 전제("토요일 2u 실거래가와
@@ -320,6 +323,21 @@ export function describeEntry(e) {
   return `${when}${gate}: ${e.script}${args}`;
 }
 
+/**
+ * 한 항목을 어떻게 부를지 — 수집기 인자 또는 건너뜀 로그 한 줄(세션696 B3).
+ * 러너 `--dry-run` 이면 뒤에 `--dry-run` 을 덧붙이되, `noDryRun` 항목은 부르지 않는다(외부 호출 0 · 실패로 안 셈).
+ * @param {(typeof DAY_TABLE)[number]} entry
+ * @param {string} scriptPath
+ * @param {boolean} dryRun
+ * @returns {{ args: string[] } | { skip: string }}
+ */
+export function planEntryRun(entry, scriptPath, dryRun) {
+  if (dryRun && entry.noDryRun === true) {
+    return { skip: `⏭ ${entry.script} — --dry-run 미지원 — 건너뜀(미리보기는 수집기 단독 --dry-run --impact-out=<경로>)` };
+  }
+  return { args: [scriptPath, ...(entry.args ?? []), ...(dryRun ? ["--dry-run"] : [])] };
+}
+
 async function main() {
   loadEnv();
   const dryRun = process.argv.includes("--dry-run");
@@ -367,9 +385,13 @@ async function main() {
     for (const entry of dueEntries) {
       const script = entry.script;
       const scriptPath = path.join(COLLECTORS_DIR, script);
-      const args = [scriptPath, ...(entry.args ?? []), ...(dryRun ? ["--dry-run"] : [])];
+      const plan = planEntryRun(entry, scriptPath, dryRun);
+      if ("skip" in plan) {
+        log(PHASE, plan.skip);
+        continue;
+      }
       log(PHASE, `▶ ${script}${entry.args?.length ? ` ${entry.args.join(" ")}` : ""}`);
-      const res = spawnSync(process.execPath, args, { stdio: "inherit" });
+      const res = spawnSync(process.execPath, plan.args, { stdio: "inherit" });
       if (res.status !== 0) {
         failures.push(script);
         logError(PHASE, `${script} 실패 (exit ${res.status})`);

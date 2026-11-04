@@ -283,7 +283,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1868,7 +1868,8 @@ export const HOLD_REVIEW_MONTHS = 6;
  *   (g) 출처 없는 0(unsold 0 · unsold_source NULL)인데 근거 명단(docs/audits/zero-unsold-evidence.json) 밖인 단지
  *       — 따로 `checkUnsourcedZero`(조회·명단 파일이 달라 별도 fail-open 블록, 세션684)
  * 지자체 명단(govlist, 세션692 PR-4) 두 명단:
- *   (h-1) 기준월 + 6개월 + 여유(35일)가 지났는데 아직 govlist — KOSIS 가 덮었어야 한다((a) 와 같은 꼴, 숫자·비공개 모두)
+ *   (h-1) 기준월 + 6개월 + 여유(35일)가 지났는데 아직 govlist — KOSIS 가 덮었어야 한다((a) 와 같은 꼴 · 숫자 행 —
+ *         (h-2) 에 이미 걸린 수 비공개 행은 빼서 같은 단지에 두 번 울지 않는다(세션696 B5))
  *   (h-2) 수 비공개 등재(값 NULL)인데 명단 기준월(unsold_listed_as_of) + 6개월이 지남 — 새 달 명단으로 갱신 안 됨(여유 없음)
  *   (h-3) 기준월(unsold_as_of)이 빈 govlist — 만료를 못 재어 영구 존중된다((b) 와 같은 꼴 · 정상이면 0곳)
  * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
@@ -1987,7 +1988,11 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
 
   // (h) 지자체 명단(govlist, 세션692 PR-4 · 설계서 §7) — 열쇠 접두 `govexp:`·`govstale:` 은 (d) 의 `hold:` 와 겹치지 않는다
   const gov = rows.filter((r) => r?.unsold_source === "govlist" && r?.id);
-  const govExpired = gov.filter((r) => isApplyhomeExpired(r.unsold_as_of, graceNow, GOVLIST_EXPIRY_MONTHS) === true);
+  // (h-2) 명단 — (h-1) 보다 먼저 정한다: 수 비공개 행은 만료 다음 날 (h-2) 가 이미 울렸으므로 35일 뒤 (h-1) 에서 다시 세지 않는다
+  //   (세션696 B5 · BACKLOG 440 adv🟡4 — 같은 단지에 열쇠 둘로 두 번 울던 것). (h-1) 은 숫자 행 + (h-2) 에 안 걸린 행만.
+  const govHiddenStale = gov.filter((r) => r.unsold == null && isApplyhomeExpired(r.unsold_listed_as_of ?? r.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) === true);
+  const govHiddenStaleIds = new Set(govHiddenStale.map((r) => String(r.id)));
+  const govExpired = gov.filter((r) => !govHiddenStaleIds.has(String(r.id)) && isApplyhomeExpired(r.unsold_as_of, graceNow, GOVLIST_EXPIRY_MONTHS) === true);
   if (govExpired.length > 0) {
     issues.push({
       kind: "applyhome-unsold",
@@ -2014,7 +2019,6 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
       at: `govnodate:${fingerprintIds(idsOf(govNoDate))}`,
     });
   }
-  const govHiddenStale = gov.filter((r) => r.unsold == null && isApplyhomeExpired(r.unsold_listed_as_of ?? r.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) === true);
   if (govHiddenStale.length > 0) {
     issues.push({
       kind: "applyhome-unsold",
@@ -2176,7 +2180,8 @@ export function checkLocalFailures(rows, opts = {}) {
       detail: `status=failure · 성공 ${ok} · 실패 ${fail}${msg ? ` · ${msg.slice(0, 80)}` : ""} · ${when}`,
       lines: [
         `실패 비율 ${(ratio * 100).toFixed(1)}% (${fail}/${ok + fail}) — 성공 0건이거나 ${Math.round(ratioLimit * 100)}% 이상이면 알립니다.`,
-        `[조치] 로그 = ${name} 를 돌린 로컬 러너 로그 파일(naver-collect.log · kosis-local.log · childcare-local.log) / collector_runs.error_message`,
+        // 세션696 B7(g): failure 행은 GitHub Actions 수집기(예: infra = collect-infra.yml)도 남긴다 — 로컬 러너 로그만 가리키면 엉뚱하다
+        `[조치] 로그 = 로컬 러너 수집기면 러너 로그 파일(naver-collect.log · kosis-local.log · childcare-local.log) · GitHub Actions 수집기(예: infra → collect-infra.yml)면 그 워크플로 실행 로그 / collector_runs.error_message`,
       ],
       at: r.finished_at,
     });
@@ -3130,6 +3135,114 @@ export async function fetchTradeScopeFillCounts(sb = getSupabase()) {
     "apartments_flat 판정 범위",
   );
   return { statsTotal, statsScoped, viewTotal, viewScoped, viewJudged };
+}
+
+/**
+ * ⑥-c 시세 범위 빈칸(세션696 B8 · BACKLOG 382 「후속 2」 · 세션661 맹점 🟡7) — `trade_stats` 에서
+ * `cmp_fair_price` 가 있는데 `cmp_min` 이 빈 행 수는 0 이어야 한다. 수집기(`_trade-scope.mjs`)는 적정가를 정하는
+ * 모든 갈래(같은 면적·㎡당·동네 또래)에서 최저·최고를 같이 채우므로, 0 이 아니면 범위 계산이 깨진 것 —
+ * 화면은 오류 없이 범위 칩·범위 줄이 빠진 옛 모양으로 돌아간다. DB 접근 없는 순수 함수.
+ * @param {number} fairNoMin cmp_fair_price 있음 + cmp_min 빈칸 행 수
+ * @returns {Issue[]}
+ */
+export function checkTradeRangeGap(fairNoMin) {
+  if (!(fairNoMin > 0)) return [];
+  return [{
+    kind: "nulls",
+    collector: "시세 범위 칸 (cmp_min)",
+    detail: `trade_stats 적정가(cmp_fair_price)는 있는데 최저가(cmp_min)가 빈 행 ${fairNoMin}개 — 범위 계산 회귀 의심(기대 0)`,
+    lines: [
+      "수집기는 적정가를 정할 때 최저·최고를 늘 같이 채웁니다(scripts/collectors/_trade-scope.mjs). 빈 행은 범위 칩·시세 탭 범위 줄이 소리 없이 빠집니다.",
+      "[조치] 최근 trade-stats 회차 로그의 범위 건수(rangeN)·_trade-scope.mjs 의 cmp_min 채우는 줄을 확인",
+    ],
+  }];
+}
+
+/**
+ * ⑥-c 조회 — 개수만(head 1회). count 를 못 받거나 오류면 던진다(fail-open 이 실행 실패로 알린다).
+ * @param {any} [sb]
+ * @returns {Promise<number>}
+ */
+export async function fetchTradeRangeGapCount(sb = getSupabase()) {
+  const r = await sb.from("trade_stats").select("*", { count: "exact", head: true }).not("cmp_fair_price", "is", null).is("cmp_min", null);
+  if (r.error) throw new Error(`trade_stats 범위 빈칸 조회 실패: ${r.error.message}`);
+  if (r.count == null) throw new Error("trade_stats 범위 빈칸 개수를 못 받음(count=null)");
+  return r.count;
+}
+
+// ── ㉕ 기준일 상수 만료 예고(세션696 B6 · BACKLOG 365·453 A-23 · 세션675 맹점 검사관 처방) ─────────────
+/** ㉕ 만료 며칠 전부터 알리나 — 12/31 이 마지막 날이면 12/17(14일 전)부터. */
+export const RULE_EXPIRY_WARN_DAYS = 14;
+/**
+ * ㉕ 상수가 사는 파일 — **import 하지 않고 글자로 읽는다**: 감시는 `node scripts/monitor-collectors.mjs`(alias-loader 없음)로
+ * 도는데 `loanRules.ts` 는 TS + 확장자 없는 import(`./regulations`)라 일반 Node ESM 이 못 연다(audit-node-esm-chain 이 지키는
+ * 사슬과 같은 함정 — import 하면 감시 전체가 시작부터 죽는다). 글자와 실제 값이 같은지는 monitor-rule-expiry.test.mjs 가 맞댄다.
+ */
+const LOAN_RULES_URL = new URL("../src/constants/loanRules.ts", import.meta.url);
+const STRESS_UNTIL_RE = /^export const STRESS_RATE_LOCAL_UNTIL = "(\d{4}-\d{2}-\d{2})";\r?$/m;
+
+/**
+ * `src/constants/loanRules.ts` 의 `STRESS_RATE_LOCAL_UNTIL` 값을 글자로 읽는다 — 그 줄을 못 찾으면 던진다(이름·꼴이 바뀐 날 침묵하지 않게).
+ * @param {string} [text] 시험 주입용(생략하면 파일)
+ * @returns {string} "YYYY-MM-DD"
+ */
+export function readStressLocalUntil(text) {
+  const src = text ?? readFileSync(LOAN_RULES_URL, "utf8");
+  const m = STRESS_UNTIL_RE.exec(src);
+  if (!m) throw new Error("src/constants/loanRules.ts 에서 STRESS_RATE_LOCAL_UNTIL 줄을 못 찾음(이름·꼴이 바뀌었으면 ㉕ 도 같이 고칠 것)");
+  return m[1];
+}
+
+/**
+ * ㉕ 판정 — 상수의 마지막 유효일(until, KST 날짜)까지 남은 날 ≤ warnDays 이면 1건(지난 뒤에도 고칠 때까지 매일 — ⑤ 처럼 daily 리마인드).
+ * 오늘은 KST 날짜로 센다. now 를 밖에서 넣는다 — 시험이 실제 날짜에 기대면 12/17 부터 CI 가 빨개진다(원문 처방).
+ * 날짜가 없는 날(2026-02-30 등)이면 던진다.
+ * @param {string} until "YYYY-MM-DD"
+ * @param {Date} [now]
+ * @param {{ name?: string, file?: string, warnDays?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkRuleExpiry(until, now = new Date(), opts = {}) {
+  const name = opts.name ?? "STRESS_RATE_LOCAL_UNTIL";
+  const file = opts.file ?? "src/constants/loanRules.ts";
+  const warnDays = opts.warnDays ?? RULE_EXPIRY_WARN_DAYS;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(until);
+  if (!m) throw new Error(`${name} 값 꼴이 YYYY-MM-DD 가 아님: ${until}`);
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const last = Date.UTC(y, mo - 1, d);
+  const chk = new Date(last);
+  if (chk.getUTCFullYear() !== y || chk.getUTCMonth() !== mo - 1 || chk.getUTCDate() !== d) throw new Error(`${name} 값이 없는 날짜: ${until}`);
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const todayKst = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+  const left = Math.round((last - todayKst) / 86400000);
+  if (left > warnDays) return [];
+  return [{
+    kind: "rule-expiry",
+    collector: name,
+    detail: left >= 0
+      ? `${name}(${until})까지 ${left}일 남음 — 지방 스트레스 가산 0.75%p 유예가 끝납니다`
+      : `${name}(${until})가 ${-left}일 지났는데 상수가 그대로 — 잔금 계산기가 끝난 규칙으로 계산 중`,
+    lines: [
+      `금융위원회 12월 발표(스트레스 DSR 다음 단계)를 확인해 ${file} 의 STRESS_RATE_LOCAL·STRESS_RATE_LOCAL_UNTIL 을 고치는 PR 을 냅니다.`,
+      "2u 에도 알립니다(공책 shared/loan/log.md · BACKLOG A-23).",
+    ],
+    at: `until:${until}`,
+  }];
+}
+
+/**
+ * ㉕ 한 번 돌리기 — main 이 매일 부른다(runDailyGuardedChecks 밖: 그 열의 시험들이 실제 날짜에 따라 달라지지 않게).
+ * 읽기·판정 예외는 fail-open 이 실행 실패 1건으로 알린다.
+ * @param {{ now?: Date, readUntil?: () => string }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runRuleExpiryCheck(deps = {}) {
+  return runFailOpenCheck("㉕ 기준일 상수 만료 예고", async () => {
+    const until = (deps.readUntil ?? (() => readStressLocalUntil()))();
+    const is = checkRuleExpiry(until, deps.now ?? new Date());
+    console.log(`[monitor] ㉕ 기준일 상수 만료 예고: STRESS_RATE_LOCAL_UNTIL ${until} → 이상 ${is.length}건`);
+    return is;
+  });
 }
 
 /**
@@ -4378,10 +4491,11 @@ export async function runDailyGuardedChecks(deps = {}) {
     console.log(`[monitor] ㉔ 지자체 명단 점검: 실행 ${runs.length}행 · 명단 ${listRows.length}행 → 이상 ${govIssues.length}건`);
     return govIssues;
   }));
-  // ㉔-d 비공개 수 대조 — 따로 fail-open(재료 조회가 실패해도 ㉔-a·b·c 는 위에서 이미 돌았다 · 세션693 B5). ㉔ 자체가 실패했으면 침묵(이미 알림).
+  // ㉔-d 비공개 수 대조 — 따로 fail-open(재료 조회가 실패해도 ㉔-a·b·c 는 위에서 이미 돌았다 · 세션693 B5).
+  //   ㉔ 재료 조회 자체가 실패했으면 ㉔-d 도 결과를 못 낸 것 — 침묵하지 않고 실행 실패 1건(세션696 B4 · BACKLOG 442 adv-re🟡2).
   issues = issues.concat(await runFailOpenCheck("㉔-d 지자체 명단 비공개 수 대조", async () => {
     const g = /** @type {Awaited<ReturnType<typeof fetchGovlistHealth>> | null} */ (govInputs);
-    if (!g) return [];
+    if (!g) throw new Error("㉔ 재료 조회 실패로 비교를 못 함(같은 날 ㉔ 실행 실패 알림 참고)");
     if (g.hiddenError) throw new Error(g.hiddenError);
     const hidden = g.hidden;
     if (hidden?.liveError) console.log(`[monitor] ㉔-d 라이브 목록 JSON 가져오기 실패(비교만 건너뜀 · fail-open): ${hidden.liveError}`);
@@ -4751,12 +4865,15 @@ async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) 
  * ⑪ 대상 수집기별 최근 `REGION_UNRESOLVED_RUN_WINDOW` 행(error_message 포함, [0] 이 최신 — 판정은
  * 최신 행, 나머지는 dedup 구간 시작 찾기용). collector 별 개별 쿼리 — 전역 최신순 limit 은
  * 매일 도는 수집기가 자리를 차지해 월간 수집기 행이 잘린다(fetchExternalApiRuns 와 같은 이유).
+ * `ok_count` 는 ㉔-d 가 「굽기 뒤 실제로 썼나」(success 또는 ok>0)를 가르는 데 쓴다 — select 에서 빠지면
+ * partial+ok>0 실행 뒤에도 비교해 헛경보가 난다(세션696 B2 · monitor-govlist.test.mjs 가 지킨다).
  * @param {readonly string[]} names
- * @returns {Promise<Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null }>>>}
+ * @param {any} [sbArg] 시험 주입용(생략하면 운영 서비스 열쇠)
+ * @returns {Promise<Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null, ok_count?: number|null }>>>}
  */
-async function fetchRegionUnresolvedRuns(names) {
-  const sb = getSupabase();
-  /** @type {Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null }>>} */
+export async function fetchRegionUnresolvedRuns(names, sbArg = null) {
+  const sb = sbArg ?? getSupabase();
+  /** @type {Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null, ok_count?: number|null }>>} */
   const grouped = {};
   await Promise.all(
     names.map(async (name) => {
@@ -5097,6 +5214,14 @@ async function main() {
       return scopeIssues;
     }));
 
+    // ⑥-c 시세 범위 빈칸 — trade_stats 적정가 있음 + 최저가 빈칸 = 0 이어야 한다(세션696 B8 · BACKLOG 382). fail-open.
+    issues = issues.concat(await runFailOpenCheck("⑥-c 시세 범위 빈칸 점검", async () => {
+      const gap = await fetchTradeRangeGapCount();
+      const rangeIssues = checkTradeRangeGap(gap);
+      console.log(`[monitor] ⑥-c 시세 범위 빈칸: 적정가 있음 + 최저가 빈칸 ${gap}행(기대 0) → 이상 ${rangeIssues.length}건`);
+      return rangeIssues;
+    }));
+
     // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ㉒ 시세 이력 바닥 · ㉓ 검색 제외 안전선 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
@@ -5113,6 +5238,10 @@ async function main() {
       // ⑳ 청약홈 공고가 다른 단지 묶음에 같이 붙음(세션630) — 수집기 정리가 매주 지우므로 기준선 0. fail-open.
       issues = issues.concat(await runNoticeCrossBundleCheck());
     }
+
+    // ㉕ 기준일 상수 만료 예고 — STRESS_RATE_LOCAL_UNTIL 14일 전부터 매일(세션696 B6 · BACKLOG A-23). runDailyGuardedChecks 열 밖에
+    //    두는 이유 = 그 열의 시험들이 실제 날짜에 따라 달라지지 않게(시각은 밖에서 넣는다). fail-open.
+    issues = issues.concat(await runRuleExpiryCheck());
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
     //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를

@@ -21,6 +21,7 @@ import {
   fetchGovlistHiddenInputs,
   fetchGovlistHealthInputs,
   fetchGovlistListRows,
+  fetchRegionUnresolvedRuns,
   GOVLIST_LIST_MONTHS,
   GOVLIST_LIVE_META_URL,
   GOVLIST_LIVE_LIST_URL,
@@ -56,8 +57,20 @@ describe("⑫(h) 지자체 명단 — 만료 지남·갱신 안 됨", () => {
     expect(hIssues(rows, new Date("2027-05-04T03:00:00Z")).map((i) => i.at?.split(":")[0])).toEqual(["govstale"]);
     const later = hIssues(rows, new Date("2027-05-05T03:00:00Z"));
     expect(later.map((i) => i.at?.split(":")[0])).toEqual(["govexp", "govstale"]);
-    expect(later[0].detail).toContain("2곳"); // 숫자·비공개 둘 다
-    expect(later[1].detail).toContain("1곳"); // 비공개만
+    // 세션696 B5(BACKLOG 440 adv🟡4): 수 비공개 a 는 (h-2) 가 이미 울려 (h-1) 에서 빠진다 — 숫자 b 만(옛 기대 「2곳」은 같은 단지 두 번 울림)
+    expect(later[0].detail).toContain("1곳");
+    expect(later[0].detail).toContain("두류(b)");
+    expect(later[0].detail).not.toContain("두류(a)");
+    expect(later[1].detail).toContain("두류(a)"); // 비공개만
+    expect(later[1].detail).not.toContain("두류(b)");
+  });
+  it("세션696 B5 — 수 비공개 한 곳은 만료 다음 날부터 (h-2) 한 열쇠로만 운다(35일 뒤에도 (h-1) 열쇠가 새로 안 생김)", () => {
+    const rows = [gov({ id: "h" })]; // 기준월 2026-09-30 · 만료 2027-03-30
+    const keys = (/** @type {string} */ d) => hIssues(rows, new Date(d)).map((i) => i.at);
+    const first = keys("2027-03-31T03:00:00Z");
+    expect(first.map((k) => k?.split(":")[0])).toEqual(["govstale"]);
+    expect(keys("2027-05-05T03:00:00Z")).toEqual(first); // 옛 판정은 여기서 govexp 열쇠가 하나 더 생겨 다시 울렸다
+    expect(keys("2027-08-01T03:00:00Z")).toEqual(first);
   });
   it("dedup 지문 = 명단 id 정렬 해시 — 같은 명단은 같은 at, 순서만 바뀌어도 같고, 하나 늘면 바뀐다 · daily dedup · (d) 해소 판정과 안 섞임", () => {
     const now = new Date("2027-06-01T00:00:00Z");
@@ -452,6 +465,33 @@ describe("㉔ 배선", () => {
     const hidden = { viewHidden: 3, rawAsOf: ["2019-12-31"], live: { fetchedAt: "2020-01-01T18:05:00Z", listHidden: 2 } }; // 굽기 KST 01-02 03:05
     const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, now, fetchGovlistHealth: async () => ({ runs: [], listRows: [], hidden }) }));
     expect(issues.filter((i) => i.kind === "govlist-health").map((i) => i.detail.split(" ")[0])).toEqual(["GOVLIST_HIDDEN_MISMATCH"]);
+  });
+  it("세션696 B2(BACKLOG 442 adv-re2🟡1) — 운영 조회 fetchRegionUnresolvedRuns 가 ok_count 를 실어야 ㉔-d 가 굽기 뒤 partial+ok>0 실행을 「썼다」로 보고 건너뛴다", async () => {
+    const rows = [{ collector: GOVLIST_COLLECTOR, status: "partial", error_message: null, finished_at: "2026-12-07T20:30:00Z", ok_count: 3 }];
+    // select 한 칸만 돌려주는 가짜(PostgREST 와 같다 — 안 고른 칸은 안 온다)
+    const sb = {
+      from: () => {
+        /** @type {string[]} */ let cols = [];
+        /** @type {any} */ const api = {
+          select: (/** @type {string} */ c) => { cols = c.split(",").map((s) => s.trim()); return api; },
+          eq: () => api, order: () => api, limit: () => api,
+          then: (/** @type {any} */ ok, /** @type {any} */ bad) => Promise.resolve({
+            data: rows.map((r) => Object.fromEntries(cols.filter((c) => c in r).map((c) => [c, /** @type {any} */ (r)[c]]))),
+            error: null,
+          }).then(ok, bad),
+        };
+        return api;
+      },
+    };
+    const got = await fetchRegionUnresolvedRuns([GOVLIST_COLLECTOR], sb);
+    const last = got[GOVLIST_COLLECTOR][0];
+    expect(last.ok_count).toBe(3);
+    const h = { viewHidden: 58, rawAsOf: ["2026-11-30"], live: { fetchedAt: "2026-12-07T18:05:00Z", listHidden: 57 } };
+    expect(checkGovlistHiddenParity(h, new Date("2026-12-08T00:00:00Z"), last)).toEqual([]); // ok_count 가 빠지면 여기서 헛경보 1건
+  });
+  it("세션696 B4(BACKLOG 442 adv-re🟡2) — ㉔ 재료 조회가 실패하면 ㉔-d 도 침묵하지 않고 실행 실패 1건(㉔ 실패 1건과 따로)", async () => {
+    const issues = await runDailyGuardedChecks(/** @type {any} */ ({ ...quiet, fetchGovlistHealth: async () => { throw new Error("collector_runs 조회 실패"); } }));
+    expect(issues.filter((i) => i.kind === "check-failed").map((i) => i.detail.split(" 실행 실패")[0])).toEqual(["㉔ 지자체 명단 점검", "㉔-d 지자체 명단 비공개 수 대조"]);
   });
   it("텔레그램 문구 — 제목·조치가 있고 undefined 가 없다", () => {
     const text = formatIssue(checkGovlistSkips([run("GOVLIST_SKIP chungnam not_newer", "2026-12-08T00:00:00Z")])[0]);
