@@ -405,3 +405,44 @@ describe("만료 상수 정본 하나 (세션692 PR-4 · 691 적대 🟡3)", () 
     expect(src).toMatch(/import \{[^}]*\bGOVLIST_EXPIRY_MONTHS\b[^}]*\} from "\.\/_shared\.mjs";/);
   });
 });
+
+describe("미래 기준일(세션697 👤 결정 ① 「무시+경보」) — 만료와 같은 길 · 사유는 「미래 기준일」", () => {
+  it("이번 명단 기준일이 오늘(KST) 뒤면 skip_expired_source · 사유 = `as_of <기준일> = 미래 기준일(오늘 <KST 날짜>)`", () => {
+    const r = byId(run({ now: new Date("2026-09-29T12:00:00+09:00") }), "ah-2024000001");
+    expect(r.action).toBe("skip_expired_source");
+    expect(r.reasons).toEqual([`as_of ${AS_OF} = 미래 기준일(오늘 2026-09-29)`]);
+    expect(r.reasons[0]).not.toContain("개월 지남");
+  });
+  it("경계: 기준일 당일(KST 09-30 00:30)은 미래 아님 → 씀 · 하루 전 밤(KST 09-29 23:59)은 미래", () => {
+    expect(byId(run({ now: new Date("2026-09-30T00:30:00+09:00") }), "ah-2024000001").action).toBe("write_listed_hidden");
+    expect(byId(run({ now: new Date("2026-09-29T23:59:00+09:00") }), "ah-2024000001").action).toBe("skip_expired_source");
+  });
+  it("미등재 길(켬)도 미래 명단이면 skip_expired_source + 같은 사유 · 만료 사유 글자는 그대로", () => {
+    const fut = byId(run({ absentZero: true, now: new Date("2026-09-29T12:00:00+09:00") }), "ah-2024000009");
+    expect(fut).toMatchObject({ action: "skip_expired_source", reasons: [`as_of ${AS_OF} = 미래 기준일(오늘 2026-09-29)`] });
+    const exp = byId(run({ now: new Date("2027-03-31T00:30:00+09:00") }), "ah-2024000001");
+    expect(exp.reasons).toEqual([`as_of ${AS_OF} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`]);
+  });
+  it("기존 행의 미래 기준일 값은 존중하지 않는다 — 미래 청약홈은 skip_applyhome 아님 · 미래 명단은 「더 새 명단」·(e) 유효 명단이 아님", () => {
+    // 대조군(NOW = KST 11/02): 9월 청약홈은 지금처럼 skip_applyhome
+    expect(byId(run({ absentZero: true, zRow: { unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-09-01" } }), "ah-2024000009").action).toBe("skip_applyhome");
+    expect(byId(run({ absentZero: true, zRow: { unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-12-01" } }), "ah-2024000009").action).toBe("write_absent_zero");
+    // 「미등재 0」 꼴 명단 값(listed_as_of 없음) — 옛 판정이면 기준일이 이번 명단보다 「더 새」라 skip_newer_govlist, 그다음 (e) 유효 명단
+    const futGov = { unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: "2027-01-31", unsold_listed_as_of: null };
+    const r = byId(run({ absentZero: true, zRow: futGov }), "ah-2024000009");
+    expect(r.action).toBe("write_absent_zero");
+    expect(r.reasons).not.toContain("e_govlist_valid");
+    // 대조군: 같은 꼴의 과거(유효) 명단 값은 (e) 로 막힌다(옛 0 이라도 기준일이 이번과 같으면 ownOldZero 아님)
+    expect(byId(run({ absentZero: true, zRow: { ...futGov, unsold_as_of: AS_OF } }), "ah-2024000009").reasons).toContain("e_govlist_valid");
+  });
+  it("반대 방향(적대 🟡1) — 날짜 없는 값은 지금처럼 존중: 공고일 빈 청약홈 행을 명단에 실어도 skip_applyhome · 미등재 길도 같음 · 날짜 없는 govlist 는 (e) 유효", () => {
+    const listedZ = [res({}), res({ complex_no: 2, list_key: "daegu|달서구|z", bundle_key: "Z", apartment_id: "ah-2024000009" })];
+    const twoCx = [cx({}), cx({ complex_no: 2, list_key: "daegu|달서구|z" })];
+    const noDateAh = { unsold: 3, unsold_rate: 3, unsold_source: "applyhome", unsold_as_of: null };
+    expect(byId(run({ zRow: noDateAh, complexes: twoCx, results: listedZ }), "ah-2024000009")).toMatchObject({ action: "skip_applyhome", after: null });
+    expect(byId(run({ absentZero: true, zRow: noDateAh }), "ah-2024000009").action).toBe("skip_applyhome");
+    const r = byId(run({ absentZero: true, zRow: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: null, unsold_listed_as_of: null } }), "ah-2024000009");
+    expect(r.action).toBe("not_listed");
+    expect(r.reasons).toContain("e_govlist_valid");
+  });
+});

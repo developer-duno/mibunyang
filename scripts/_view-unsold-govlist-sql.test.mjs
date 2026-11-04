@@ -322,12 +322,13 @@ describe("20261102000002 VIEW 마이그 — 직전 VIEW 대비 바뀐 자리 3�
     expect(after.slice(0, 184)).toEqual(before);
     expect(after.slice(184)).toEqual(["unsoldSource", "unsoldListedHidden", "unsoldListedAsOf"]);
   });
-  it("security_invoker 를 CREATE 에 직접 명시 · DROP 없음 · 마지막은 NOTIFY pgrst · 가장 새 view 마이그", () => {
+  it("security_invoker 를 CREATE 에 직접 명시 · DROP 없음 · 마지막은 NOTIFY pgrst · 다음 판(20261104000000) 바로 앞 view 마이그", () => {
     expect(sql).toMatch(/CREATE OR REPLACE VIEW apartments_flat WITH \(security_invoker = on\) AS/);
     expect(code(sql)).not.toMatch(/DROP\s+VIEW/i);
     expect(sql.trim().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true);
     const views = readdirSync(new URL("../supabase/migrations/", import.meta.url)).filter((f) => f.endsWith(".sql") && f.includes("view") && !f.includes("rollback")).sort();
-    expect(views[views.length - 1]).toBe(NEW_NAME);
+    // 세션697: 가장 새 판은 FUTURE_NAME(아래 「20261104000000」 묶음이 잠금) — 이 판은 그 직전
+    expect(views[views.length - 2]).toBe(NEW_NAME);
     // 칸 마이그가 VIEW 마이그보다 앞 번호(적용 순서 — VIEW 가 새 칸을 읽는다)
     expect("20261102000000_unsold_gov_list.sql" < NEW_NAME).toBe(true);
   });
@@ -565,5 +566,92 @@ describe("되돌림 2개", () => {
       expect(f, name).toContain("govlist 아닌 행에 남은 unsold_listed_as_of·unsold_listed_total 값은 DROP COLUMN 으로 사라진다");
     }
     expect(rollback).toContain("감시 ⑩ 에 apartments_flat 변경 1 이 뜬다 = 예상된 차이");
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 세션697 👤 결정 ① 「무시+경보」 — 20261104000000 은 위 판(20261102000002) 본문에서 존중 조건 7곳에만 「기준일 <= 오늘(KST)」를 더한다.
+// 같은 해석기로 돌려 미래 기준일 행이 「만료」와 같은 길로 가는지 본다(수집기 쪽 같은 판정 = _shared.mjs asOfRespectState).
+// ─────────────────────────────────────────────────────────────────────────────
+const FUTURE_NAME = "20261104000000_view_unsold_future_asof.sql";
+const futureSql = readLf(`../supabase/migrations/${FUTURE_NAME}`);
+const futureRollback = readLf("../supabase/migrations/_rollbacks/20261104000001_rollback_view_unsold_future_asof.sql");
+const pickFut = compileBundleUnsold(futureSql);
+/** 존중 조건 한 덩어리(INTERVAL 비교) 정규식 — 세는 데 쓴다 */
+const RESPECT_RE = /[mg]\.unsold_as_of \+ INTERVAL '6 months' >= \(now\(\) AT TIME ZONE 'Asia\/Seoul'\)::date/g;
+const NOT_FUTURE_RE = /[mg]\.unsold_as_of <= \(now\(\) AT TIME ZONE 'Asia\/Seoul'\)::date/g;
+
+describe("20261104000000 VIEW 마이그 — 직전 판(20261102000002) 대비 존중 조건 7곳에 「기준일 <= 오늘」만 (세션697)", () => {
+  it("본문(주석 제거) = 직전 판 본문의 존중 조건 7곳 각각 바로 뒤에 같은 별칭의 「<= 오늘」을 붙인 것 — 그 밖은 한 글자도 다르지 않다", () => {
+    const hits = code(sql).match(RESPECT_RE) ?? [];
+    expect(hits).toHaveLength(7); // 직전 판의 존중 조건 수(리터럴 — 해석기·정규식이 실제로 세고 있다)
+    const expected = sql.replace(RESPECT_RE, (all) => `${all} AND ${all[0]}.unsold_as_of <= (now() AT TIME ZONE 'Asia/Seoul')::date`);
+    const now = viewLines(futureSql);
+    expect(now.length).toBeGreaterThan(250);
+    expect(now).toEqual(viewLines(expected));
+    expect(cteText(futureSql)).not.toEqual(cteText(sql));
+  });
+  it("「<= 오늘」 조건 수 = 존중 조건 수 = 7(하나라도 빠지면 그 자리만 미래 기준일을 존중한다)", () => {
+    const c = code(cteText(futureSql));
+    expect((c.match(RESPECT_RE) ?? []).length).toBe(7);
+    expect((c.match(NOT_FUTURE_RE) ?? []).length).toBe(7);
+  });
+  it("칸 187개 그대로 · security_invoker 명시 · DROP 없음 · NOTIFY 로 끝 · 가장 새 view 마이그", () => {
+    expect(selectCols(futureSql)).toEqual(selectCols(sql));
+    expect(futureSql).toMatch(/CREATE OR REPLACE VIEW apartments_flat WITH \(security_invoker = on\) AS/);
+    expect(code(futureSql)).not.toMatch(/DROP\s+VIEW/i);
+    expect(futureSql.trim().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true);
+    const views = readdirSync(new URL("../supabase/migrations/", import.meta.url)).filter((f) => f.endsWith(".sql") && f.includes("view") && !f.includes("rollback")).sort();
+    expect(views[views.length - 1]).toBe(FUTURE_NAME);
+  });
+  it("되돌림 20261104000001 = 직전 판(20261102000002) 본문 그대로 · CREATE OR REPLACE(DROP 없음) · NOTIFY 로 끝", () => {
+    expect(viewLines(futureRollback)).toEqual(viewLines(sql));
+    expect(code(futureRollback)).not.toMatch(/DROP\s+VIEW/i);
+    expect(futureRollback.trim().endsWith("NOTIFY pgrst, 'reload schema';")).toBe(true);
+  });
+});
+
+describe("20261104000000 bundle_unsold — 미래 기준일은 존중하지 않는다(해석기)", () => {
+  // TODAY = 2026-11-02(위 묶음과 같은 오늘)
+  it("경계: 기준일 = 오늘이면 유효(비공개가 kosis 를 이김 · 표시 켜짐) · 내일이면 미래(kosis 가 이김 · 표시 꺼짐)", () => {
+    const rows = (/** @type {string} */ asOf) => [
+      { id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: 52 },
+      { id: "k", unsold: 9, unsold_source: "kosis" },
+    ];
+    expect(pickFut(rows("2026-11-02"), "k", TODAY)).toMatchObject({ id: "g", b_listed_hidden: true });
+    expect(pickFut(rows("2026-11-03"), "k", TODAY)).toMatchObject({ id: "k", b_unsold: 9, b_listed_hidden: false });
+    // 직전 판은 미래 기준일 비공개를 이기게 뒀다(이 시험이 무엇을 막는지)
+    expect(pickNew(rows("2027-09-30"), "k", TODAY)).toMatchObject({ id: "g", b_listed_hidden: true });
+    expect(pickFut(rows("2027-09-30"), "k", TODAY)).toMatchObject({ id: "k", b_listed_hidden: false });
+  });
+  it("미래 청약홈 0 은 kosis 165 를 못 이긴다(직전 판은 이겼다)", () => {
+    const rows = [{ id: "a", unsold: 165, unsold_source: "kosis" }, { id: "b", unsold: 0, unsold_source: "applyhome", unsold_as_of: "2026-12-01" }];
+    expect(pickNew(rows, "a", TODAY).id).toBe("b");
+    expect(pickFut(rows, "a", TODAY)).toMatchObject({ id: "a", b_unsold: 165 });
+  });
+  it("미래 명단 행은 청약홈 벌점 근거가 아니다(EXISTS 안 조건) — 유효 청약홈 0 이 이김", () => {
+    const rows = [
+      { id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: "2027-01-31", unsold_listed_as_of: "2027-01-31", unsold_listed_total: 52 },
+      { id: "h", unsold: 0, unsold_source: "applyhome", unsold_as_of: "2026-10-15", competition_supply: 1 },
+      { id: "k", unsold: 9, unsold_source: "kosis" },
+    ];
+    expect(pickFut(rows, "k", TODAY)).toMatchObject({ id: "h", b_unsold: 0, b_unsold_source: "applyhome" });
+  });
+  it("미래 숫자 명단은 만료 숫자 명단과 같은 순위 1(hold 보다 앞) · 미래 비공개 혼자면 이겨도 표시 꺼짐", () => {
+    const futNum = { id: "g", unsold: 4, unsold_source: "govlist", unsold_as_of: "2027-03-31" };
+    expect(pickFut([futNum, { id: "h", unsold: null, unsold_source: "hold", unsold_as_of: "2026-10-01" }], "h", TODAY).id).toBe("g");
+    expect(pickFut([{ id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: "2027-03-31" }], "g", TODAY)).toMatchObject({ b_listed_hidden: false });
+  });
+  it("미래 행이 없는 묶음은 직전 판과 같은 행·같은 값(위 묶음의 사례 전부)", () => {
+    const cases = [
+      [{ id: "a", unsold: 165, unsold_source: "kosis" }, { id: "b", unsold: 0, unsold_source: "applyhome", unsold_as_of: "2026-10-15" }],
+      [{ id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_as_of: "2026-09-30", unsold_listed_total: 52 }, { id: "h", unsold: 0, unsold_source: "applyhome", unsold_as_of: "2026-10-15", competition_supply: 26 }],
+      [{ id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: "2026-05-02" }, { id: "k", unsold: 9, unsold_source: "kosis" }],
+      [{ id: "a", unsold: null, unsold_source: "hold", unsold_as_of: "2026-10-01" }, { id: "g", unsold: null, unsold_source: "govlist", unsold_as_of: "2026-09-30" }],
+      [{ id: "a", unsold: 7, unsold_source: "applyhome", unsold_as_of: "2026-08-01", competition_supply: 7 }, { id: "b", unsold: 4, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_total: 40 }],
+    ];
+    for (const rows of cases) for (const mat of ["a", "b", "g", "h", "k"]) {
+      expect(pickFut(rows, mat, TODAY), JSON.stringify(rows)).toEqual(pickNew(rows, mat, TODAY));
+    }
   });
 });

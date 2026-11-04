@@ -24,7 +24,7 @@
  *   `--resume` 의 이미 쓴 숫자 행에만 `unsold_history` 점 1개씩(base_month = 기준일의 YYYYMM · unsold_count = 묶음 Σ). 비공개·미등재→0 은 점 없음.
  *   쓰기 전에 그 열쇠의 지금 행을 `history-before-<출처>-<ts>.json` 으로 뜬다(없으면 null). 실패하면 `GOVLIST_WRITE history_fail <N>` · failure
  *   (apartments 는 이미 썼으니 되돌리지 않는다). dry-run 은 출처마다 `historyPoints`(쓸 점 수)만 impact 에 싣는다.
- * - 표식(`collector_runs.error_message`): `GOVLIST_SKIP <source> <이유>`(fetch · header · rows0 · not_newer) · `GOVLIST_BREAKER …` ·
+ * - 표식(`collector_runs.error_message`): `GOVLIST_SKIP <source> <이유>`(fetch · header · future(세션697 — 기준일이 오늘 KST 뒤) · rows0 · not_newer) · `GOVLIST_BREAKER …` ·
  *   `GOVLIST_PLAN_MISMATCH …` · `GOVLIST_WRITE …`.
  * - 외부 호출: 출처마다 3회(목록·글·첨부). 공공데이터 API·카카오 0. DB 는 읽기(apartments·applyhome_unit_supply·presale_schedule_official·unsold_gov_list).
  * - 반영 잠금 `GOVLIST_APPLY_ENABLED` — **PR-4b 에서 풀림(true)**. PR-4(KOSIS 가 govlist 를 존중 · 시계열 건너뜀 · #861)를 합치기 전에
@@ -41,7 +41,7 @@
  */
 import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { resolve, dirname } from "node:path";
-import { ROOT, loadEnv, getSupabase, selectAll, log, logError, createReporter, recordCollectorRun, upsertBatch, today } from "./_shared.mjs";
+import { ROOT, loadEnv, getSupabase, selectAll, log, logError, createReporter, recordCollectorRun, upsertBatch, today, isAsOfFuture, kstDayOf } from "./_shared.mjs";
 import { fetchLatestGovlist, SOURCE_REGION, GovlistFetchError } from "./_govlist-fetch.mjs";
 import { parseGovlistWorkbook, GovlistParseError } from "./_govlist-parse.mjs";
 import { buildBundles, matchComplexes, parseMatchDecisions } from "./_govlist-match.mjs";
@@ -477,6 +477,9 @@ async function run(args, deps, { now, rpt, markers, matchMarkers, tally, sb, fin
     }
     if (file.titleAsOf && file.titleAsOf !== parsed.asOf) { skip(`header(글 제목 기준일 ${file.titleAsOf} ≠ 파일 본문 ${parsed.asOf})`); continue; }
     Object.assign(rep, { asOf: parsed.asOf, sheet: parsed.sheet, rows: parsed.rows.length, complexes: parsed.complexes.length, hidden: parsed.complexes.filter((c) => c.hidden).length, checks: parsed.checks, sggTotals: parsed.sggTotals, columns: parsed.columns.map((c) => c.key) });
+    // 세션697 👤 결정 ① 「무시+경보」 — 기준일이 오늘(KST) 뒤인 명단(파일 오기)은 명단 원표·apartments 어디에도 쓰지 않는다.
+    //   원표에 저장하면 그 미래 batch 가 「전 회차」가 돼 정상 달 명단이 전부 not_newer 로 막힌다(검사관 맹점 🟠1). 감시 ㉔-a 가 future 로 알린다.
+    if (isAsOfFuture(parsed.asOf, now) === true) { skip(`future(기준일 ${parsed.asOf} > 오늘 ${kstDayOf(now)})`); continue; }
     if (!parsed.rows.length) { skip("rows0"); continue; }
     tally.listRows += parsed.rows.length; // not_newer 달도 명단은 읽었다 — ⑤-a 가 「외부 원천 정상 · 바뀜만 0」으로 보게(A4)
     log(PHASE, `[${source}] ${parsed.asOf} 명단 — 면적대 줄 ${parsed.rows.length} · 단지 ${parsed.complexes.length}(비공개 ${rep.hidden}) · 소계 어긋남 ${parsed.checks.subtotalMismatch.length} · 합계 어긋남 ${parsed.checks.sectionMismatch.length}(원본 수식 — 경고) · 미분양>총분양 ${parsed.checks.unsoldOverTotal.length}`);

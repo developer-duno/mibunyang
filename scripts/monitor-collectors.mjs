@@ -25,6 +25,8 @@
  *      + ㉔-c 매칭 충돌 ≥1 · 판정 필요 수 증가(GOVLIST_MATCH) · ㉔-d VIEW 비공개 수 = 라이브 목록 JSON 비공개 수(+ 양성 대조군) · 명단 조회는 출처마다 최근 기준월 2개(세션693 PR-4b)
  *      + ㉔ 재료 조회가 실패하면 ㉔-d 도 실행 실패 1건(침묵하지 않음 · 세션696)
  *   ㉕ 기준일 상수 만료 — src/constants/loanRules.ts STRESS_RATE_LOCAL_UNTIL 만료 14일 전부터 고칠 때까지 매일(kind rule-expiry · 파일 글자로 읽음 · 세션696)
+ *   ㉖ 명단 총분양 상한 새 단지 — kosis-unsold 최근 실행의 KOSIS_LISTED_CAP 표식 id 중 그 전 실행 표식에 없던 것만(kind kosis-listed-cap · 같은 실행은 한 번만 · 세션697)
+ *   ⑫(i) 미래 기준일 — applyhome·govlist 인데 unsold_as_of 가 오늘(KST) 뒤인 행(⑫ 안 · 세션697 👤 결정 ① 「무시+경보」)
  *   ⑥-c 시세 범위 빈칸 — trade_stats 적정가(cmp_fair_price) 있음 + 최저가(cmp_min) 빈칸 > 0(⑥-b 바로 뒤 · 세션696)
  *
  * 모드:
@@ -38,10 +40,11 @@
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
 import { readFileSync } from "node:fs";
-import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS, HWASEONG_LAWD_CODES, parseSgisSidoMismatch, hasSgisFirstRunPending } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, isAsOfFuture, asOfRespectState, kstDayOf, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS, HWASEONG_LAWD_CODES, parseSgisSidoMismatch, hasSgisFirstRunPending } from "./collectors/_shared.mjs";
 import { isMissingTable } from "./collectors/_trade-deals.mjs";
 import { isLeaseUnit } from "../src/constants/leaseTypes.mjs";
 import { GOVLIST_DROP_RATIO } from "./collectors/_govlist-plan.mjs";
+import { parseListedCap } from "./collectors/collect-unsold-kosis.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -286,7 +289,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -1462,6 +1465,7 @@ export function checkGovlistSkips(runs, now = new Date()) {
     detail: `GOVLIST_SKIP 지자체 명단 건너뜀 — ${skips.map((s) => `${s.source}(${s.reason})`).join(" · ")}`,
     lines: [
       "이유: fetch = 누리집에서 파일을 못 받음 · header = 머리줄 글자가 바뀜 · rows0 = 행 0 · not_newer = 전 회차보다 새 기준월이 아님(게시 지연).",
+      ...(skips.some((s) => s.reason.startsWith("future(")) ? ["future = 명단 기준일이 오늘(KST)보다 뒤(파일·제목 오기) — 명단 원표·단지 값에 쓰지 않았습니다. 원문 파일의 기준일을 확인하세요(세션697)."] : []),
       `게시 지연(not_newer)은 저장된 기준일 + ${GOVLIST_LATE_DAYS}일이 지나야 알립니다.`,
       "그 출처 단지의 명단 값은 그대로 남고, 기준월 + 6개월이 지나면 KOSIS 가 다시 정합니다(⑫(h) 가 따로 알림).",
       ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
@@ -1625,7 +1629,8 @@ export function checkGovlistHiddenParity(h, now = new Date(), lastRun = null) {
   if (!h) return [];
   /** @type {Issue[]} */
   const issues = [];
-  const alive = h.rawAsOf.filter((a) => isApplyhomeExpired(a, now, GOVLIST_EXPIRY_MONTHS) === false);
+  // 「유효」만 — 미래 기준일 행은 VIEW 도 존중하지 않아 「수 비공개」 카드가 안 된다(세션697 · 그 행은 ⑫(i) 가 따로 알린다)
+  const alive = h.rawAsOf.filter((a) => asOfRespectState(a, now, GOVLIST_EXPIRY_MONTHS) === "valid");
   if (alive.length >= 1 && h.viewHidden === 0) {
     issues.push({
       kind: "govlist-health",
@@ -1633,7 +1638,7 @@ export function checkGovlistHiddenParity(h, now = new Date(), lastRun = null) {
       detail: `GOVLIST_HIDDEN_VIEW_ZERO 원표 govlist 비공개(유효) ${alive.length}행인데 VIEW 「수 비공개」 카드 0곳`,
       lines: [
         "VIEW apartments_flat 의 unsoldListedHidden 이 원표를 못 따라갑니다 — 묶음 순위(청약홈 값이 이김)·VIEW 정의 되돌림·만료 계산을 봅니다.",
-        "VIEW 정의 = supabase/migrations/20261102000002_view_unsold_govlist.sql(b_listed_hidden).",
+        "VIEW 정의 = supabase/migrations/20261104000000_view_unsold_future_asof.sql(b_listed_hidden · 운영 적용 대기 — 적용 전엔 20261102000002).",
       ],
       at: `hidview0:${fingerprintIds([`raw=${alive.length}`])}`,
     });
@@ -1823,6 +1828,9 @@ export const APPLYHOME_EXPIRY_ALERT_GRACE_DAYS = 35;
 /** ⑫ 경보 detail 에 펼칠 단지 수 — 나머지는 "외 N곳". */
 export const APPLYHOME_UNSOLD_SAMPLE_LIMIT = 8;
 
+/** ⑫(i) 미래 기준일 경보에 펼칠 id 수(세션697 지시 「앞 20개 + n」) — 나머지는 ", …". */
+export const FUTURE_ASOF_ID_LIMIT = 20;
+
 /**
  * ⑫(d) 사람 보류(hold) 기준 명단(세션570, 사장님 결정 2026-09-24 · 지금 21곳 — 세션686 두류 2행까지) — 세션569 가 "자료 없음"으로 비운 11곳.
  * + 세션571 대표 2행(사장님 결정 2026-09-24 ⓐ — 화면 대표 행의 0 도 근거 없음: 마지막 청약홈 기록이 2022 무순위 27/1·8/3, 이후 공고 없음).
@@ -1875,6 +1883,8 @@ export const HOLD_REVIEW_MONTHS = 6;
  *         (h-2) 에 이미 걸린 수 비공개 행은 빼서 같은 단지에 두 번 울지 않는다(세션696 B5))
  *   (h-2) 수 비공개 등재(값 NULL)인데 명단 기준월(unsold_listed_as_of) + 6개월이 지남 — 새 달 명단으로 갱신 안 됨(여유 없음)
  *   (h-3) 기준월(unsold_as_of)이 빈 govlist — 만료를 못 재어 영구 존중된다((b) 와 같은 꼴 · 정상이면 0곳)
+ * 미래 기준일(세션697 👤 결정 ① 「무시+경보」):
+ *   (i) applyhome·govlist 인데 기준일이 오늘(KST) 뒤 — id·기준일 앞 FUTURE_ASOF_ID_LIMIT(20)개 + n. (a)(h) 는 미래 행을 만료로 세지 않는다
  * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
  * (`ALWAYS_DEDUP_KINDS`, ⑨ 와 같은 방식).
  *
@@ -2032,6 +2042,23 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
         "이 단지는 다음 KOSIS 회차(매월 9일)부터 다시 KOSIS 추정으로 돌아갑니다.",
       ],
       at: `govstale:${fingerprintIds(idsOf(govHiddenStale))}`,
+    });
+  }
+  // (i) 미래 기준일(세션697 👤 결정 ① 「무시+경보」) — applyhome·govlist 인데 기준일이 오늘(KST) 뒤. 수집기·VIEW 는 존중하지 않고 KOSIS 로 보낸다.
+  //     (a)(h) 는 isApplyhomeExpired(미래 = false)를 그대로 써서 같은 행을 「만료」로 또 세지 않는다. 열쇠 접두 `future:` 는 `hold:` 와 겹치지 않는다.
+  const future = rows.filter((r) => (r?.unsold_source === "applyhome" || r?.unsold_source === "govlist") && r?.id && isAsOfFuture(r.unsold_as_of, now) === true);
+  if (future.length > 0) {
+    const byId = [...future].sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
+    const shown = byId.slice(0, FUTURE_ASOF_ID_LIMIT).map((r) => `${r.id}(${r.unsold_source} ${r.unsold_as_of})`);
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-asof",
+      detail: `(i) 기준일(unsold_as_of)이 오늘(KST ${kstDayOf(now)}) 뒤인 청약홈·지자체 명단 값 n=${future.length}: ${shown.join(", ")}${future.length > shown.length ? ", …" : ""}`,
+      lines: [
+        "미래 기준일 값은 존중하지 않습니다 — KOSIS 수집기(매월 9일)가 그 행을 다시 정하고, 화면(VIEW)도 단지별 실측으로 쓰지 않습니다.",
+        "기준일을 잘못 쓴 곳(명단 파서·손 반영·청약홈 공고일)을 찾아 고치세요 — 최근 kosis-unsold 로그의 [미래 기준일] 줄에 같은 명단이 있습니다.",
+      ],
+      at: `future:${fingerprintIds(idsOf(future))}`,
     });
   }
   return issues;
@@ -3248,6 +3275,85 @@ export async function runRuleExpiryCheck(deps = {}) {
   });
 }
 
+// ── ㉖ 명단 총분양 상한에 새로 걸린 단지(세션697 👤 결정 ② 「새로 걸린 단지만 알림」) ─────────────
+/** ㉖ 대상 수집기 — `collect-unsold-kosis.mjs` 의 PHASE 상수 그대로(`recordCollectorRun` 첫 인자). */
+export const KOSIS_UNSOLD_COLLECTOR = "kosis-unsold";
+
+/**
+ * ㉖ 판정 — `kosis-unsold` **가장 최근 실행 1행**의 `KOSIS_LISTED_CAP` 표식 id 중, 그 전 실행들(조회 창 = ⑪ 과 같은 24행 ≈ 2년)의
+ * 표식에 **한 번도 없던 id** 만 알림 1건. 처음 보는 id 가 없거나 최근 실행에 표식이 없으면 침묵.
+ * 같은 실행으로 이틀 이상 울리지 않는다 — `at` = 그 실행의 finished_at + 「항상 dedup」(`ALWAYS_DEDUP_KINDS`, ⑮·⑱ 과 같은 방식).
+ * 잘린 표식(앞 20개 + 「, …」): 보이는 id 끼리만 비교하고 문구에 「일부만 비교」를 밝힌다 — 이번 실행이 잘렸으면 안 보이는 id 는
+ * 판정 못 함(보이는 id 에 새 것이 없으면 침묵 — 단 이번 n 이 바로 전 표식 회차의 n 보다 크면 「n a→b 늘어남」 1건 · 세션697 보완 S6),
+ * 지난 실행이 잘렸으면 그때 안 보인 id 가 「처음 봄」으로 잡힐 수 있다.
+ * DB 접근 없는 순수 함수.
+ * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC, [0] 이 최신)
+ * @returns {Issue[]}
+ */
+export function checkListedCapNew(runs) {
+  const latest = runs[0];
+  if (!latest) return [];
+  const cur = parseListedCap(latest.error_message);
+  if (!cur || cur.ids.length === 0) return [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  let prevTruncated = false;
+  for (const r of runs.slice(1)) {
+    const p = parseListedCap(r.error_message);
+    if (!p) continue;
+    for (const id of p.ids) seen.add(id);
+    if (p.truncated) prevTruncated = true;
+  }
+  const fresh = cur.ids.filter((id) => !seen.has(id));
+  if (fresh.length === 0) {
+    // 잘린 표식(적대 🟡3 · 세션697 보완 S6): 보이는 20개가 다 본 것이어도 이번 n 이 바로 전 표식 회차의 n 보다 크면
+    //   앞 20개 밖에서 새로 걸린 단지가 있을 수 있다 — 1건(같은 회차 반복 금지는 같은 at 으로 그대로).
+    const prevCap = runs.slice(1).map((r) => parseListedCap(r.error_message)).find((p) => p != null) ?? null;
+    if (!cur.truncated || !prevCap || cur.n <= prevCap.n) return [];
+    return [{
+      kind: "kosis-listed-cap",
+      collector: KOSIS_UNSOLD_COLLECTOR,
+      detail: `KOSIS_LISTED_CAP 명단 총분양 상한 단지 수 늘어남 n ${prevCap.n}→${cur.n} — 앞 ${cur.ids.length}개 밖에서 새로 걸린 단지가 있을 수 있음(일부만 비교)`,
+      lines: [
+        `이번 실행 표식이 앞 ${cur.ids.length}개로 잘려(n=${cur.n}) 보이는 단지는 전부 전에 걸린 적이 있습니다 — 늘어난 ${cur.n - prevCap.n}곳은 그 회차 kosis-unsold 로그의 [명단 총분양 상한] 줄에서 확인하세요.`,
+        ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+      ],
+      at: `cap:${latest.finished_at ?? ""}`,
+    }];
+  }
+  /** @type {string[]} */
+  const partial = [];
+  if (cur.truncated) partial.push(`이번 실행 표식이 앞 ${cur.ids.length}개로 잘려(n=${cur.n}) 앞 ${cur.ids.length}개만 비교했습니다 — 나머지 ${cur.n - cur.ids.length}곳은 판정 못 함`);
+  if (prevTruncated) partial.push("지난 실행 표식 중 잘린 회차가 있어, 그때 안 보이던 단지가 「처음」으로 잡혔을 수 있습니다");
+  return [{
+    kind: "kosis-listed-cap",
+    collector: KOSIS_UNSOLD_COLLECTOR,
+    detail: `KOSIS_LISTED_CAP 명단 총분양 상한에 새로 걸린 단지 ${fresh.length}곳${partial.length ? "(일부만 비교)" : ""}: ${fresh.join(", ")}`,
+    lines: [
+      `이번 실행 상한 n=${cur.n} · 그 전 실행 ${runs.length - 1}행의 표식에 없던 단지만 적었습니다.`,
+      ...partial.map((s) => `일부만 비교: ${s}`),
+      ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+    ],
+    at: `cap:${latest.finished_at ?? ""}`,
+  }];
+}
+
+/**
+ * ㉖ 한 번 돌리기 — main 이 매일 부른다(runDailyGuardedChecks 밖 — ㉕ 와 같은 자리: 그 열의 주입 시험들이 새 조회를 몰라 운영 조회로 새지 않게).
+ * 조회는 ⑪ 과 같은 `fetchRegionUnresolvedRuns`(수집기 이름별 최근 24행). 예외는 fail-open 이 실행 실패 1건으로 알린다.
+ * @param {{ fetchRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns> }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runListedCapCheck(deps = {}) {
+  return runFailOpenCheck("㉖ 명단 총분양 상한 새 단지", async () => {
+    const runs = (await (deps.fetchRuns ?? fetchRegionUnresolvedRuns)([KOSIS_UNSOLD_COLLECTOR]))[KOSIS_UNSOLD_COLLECTOR] ?? [];
+    const is = checkListedCapNew(runs);
+    const cur = runs.length ? parseListedCap(runs[0].error_message) : null;
+    console.log(`[monitor] ㉖ 명단 총분양 상한 새 단지: 최근 실행 ${runs.length ? (cur ? `상한 n=${cur.n}` : "표식 없음") : "실행 없음"} → 이상 ${is.length}건`);
+    return is;
+  });
+}
+
 /**
  * ⑦ VIEW 의 시군구 조인(`rg`)으로 노출되는 컬럼 목록.
  *
@@ -3364,7 +3470,8 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
 // ⑮ kapt-window 도 at=최근 실행 finished_at — 같은 실행은 한 번만, 다음 회차가 또 건너뛰면 새로 울린다(세션589).
 // ⑱ sgis-map-* 도 at=그 실행의 finished_at — 같은 화요일 행은 한 번만, 다음 화요일 행이 또 그러면 새로 울린다(세션614 보완 W2).
 // ㉑ notice-markers 는 ⑪ 과 같은 지문(표식 이름+값 해시 @ 구간 시작) — 같은 내용이 이어지면 다음 날부터 침묵(세션632).
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers", "govlist-health"]);
+// ㉖ kosis-listed-cap 은 at=그 KOSIS 실행의 finished_at — 같은 회차는 한 번만, 다음 회차가 또 새 단지를 걸면 새로 울린다(세션697).
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers", "govlist-health", "kosis-listed-cap"]);
 
 /**
  * @param {Issue} issue
@@ -5245,6 +5352,8 @@ async function main() {
     // ㉕ 기준일 상수 만료 예고 — STRESS_RATE_LOCAL_UNTIL 14일 전부터 매일(세션696 B6 · BACKLOG A-23). runDailyGuardedChecks 열 밖에
     //    두는 이유 = 그 열의 시험들이 실제 날짜에 따라 달라지지 않게(시각은 밖에서 넣는다). fail-open.
     issues = issues.concat(await runRuleExpiryCheck());
+    // ㉖ 명단 총분양 상한에 새로 걸린 단지 — kosis-unsold 최근 실행 표식 중 처음 보는 id 만(세션697 👤 결정 ②). 같은 실행은 한 번만(항상 dedup). fail-open.
+    issues = issues.concat(await runListedCapCheck());
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
     //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를

@@ -539,6 +539,19 @@ describe("PR-4b(세션693) 평시 --apply — 첫 회차 막음 · 차단기 · 
     expect(db.tables.collector_runs?.[0]).toMatchObject({ status: "success", ok_count: 0, skip_count: 4 }); // 바뀜 0 이어도 명단은 읽음 → ⑤-a 침묵
     expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_SKIP daegu not_newer.* · GOVLIST_MATCH daegu /);
   });
+  it("세션697 S1 미래 기준일 명단(파일 09-30 · 오늘 KST 09-29) — 원표·apartments 쓰기 0 · GOVLIST_SKIP daegu future(…) 가 collector_runs 에 남음 · 다음 정상 달이 not_newer 로 막히지 않음", async () => {
+    const db = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4, "2026-08-31") });
+    const r = await go(routine, db, { now: new Date("2026-09-29T12:00:00+09:00") });
+    expect(r.wrote).toBe(0);
+    expect(db.writes.filter((w) => w.t !== "collector_runs")).toEqual([]); // 명단 원표(unsold_gov_list)·apartments·이력 쓰기 0
+    expect((db.tables.unsold_gov_list ?? []).map((/** @type {any} */ x) => x.as_of)).toEqual(Array(4).fill("2026-08-31")); // 미래 batch 가 「전 회차」로 남지 않는다
+    expect(String(db.tables.collector_runs?.[0].error_message)).toMatch(/^GOVLIST_SKIP daegu future\(기준일 2026-09-30 > 오늘 2026-09-29\)/);
+    // 대조군: 같은 파일·같은 표가 다음 날(KST 09-30 = 기준일 당일)엔 미래가 아니어서 건너뛰지 않는다(쓰는 길로 간다)
+    const db2 = fakeDb({ ...seed(), unsold_gov_list: prevBatch(4, "2026-08-31") });
+    const r2 = await go(["--dry-run", `--impact-out=${resolve(dir, "i2.json")}`, "--source=daegu"], db2, { now: new Date("2026-09-30T00:30:00+09:00") });
+    expect(r2.impact.markers.filter((/** @type {string} */ m) => m.includes("future("))).toEqual([]);
+    expect(r2.impact.modes.off.plan.length).toBeGreaterThan(0);
+  });
   it("C4(B1g) main 의 차단기 재료 연결 — 진짜 계획에서 대구 값 바뀔 단지 11곳 → 쓰기 0 · GOVLIST_BREAKER · 10곳 → 10곳 반영", async () => {
     const run = async (/** @type {number} */ n) => {
       const db = fakeDb({ ...bigSeed(n), unsold_gov_list: prevBatch(n) });

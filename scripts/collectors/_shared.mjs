@@ -737,6 +737,51 @@ export function isApplyhomeExpired(asOf, now, months = APPLYHOME_EXPIRY_MONTHS) 
 }
 
 /**
+ * `now` 의 KST 날짜(YYYY-MM-DD) — 사유·로그 글자용(세션697). 판정은 아래 isAsOfFuture 가 정수로 한다.
+ * @param {Date} now
+ * @returns {string}
+ */
+export function kstDayOf(now) {
+  return new Date(now.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * 기준일이 오늘(KST 날짜)보다 뒤인가(세션697 👤 결정 ① 「무시+경보」 · BACKLOG 440 adv🟡3). 오늘 당일은 미래가 아니다.
+ * isApplyhomeExpired 는 미래 날짜에 false(= 6개월 넘게 영구 존중)를 주므로, 존중 판정은 이 함수와 함께 asOfRespectState 로 한다.
+ * 형식 검사는 isApplyhomeExpired 와 같다(`new Date()` 금지 · 정수 비교).
+ * @param {unknown} asOf `"YYYY-MM-DD"`
+ * @param {Date} now
+ * @returns {boolean | null} null = 비었거나 형식 불량
+ */
+export function isAsOfFuture(asOf, now) {
+  if (typeof asOf !== "string") return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asOf);
+  if (!m) return null;
+  const y = Number(m[1]), mo = Number(m[2]), d = Number(m[3]);
+  if (mo < 1 || mo > 12 || d < 1 || d > 31) return null;
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const nowKey = (kst.getUTCFullYear() * 12 + kst.getUTCMonth()) * 32 + kst.getUTCDate();
+  return (y * 12 + (mo - 1)) * 32 + d > nowKey;
+}
+
+/**
+ * 단지별 실측 값(applyhome 공고일 · govlist 명단 기준월)의 존중 상태 — 수집기의 존중 판정이 **이 함수 하나**를 같이 쓴다(세션697).
+ * "valid"·"no_date" = 존중(날짜 없음은 판정 불가라 존중 유지 — 호출부가 경고로 센다) · "expired"·"future" = 존중 안 함(KOSIS 가 정한다).
+ * VIEW apartments_flat 의 존중 조건(`unsold_as_of + INTERVAL 'N months' >= 오늘 AND unsold_as_of <= 오늘`)과 같은 뜻 — 시험이 맞댄다.
+ * 감시 ⑫(a)(h) 는 isApplyhomeExpired 를 그대로 써서 미래 행을 「만료」로 세지 않는다(미래 행은 ⑫(i) 가 따로 알린다).
+ * @param {unknown} asOf
+ * @param {Date} now
+ * @param {number} months
+ * @returns {"no_date" | "future" | "expired" | "valid"}
+ */
+export function asOfRespectState(asOf, now, months) {
+  const expired = isApplyhomeExpired(asOf, now, months);
+  if (expired == null) return "no_date";
+  if (expired) return "expired";
+  return isAsOfFuture(asOf, now) ? "future" : "valid";
+}
+
+/**
  * 공고일 빈 applyhome 행 마커의 머리말 — `collector_runs.error_message` 에 남긴다(REGION_UNRESOLVED 와
  * 같은 방식: status 는 그대로, 마커만). 공고일이 없으면 만료를 판정할 수 없어 **존중을 유지**하는데,
  * 조용히 넘기면 그 값이 영구 동결되므로 기록으로 올린다(data-changing-run-approval.md §4).
