@@ -1107,6 +1107,25 @@
           "*"
         ],
         "infra": [
+          "apartment_id",
+          "bank",
+          "bank_dist",
+          "cafe",
+          "cafe_dist",
+          "conv",
+          "conv_dist",
+          "culture",
+          "culture_dist",
+          "hospital",
+          "hospital_dist",
+          "kakao_updated_at",
+          "mart",
+          "mart_dist",
+          "park",
+          "park_dist",
+          "pharmacy",
+          "pharmacy_dist",
+          "subway_dist",
           "updated_at"
         ]
       },

@@ -96,9 +96,10 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
       const deps = { ...okDeps(), [dep]: async () => { throw new Error(`boom-${dep}`); } };
       const issues = await runDailyGuardedChecks(/** @type {any} */ (deps));
       const f = failed(issues);
-      expect(f).toHaveLength(1);
+      // ㉔ 재료 조회가 실패하면 ㉔-d 도 결과를 못 낸다 — 침묵하지 않고 따로 1건(세션696 B4 · BACKLOG 442 adv-re🟡2)
+      const extra = dep === "fetchGovlistHealth" ? ["㉔-d 지자체 명단 비공개 수 대조 실행 실패 — ㉔ 재료 조회 실패로 비교를 못 함(같은 날 ㉔ 실행 실패 알림 참고)"] : [];
+      expect(f.map((i) => i.detail)).toEqual([`${label} 실행 실패 — boom-${dep}`, ...extra]);
       expect(f[0].collector).toBe("monitor");
-      expect(f[0].detail).toBe(`${label} 실행 실패 — boom-${dep}`);
       expect(issues.length).toBeGreaterThan(0); // main 은 issues.length === 0 일 때만 "이상 없음"
       // daily 하루 1회 리마인드 대상 — "항상 dedup" 이면 둘째 날부터 조용해진다
       expect(isAlwaysDedup(f[0])).toBe(false);
@@ -125,6 +126,7 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
       "⑫(g) 출처 없는 0 근거 명단 점검",
       "⑬ 로컬 수집기 실패 점검", "⑭ 묶음 열쇠 칸 점검", "⑮ 2u 창 건너뜀 점검", "⑯ trade_deals 점검", "⑰ 연결 표 점검",
       "⑱ SGIS 매핑 표시 점검", "㉑ 청약홈 공고 정리 표식 점검", "㉒ 시세 이력 바닥 점검", "㉓ 검색 제외 안전선", "㉔ 지자체 명단 점검",
+      "㉔-d 지자체 명단 비공개 수 대조", // 세션696 B4 — ㉔ 재료가 없으면 ㉔-d 도 실행 실패(침묵 아님)
     ]);
   });
 });
