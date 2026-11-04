@@ -526,6 +526,9 @@ export function summarizePlanFold(plan) {
  * KOSIS 가 단지 값을 쓸 때의 UPDATE 내용(write·write_zero 공용). DB 접근 없는 순수 함수.
  * `unsold_as_of` 는 null 로 비운다(세션569 C6 검사관) — 만료된 applyhome 행을 덮을 때 출처 kosis 인 행에
  * 옛 공고일이 남으면 감시 ⑫·다음 판정이 그 날짜를 청약홈 값의 공고일로 오해한다.
+ * 명단 칸 2개(`unsold_listed_as_of`·`unsold_listed_total`)는 **일부러 싣지 않는다**(세션692 PR-4 · 검사관 적대 🟡1·맹점 🟡1) — 만료된 govlist 행을
+ * KOSIS 가 덮어도 명단 총분양은 안 바뀌는 사실이라 다음 회차의 상한(listedCapOf)이 계속 걸리게 남긴다. 마이그 20261102000000:136 의
+ * 「govlist 행에만」은 **쓰는 쪽**(govlist 수집기·backfill op) 규칙이고, 만료 뒤 남는 것은 상한 유지 목적이다(화면 VIEW 는 출처가 govlist 일 때만 그 칸을 본다).
  * @param {number | null} unsold
  * @param {number | null} unsoldRate
  * @param {string} [nowIso]

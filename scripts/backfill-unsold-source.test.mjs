@@ -755,8 +755,12 @@ describe("hold op 2종 추가 (세션692) — release_hold_to_govlist / mark_hol
       }),
     };
   }
-  /** @param {any[]} plan @param {Record<string, any>} liveDb @param {any[]} wheres */
-  async function applyPlan(plan, liveDb, wheres) {
+  /**
+   * @param {any[]} plan @param {Record<string, any>} liveDb @param {any[]} wheres
+   * @param {{ govlistApplyEnabled?: boolean } | null} [opts] 기본 = 잠금 풀림 흉내 · null = 옵션 없이 main() (수집기 상수 그대로)
+   * @param {{ apply?: boolean }} [mode] apply false = 미리보기(dry-run)
+   */
+  async function applyPlan(plan, liveDb, wheres, opts = { govlistApplyEnabled: true }, mode = { apply: true }) {
     const os = await import("node:os");
     const path = await import("node:path");
     const { writeFileSync: wf, rmSync } = await import("node:fs");
@@ -765,9 +769,61 @@ describe("hold op 2종 추가 (세션692) — release_hold_to_govlist / mark_hol
     selectAllMock.mockResolvedValueOnce(Object.entries(liveDb).map(([id, r]) => ({ id, unsold: r.unsold, unsold_rate: r.unsold_rate, unsold_source: r.unsold_source, unsold_as_of: r.unsold_as_of })));
     getSupabase.mockReturnValue(fakeStore(liveDb, wheres));
     const originalArgv = process.argv;
-    process.argv = [...originalArgv, `--plan=${planPath}`, "--apply"];
-    try { return /** @type {any} */ (await main()); } finally { process.argv = originalArgv; try { rmSync(planPath); } catch { /* noop */ } }
+    process.argv = [...originalArgv, `--plan=${planPath}`, ...(mode.apply ? ["--apply"] : [])];
+    try { return /** @type {any} */ (await (opts === null ? main() : main(opts))); } finally { process.argv = originalArgv; try { rmSync(planPath); } catch { /* noop */ } }
   }
+
+  it("⛔ 반영 잠금(GOVLIST_APPLY_ENABLED=false) — release_hold_to_govlist 가 든 계획의 --apply 는 쓰기 전에 던진다(쓰기 0 · DB 조회도 안 함)", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const start = { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-01" };
+    const liveDb = { "ah-2025910146": { ...start } };
+    /** @type {any[]} */ const wheres = [];
+    selectAllMock.mockClear();
+    await expect(applyPlan([buildHoldPlanRow("release_hold_to_govlist", { id: "ah-2025910146", date: "2026-09-30", listed_total: 52 })], liveDb, wheres, { govlistApplyEnabled: false }))
+      .rejects.toThrow(/release_hold_to_govlist 1행 — 지자체 명단 반영 잠금\(GOVLIST_APPLY_ENABLED=false\) 중이라 쓰지 않습니다\. PR-4b 잠금 해제 뒤/);
+    expect(wheres).toEqual([]);
+    expect(liveDb["ah-2025910146"]).toEqual(start);
+    expect(selectAllMock).not.toHaveBeenCalled();
+    selectAllMock.mockReset(); // 던져서 안 쓰인 mockResolvedValueOnce 가 다음 시험으로 새지 않게
+    // 기본값(opts 없음)은 수집기 상수 — 지금은 잠겨 있다(PR-4b 에서 켠다)
+    const { GOVLIST_APPLY_ENABLED } = await import("./collectors/collect-unsold-govlist.mjs");
+    expect(GOVLIST_APPLY_ENABLED).toBe(false);
+  });
+
+  it("⛔ 옵션 없이 부르면 기본값(수집기 GOVLIST_APPLY_ENABLED=false)이 그대로 잠근다 — throw · 쓰기 0", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const start = { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-01" };
+    const liveDb = { "ah-2025910254": { ...start } };
+    /** @type {any[]} */ const wheres = [];
+    selectAllMock.mockClear();
+    await expect(applyPlan([buildHoldPlanRow("release_hold_to_govlist", { id: "ah-2025910254", date: "2026-09-30", listed_total: 52 })], liveDb, wheres, null))
+      .rejects.toThrow(/PR-4b 잠금 해제 뒤/);
+    expect(wheres).toEqual([]);
+    expect(liveDb["ah-2025910254"]).toEqual(start);
+    expect(selectAllMock).not.toHaveBeenCalled();
+    selectAllMock.mockReset(); // 던져서 안 쓰인 mockResolvedValueOnce 가 다음 시험으로 새지 않게
+  });
+
+  it("잠금 중에도 미리보기(dry-run)는 막지 않고 계획을 끝까지 대조한다 — 통과 1 · 쓰기 0", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const start = { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: "2026-11-01" };
+    const liveDb = { "ah-2025910146": { ...start } };
+    /** @type {any[]} */ const wheres = [];
+    const res = await applyPlan([buildHoldPlanRow("release_hold_to_govlist", { id: "ah-2025910146", date: "2026-09-30", listed_total: 52 })], liveDb, wheres, { govlistApplyEnabled: false }, { apply: false });
+    expect(res.toApply).toBe(1);
+    expect(res.mismatches).toBe(0);
+    expect(res.summary.release_hold_to_govlist.pass).toBe(1);
+    expect(wheres).toEqual([]);
+    expect(liveDb["ah-2025910146"]).toEqual(start);
+  });
+
+  it("반영 잠금 중에도 되돌림(mark_hold_from_govlist)은 보류로 돌아가는 안전 쪽이라 반영된다", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const liveDb = { "ah-2025910146": { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_as_of: "2026-09-30", unsold_listed_total: 52 } };
+    const res = await applyPlan([buildHoldPlanRow("mark_hold_from_govlist", { id: "ah-2025910146", date: "2026-11-01", listed_as_of: "2026-09-30" })], liveDb, [], { govlistApplyEnabled: false });
+    expect(res.applied).toBe(1);
+    expect(liveDb["ah-2025910146"].unsold_source).toBe("hold");
+  });
 
   it("--apply 왕복 — hold → govlist → hold 가 처음 상태로 돌아온다(가짜 저장소)", async () => {
     const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");

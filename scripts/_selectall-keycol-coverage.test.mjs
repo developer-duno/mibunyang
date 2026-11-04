@@ -84,6 +84,8 @@ export const KNOWN_UNIQUE_KEYS = {
   trade_deals: "id",
   trade_stats: "apartment_id",
   transport: "apartment_id",
+  // `id bigserial PRIMARY KEY`(20261102000000_unsold_gov_list.sql:45, 세션692 — 감시 ㉔ fetchGovlistHealthInputs).
+  unsold_gov_list: "id",
   // `id SERIAL PRIMARY KEY`(supabase/schema.sql·init 마이그레이션 실측, 세션578 — cleanup-unsold-history-by-ids).
   unsold_history: "id",
 };

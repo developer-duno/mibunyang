@@ -2213,6 +2213,20 @@ describe("govlist 존중·시계열 건너뜀·명단 총분양 상한 (세션69
       const plan = mod.planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap, now: NOW_IN });
       expect(plan.map((/** @type {any} */ p) => [p.id, p.newEstimate, p.capped])).toEqual([["a", 165, false], ["b", 835, false]]);
     });
+    it("만료 govlist 를 KOSIS 가 덮은 뒤에도 명단 총분양이 남아 다음 회차 상한이 걸린다(쓰기 내용에 명단 칸 없음 · 세션692 보완 S4)", () => {
+      const now = new Date("2026-10-09T01:00:00Z");
+      const row = { ...base, id: "ah-g", units: 433, unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-03-31", unsold_listed_total: 52 };
+      const other = { ...base, id: "ot", name: "다른", units: 2192 };
+      const first = mod.planUnsoldUpdates({ apartments: [row, other], unsoldByRegionGu: guMap, now }).find((/** @type {any} */ p) => p.id === "ah-g");
+      expect([first.action, first.newEstimate, first.capped]).toEqual(["write", 52, true]);
+      const payload = mod.kosisWritePayload(first.newEstimate, first.newRate, "2026-10-09T01:00:00.000Z");
+      expect(Object.keys(payload).sort()).toEqual(["unsold", "unsold_as_of", "unsold_rate", "unsold_source", "updated_at"]);
+      // DB 가 payload 만 덮은 다음 달 — 출처 kosis · 명단 총분양 52 그대로 → 여전히 상한
+      const after = { ...row, ...payload };
+      expect([after.unsold_source, after.unsold_listed_total]).toEqual(["kosis", 52]);
+      const second = mod.planUnsoldUpdates({ apartments: [after, other], unsoldByRegionGu: guMap, now: new Date("2026-11-09T01:00:00Z") }).find((/** @type {any} */ p) => p.id === "ah-g");
+      expect([second.action, second.newEstimate, second.capped, second.listedCap]).toEqual(["write", 52, true, 52]);
+    });
     it("50% 보류는 상한 전 추정으로 판정 — 상한이 믿을 수 없던 추정을 쓰게 만들지 않는다", () => {
       const apartments = [{ ...base, id: "a", units: 100, unsold_listed_total: 10 }, { ...base, id: "b", units: 66 }];
       const plan = mod.planUnsoldUpdates({ apartments, unsoldByRegionGu: { 대구: { 달서구: 100 } }, now: NOW_IN });

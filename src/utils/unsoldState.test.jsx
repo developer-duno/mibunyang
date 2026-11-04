@@ -53,19 +53,61 @@ const oldNearby = (/** @type {any} */ v) => {
   return "미분양 —";
 };
 /**
- * 옛 카드 칩(9cccd36a^ src/constants/cardChips.ts — PR-3 전)이 이 44곳에 만든 미분양 계열 칩 수(OPTS.nowYm 202611 고정).
- * 세션692: 옛 파일을 임시로 불러 두 모양 모두 칩 배열 전체가 지금 것과 같음을 확인하고 이 수를 적었다 — 지금 함수끼리 맞대지 않는다.
+ * 옛 카드 칩(9cccd36a^ src/constants/cardChips.ts — PR-3 전)이 이 44곳에 만든 칩 id 배열 전체(OPTS 그대로 · 세션692 PR-4 보완 S5).
+ * 지금 함수끼리 맞대지 않는다 — 옛 파일이 낸 값을 그대로 적었다. 같은 세션에 칩 배열 전체(글자·색까지)도 옛 함수와 같음을 확인했다.
+ * 칩 id 는 실행 시각과 무관(2026-11-04·2027-06-01·실제 시각 셋 다 같음)이라 시각을 고정하지 않는다.
+ * 재현: git show 9cccd36a^:src/constants/cardChips.ts > src/constants/__cardChipsOld.tmp.ts 뒤, 임시 시험에서
+ *   ROWS.map((r) => [r.id, oldBuild(r, calcAll(r, "live"), OPTS).map((c) => c.id)]) 를 찍어 이 표와 맞댄다(임시 파일 둘 다 지운다).
+ * 칩 규칙을 일부러 바꾼 PR 이면 이 표를 새로 찍되, 바뀐 행을 PR 본문에 적는다.
  */
-const OLD_UNSOLD_CHIP_TALLY = { moveInDone: 10, moveInLate: 20, moveInSoon: 10, moveInUnknown: 2, unsoldEvent: 30 };
-const UNSOLD_CHIP_IDS = new Set([
-  "moveInUnknown",
-  "moveInDone",
-  "moveInLate",
-  "moveInSoon",
-  "unsoldHigh",
-  "unsoldEvent",
-  "unsoldListedHidden",
-]);
+// 한 단지 한 줄(검토·대조용) — 포매터가 펼치지 않게:
+// prettier-ignore
+const OLD_CHIP_IDS = /** @type {Record<string, string[]>} */ ({
+  "ah-2025910101": ["presaleStage", "moveInSoon", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "parking", "exclusiveRatio", "noxiousFact", "unsoldEvent"],
+  "ap-6028727": ["presaleStage", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalkNear"],
+  "ah-2022910046": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "parkingHigh", "exclusiveHigh", "noxiousSafe", "crimeGood", "unsoldEvent"],
+  "ap-6028729": ["presaleStage", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "schoolLow"],
+  "ah-2024910225": ["presaleStage", "moveInSoon", "priceCompare", "locationInfo", "riskGrade", "parkingHigh", "exclusiveRatio", "crimeCaution", "unsoldEvent"],
+  "ap-6025734": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "exclusiveRatio", "crimeCaution"],
+  "ah-2020910030": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "parking", "exclusiveRatio", "dsrPass", "noxiousFact", "unsoldEvent"],
+  "ah-2020910004": ["moveInDone", "fairPriceDetail", "locationInfo", "riskGrade", "transitDev", "schoolWalkNear", "parkingHigh", "noxiousSafe", "unsoldEvent"],
+  "ah-2020910002": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "parkingLow", "corridor", "dsrPass", "noxiousFact", "unsoldEvent"],
+  "ah-2020910035": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "parking", "exclusiveHigh", "dsrPass", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ah-2020910006": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "exclusiveRatio", "noxiousNear", "crimeCaution", "unsoldEvent"],
+  "ah-2020910005": ["moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "transitDev", "schoolWalkNear", "parkingLow", "exclusiveRatio", "northFacing", "dsrPass", "noxiousFact", "crimeGood", "unsoldEvent"],
+  "ah-2020910003": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "jeonseRate", "parking", "exclusiveRatio", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ah-2020910001": ["moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "parkingLow", "exclusiveRatio", "dsrPass", "noxiousFact", "crimeGood", "unsoldEvent"],
+  "ap-6025745": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "exclusiveRatio"],
+  "ah-2021910039": ["presaleStage", "moveInDone", "fairPriceDetail", "locationInfo", "riskGrade", "competition", "transitDev", "schoolWalk", "parking", "exclusiveRatio", "noxiousSafe", "crimeCaution", "unsoldEvent"],
+  "ah-2021910164": ["presaleStage", "moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalkNear", "schoolLow", "parking", "exclusiveHigh", "dsrPass", "noxiousSafe", "crimeCaution", "unsoldEvent"],
+  "ap-6021085": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalkNear", "builderCredit", "noxiousFact", "crimeGood"],
+  "ap-6025993": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "exclusiveRatio", "noxiousFact", "crimeGood"],
+  "ap-6028711": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "dsrPass"],
+  "ah-2025910092": ["presaleStage", "moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "schoolLow", "parking", "exclusiveRatio", "crimeGood", "unsoldEvent"],
+  "ap-6026864": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "schoolLow", "exclusiveRatio", "noxiousSafe"],
+  "ah-2020910010": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "jeonseRate", "parking", "exclusiveRatio", "dsrPass", "noxiousFact", "crimeDanger", "unsoldEvent"],
+  "ah-2022930010": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalkNear", "jeonseRate", "parking", "exclusiveRatio", "noxiousFact"],
+  "ah-2020910036": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "jeonseRate", "parking", "exclusiveRatio", "heatLpg", "dsrPass", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ah-2021910022": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "schoolLow", "parking", "exclusiveRatio", "noxiousSafe", "unsoldEvent"],
+  "ah-2021910090": ["moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "schoolLow", "parking", "exclusiveRatio", "crimeCaution", "unsoldEvent"],
+  "ah-2020910008": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalk", "parking", "exclusiveHigh", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ap-6025318": ["presaleStage", "moveInSoon", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "exclusiveRatio", "noxiousFact"],
+  "ah-2020910007": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalkNear", "exclusiveRatio", "noxiousNear", "crimeCaution", "unsoldEvent"],
+  "ah-2021910010": ["moveInUnknown", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "parking", "exclusiveRatio", "heatLpg", "dsrPass", "builderCredit", "noxiousSafe", "crimeGood", "unsoldEvent"],
+  "ah-2022910075": ["moveInUnknown", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "jeonseRate", "parking", "exclusiveRatio", "heatLpg", "crimeGood", "unsoldEvent"],
+  "ap-6026176": ["moveInDone", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "parking", "exclusiveRatio", "builderCredit", "noxiousFact"],
+  "ap-6023608": ["presaleStage", "moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "parkingHigh", "exclusiveHigh", "dsrPass", "noxiousFact"],
+  "ah-2020910017": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "schoolLow", "jeonseRate", "parking", "exclusiveRatio", "dsrPass", "noxiousSafe", "crimeDanger", "unsoldEvent"],
+  "ah-2021930002": ["moveInLate", "fairPriceDetail", "locationInfo", "riskGrade", "schoolWalk", "schoolLow", "parking", "exclusiveRatio", "noxiousFact", "crimeDanger"],
+  "ah-2021910084": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "parking", "exclusiveRatio", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ah-2020910009": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalkNear", "jeonseRate", "parking", "exclusiveRatio", "dsrPass", "builderCredit", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ah-2021910042": ["presaleStage", "moveInLate", "priceCompare", "locationInfo", "riskGrade", "competition", "schoolWalk", "jeonseRate", "parkingLow", "exclusiveRatio", "corridor", "dsrPass", "noxiousFact", "crimeDanger", "unsoldEvent"],
+  "ah-2020910011": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "transitDev", "schoolWalkNear", "parking", "exclusiveRatio", "northFacing", "dsrPass", "noxiousFact", "crimeGood", "unsoldEvent"],
+  "ah-2024910040": ["presaleStage", "moveInSoon", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "parking", "exclusiveRatio", "builderCredit", "crimeDanger", "unsoldEvent"],
+  "ap-6023974": ["presaleStage", "moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalkNear", "jeonseRate", "parking", "exclusiveRatio", "builderCredit", "noxiousFact", "crimeDanger"],
+  "ah-2020910023": ["moveInLate", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "parking", "exclusiveRatio", "noxiousFact", "crimeCaution", "unsoldEvent"],
+  "ah-2020910014": ["moveInDone", "priceCompare", "locationInfo", "riskGrade", "schoolWalk", "jeonseRate", "parking", "exclusiveRatio", "noxiousFact", "crimeGood", "unsoldEvent"],
+});
 /** 옛 「미분양만 보기」 */
 const oldFilter = (/** @type {any} */ r) => Number(r.unsold ?? 0) > 0;
 /** 옛 scoreRisk 미분양률 info·detail(모름 쪽) */
@@ -186,8 +228,6 @@ describe("칸 없는 단지(운영 DB 적용 전) — 지금 화면과 같다 ·
   it.each(variants)("%s", (_name, shape) => {
     expect(ROWS.length).toBe(44);
     let sawUnknownRisk = 0;
-    /** @type {Record<string, number>} */
-    const chipTally = {};
     for (const raw of ROWS) {
       const r = /** @type {any} */ (shape)(raw);
       expect(countsAsUnsold(r), r.id).toBe(oldFilter(r));
@@ -201,7 +241,11 @@ describe("칸 없는 단지(운영 DB 적용 전) — 지금 화면과 같다 ·
         chips.map((c) => c.id),
         r.id
       ).not.toContain("unsoldListedHidden");
-      for (const c of chips) if (UNSOLD_CHIP_IDS.has(c.id)) chipTally[c.id] = (chipTally[c.id] ?? 0) + 1;
+      // 칩 id 배열 전체 = 옛 칩 함수가 낸 값(고정 스냅샷 — 세션692 PR-4 보완 S5 · BACKLOG A-28 (c))
+      expect(
+        chips.map((c) => c.id),
+        r.id
+      ).toEqual(OLD_CHIP_IDS[raw.id]);
       const lines = N.basicLinesNode(r).join("\n");
       expect(lines, r.id).not.toMatch(/비공개|명단/);
       const dev = withMissingText(UNSOLD_SPEC, r, computeDeviation(UNSOLD_SPEC, null, r.region, null));
@@ -215,7 +259,7 @@ describe("칸 없는 단지(운영 DB 적용 전) — 지금 화면과 같다 ·
     }
     // 양성 대조군 — 모름 경로를 실제로 지난 행이 있어야 위 단언이 의미가 있다
     expect(sawUnknownRisk).toBeGreaterThan(0);
-    // 미분양 계열 칩 수 = 옛 칩 함수가 낸 수(고정 기대값 — 세션692 PR-4, BACKLOG A-28 (c))
-    expect(Object.fromEntries(Object.entries(chipTally).sort())).toEqual(OLD_UNSOLD_CHIP_TALLY);
+    // 스냅샷 표가 44곳 전부를 덮는다(빠진 행은 위 단언이 undefined 와 맞대 빨강)
+    expect(Object.keys(OLD_CHIP_IDS).sort()).toEqual(ROWS.map((x) => String(x.id)).sort());
   });
 });
