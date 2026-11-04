@@ -96,7 +96,7 @@ const ACTION_GUIDE = {
   stale: "[조치] 워크플로 cron 트리거와 Actions 활성화 상태를 점검하고, 필요하면 수동으로 1회 실행하세요.",
   nulls: "[조치] 해당 수집기의 최근 run 로그와 소스 API 변경 여부를 확인하세요 (필드 누락·스키마 변경 의심).",
   "region-unresolved": "[조치] KOSIS 원문의 C1_NM 표기가 바뀌었는지 확인 — 통합 시도(전남광주 등)면 시군구로 가를 수 없어 값이 빠진다. 표기를 _shared.mjs REGION_MAP/resolveRegionName 에 반영하고 해당 수집기를 1회 재실행하세요 (룰: .claude/rules/collectors/admin-district-code-reform.md).",
-  "applyhome-unsold": "[조치] (a) 만료인데 청약홈 값: kosis-unsold 로그의 [C6 만료] 줄로 왜 안 덮였는지(매칭 실패·50% 보류·임대) 확인 / (b) 공고일 없음: 청약홈 원문 공고일을 backfill-unsold-source.mjs --plan= 으로 채움 / (c) 완판인데 값 남음: 그 값이 어느 회차 것인지 확인 (규칙 = collect-unsold-kosis.mjs shouldSkipKosisFill 머리말 C6).",
+  "applyhome-unsold": "[조치] (a) 만료인데 청약홈 값: kosis-unsold 로그의 [C6 만료] 줄로 왜 안 덮였는지(매칭 실패·50% 보류·임대) 확인 / (b) 공고일 없음: 청약홈 원문 공고일을 backfill-unsold-source.mjs --plan= 으로 채움 / (c) 완판인데 값 남음: 그 값이 어느 회차 것인지 확인 (규칙 = collect-unsold-kosis.mjs shouldSkipKosisFill 머리말 C6). (i) 미래 기준일 = 본문 id 의 기준일(unsold_as_of)을 고쳐 다시 반영(그 전까지 수집기·화면은 그 값을 존중하지 않음 · 세션697).",
   "kapt-window": "[조치] 그 회차의 러너 시작 시각(kosis-local.log · naver-collect.log)이 2u K-apt 창(scripts/collectors/_match-gates.mjs SIBLING_KAPT_WINDOWS_KST)과 겹쳤는지 보세요 — 놓친 날 보충·늦게 켜진 날이면 창 밖 시각에 그 수집기를 1회 다시 돌리고, 정기 시각이 늘 겹치면 러너 시각을 옮깁니다(scripts/monitor-collectors.mjs checkKaptWindowSkips).",
   "trade-deals-dup": "[조치] 같은 열쇠(코드|월|종류)에 실거래 회차(batch)가 둘 이상 남았습니다 — 위 줄의 완성/미완성을 보세요. 읽는 쪽은 가장 새 완성 batch 만 봅니다. 완성 batch 가 없으면 그 달을 --months 로 다시 수집하고, 회차가 겹쳤거나 죽었는지 collect-trades 로그의 'trade_deals' 줄로 확인합니다(scripts/collectors/_trade-deals.mjs saveDealsForKey).",
   "trade-deals-hwaseong": "[조치] 그 화성 코드로 실거래 API 를 1회 직접 불러 0건인지 보세요 — 0건이면 코드표(_shared.mjs HWASEONG_LAWD_CODES) 문제, >0 이면 수집기 결함입니다(.claude/rules/collectors/admin-district-code-reform.md §1).",

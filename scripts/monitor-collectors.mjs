@@ -1465,6 +1465,7 @@ export function checkGovlistSkips(runs, now = new Date()) {
     detail: `GOVLIST_SKIP 지자체 명단 건너뜀 — ${skips.map((s) => `${s.source}(${s.reason})`).join(" · ")}`,
     lines: [
       "이유: fetch = 누리집에서 파일을 못 받음 · header = 머리줄 글자가 바뀜 · rows0 = 행 0 · not_newer = 전 회차보다 새 기준월이 아님(게시 지연).",
+      ...(skips.some((s) => s.reason.startsWith("future(")) ? ["future = 명단 기준일이 오늘(KST)보다 뒤(파일·제목 오기) — 명단 원표·단지 값에 쓰지 않았습니다. 원문 파일의 기준일을 확인하세요(세션697)."] : []),
       `게시 지연(not_newer)은 저장된 기준일 + ${GOVLIST_LATE_DAYS}일이 지나야 알립니다.`,
       "그 출처 단지의 명단 값은 그대로 남고, 기준월 + 6개월이 지나면 KOSIS 가 다시 정합니다(⑫(h) 가 따로 알림).",
       ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
@@ -1637,7 +1638,7 @@ export function checkGovlistHiddenParity(h, now = new Date(), lastRun = null) {
       detail: `GOVLIST_HIDDEN_VIEW_ZERO 원표 govlist 비공개(유효) ${alive.length}행인데 VIEW 「수 비공개」 카드 0곳`,
       lines: [
         "VIEW apartments_flat 의 unsoldListedHidden 이 원표를 못 따라갑니다 — 묶음 순위(청약홈 값이 이김)·VIEW 정의 되돌림·만료 계산을 봅니다.",
-        "VIEW 정의 = supabase/migrations/20261104000000_view_unsold_future_asof.sql(b_listed_hidden).",
+        "VIEW 정의 = supabase/migrations/20261104000000_view_unsold_future_asof.sql(b_listed_hidden · 운영 적용 대기 — 적용 전엔 20261102000002).",
       ],
       at: `hidview0:${fingerprintIds([`raw=${alive.length}`])}`,
     });
@@ -3283,7 +3284,8 @@ export const KOSIS_UNSOLD_COLLECTOR = "kosis-unsold";
  * 표식에 **한 번도 없던 id** 만 알림 1건. 처음 보는 id 가 없거나 최근 실행에 표식이 없으면 침묵.
  * 같은 실행으로 이틀 이상 울리지 않는다 — `at` = 그 실행의 finished_at + 「항상 dedup」(`ALWAYS_DEDUP_KINDS`, ⑮·⑱ 과 같은 방식).
  * 잘린 표식(앞 20개 + 「, …」): 보이는 id 끼리만 비교하고 문구에 「일부만 비교」를 밝힌다 — 이번 실행이 잘렸으면 안 보이는 id 는
- * 판정 못 함(보이는 id 에 새 것이 없으면 침묵), 지난 실행이 잘렸으면 그때 안 보인 id 가 「처음 봄」으로 잡힐 수 있다.
+ * 판정 못 함(보이는 id 에 새 것이 없으면 침묵 — 단 이번 n 이 바로 전 표식 회차의 n 보다 크면 「n a→b 늘어남」 1건 · 세션697 보완 S6),
+ * 지난 실행이 잘렸으면 그때 안 보인 id 가 「처음 봄」으로 잡힐 수 있다.
  * DB 접근 없는 순수 함수.
  * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC, [0] 이 최신)
  * @returns {Issue[]}
@@ -3303,7 +3305,22 @@ export function checkListedCapNew(runs) {
     if (p.truncated) prevTruncated = true;
   }
   const fresh = cur.ids.filter((id) => !seen.has(id));
-  if (fresh.length === 0) return [];
+  if (fresh.length === 0) {
+    // 잘린 표식(적대 🟡3 · 세션697 보완 S6): 보이는 20개가 다 본 것이어도 이번 n 이 바로 전 표식 회차의 n 보다 크면
+    //   앞 20개 밖에서 새로 걸린 단지가 있을 수 있다 — 1건(같은 회차 반복 금지는 같은 at 으로 그대로).
+    const prevCap = runs.slice(1).map((r) => parseListedCap(r.error_message)).find((p) => p != null) ?? null;
+    if (!cur.truncated || !prevCap || cur.n <= prevCap.n) return [];
+    return [{
+      kind: "kosis-listed-cap",
+      collector: KOSIS_UNSOLD_COLLECTOR,
+      detail: `KOSIS_LISTED_CAP 명단 총분양 상한 단지 수 늘어남 n ${prevCap.n}→${cur.n} — 앞 ${cur.ids.length}개 밖에서 새로 걸린 단지가 있을 수 있음(일부만 비교)`,
+      lines: [
+        `이번 실행 표식이 앞 ${cur.ids.length}개로 잘려(n=${cur.n}) 보이는 단지는 전부 전에 걸린 적이 있습니다 — 늘어난 ${cur.n - prevCap.n}곳은 그 회차 kosis-unsold 로그의 [명단 총분양 상한] 줄에서 확인하세요.`,
+        ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+      ],
+      at: `cap:${latest.finished_at ?? ""}`,
+    }];
+  }
   /** @type {string[]} */
   const partial = [];
   if (cur.truncated) partial.push(`이번 실행 표식이 앞 ${cur.ids.length}개로 잘려(n=${cur.n}) 앞 ${cur.ids.length}개만 비교했습니다 — 나머지 ${cur.n - cur.ids.length}곳은 판정 못 함`);

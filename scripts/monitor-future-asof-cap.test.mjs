@@ -13,6 +13,7 @@ import { describe, it, expect } from "vitest";
 import {
   checkApplyhomeUnsold,
   checkGovlistHiddenParity,
+  checkGovlistSkips,
   checkListedCapNew,
   runListedCapCheck,
   KOSIS_UNSOLD_COLLECTOR,
@@ -66,9 +67,20 @@ describe("A5 — ⑫(i) 미래 기준일", () => {
     ], { now: NOW, holdBaseline: [] });
     expect(all.map((i) => i.detail.slice(0, 3))).toEqual(["(i)"]);
   });
+  it("세션697 보완 S5 — 알림 열쇠(at): 같은 행이면 같은 값 · 기준일만 바뀌어도 같은 값 · id 가 바뀌면 다른 값(매일 다시 울지 않게)", () => {
+    const at = (/** @type {Array<Record<string, any>>} */ rows) => future(rows)[0].at;
+    const a = [{ id: "ah-f", unsold: null, unsold_source: "govlist", unsold_as_of: "2027-09-30" }, { id: "ah-g", unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-12-01" }];
+    expect(at(a)).toBe(at(a.map((r) => ({ ...r }))));
+    expect(at([...a].reverse())).toBe(at(a)); // 순서 무관
+    expect(at([{ ...a[0], unsold_as_of: "2027-10-31" }, a[1]])).toBe(at(a)); // 기준일만 바뀜 → 같은 열쇠
+    expect(at([a[0], { ...a[1], id: "ah-h" }])).not.toBe(at(a)); // id 가 바뀜 → 새 열쇠
+    expect(at([a[0]])).not.toBe(at(a)); // 하나 빠짐 → 새 열쇠
+    expect(at(a)).toMatch(/^future:[0-9a-f]{8}$/); // 시각이 아니라 명단 지문
+  });
   it("텔레그램 문구에 undefined 가 없다", () => {
     const text = formatIssue(future([{ id: "ah-f", unsold: null, unsold_source: "govlist", unsold_as_of: "2027-09-30" }])[0]);
     expect(text).toContain("ah-f");
+    expect(text).toContain("(i) 미래 기준일 = 본문 id 의 기준일(unsold_as_of)을 고쳐 다시 반영"); // 세션697 보완 S2 — [조치] 줄
     expect(text).not.toContain("undefined");
   });
   it("㉔-d 양성 대조군은 유효 비공개만 — 미래 비공개 행만 있으면 VIEW 0 이어도 「VIEW 0」 경보 없음 · 유효 행이면 경보", () => {
@@ -129,8 +141,20 @@ describe("B4 — 잘린 표식은 「일부만 비교」", () => {
     expect(is[0].detail).toBe(`KOSIS_LISTED_CAP 명단 총분양 상한에 새로 걸린 단지 19곳(일부만 비교): ${ids25.slice(1, 20).join(", ")}`);
     expect(is[0].lines?.some((l) => l.includes("일부만 비교: 이번 실행 표식이 앞 20개로 잘려(n=25) 앞 20개만 비교했습니다 — 나머지 5곳은 판정 못 함"))).toBe(true);
   });
-  it("이번이 잘렸고 보이는 20개가 전부 본 것이면 조용(안 보이는 5곳은 판정 못 함 — 문구 없는 침묵)", () => {
-    expect(checkListedCapNew([run(ids25, "2026-11-09T00:10:00Z"), run(ids25.slice(0, 20), "2026-10-09T00:10:00Z")])).toEqual([]);
+  it("세션697 보완 S6 — 이번이 잘렸고 보이는 20개가 전부 본 것이어도 n 이 바로 전 표식 회차보다 크면 「늘어남」 1건(일부만 비교) · 같거나 줄면 조용", () => {
+    // 전 회차 n=20(안 잘림) → 이번 n=25(잘림): 늘어난 5곳은 앞 20개 밖 — 1건
+    const grown = checkListedCapNew([run(ids25, "2026-11-09T00:10:00Z"), run(ids25.slice(0, 20), "2026-10-09T00:10:00Z")]);
+    expect(grown.map((i) => i.detail)).toEqual(["KOSIS_LISTED_CAP 명단 총분양 상한 단지 수 늘어남 n 20→25 — 앞 20개 밖에서 새로 걸린 단지가 있을 수 있음(일부만 비교)"]);
+    expect(grown[0].kind).toBe("kosis-listed-cap");
+    expect(grown[0].at).toBe("cap:2026-11-09T00:10:00Z"); // 같은 회차 반복 금지 — 회차 열쇠 그대로
+    // 바로 전 「표식 회차」와 비교 — 사이의 표식 없는 회차는 건너뛴다
+    expect(checkListedCapNew([run(ids25, "2026-12-09T00:10:00Z"), run(null, "2026-11-09T00:10:00Z"), run(ids25.slice(0, 20), "2026-10-09T00:10:00Z")])).toHaveLength(1);
+    // 같은 n(25→25) · 줄어듦(30→25) → 조용
+    expect(checkListedCapNew([run(ids25, "2026-11-09T00:10:00Z"), run(ids25, "2026-10-09T00:10:00Z")])).toEqual([]);
+    const ids30 = Array.from({ length: 30 }, (_, i) => `ah-${String(i).padStart(2, "0")}`);
+    expect(checkListedCapNew([run(ids25, "2026-11-09T00:10:00Z"), run(ids30, "2026-10-09T00:10:00Z")])).toEqual([]);
+    // 이번이 안 잘렸으면(n ≤ 20) 보이는 게 전부라 n 이 늘어도 새 id 가 없으면 조용
+    expect(checkListedCapNew([run(ids25.slice(0, 20), "2026-11-09T00:10:00Z"), run(ids25.slice(0, 18), "2026-10-09T00:10:00Z"), run(ids25.slice(18, 20), "2026-09-09T00:10:00Z")])).toEqual([]);
   });
   it("지난 실행이 잘렸으면 그때 안 보인 단지가 새것으로 잡힐 수 있다고 밝힌다", () => {
     const is = checkListedCapNew([run(["ah-22"], "2026-11-09T00:10:00Z"), run(ids25, "2026-10-09T00:10:00Z")]);
@@ -141,6 +165,18 @@ describe("B4 — 잘린 표식은 「일부만 비교」", () => {
     const is = checkListedCapNew([run(["ap-2"], "2026-11-09T00:10:00Z"), run(["ap-1"], "2026-10-09T00:10:00Z")]);
     expect(is[0].detail).not.toContain("일부만 비교");
     expect(is[0].lines?.some((l) => l.includes("일부만 비교"))).toBe(false);
+  });
+});
+
+describe("세션697 보완 S1 — ㉔-a 가 명단 수집기의 future 건너뜀을 「게시 지연」이 아니라 「미래 기준일」로 알린다", () => {
+  it("GOVLIST_SKIP daegu future(…) → ㉔-a 1건 · future 설명 줄 · 게시 지연 문턱에 걸러지지 않음 · not_newer 만이면 future 줄 없음", () => {
+    const runs = [{ status: "success", finished_at: "2026-09-29T00:10:00Z", error_message: "GOVLIST_SKIP daegu future(기준일 2026-09-30 > 오늘 2026-09-29) · GOVLIST_MATCH daegu 판정필요 0{} 충돌 0" }];
+    const is = checkGovlistSkips(runs, new Date("2026-09-29T03:00:00Z"));
+    expect(is.map((i) => i.detail)).toEqual(["GOVLIST_SKIP 지자체 명단 건너뜀 — daegu(future(기준일 2026-09-30 > 오늘 2026-09-29))"]);
+    expect(is[0].lines?.some((l) => l.startsWith("future = 명단 기준일이 오늘(KST)보다 뒤"))).toBe(true);
+    const late = checkGovlistSkips([{ status: "success", finished_at: "2027-01-01T00:10:00Z", error_message: "GOVLIST_SKIP daegu not_newer(파일 2026-09-30 ≤ 저장된 2026-09-30)" }], new Date("2027-01-01T03:00:00Z"));
+    expect(late).toHaveLength(1);
+    expect(late[0].lines?.some((l) => l.startsWith("future ="))).toBe(false);
   });
 });
 

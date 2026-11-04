@@ -435,4 +435,14 @@ describe("미래 기준일(세션697 👤 결정 ① 「무시+경보」) — �
     // 대조군: 같은 꼴의 과거(유효) 명단 값은 (e) 로 막힌다(옛 0 이라도 기준일이 이번과 같으면 ownOldZero 아님)
     expect(byId(run({ absentZero: true, zRow: { ...futGov, unsold_as_of: AS_OF } }), "ah-2024000009").reasons).toContain("e_govlist_valid");
   });
+  it("반대 방향(적대 🟡1) — 날짜 없는 값은 지금처럼 존중: 공고일 빈 청약홈 행을 명단에 실어도 skip_applyhome · 미등재 길도 같음 · 날짜 없는 govlist 는 (e) 유효", () => {
+    const listedZ = [res({}), res({ complex_no: 2, list_key: "daegu|달서구|z", bundle_key: "Z", apartment_id: "ah-2024000009" })];
+    const twoCx = [cx({}), cx({ complex_no: 2, list_key: "daegu|달서구|z" })];
+    const noDateAh = { unsold: 3, unsold_rate: 3, unsold_source: "applyhome", unsold_as_of: null };
+    expect(byId(run({ zRow: noDateAh, complexes: twoCx, results: listedZ }), "ah-2024000009")).toMatchObject({ action: "skip_applyhome", after: null });
+    expect(byId(run({ absentZero: true, zRow: noDateAh }), "ah-2024000009").action).toBe("skip_applyhome");
+    const r = byId(run({ absentZero: true, zRow: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: null, unsold_listed_as_of: null } }), "ah-2024000009");
+    expect(r.action).toBe("not_listed");
+    expect(r.reasons).toContain("e_govlist_valid");
+  });
 });
