@@ -44,6 +44,28 @@ const DURYU = {
 // ── 옛 식(세션689 이전 코드 그대로) ──
 /** 옛 FIELD_META.unsold.fmt */
 const oldField = (/** @type {any} */ v) => (v != null && v > 0 ? `${v.toLocaleString("ko-KR")}세대` : "—");
+/** 옛 nearbyUnsoldText(인근 단지 칩 글자 — 9cccd36a^ src/utils/nearbyComplexes.mjs:76 그대로) */
+const oldNearby = (/** @type {any} */ v) => {
+  if (v == null) return "미분양 —";
+  const n = Number(v);
+  if (n > 0) return `미분양 ${n.toLocaleString("ko-KR")}세대`;
+  if (n === 0) return "분양 완료";
+  return "미분양 —";
+};
+/**
+ * 옛 카드 칩(9cccd36a^ src/constants/cardChips.ts — PR-3 전)이 이 44곳에 만든 미분양 계열 칩 수(OPTS.nowYm 202611 고정).
+ * 세션692: 옛 파일을 임시로 불러 두 모양 모두 칩 배열 전체가 지금 것과 같음을 확인하고 이 수를 적었다 — 지금 함수끼리 맞대지 않는다.
+ */
+const OLD_UNSOLD_CHIP_TALLY = { moveInDone: 10, moveInLate: 20, moveInSoon: 10, moveInUnknown: 2, unsoldEvent: 30 };
+const UNSOLD_CHIP_IDS = new Set([
+  "moveInUnknown",
+  "moveInDone",
+  "moveInLate",
+  "moveInSoon",
+  "unsoldHigh",
+  "unsoldEvent",
+  "unsoldListedHidden",
+]);
 /** 옛 「미분양만 보기」 */
 const oldFilter = (/** @type {any} */ r) => Number(r.unsold ?? 0) > 0;
 /** 옛 scoreRisk 미분양률 info·detail(모름 쪽) */
@@ -164,20 +186,22 @@ describe("칸 없는 단지(운영 DB 적용 전) — 지금 화면과 같다 ·
   it.each(variants)("%s", (_name, shape) => {
     expect(ROWS.length).toBe(44);
     let sawUnknownRisk = 0;
+    /** @type {Record<string, number>} */
+    const chipTally = {};
     for (const raw of ROWS) {
       const r = /** @type {any} */ (shape)(raw);
       expect(countsAsUnsold(r), r.id).toBe(oldFilter(r));
       expect(FIELD_META.unsold.fmt(r.unsold, r), r.id).toBe(oldField(r.unsold));
       expect(N.unsoldFieldText(r.unsold, r), r.id).toBe(oldField(r.unsold));
       // 인근 단지 칩 글자(세션689 메인 판정 ①) — 행을 넘겨도 옛 호출(행 없음)과 같은 글자
-      expect(nearbyUnsoldText(r.unsold, r), r.id).toBe(nearbyUnsoldText(r.unsold));
+      expect(nearbyUnsoldText(r.unsold, r), r.id).toBe(oldNearby(r.unsold));
       const res = /** @type {any} */ (calcAll(r, "live"));
       const chips = buildCardChips(r, res, OPTS);
       expect(
         chips.map((c) => c.id),
         r.id
       ).not.toContain("unsoldListedHidden");
-      expect(chips, r.id).toEqual(buildCardChips(raw, /** @type {any} */ (calcAll(raw, "live")), OPTS));
+      for (const c of chips) if (UNSOLD_CHIP_IDS.has(c.id)) chipTally[c.id] = (chipTally[c.id] ?? 0) + 1;
       const lines = N.basicLinesNode(r).join("\n");
       expect(lines, r.id).not.toMatch(/비공개|명단/);
       const dev = withMissingText(UNSOLD_SPEC, r, computeDeviation(UNSOLD_SPEC, null, r.region, null));
@@ -191,5 +215,7 @@ describe("칸 없는 단지(운영 DB 적용 전) — 지금 화면과 같다 ·
     }
     // 양성 대조군 — 모름 경로를 실제로 지난 행이 있어야 위 단언이 의미가 있다
     expect(sawUnknownRisk).toBeGreaterThan(0);
+    // 미분양 계열 칩 수 = 옛 칩 함수가 낸 수(고정 기대값 — 세션692 PR-4, BACKLOG A-28 (c))
+    expect(Object.fromEntries(Object.entries(chipTally).sort())).toEqual(OLD_UNSOLD_CHIP_TALLY);
   });
 });

@@ -136,7 +136,8 @@ export const UNSOLD_STATE_LABEL = Object.freeze({
 export const UNSOLD_DEVIATION_HIDDEN_TEXT = "비공개";
 
 /**
- * 상세 「미분양 세대」 값 — 원본 `FIELD_META.unsold.fmt` 이 이 함수를 그대로 부른다(정적 장도 같은 함수).
+ * 상세 「미분양 세대」 값 — 정적 장(`aptStaticBody.mjs` unsoldFieldText)이 이 함수를 부른다. 화면 상세 `FIELD_META.unsold.fmt`
+ * (`fieldMeta.ts` unsold.fmt)는 같은 판정·문구표를 따로 쓰는 쌍둥이라 두 글자가 같은지는 `aptStaticBody.test.jsx`(unsoldFieldText ↔ fmt)가 지킨다.
  * 숫자(1 이상)는 기존 꼴 `N세대`(천 단위 쉼표), 그 밖은 문구표.
  * @param {unknown} v @param {AptLike} [a]
  */

@@ -188,9 +188,10 @@ describe("A — collect-unsold-kosis main 배선 (소스)", () => {
 
   it("공고일 없음 마커가 collector_runs 기록에 실린다(성공 경로·실패 경로 둘 다)", () => {
     expect(src).toMatch(/noDateMarker = formatApplyhomeNoDate\(noDateIds\);/);
-    expect(src).toMatch(/errorMessage: joinRunMessage\(errorMessage, noDateMarker\)/);
+    // 세션692 PR-4: 지자체 명단 표식(govlistMarkers — 날짜 없는 govlist · 명단 총분양 상한)을 맨 뒤에 한 겹 더 잇는다 — 공고일 없음 표식은 그대로 실린다.
+    expect(src).toMatch(/errorMessage: joinRunMessage\(joinRunMessage\(errorMessage, noDateMarker\) \?\? null, govlistMarkers\)/);
     // 세션636 F6: 성공 기록은 묶음 첫 반영 표식과 공고일 없음 표식을 이어 싣는다(둘 다 없으면 { ok }).
-    expect(src).toMatch(/const successMessage = joinRunMessage\(bundleApplied \? KOSIS_BUNDLE_APPLIED_MARKER : null, noDateMarker\);/);
+    expect(src).toMatch(/const successMessage = joinRunMessage\(joinRunMessage\(bundleApplied \? KOSIS_BUNDLE_APPLIED_MARKER : null, noDateMarker\) \?\? null, govlistMarkers\);/);
     expect(src).toMatch(/successMessage \? \{ ok, errorMessage: successMessage \} : \{ ok \}/);
   });
 });

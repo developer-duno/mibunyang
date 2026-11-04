@@ -11,7 +11,7 @@
  * - ③ 미등재 → 0: 기본 꺼짐 · 대구·충남만 · 조건 (a)~(e) 전부(§5-③ 원문). dry-run 은 꺼짐·켬 두 계획을 같이 만든다.
  * - 만료(Q2 6개월): 이번 명단 기준일 + 6개월이 이미 지났으면 쓰지 않는다(`skip_expired_source`). 지난 명단 값의 만료 뒤 처리는 KOSIS(PR-4).
  */
-import { clampUnsoldRate, isApplyhomeExpired } from "./_shared.mjs";
+import { clampUnsoldRate, isApplyhomeExpired, GOVLIST_EXPIRY_MONTHS } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 
 /** @typedef {import("./_govlist-match.mjs").AptRow} AptRow */
@@ -27,10 +27,11 @@ import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
  */
 
 /**
- * govlist 값 존중 기간(개월) — 사장님 결정 Q2 「6개월」(11/02 01:1x).
- * ⚠️ PR-1 이 `_shared.mjs` 에 같은 값 `GOVLIST_EXPIRY_MONTHS` 를 넣는다(VIEW SQL 과 맞대는 시험 포함) — 합친 뒤 이 줄을 그 import 로 바꾼다.
+ * govlist 값 존중 기간(개월) — 사장님 결정 Q2 「6개월」(11/02 01:1x). 정본 = `_shared.mjs` GOVLIST_EXPIRY_MONTHS 하나(VIEW SQL ·
+ * KOSIS 수집기 · 감시 ⑫(h) 가 같은 상수 — `_view-unsold-govlist-sql.test.mjs` 가 VIEW 와 맞댄다). 세션692 PR-4 에서 이 파일의 쌍둥이 상수를 지우고
+ * 다시 내보내기만 한다(이 모듈에서 가져다 쓰던 시험·도구 호환).
  */
-export const GOVLIST_EXPIRY_MONTHS = 6;
+export { GOVLIST_EXPIRY_MONTHS };
 /** 바뀔 단지(묶음) 수 차단기(설계서 §5-⑥). */
 export const GOVLIST_BREAKER_MAX_BUNDLES = 50;
 /** 명단 행 수 급감 차단기 — 전 회차 대비 이 비율 미만이면 막는다(−50%). */

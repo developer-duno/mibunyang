@@ -55,6 +55,13 @@
  *                                   값이 지자체 명단과 어긋나 보류. 값·률을 계획에 적어 그 사이 KOSIS 가 바꾼 행은 덮지 않는다)
  *   - `release_hold_to_kosis`     expect `{unsold:null, unsold_source:"hold"}`
  *                                 → set `{unsold, unsold_rate, unsold_source:"kosis", unsold_as_of:null}` (mark_hold_from_kosis 되돌림)
+ *   - `release_hold_to_govlist`   expect `{unsold:null, unsold_source:"hold"}`
+ *                                 → set `{unsold:null, unsold_rate:null, unsold_source:"govlist", unsold_as_of:<명단 기준월>,
+ *                                   unsold_listed_as_of:<명단 기준월>, unsold_listed_total:<명단 총분양 Σ>}` (세션692 PR-4 — 지자체 명단 등재·수 비공개로
+ *                                   보류를 직행 해제. 두류 2행 첫 반영용. 총분양은 VIEW 50% 규칙·KOSIS 상한 재료라 같이 넣는다 — govlist 수집기 ② 와 같은 꼴)
+ *   - `mark_hold_from_govlist`    expect `{unsold:null, unsold_rate:null, unsold_source:"govlist", unsold_as_of:<명단 기준월>}`
+ *                                 → set `{unsold:null, unsold_rate:null, unsold_source:"hold", unsold_as_of:<보류 결정일>,
+ *                                   unsold_listed_as_of:null, unsold_listed_total:null}` (release_hold_to_govlist 되돌림 — 명단 칸 2개도 비운다)
  * ⚠️ 배포 순서: mark_hold 는 새 수집기 코드가 본 폴더에 pull 된 **뒤에만** 반영한다 — 옛 코드는 hold 를
  * '값 없음'으로 보고 다음 회차에 0 으로 덮고 출처까지 kosis 로 바꾼다(마이그 20260924000600 머리말).
  * 감시 ⑫(d) 기준 명단(monitor-collectors.mjs HOLD_BASELINE_IDS)도 같은 PR 에서 고친다.
@@ -110,10 +117,11 @@ export function checkPlanRow(row, dbRow) {
 
 /**
  * 사람 보류(hold) 계획 행을 계약(머리말 "세션570" 절) 그대로 만든다. DB 접근 없는 순수 함수.
- * @param {"mark_hold" | "release_hold_to_null" | "release_hold_to_applyhome" | "mark_hold_from_zero" | "release_hold_to_zero" | "mark_hold_from_zero_rate0" | "release_hold_to_zero_rate0" | "mark_hold_from_kosis" | "release_hold_to_kosis"} op
- * @param {{ id: string; name?: string; date?: string | null; unsold?: number; unsold_rate?: number; note?: string }} p
- *   date = mark_hold·mark_hold_from_* 의 보류 결정일 / release_hold_to_applyhome 의 공고일(YYYY-MM-DD)
+ * @param {"mark_hold" | "release_hold_to_null" | "release_hold_to_applyhome" | "mark_hold_from_zero" | "release_hold_to_zero" | "mark_hold_from_zero_rate0" | "release_hold_to_zero_rate0" | "mark_hold_from_kosis" | "release_hold_to_kosis" | "release_hold_to_govlist" | "mark_hold_from_govlist"} op
+ * @param {{ id: string; name?: string; date?: string | null; unsold?: number; unsold_rate?: number; listed_as_of?: string | null; listed_total?: number; note?: string }} p
+ *   date = mark_hold·mark_hold_from_* 의 보류 결정일 / release_hold_to_applyhome 의 공고일 / release_hold_to_govlist 의 명단 기준월(YYYY-MM-DD)
  *   unsold·unsold_rate = release_hold_to_applyhome·release_hold_to_kosis 의 set 값 / mark_hold_from_kosis 의 expect 값
+ *   listed_total = release_hold_to_govlist 의 명단 총분양 Σ(양의 정수 — DB CHECK > 0) / listed_as_of = mark_hold_from_govlist 의 expect 기준월
  * @returns {PlanRow & { note?: string }}
  */
 export function buildHoldPlanRow(op, p) {
@@ -167,6 +175,23 @@ export function buildHoldPlanRow(op, p) {
       ...head,
       expect: { unsold: null, unsold_source: "hold" },
       set: { unsold: p.unsold, unsold_rate: p.unsold_rate, unsold_source: "kosis", unsold_as_of: null },
+    };
+  }
+  if (op === "release_hold_to_govlist") {
+    if (!Number.isInteger(p.listed_total) || /** @type {number} */ (p.listed_total) <= 0) throw new Error(`${op}: listed_total(양의 정수) 필요 — ${p.id}`);
+    const asOf = needDate();
+    return {
+      ...head,
+      expect: { unsold: null, unsold_source: "hold" },
+      set: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: p.listed_total },
+    };
+  }
+  if (op === "mark_hold_from_govlist") {
+    if (typeof p.listed_as_of !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.listed_as_of)) throw new Error(`${op}: listed_as_of(YYYY-MM-DD) 필요 — ${p.id}`);
+    return {
+      ...head,
+      expect: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: p.listed_as_of },
+      set: { unsold: null, unsold_rate: null, unsold_source: "hold", unsold_as_of: needDate(), unsold_listed_as_of: null, unsold_listed_total: null },
     };
   }
   if (op === "release_hold_to_null") {

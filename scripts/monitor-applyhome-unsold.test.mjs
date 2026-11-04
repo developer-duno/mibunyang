@@ -112,9 +112,9 @@ describe("⑫ main 배선 (소스)", () => {
     expect(src).toMatch(/issues = issues\.concat\(await runDailyGuardedChecks\(\)\);/);
   });
 
-  it("조회는 applyhome·hold 출처만, 판정에 쓰는 칸을 모두 가져온다(세션570)", () => {
+  it("조회는 applyhome·hold·govlist 출처만, 판정에 쓰는 칸을 모두 가져온다(세션570 · 세션692 govlist)", () => {
     // 세션684: (f) 가 률을 보므로 unsold_rate 도 가져온다
-    expect(src).toContain('select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"])');
+    expect(src).toContain('select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, unsold_listed_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold", "govlist"])');
     expect(src).not.toContain('.eq("unsold_source", "applyhome")');
   });
 });

@@ -181,6 +181,7 @@ describe("runDailyGuardedChecks — ㉓ 가 매일 점검 묶음에 연결돼 �
     fetchSgisMapRun: async () => [],
     fetchNoticeRuns: async () => ({}),
     fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }),
+    fetchGovlistHealth: async () => ({ runs: [], listRows: [] }), // ㉔(세션692) — 운영 조회가 나가지 않게
     clearHoldAlertKeys: async () => {},
   };
   it("정상 기록 → ㉓ 이슈 0 · 조회 1회", async () => {

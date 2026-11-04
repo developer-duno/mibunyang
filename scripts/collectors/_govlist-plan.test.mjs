@@ -348,3 +348,16 @@ describe("G3·G4 거짓 0 길 막기(검사관 탐침 A·B·E 꼴)", () => {
     expect(r2.action).toBe("write_absent_zero");
   });
 });
+
+describe("만료 상수 정본 하나 (세션692 PR-4 · 691 적대 🟡3)", () => {
+  it("이 모듈의 GOVLIST_EXPIRY_MONTHS 는 _shared.mjs 것을 다시 내보낸 것 — 쌍둥이 상수가 돌아오면 빨강", async () => {
+    const shared = /** @type {any} */ (await import("./_shared.mjs"));
+    const plan = /** @type {any} */ (await import("./_govlist-plan.mjs"));
+    expect(plan.GOVLIST_EXPIRY_MONTHS).toBe(shared.GOVLIST_EXPIRY_MONTHS);
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./_govlist-plan.mjs", import.meta.url)), "utf8");
+    expect(src).not.toMatch(/export\s+const\s+GOVLIST_EXPIRY_MONTHS\s*=/);
+    expect(src).toMatch(/import \{[^}]*\bGOVLIST_EXPIRY_MONTHS\b[^}]*\} from "\.\/_shared\.mjs";/);
+  });
+});
