@@ -445,3 +445,75 @@ describe("아침 브리핑 연결부 — sendDailyBriefing 이 기록을 읽어 
     expect(body).toMatch(/\r?\n\s+seoThin,\r?\n/);
   });
 });
+
+// ── 새 단지는 안전선 셈에서 뺀다(👤 11/06 · 세션698) — 감시 ㉓ 호환 ─────────────
+// 기대값 출처: 11/06 운영 seo-thin.json(count 19 · applied false · cap 15 · newCount 칸 없음) + 결정 원문.
+const IDS19 = idList(19);
+/** 오늘 운영 파일 꼴(newCount 칸 없음 — 세션698 이전 빌드) */
+const OLD_LIVE_BODY = JSON.stringify({ count: 19, ids: IDS19, names: nameList(19), applied: false, cap: 15, bodyErrors: 0, bodyErrorIds: [], builtAt: "2026-11-05T18:39:51.000Z" });
+/** 세션698 이후 빌드 꼴 — 19곳 전부 새 단지라 applied true */
+const NEW_LIVE_BODY = JSON.stringify({ count: 19, ids: IDS19, names: nameList(19), applied: true, cap: 15, newCount: 19, newDays: 30, bodyErrors: 0, bodyErrorIds: [], builtAt: "2026-11-06T18:39:51.000Z" });
+
+describe("A5 parseSeoThin·checkSeoThin — newCount 칸(세션698)", () => {
+  it("옛 기록(newCount 없음 · count 19 · applied false) → 모양 오류 아님 · 종전처럼 안전선 초과 1건", () => {
+    const p = parseSeoThin(200, OLD_LIVE_BODY);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rec.newCount).toBeUndefined();
+    const issues = checkSeoThin(200, OLD_LIVE_BODY);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toBe("얇은 단지 19곳 > 안전선 15 — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심");
+  });
+  it("새 기록(19 · newCount 19 · applied true) → 정상 · newCount·newDays 를 읽는다 · 경고 0", () => {
+    const p = parseSeoThin(200, NEW_LIVE_BODY);
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rec).toMatchObject({ count: 19, newCount: 19, newDays: 30, applied: true });
+    expect(p.warnings).toEqual([]);
+    expect(checkSeoThin(200, NEW_LIVE_BODY)).toEqual([]);
+  });
+  it("newCount 가 있는데 applied 가 어긋나면(19·새 19·applied false) → 숫자가 서로 안 맞음", () => {
+    const body = JSON.stringify({ ...JSON.parse(NEW_LIVE_BODY), applied: false });
+    const issues = checkSeoThin(200, body);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toContain("숫자가 서로 안 맞음");
+    expect(issues[0].detail).toContain("새 단지 19");
+  });
+  it("newCount 모양이 틀리면 0 으로 셈 + 경고 — applied:true·count 19 면 숫자 안 맞음, count 5 면 정상", () => {
+    for (const bad of [20, -1, 1.5, "19"]) {
+      const issues = checkSeoThin(200, JSON.stringify({ ...JSON.parse(NEW_LIVE_BODY), newCount: bad }));
+      expect(issues).toHaveLength(1);
+      expect(issues[0].detail).toContain("숫자가 서로 안 맞음");
+    }
+    const p = parseSeoThin(200, JSON.stringify({ count: 5, ids: IDS5, names: nameList(5), applied: true, cap: 15, newCount: "x", newDays: 0 }));
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rec.newCount).toBeUndefined();
+    expect(p.rec.newDays).toBeUndefined();
+    expect(p.warnings.some((w) => w.startsWith("newCount 모양이 다름"))).toBe(true);
+    expect(p.warnings.some((w) => w.startsWith("newDays 모양이 다름"))).toBe(true);
+  });
+});
+
+describe("A6 알림·브리핑 문구 — 새 단지 수를 붙인다(세션698)", () => {
+  const BODY_25_8 = JSON.stringify({ count: 25, ids: idList(25), names: nameList(25), applied: false, cap: 15, newCount: 8, newDays: 30 });
+  it("㉓ 알림 detail = 「얇은 단지 25곳(새 단지 8 제외 17) > 안전선 15」", () => {
+    const issues = checkSeoThin(200, BODY_25_8);
+    expect(issues).toHaveLength(1);
+    expect(issues[0].detail).toBe("얇은 단지 25곳(새 단지 8 제외 17) > 안전선 15 — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심");
+  });
+  it("브리핑 미적용 줄 — newCount 있으면 새 단지 수, 없으면 옛 문구", () => {
+    const p = parseSeoThin(200, BODY_25_8);
+    expect(p.ok).toBe(true);
+    expect(seoThinBriefLine(p.ok ? p.rec : null)).toBe("🔎 검색 제외 미적용 — 얇은 단지 25곳(새 단지 8 제외 17) > 안전선 15");
+    expect(seoThinBriefLine({ count: 25, ids: idList(25), names: nameList(25), applied: false, cap: 15 })).toBe("🔎 검색 제외 미적용 — 얇은 단지 25곳 > 안전선 15");
+  });
+  it("A13 브리핑 적용 줄 — newCount>0 이면 괄호(수는 noindex 수 그대로) · 0·없음이면 옛 문구", () => {
+    const p = parseSeoThin(200, NEW_LIVE_BODY);
+    expect(p.ok).toBe(true);
+    expect(seoThinBriefLine(p.ok ? p.rec : null)).toBe(`🔎 검색 제외 19곳(새 단지 19 포함 · 안전선 셈 0/15): ${nameList(10).join(" · ")} 외 9곳`);
+    expect(seoThinBriefLine({ count: 19, ids: IDS19, names: nameList(19), applied: true, cap: 15, newCount: 12 }))
+      .toBe(`🔎 검색 제외 19곳(새 단지 12 포함 · 안전선 셈 7/15): ${nameList(10).join(" · ")} 외 9곳`);
+    expect(seoThinBriefLine({ count: 5, ids: IDS5, names: nameList(5), applied: true, cap: 15, newCount: 0 })).toBe(`🔎 검색 제외 5곳: ${nameList(5).join(" · ")}`);
+  });
+});

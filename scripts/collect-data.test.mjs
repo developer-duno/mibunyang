@@ -598,36 +598,47 @@ describe("상수 무결성", () => {
  * ⚠️ **`.range` 를 일부러 두지 않는다.** 호출이 무정렬 OFFSET 으로 되돌아가면 `range is not a function`
  * 으로 시끄럽게 깨진다 — 조용히 통과하면 그날 화면 JSON 에서 단지가 사라져도 아무도 모른다
  * (`unordered-pagination-loses-rows.md` 세션535 답습).
+ * 세션698: `apartments` 표(들어온 날짜 `id,created_at`)는 따로 받는다 — `aptRows` · 호출 기록 `aptCalls`·`aptSelects`.
  * @param {Array<Record<string, any>>} rows
+ * @param {Array<Record<string, any>>} [aptRows]
  */
-function makeFlatClient(rows) {
+function makeFlatClient(rows, aptRows = []) {
   const PAGE = 1000;
-  const calls = { orders: [], limits: [], gts: [] };
-  /** @param {string | null} afterId */
-  const page = (afterId) => {
-    const start = afterId == null ? 0 : rows.findIndex((r) => r.id === afterId) + 1;
-    return { data: rows.slice(start, start + PAGE), error: null };
+  /**
+   * @param {Array<Record<string, any>>} src
+   * @param {{ orders: any[], limits: any[], gts: any[] }} calls
+   */
+  const makeSelect = (src, calls) => {
+    /** @param {string | null} afterId */
+    const page = (afterId) => {
+      const start = afterId == null ? 0 : src.findIndex((r) => r.id === afterId) + 1;
+      return { data: src.slice(start, start + PAGE), error: null };
+    };
+    return vi.fn((/** @type {string} */ _cols) => ({
+      order: (/** @type {string} */ key, /** @type {any} */ opts) => {
+        calls.orders.push([key, opts]);
+        return {
+          limit: (/** @type {number} */ n) => {
+            calls.limits.push(n);
+            return {
+              gt: (/** @type {string} */ k, /** @type {any} */ cursor) => {
+                calls.gts.push([k, cursor]);
+                return Promise.resolve(page(cursor));
+              },
+              // 첫 페이지는 `.gt` 없이 그대로 await 된다 (thenable)
+              then: (/** @type {any} */ res, /** @type {any} */ rej) => Promise.resolve(page(null)).then(res, rej),
+            };
+          },
+        };
+      },
+    }));
   };
-  const selectMock = vi.fn(() => ({
-    order: (/** @type {string} */ key, /** @type {any} */ opts) => {
-      calls.orders.push([key, opts]);
-      return {
-        limit: (/** @type {number} */ n) => {
-          calls.limits.push(n);
-          return {
-            gt: (/** @type {string} */ k, /** @type {any} */ cursor) => {
-              calls.gts.push([k, cursor]);
-              return Promise.resolve(page(cursor));
-            },
-            // 첫 페이지는 `.gt` 없이 그대로 await 된다 (thenable)
-            then: (/** @type {any} */ res, /** @type {any} */ rej) => Promise.resolve(page(null)).then(res, rej),
-          };
-        },
-      };
-    },
-  }));
-  const fromMock = vi.fn(() => ({ select: selectMock }));
-  return { client: { from: fromMock }, fromMock, selectMock, calls };
+  const calls = { orders: [], limits: [], gts: [] };
+  const aptCalls = { orders: [], limits: [], gts: [] };
+  const selectMock = makeSelect(rows, calls);
+  const aptSelects = makeSelect(aptRows, aptCalls);
+  const fromMock = vi.fn((/** @type {string} */ table) => ({ select: table === "apartments" ? aptSelects : selectMock }));
+  return { client: { from: fromMock }, fromMock, selectMock, calls, aptSelects, aptCalls };
 }
 
 describe("supabaseOnlyMode", () => {
@@ -710,6 +721,56 @@ describe("supabaseOnlyMode", () => {
     const meta = JSON.parse(metaCall[1]);
     expect(meta.count).toBe(1565);
     expect(meta.phases.supabaseOnly).toEqual({ ok: true, count: 1565 });
+  });
+
+  it("세션698 A1: apartments 표 created_at 을 id 로 붙여 apartments.json·목록 행에 createdAt(ISO) — 상세 버킷엔 없음 · 짝 없으면 null", async () => {
+    process.env.SUPABASE_URL = "https://test.supabase.co";
+    process.env.SUPABASE_ANON_KEY = "test-anon";
+    vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("fetch must not be called"))));
+
+    const mockRows = Array.from({ length: 1565 }, (_, i) => ({ id: `ah-${i}`, name: `테스트단지${i}`, region: "서울", memberIds: [`ah-${i}`] }));
+    // A12 묶음: 대표 ah-2(11/05) 의 구성원 zz-old 가 2026-06 → 묶음 생성일 = 2026-06(옛 단지) ·
+    //   ah-3 의 구성원 zz-missing 은 apartments 에 행 없음 → 자기 날짜 · ah-4 는 memberIds 칸 없음 → 자기 날짜
+    mockRows[2].memberIds = ["ah-2", "zz-old"];
+    mockRows[3].memberIds = ["ah-3", "zz-missing"];
+    delete (/** @type {any} */ (mockRows[4])).memberIds;
+    // PostgREST 가 주는 꼴(마이크로초·+00:00) · ah-1564 는 apartments 에 행이 없다 · 목록에 없는 행 섞임
+    const aptRows = [
+      { id: "ah-0", created_at: "2026-11-05T03:12:34.123456+00:00" },
+      ...Array.from({ length: 1563 }, (_, i) => ({ id: `ah-${i + 1}`, created_at: "2026-01-01T00:00:00+00:00" })),
+      { id: "zz-extra", created_at: "2026-11-01T00:00:00+00:00" },
+      { id: "zz-old", created_at: "2026-06-10T00:00:00+00:00" },
+    ];
+    aptRows[2] = { id: "ah-2", created_at: "2026-11-05T00:00:00+00:00" };
+    aptRows[3] = { id: "ah-3", created_at: "2026-11-04T00:00:00+00:00" };
+    const flat = makeFlatClient(mockRows, aptRows);
+    mockCreateClient.mockReturnValue(flat.client);
+
+    await supabaseOnlyMode();
+
+    expect(flat.fromMock).toHaveBeenCalledWith("apartments");
+    expect(flat.aptSelects).toHaveBeenCalledWith("id,created_at");
+    // 고유키 커서(id) — 1,565행이라 2페이지
+    expect(flat.aptCalls.orders).toEqual([["id", { ascending: true }], ["id", { ascending: true }]]);
+
+    /** @param {string} suffix */
+    const bodyOf = (suffix) => JSON.parse(writeFileSpy.mock.calls.find((c) => String(c[0]).endsWith(suffix))?.[1] ?? "null");
+    for (const file of ["apartments.json", "apartments-list.json"]) {
+      const data = bodyOf(file).data;
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-0").createdAt).toBe("2026-11-05T03:12:34.123Z");
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-1").createdAt).toBe("2026-01-01T00:00:00.000Z");
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-1564").createdAt).toBeNull();
+      expect(data.some((/** @type {any} */ r) => r.id === "zz-extra")).toBe(false);
+      // A12 — 묶음 구성원 중 가장 이른 날짜(대표 11/05 · 구성원 2026-06 → 2026-06)
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-2").createdAt).toBe("2026-06-10T00:00:00.000Z");
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-3").createdAt).toBe("2026-11-04T00:00:00.000Z");
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-4").createdAt).toBe("2026-01-01T00:00:00.000Z");
+    }
+    const bucketCalls = writeFileSpy.mock.calls.filter((c) => /apartments-detail-16-\d+\.json$/.test(String(c[0])));
+    expect(bucketCalls).toHaveLength(16);
+    for (const c of bucketCalls) {
+      for (const r of JSON.parse(c[1]).data) expect("createdAt" in r).toBe(false);
+    }
   });
 
   it("count < 1000 이면 회귀 가드 fail (process.exit(1))", async () => {

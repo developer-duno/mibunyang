@@ -132,9 +132,27 @@ export function esc(s) {
 // 그런 장은 noindex,follow(링크는 따라가게)로 검색에서 빼고 sitemap 에서도 뺀다 — 페이지 자체는 계속 만든다.
 // 안전선: 얇은 수가 SEO_THIN_CAP 을 넘으면 수집 사고(칸이 통째로 빈 날)로 보고 그날은 하나도 적용하지 않는다
 // (사고 하루에 수백 장이 검색에서 빠지는 것을 막는다). 매 빌드 dist/data/seo-thin.json 에 기록 → 감시 ㉓ 가 본다.
+// 새 단지(들어온 지 SEO_NEW_DAYS=30일 안)는 상한 셈에서 뺀다(👤 11/06 · 세션698) — 얇은 동안 noindex 는 그대로 받는다.
 
 /** 얇은 단지 검색 제외 안전선 — 이보다 많으면 그날은 적용 안 함(결정 32). */
 export const SEO_THIN_CAP = 15;
+
+/** 새 단지 기준 — 들어온 지 이 날수 안이면 얇아도 안전선 셈에서 뺀다(👤 11/06 · 시세 칸은 매월 8·22일 trade-stats 회차에 채워짐). */
+export const SEO_NEW_DAYS = 30;
+
+/**
+ * 새 단지 = `createdAt` 이 유효한 날짜이고 now 와의 차가 SEO_NEW_DAYS 일 미만.
+ * 칸이 없거나 null·깨진 문자열이면 false(옛 단지로 셈) — 칸이 빠진 옛 굽기 JSON 에선 안전선이 종전과 똑같이 동작한다.
+ * @param {Record<string, any>} a
+ * @param {Date} [now]
+ * @returns {boolean}
+ */
+export function isNewApt(a, now = new Date()) {
+  if (!a || typeof a.createdAt !== "string" || a.createdAt === "") return false;
+  const t = Date.parse(a.createdAt);
+  if (Number.isNaN(t)) return false;
+  return now.getTime() - t < SEO_NEW_DAYS * 86_400_000;
+}
 
 /**
  * 얇은 단지 = `[nearbyMedian, hospital, price]` 중 비어 있는(`== null`) 칸이 2개 이상. 0 은 빈칸이 아니다.
@@ -148,15 +166,26 @@ export function isThinApt(a) {
 
 /**
  * 유효 단지(id+name) 중 얇은 단지 명단과 적용 여부. 안전선 이하면 applied:true, 넘으면 false(ids 는 기록용으로 그대로).
+ * 명단(ids·names·count)은 새 단지를 포함한다(noindex 는 그대로 받음) · 안전선 셈만 새 단지(newCount)를 뺀다(👤 11/06).
  * @param {Array<Record<string, any>>} list
+ * @param {Date} [now] 새 단지 판정 기준 시각(시험 주입용)
  * names = ids 와 같은 순서의 단지 이름(아침 브리핑 한 줄 · 결정 35).
- * @returns {{ count: number, ids: string[], names: string[], applied: boolean, cap: number }}
+ * @returns {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, newCount: number, newDays: number }}
  */
-export function planThin(list) {
+export function planThin(list, now = new Date()) {
   const thin = list.filter((a) => a && a.id && a.name && isThinApt(a));
   const ids = thin.map((a) => String(a.id));
   const names = thin.map((a) => String(a.name));
-  return { count: ids.length, ids, names, applied: ids.length <= SEO_THIN_CAP, cap: SEO_THIN_CAP };
+  const newCount = thin.filter((a) => isNewApt(a, now)).length;
+  return {
+    count: ids.length,
+    ids,
+    names,
+    applied: ids.length - newCount <= SEO_THIN_CAP,
+    cap: SEO_THIN_CAP,
+    newCount,
+    newDays: SEO_NEW_DAYS,
+  };
 }
 
 /**
@@ -211,7 +240,7 @@ export function buildAptPages(template, list, details) {
 /** seo-thin.json 에 싣는 본문 실패 id 수 상한(세션697 C3). */
 export const BODY_ERROR_IDS_MAX = 20;
 
-/** @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, bodyErrors: number, bodyErrorIds: string[] }} AptPagesThin */
+/** @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, newCount: number, newDays: number, bodyErrors: number, bodyErrorIds: string[] }} AptPagesThin */
 
 /** @param {unknown} e @returns {string} 오류 첫 줄(로그·기록용) */
 function firstLine(e) {
@@ -966,7 +995,7 @@ export function main(dist = DIST) {
   // builtAt(세션697) = 감시 ㉓ 가 main 의 마지막 daily refresh 커밋 시각과 맞대 「오늘 자료가 배포에 실렸나」를 본다.
   writeFileSync(DIST_SEO_THIN, JSON.stringify(seoThinRecord(thin)), "utf-8");
   console.log(
-    `[postbuild-prerender] 얇은 단지 ${thin.count}곳 · applied=${thin.applied} (안전선 ${thin.cap}) · ${thin.ids.join(",") || "없음"} · 본문 실패 ${thin.bodyErrors}곳`,
+    `[postbuild-prerender] 얇은 단지 ${thin.count}곳(새 단지 ${thin.newCount} 제외 ${thin.count - thin.newCount}) · applied=${thin.applied} (안전선 ${thin.cap}) · ${thin.ids.join(",") || "없음"} · 본문 실패 ${thin.bodyErrors}곳`,
   );
 
   // ── 지역 허브 정적 장 (세션669) ──

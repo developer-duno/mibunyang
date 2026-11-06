@@ -206,19 +206,25 @@ const SEO_THIN_BRIEF_MAX = 10;
 /**
  * 검색 제외 한 줄. 던지지 않는다 — 이상한 값이면 "확인 못 함".
  * 단지 이름은 손님 글이라 텔레그램 HTML 로 깨지지 않게 `& < >` 를 바꾼다.
- * @param {{ count: number, ids: string[], names: string[], applied: boolean, cap: number } | null} rec
+ * 미적용 줄은 새 단지 수(newCount · 세션698)가 있으면 「얇은 단지 N곳(새 단지 M 제외 K)」, 없으면 옛 문구.
+ * @param {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, newCount?: number } | null} rec
  * @returns {string}
  */
 export function seoThinBriefLine(rec) {
   try {
     if (!rec) return "🔎 검색 제외: 확인 못 함";
-    if (rec.applied !== true) return `🔎 검색 제외 미적용 — 얇은 단지 ${rec.count}곳 > 안전선 ${rec.cap}`;
+    if (rec.applied !== true) {
+      const n = rec.newCount === undefined ? `${rec.count}곳` : `${rec.count}곳(새 단지 ${rec.newCount} 제외 ${rec.count - rec.newCount})`;
+      return `🔎 검색 제외 미적용 — 얇은 단지 ${n} > 안전선 ${rec.cap}`;
+    }
     if (rec.count === 0) return "🔎 검색 제외 0곳";
     /** @param {unknown} s */
     const esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
     const shown = rec.names.slice(0, SEO_THIN_BRIEF_MAX).map(esc);
     const rest = rec.count - shown.length;
-    return `🔎 검색 제외 ${rec.count}곳: ${shown.join(" · ")}${rest > 0 ? ` 외 ${rest}곳` : ""}`;
+    // 새 단지가 있으면(세션698 A13) 괄호 — 수는 실제 검색 제외(noindex) 수 그대로, 새 단지는 그 안에 포함 · 안전선 셈은 옛 단지만
+    const n = typeof rec.newCount === "number" && rec.newCount > 0 ? `(새 단지 ${rec.newCount} 포함 · 안전선 셈 ${rec.count - rec.newCount}/${rec.cap})` : "";
+    return `🔎 검색 제외 ${rec.count}곳${n}: ${shown.join(" · ")}${rest > 0 ? ` 외 ${rest}곳` : ""}`;
   } catch {
     return "🔎 검색 제외: 확인 못 함";
   }
