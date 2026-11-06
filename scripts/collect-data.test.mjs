@@ -733,6 +733,8 @@ describe("supabaseOnlyMode", () => {
     //   ah-3 의 구성원 zz-missing 은 apartments 에 행 없음 → 자기 날짜 · ah-4 는 memberIds 칸 없음 → 자기 날짜
     mockRows[2].memberIds = ["ah-2", "zz-old"];
     mockRows[3].memberIds = ["ah-3", "zz-missing"];
+    // 적대 🟡: 구성원 날짜가 대표보다 늦으면 대표 날짜 그대로(대표 2026-06-01 · 구성원 zz-late 2026-11-05)
+    mockRows[5].memberIds = ["ah-5", "zz-late"];
     delete (/** @type {any} */ (mockRows[4])).memberIds;
     // PostgREST 가 주는 꼴(마이크로초·+00:00) · ah-1564 는 apartments 에 행이 없다 · 목록에 없는 행 섞임
     const aptRows = [
@@ -740,7 +742,9 @@ describe("supabaseOnlyMode", () => {
       ...Array.from({ length: 1563 }, (_, i) => ({ id: `ah-${i + 1}`, created_at: "2026-01-01T00:00:00+00:00" })),
       { id: "zz-extra", created_at: "2026-11-01T00:00:00+00:00" },
       { id: "zz-old", created_at: "2026-06-10T00:00:00+00:00" },
+      { id: "zz-late", created_at: "2026-11-05T00:00:00+00:00" },
     ];
+    aptRows[5] = { id: "ah-5", created_at: "2026-06-01T00:00:00+00:00" };
     aptRows[2] = { id: "ah-2", created_at: "2026-11-05T00:00:00+00:00" };
     aptRows[3] = { id: "ah-3", created_at: "2026-11-04T00:00:00+00:00" };
     const flat = makeFlatClient(mockRows, aptRows);
@@ -765,6 +769,7 @@ describe("supabaseOnlyMode", () => {
       expect(data.find((/** @type {any} */ r) => r.id === "ah-2").createdAt).toBe("2026-06-10T00:00:00.000Z");
       expect(data.find((/** @type {any} */ r) => r.id === "ah-3").createdAt).toBe("2026-11-04T00:00:00.000Z");
       expect(data.find((/** @type {any} */ r) => r.id === "ah-4").createdAt).toBe("2026-01-01T00:00:00.000Z");
+      expect(data.find((/** @type {any} */ r) => r.id === "ah-5").createdAt).toBe("2026-06-01T00:00:00.000Z");
     }
     const bucketCalls = writeFileSpy.mock.calls.filter((c) => /apartments-detail-16-\d+\.json$/.test(String(c[0])));
     expect(bucketCalls).toHaveLength(16);

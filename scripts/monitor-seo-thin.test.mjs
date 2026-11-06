@@ -493,6 +493,13 @@ describe("A5 parseSeoThin·checkSeoThin — newCount 칸(세션698)", () => {
     expect(p.warnings.some((w) => w.startsWith("newCount 모양이 다름"))).toBe(true);
     expect(p.warnings.some((w) => w.startsWith("newDays 모양이 다름"))).toBe(true);
   });
+  it("적대 🟡: newCount 19.5(정수 아님) → 0 으로 세고 경고 1건 · 옛 단지 20 > 15 라 applied false 와 맞음", () => {
+    const p = parseSeoThin(200, JSON.stringify({ count: 20, ids: idList(20), names: nameList(20), applied: false, cap: 15, newCount: 19.5 }));
+    expect(p.ok).toBe(true);
+    if (!p.ok) return;
+    expect(p.rec.newCount).toBeUndefined();
+    expect(p.warnings.filter((w) => w.startsWith("newCount 모양이 다름"))).toHaveLength(1);
+  });
 });
 
 describe("A6 알림·브리핑 문구 — 새 단지 수를 붙인다(세션698)", () => {

@@ -382,6 +382,9 @@ describe("isNewApt — 들어온 지 30일 안", () => {
     expect(isNewApt({ createdAt: "2026-10-07T11:00:00.000Z" }, NOW_1106)).toBe(false); // 정확히 30일 전
     expect(isNewApt({ createdAt: "2026-10-06T11:00:00.000Z" }, NOW_1106)).toBe(false); // 31일 전
   });
+  it("적대 🟡: 미래 createdAt(now+1일 — 시계 어긋남)은 true 로 고정(새 단지로 셈)", () => {
+    expect(isNewApt({ createdAt: "2026-11-07T11:00:00.000Z" }, NOW_1106)).toBe(true);
+  });
 });
 
 describe("planThin — 새 단지는 안전선 셈에서 빼고 명단에는 남긴다", () => {
