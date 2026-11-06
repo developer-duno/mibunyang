@@ -1760,7 +1760,7 @@ export function checkGovlistHiddenParity(h, now = new Date(), lastRun = null) {
       detail: `GOVLIST_HIDDEN_VIEW_ZERO 원표 govlist 비공개(유효) ${alive.length}행인데 VIEW 「수 비공개」 카드 0곳`,
       lines: [
         "VIEW apartments_flat 의 unsoldListedHidden 이 원표를 못 따라갑니다 — 묶음 순위(청약홈 값이 이김)·VIEW 정의 되돌림·만료 계산을 봅니다.",
-        "VIEW 정의 = supabase/migrations/20261104000000_view_unsold_future_asof.sql(b_listed_hidden · 운영 적용 대기 — 적용 전엔 20261102000002).",
+        "VIEW 정의 = supabase/migrations/20261104000000_view_unsold_future_asof.sql(b_listed_hidden · 운영 적용 2026-11-06).",
       ],
       at: `hidview0:${fingerprintIds([`raw=${alive.length}`])}`,
     });
