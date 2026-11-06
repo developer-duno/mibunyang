@@ -1285,8 +1285,19 @@ const SEO_THIN_LIST_MAX = 20;
 /**
  * 새 칸 3개(세션697)는 선택 — 옛 기록(칸 없음)도 정상으로 읽는다. 모양이 틀린 새 칸은 그 칸만 빼고 warnings 에 적는다.
  * bodyErrors = 단지 장 본문이 던져 얇은 본문으로 만든 수 · bodyErrorIds = 그 앞 20개 · builtAt = 빌드 시각(ISO).
- * @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, bodyErrors?: number, bodyErrorIds?: string[], builtAt?: string }} SeoThinRecord
+ * newCount = 얇은 단지 중 새 단지(들어온 지 newDays 일 안) 수 — 안전선 셈에서 뺀다(👤 11/06 · 세션698). 없으면 0 으로 셈(옛 기록).
+ * @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, newCount?: number, newDays?: number, bodyErrors?: number, bodyErrorIds?: string[], builtAt?: string }} SeoThinRecord
  */
+
+/**
+ * 「얇은 단지 N곳(새 단지 M 제외 K)」 — newCount 가 없으면 「얇은 단지 N곳」(옛 문구). ㉓ 알림·아침 브리핑 공용.
+ * @param {SeoThinRecord} rec
+ * @returns {string}
+ */
+export function formatSeoThinCount(rec) {
+  if (rec.newCount === undefined) return `얇은 단지 ${rec.count}곳`;
+  return `얇은 단지 ${rec.count}곳(새 단지 ${rec.newCount} 제외 ${rec.count - rec.newCount})`;
+}
 
 /**
  * 단지 명단 한 줄 — 앞 max 개 `id 이름`, 넘으면 "외 N곳".
@@ -1325,14 +1336,27 @@ export function parseSeoThin(status, bodyText) {
   if (!shapeOk) return { ok: false, detail: "검색 제외 기록 모양이 다름(count 정수·ids 배열·names 배열(ids 와 같은 길이)·applied 참거짓·cap 수 중 하나가 틀림)" };
   /** @type {SeoThinRecord} */
   const rec = { count: j.count, ids: j.ids.map(String), names: j.names.map(String), applied: j.applied, cap: j.cap };
-  // 내부 일관성(세션668 보완 F4) — 모양만 맞고 숫자가 서로 어긋난 기록을 정상으로 넘기지 않는다.
-  const consistent = rec.count >= 0 && rec.cap >= 1 && rec.count === rec.ids.length && (rec.count <= rec.cap) === rec.applied;
-  if (!consistent) {
-    return { ok: false, rec, detail: `검색 제외 기록 숫자가 서로 안 맞음(count ${rec.count} · ids ${rec.ids.length}개 · cap ${rec.cap} · applied ${rec.applied})` };
-  }
-  // 새 칸(세션697 C7) — 없으면 옛 기록 그대로 정상. 모양이 틀리면 그 칸만 빼고 경고(기록 전체는 살린다 — 아침 브리핑이 깨지지 않게).
   /** @type {string[]} */
   const warnings = [];
+  // 새 단지 수(세션698 👤 11/06) — 0 이상 count 이하 정수면 안전선 셈에서 뺀다. 칸이 없으면 옛 기록 = 0(종전식).
+  //   모양이 틀리면 0 으로 셈 + 경고 → applied:true 인데 count > cap 이면 아래 일관성 검사가 걸린다(조용히 넘기지 않음).
+  let newCount = 0;
+  if (j.newCount !== undefined) {
+    if (Number.isInteger(j.newCount) && j.newCount >= 0 && j.newCount <= j.count) {
+      newCount = j.newCount;
+      rec.newCount = j.newCount;
+    } else warnings.push(`newCount 모양이 다름(0 이상 count 이하 정수 아님: ${JSON.stringify(j.newCount)}) — 0 으로 셈`);
+  }
+  if (j.newDays !== undefined) {
+    if (Number.isInteger(j.newDays) && j.newDays >= 1) rec.newDays = j.newDays;
+    else warnings.push(`newDays 모양이 다름(1 이상 정수 아님: ${JSON.stringify(j.newDays)}) — 무시`);
+  }
+  // 내부 일관성(세션668 보완 F4) — 모양만 맞고 숫자가 서로 어긋난 기록을 정상으로 넘기지 않는다.
+  const consistent = rec.count >= 0 && rec.cap >= 1 && rec.count === rec.ids.length && (rec.count - newCount <= rec.cap) === rec.applied;
+  if (!consistent) {
+    return { ok: false, rec, detail: `검색 제외 기록 숫자가 서로 안 맞음(count ${rec.count} · 새 단지 ${newCount} · ids ${rec.ids.length}개 · cap ${rec.cap} · applied ${rec.applied})` };
+  }
+  // 새 칸(세션697 C7) — 없으면 옛 기록 그대로 정상. 모양이 틀리면 그 칸만 빼고 경고(기록 전체는 살린다 — 아침 브리핑이 깨지지 않게).
   if (j.bodyErrors !== undefined) {
     if (Number.isInteger(j.bodyErrors) && j.bodyErrors >= 0) rec.bodyErrors = j.bodyErrors;
     else warnings.push(`bodyErrors 모양이 다름(0 이상 정수 아님: ${JSON.stringify(j.bodyErrors)}) — 무시`);
@@ -1368,7 +1392,7 @@ export function checkSeoThin(status, bodyText) {
   /** @type {Issue[]} */
   const out = [];
   if (p.rec.applied !== true) {
-    out.push(...one(`얇은 단지 ${p.rec.count}곳 > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec));
+    out.push(...one(`${formatSeoThinCount(p.rec)} > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec));
   }
   // C5(세션697) — 단지 장 본문이 던져 얇은 본문으로 만든 장. 빌드는 초록이라 여기서만 보인다.
   const bodyErrors = p.rec.bodyErrors ?? 0;
