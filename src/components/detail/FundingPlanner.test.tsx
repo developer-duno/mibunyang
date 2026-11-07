@@ -432,6 +432,7 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
       "https://2u.pe.kr/blog/illegal-loan-filter",
     ]);
     expect(screen.getByTestId("fp-loan-filter-post").textContent).toContain("2u 블로그 글");
+    expect(screen.getByTestId("fp-loan-filter-post").style.minHeight).toBe("36px"); // 누르는 높이(세션701 설계 3)
     for (const l of links) {
       expect(l.getAttribute("target")).toBe("_blank");
       expect(l.getAttribute("rel")).toBe("noopener noreferrer");
