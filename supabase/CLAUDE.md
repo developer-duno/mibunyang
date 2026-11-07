@@ -221,6 +221,8 @@ CLI 가 없거나 사용자가 직접 적용할 때:
 4. Run 버튼 → 결과 확인 (에러 0건 + Success 응답)
 5. 후속 collector 호출로 컬럼 채움 검증
 
+> **사장님이 직접 붙여 넣는 리허설**(세션699): SQL 창은 마지막 문장 결과만 보여 줘 `BEGIN; … 탐침 …; ROLLBACK;` 의 탐침 값이 안 보인다 → 마이그 본문을 `DO $r$ … BEGIN <전 탐침>; EXECUTE $view$<본문 — 끝 세미콜론 뺌>$view$; <뒤 탐침>; RAISE EXCEPTION 'REHEARSAL_OK …%…', <값들>; END $r$;` 로 감싸 **일부러 낸 오류 문구에 측정값을 담는다**(오류라 전부 되돌림 보장 · 빨간 결과가 정상). 탐침 = 전후 행 해시 `md5(string_agg(f::text, '|' ORDER BY f::text))` · 칸 수 · `reloptions` · 바뀐 조건 글자 수(`pg_get_viewdef`). 예 = 이 PC `.omc/artifacts/session699/rehearsal.sql`(+ 만든 스크립트 `build_rehearsal.py`). 사장님 클립보드에 넣기 = PowerShell `Set-Clipboard -Value (Get-Content -Raw -Encoding UTF8 <파일>)`.
+
 > **Claude 가 크롬 확장으로 이 화면을 조종할 때**(세션677 리허설·운영 적용 — 사장님 로그인 1회 뒤): ① `DROP` 같은 파괴 명령은 「Potential issue detected」 확인 창이 뜬다 → 창 안 「Run query」 단추를 눌러야 실행되고, 창이 뜬 채 다른 키를 치면 대시보드 단축키로 엉뚱한 화면으로 넘어간다 ② 결과 칸 값은 내려받기 대신 **칸 클릭 + ctrl+c → PowerShell `Get-Clipboard` 로 UTF-8 파일**에 받는다(132KB JSON 도 됨 · 콘솔 표시가 깨져 보여도 파일은 정상) ③ 끝나면 연 탭을 닫는다(닫기가 응답 없으면 사장님께) ④ (세션681 운영 적용) SQL 은 글자 입력 대신 `javascript_tool` 로 `monaco.editor.getModels()[0].setValue(sql)` 로 넣고 `find` 로 「Run」 단추를 찾아 클릭 → 3~4초 뒤 `get_page_text` 로 결과 표 글자를 읽는다(리허설 `BEGIN; … ROLLBACK;` 도 같은 길 · 긴 SQL 을 타이핑하면 자동완성이 끼어든다).
 
 ### 방법 C — Supabase MCP(`execute_sql`) — **사전 승인된 SQL 한 건**을 사장님이 자리에 없을 때 (세션653 2026-10-21 실사용)
@@ -228,6 +230,7 @@ CLI 가 없거나 사용자가 직접 적용할 때:
 사장님 휴대폰에서 OAuth 승인 한 번이면 이 대화의 Claude 가 SQL 을 직접 넣을 수 있다(VIEW 새 정의 25KB 를 이 길로 적용했다). **무인 쓰기 길이 아니다** — 검사관·리허설·사장님 승인을 이미 거친 **그 파일 하나**만, 되돌리기 SQL(`_rollbacks/…`)이 준비된 상태에서, 적용 뒤 권한 지문(`perm-baseline.mjs` 미리보기)까지 본다.
 1. `authenticate` 도구 → 링크를 사장님께 → 조직 developer-duno's Org 선택 → Authorize → "페이지를 열 수 없음" 화면의 `http://localhost:<port>/callback?code=…` 주소 전체를 받아 `complete_authentication`.
    ⚠️ 첫 링크는 사장님이 붙여 넣기까지 걸린 시간에 **대기가 끝나 "진행 중인 흐름 없음"** 이 날 수 있다 — 새 링크를 만들어 **바로** 받는다(code 는 1회용). 연결은 이 대화 안에서만 유효, 끊기는 Supabase 계정 설정.
+   ⚠️ 링크가 `{"message":"Unrecognized client_id"}` 를 내면 지난 등록이 낡은 것 — `authenticate` 를 다시 불러도 같은 링크만 나온다(세션699 11/06) → 사장님 `/mcp` 에서 supabase 재로그인(처방은 아직 미시험) 또는 방법 B(세션699 는 B 로 적용).
 2. `list_projects` 로 **`rwdtljipvmqpazrimyns`(이름 naver-estate)** 를 확인한 뒤에만 `execute_sql(project_id=…)` — 같은 조직에 `sangga` 가 있다.
 3. 적용 전 읽기 탐침 1회(칸 수·`reloptions`·행 수)로 도구 자체를 검증 → 파일 본문 그대로(`SET lock_timeout` 포함, 여러 문장 한 번에 됨) → 적용 뒤 같은 탐침 + PostgREST 경로(supabase-js `select("*")`) 재확인(스키마 캐시).
 4. 이 길로 하는 **운영 쓰기도 전이표 승인·사본은 그대로**(data-changing-run-approval). `apply_migration` 은 쓰지 않는다(마이그 히스토리 표를 안 쓰는 레포 — `db push` 금지와 같은 이유).
