@@ -422,11 +422,16 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
     expect(vi.mocked(trackEvent).mock.calls).toEqual([["funding_planner_use", { aptId: "ah-1" }]]);
   });
 
-  it("공시 링크 두 곳은 새 탭 · noopener noreferrer · 언제나 보인다", () => {
+  it("공시 링크 두 곳 + 2u 거르기 글은 새 탭 · noopener noreferrer · 언제나 보인다", () => {
     render(<FundingPlanner apt={apt()} rates={RATES} />);
     type("fp-cash", "90000"); // 더 필요한 돈 ≤ 0
     const links = screen.getAllByRole("link");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["https://finlife.fss.or.kr", "https://portal.kfb.or.kr"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "https://finlife.fss.or.kr",
+      "https://portal.kfb.or.kr",
+      "https://2u.pe.kr/blog/illegal-loan-filter",
+    ]);
+    expect(screen.getByTestId("fp-loan-filter-post").textContent).toContain("2u 블로그 글");
     for (const l of links) {
       expect(l.getAttribute("target")).toBe("_blank");
       expect(l.getAttribute("rel")).toBe("noopener noreferrer");

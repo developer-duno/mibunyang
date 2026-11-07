@@ -49,6 +49,17 @@ const LINKS = [
 ] as const;
 
 /**
+ * 2u 블로그 「불법·고금리 대출 거르기 글」(세션701 👤 안 B — 버튼 줄 아래 따로 한 줄 · 「2u 블로그 글」 표시로 공시 사이트와 구분).
+ * 👤 11-07 결정: 글은 2u 한 곳에만 두고 미분양·상가는 링크만. 새 탭 — 2u 는 X-Frame-Options DENY 라 화면 안 팝업 불가,
+ * 새 탭이면 이 화면(입력값 포함)이 그대로 남아 탭만 닫으면 돌아온다.
+ */
+const LOAN_FILTER_POST = {
+  href: "https://2u.pe.kr/blog/illegal-loan-filter",
+  label: "대출이 급할 때 불법·고금리 대출 걸러 내는 법",
+  source: "2u 블로그 글 · 새 탭",
+} as const;
+
+/**
  * 「더 필요한 돈」 바로 아래 금융사 종류별 안내(세션675 결정 가 「안 A · 예고 한 줄」) — 부족한 이유에 따라 세 갈래.
  * 옛 「소득 한도 부족일 때만 뜨던 한 문장」(결정 14 `DSR_GAP_NOTICE`)을 ② 세 줄로 바꿨다.
  *
@@ -669,6 +680,30 @@ export const FundingPlanner = memo(function FundingPlanner({
           </a>
         ))}
       </div>
+
+      <a
+        data-testid="fp-loan-filter-post"
+        href={LOAN_FILTER_POST.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        style={{
+          display: "block",
+          marginTop: 6,
+          minHeight: 36,
+          boxSizing: "border-box",
+          padding: "9px 2px",
+          fontSize: F.xs,
+          color: C.blue,
+          lineHeight: 1.5,
+          textDecoration: "underline",
+          textUnderlineOffset: 2,
+        }}
+      >
+        {LOAN_FILTER_POST.label} ↗{" "}
+        <span style={{ color: C.muted, textDecoration: "none", display: "inline-block" }}>
+          · {LOAN_FILTER_POST.source}
+        </span>
+      </a>
 
       {/* 회색 작은 글 한 덩어리(세션675 「회색 작은 글 합치기」) — 문장·testid 는 그대로 */}
       <div
