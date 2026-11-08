@@ -25,6 +25,8 @@ export const NORMAL_LTV = 0.7;
 // 수도권(서울·경기·인천) 주택구입 주담대 최대 한도 (만원) — 구역(규제·비규제)과 상관없이 6억.
 // 금융위 「가계부채 관리 강화 방안」 2025-06-27 발표, 2025-06-28 시행. 지방은 이 한도가 없다.
 export const METRO_LOAN_CAP = 60000;
+/** `METRO_LOAN_CAP` 시행일 — 금융위 「가계부채 관리 강화 방안」 2025-06-27 발표 · 2025-06-28 시행(금융 탭 규제 시간표가 읽는다 · 세션705) */
+export const METRO_LOAN_CAP_SINCE = "2025-06-28";
 export const METRO_REGIONS: readonly string[] = ["서울", "경기", "인천"];
 
 // 규제지역 LTV 비율 (무주택자 기준, 10·15 대책)

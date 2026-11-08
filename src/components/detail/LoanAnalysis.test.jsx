@@ -105,40 +105,52 @@ describe("LoanAnalysis", () => {
     ).toBeTruthy();
   });
 
-  // 세션592 보완 F8 — 경과 규정 한 줄은 규제지역일 때만(금액 계산은 그대로).
-  // ⚠️ 변이 대상: `zone !== "normal" &&` 조건을 빼면 비규제 단지에도 나와 빨강.
-  it("규제지역이면 경과 규정 한 줄(지정 전 모집공고 단지 종전 기준)이 있고 비규제면 없다", () => {
-    const line =
-      "규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
-    const reg = render(
-      <LoanAnalysis
-        apt={/** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "구리시", isRegulated: true }))}
-      />
-    );
-    expect(reg.container.textContent).toContain(line);
-    expect(reg.container.textContent).toContain("대출 4억 · "); // 금액은 그대로 40%
-    reg.unmount();
-    const normal = render(
-      <LoanAnalysis
-        apt={/** @type {any} */ (makeApt({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false }))}
-      />
-    );
-    expect(normal.container.textContent).not.toContain("종전 기준");
+  // 세션592 보완 F8 → 세션705 A-26 B — 옛 경과 규정 한 줄은 시간표 결론 칩(reg-verdict)이 대신한다(금액 계산은 그대로).
+  // 시간표는 비규제 단지에도 그린다(👤 결정 2 「전부 보이기」).
+  // ⚠️ 변이 대상: 시간표를 `zone !== "normal" &&` 안에 넣으면 비규제(부산)에 결론 칩이 없어 빨강.
+  it("규제지역(공고일 없음)이면 결론이 notice-missing, 비규제 지방이면 local-stress 이고 '종전' 글자가 없다", () => {
+    // 지방 스트레스 유예 끝(2026-12-31) 전 날짜로 고정 — 흐르는 시간에 기대지 않는다(Date 만 가짜)
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-11-08T03:00:00Z"));
+    try {
+      const reg = render(
+        <LoanAnalysis
+          apt={/** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "구리시", isRegulated: true }))}
+        />
+      );
+      expect(reg.getByTestId("reg-verdict").getAttribute("data-kind")).toBe("notice-missing");
+      expect(reg.container.textContent).toContain("대출 4억 · "); // 금액은 그대로 40%
+      reg.unmount();
+      const normal = render(
+        <LoanAnalysis
+          apt={/** @type {any} */ (makeApt({ price: 50000, region: "부산", gu: "해운대구", isRegulated: false }))}
+        />
+      );
+      expect(normal.getByTestId("reg-verdict").getAttribute("data-kind")).toBe("local-stress");
+      expect(normal.container.textContent).not.toContain("종전");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
-  // 세션660 사장님 결정 — 4구(강남·서초·송파·용산)는 10·15 전부터 규제지역이라 9·7 기준일·종전 50% 문장, 그 밖은 옛 문장 그대로.
-  // ⚠️ 변이 대상: 4구 갈래를 지우면(늘 70%) 송파가 빨강 · 늘 4구 문장이면 은평·구리가 빨강.
-  it("경과 규정 문장 — 4구는 '2025-09-07까지 … 최대 50%', 은평구·구리시는 옛 70% 문장 글자 그대로", () => {
-    const old =
-      "규제지역 지정 전에 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 70%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
-    const g4 =
-      "2025-09-07까지 모집공고를 한 단지는 중도금·잔금(집단)대출에 종전 기준(최대 50%)이 적용될 수 있어요(분양권 전매는 강화 기준).";
+  // 세션660 사장님 결정 — 4구(강남·서초·송파·용산)는 10·15 전부터 규제지역이라 9·7 기준일·종전 50%, 그 밖은 종전 70%.
+  // 세션705 A-26 B — 그 숫자는 이제 시간표 결론 칩(grandfather-may)에 나온다(첫 공고가 기준일 이전일 때).
+  // ⚠️ 변이 대상: 4구 갈래를 지우면(늘 70%) 송파가 빨강 · 늘 4구 숫자면 은평·구리가 빨강.
+  it("경과 규정 결론 — 4구 + 첫 공고 2019-08-19 는 '종전 50%', 은평구·구리시 + 2021-05-04 는 '종전 70%'", () => {
     for (const gu of ["송파구", "강남구", "서초구", "용산구"]) {
       const r = render(
-        <LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 100000, region: "서울", gu, isRegulated: true }))} />
+        <LoanAnalysis
+          apt={
+            /** @type {any} */ (
+              makeApt({ price: 100000, region: "서울", gu, isRegulated: true, presaleRecruitDate: "2019-08-19" })
+            )
+          }
+        />
       );
-      expect(r.container.textContent).toContain(g4);
-      expect(r.container.textContent).not.toContain("최대 70%");
+      const v = r.getByTestId("reg-verdict");
+      expect(v.getAttribute("data-kind")).toBe("grandfather-may");
+      expect(v.textContent).toContain("종전 50%");
+      expect(r.container.textContent).not.toContain("종전 70%");
       r.unmount();
     }
     for (const [region, gu] of [
@@ -146,10 +158,18 @@ describe("LoanAnalysis", () => {
       ["경기", "구리시"],
     ]) {
       const r = render(
-        <LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 100000, region, gu, isRegulated: true }))} />
+        <LoanAnalysis
+          apt={
+            /** @type {any} */ (
+              makeApt({ price: 100000, region, gu, isRegulated: true, presaleRecruitDate: "2021-05-04" })
+            )
+          }
+        />
       );
-      expect(r.container.textContent).toContain(old);
-      expect(r.container.textContent).not.toContain("2025-09-07까지");
+      const v = r.getByTestId("reg-verdict");
+      expect(v.getAttribute("data-kind")).toBe("grandfather-may");
+      expect(v.textContent).toContain("종전 70%");
+      expect(r.container.textContent).not.toContain("종전 50%");
       r.unmount();
     }
   });
