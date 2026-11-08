@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
-import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE, METRO_LOAN_CAP } from "@/constants/regulations";
+import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
 /**
@@ -65,8 +65,8 @@ export const LoanStack = memo(function LoanStack({
     if (price == null || !Number.isFinite(price) || price <= 0) return null;
     const zone = zoneOf({ isRegulated, region, gu });
     const loan = calcLTV(price, zone, region);
-    // 수도권 6억 한도 때문에 깎였나 — 시도를 빼고 잰 값보다 작으면 그 한도가 걸린 것이다.
-    // 걸렸는데 "비규제지역 기준 최대 40%" 라고만 쓰면 비규제 규칙이 40% 인 것처럼 읽힌다.
+    // 수도권 한도(6억 · 비규제도 15억 초과 4억·25억 초과 2억 — 세션706) 때문에 깎였나 — 시도를 빼고 잰 값보다 작으면 그 한도가 걸린 것이다.
+    // 걸렸는데 "비규제지역 기준 최대 40%" 라고만 쓰면 비규제 규칙이 40% 인 것처럼 읽힌다. 문장의 금액은 실제로 걸린 한도(= loan).
     const metroCapped = loan < calcLTV(price, zone, null);
     const own = Math.max(0, price - loan);
     return { zone, loan, own, metroCapped, loanPct: Math.round((loan / price) * 100) };
@@ -155,7 +155,7 @@ export const LoanStack = memo(function LoanStack({
         <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
           {`분양가 ${fmtPrice(price as number)} · `}
           {calc.metroCapped
-            ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 최대 ${fmtPrice(METRO_LOAN_CAP)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
+            ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 이 집값이면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
             : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
           {dsr40pass === true && <span style={{ color: C.green }}>{` ${DSR_PASS_TEXT}`}</span>}
           {dsr40pass === false && <span style={{ color: C.amberText }}>{` ${DSR_FAIL_TEXT}`}</span>}

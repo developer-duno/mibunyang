@@ -228,7 +228,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
   it("수도권·규제지역이면 기준 줄에 3.0%p 만, 지방 비규제면 0.75%p(2026-12-31까지) 만 · 무주택 줄은 머리로", () => {
     const m = render(<FundingPlanner apt={apt()} rates={RATES} />);
     expect(screen.getByTestId("fp-basis").textContent).toBe(
-      "2026년 10월 기준 · 금융위 10·15 대책 · 스트레스 DSR 3단계(수도권·규제지역 가산 3.0%p) · 실제 한도는 금융사 심사로 정해져요"
+      "2026년 11월 기준 · 금융위 10·15 대책 · 스트레스 DSR 3단계(수도권·규제지역 가산 3.0%p) · 실제 한도는 금융사 심사로 정해져요"
     );
     expect(screen.getByTestId("fp-homeless").textContent).toBe(
       "무주택자 기준이에요(1주택자·생애최초는 한도가 달라요)."
@@ -323,13 +323,106 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     resetDetail();
   });
 
+  // 세션706 #1·#3 — 4구 종전 금액에 시가별 한도 없음 · 6/27까지 공고라 6억 한도도 없음 → 문장에 그 사실과 전매 시점별 차이.
+  // ⚠️ 변이 대상: 문장 분기(capFree)를 뒤집으면 이 단언과 아래 용산·송파 단언이 함께 빨강.
+  it("서초 2024-08-16 공고 22.45억 — 큰 숫자 4억 · 종전 50% 11억 2,250만 · 「6억 한도 없이」·「6억 한도가 붙어요」 문장", () => {
+    withFirst(null);
+    render(
+      <FundingPlanner
+        apt={regulated({ price: 224500, gu: "서초구", presaleRecruitDate: "2024-08-16" })}
+        rates={RATES}
+      />
+    );
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("4억");
+    expect(screen.getByTestId("fp-loan").textContent).toContain("4억");
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(
+      "첫 모집공고 2024-08-16 — 규제지역 LTV 강화(2025-09-08) 전 공고라 금융사 심사에 따라 종전 규정(LTV 50%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 11억 2,250만이에요. 2025-06-28~2025-09-07 전매로 산 분양권은 6억 한도가 붙고, 2025-09-08 이후 전매는 종전 규정 대상이 아니에요."
+    );
+    resetDetail();
+  });
+
+  // 세션706 보완 R7 — 전매 구간은 겹치지 않게: 6억 시행일 ~ 효력일 전날(기본 = 10·15 지정 2025-10-15)
+  it("중구 2021 공고 9.614억(기본 지정) — 종전 70% 6억 7,298만 · 「2025-06-28~2025-10-15 전매 … 6억 한도」", () => {
+    withFirst("2021-05-04");
+    render(<FundingPlanner apt={regulated({ price: 96140 })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(
+      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요."
+    );
+    resetDetail();
+  });
+
+  it("용산 2025-07-10 공고 29.83억 — 큰 숫자 2억 · 종전 6억(6/27 뒤 공고라 6억 한도) · 문장은 기존 틀", () => {
+    withFirst(null);
+    render(
+      <FundingPlanner
+        apt={regulated({ price: 298300, gu: "용산구", presaleRecruitDate: "2025-07-10" })}
+        rates={RATES}
+      />
+    );
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("2억");
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(
+      "첫 모집공고 2025-07-10 — 규제지역 LTV 강화(2025-09-08) 전 공고라 금융사 심사에 따라 종전 규정(LTV 50%)이 적용될 수 있어요. 그 경우 최대 6억이에요. 2025-09-08 이후 전매로 산 분양권은 제외예요."
+    );
+    resetDetail();
+  });
+
+  it("평택 비규제 2024-02-26 공고 8.73억 — 큰 숫자 6억 · 종전 줄(사건 「수도권 6억 한도」 2025-06-28 · 70% 6억 1,110만) · 2025-07-10 공고면 줄 없음", () => {
+    withFirst(null);
+    const pt = (d: string) =>
+      apt({
+        price: 87300,
+        region: "경기",
+        gu: "평택시",
+        isRegulated: false,
+        presaleRecruitDate: d,
+        presaleHousingType: "아파트",
+        presaleMoveIn: "2099-12",
+      });
+    const r = render(<FundingPlanner apt={pt("2024-02-26")} rates={RATES} />);
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("6억");
+    expect(screen.getByTestId("fp-loan").textContent).toContain("6억");
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(
+      "첫 모집공고 2024-02-26 — 수도권 6억 한도(2025-06-28) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%)이 적용될 수 있어요. 그 경우 최대 6억 1,110만이에요. 2025-06-28 이후 전매로 산 분양권은 제외예요."
+    );
+    r.unmount();
+    render(<FundingPlanner apt={pt("2025-07-10")} rates={RATES} />);
+    expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+    expect(screen.getByTestId("fp-region-limit").textContent).toContain("6억");
+    resetDetail();
+  });
+
+  it("평택 비규제 6/27까지 공고라도 제외 셋(오피스텔·사전청약·입주 시작)은 줄 없음", () => {
+    withFirst(null);
+    const base = {
+      price: 87300,
+      region: "경기",
+      gu: "평택시",
+      isRegulated: false,
+      presaleRecruitDate: "2024-02-26",
+      presaleHousingType: "아파트",
+      presaleMoveIn: "2099-12",
+    };
+    for (const o of [
+      { presaleHousingType: "오피스텔" },
+      { name: "평택 어떤 사전청약 A1" },
+      { presaleMoveIn: "2024-01" },
+    ]) {
+      const r = render(<FundingPlanner apt={apt({ ...base, ...o })} rates={RATES} />);
+      expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+      r.unmount();
+    }
+    resetDetail();
+  });
+
   it("줄을 숨기는 경우 — 비주택(오피스텔·이름 (오)) · 입주 시작(카드·일정 어느 쪽이든) · 종전이 지금보다 크지 않음", () => {
     withFirst("2021-05-04");
     const cases = [
       regulated({ presaleHousingType: "오피스텔" }),
       regulated({ presaleHousingType: null, name: "어떤단지(오)" }),
       regulated({ presaleMoveIn: "2000-01" }),
-      regulated({ price: 151440, gu: "서초구", presaleRecruitDate: "2024-08-16" }), // 종전도 4억 = 지금 4억
+      // 종전이 지금보다 크지 않음 — 비규제 수도권 6억 아래(종전 70% = 지금 70%). 세션706 전엔 서초 15억(4억 뚜껑)이었는데
+      // 4구 종전에 시가별 한도를 안 씌우게 되어(10·15 FAQ 13쪽) 그 단지는 이제 줄이 보인다.
+      apt({ presaleRecruitDate: "2021-05-04", presaleHousingType: "아파트", presaleMoveIn: "2099-12" }),
     ];
     for (const a of cases) {
       const r = render(<FundingPlanner apt={a} rates={RATES} />);

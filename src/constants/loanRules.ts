@@ -1,9 +1,10 @@
 import {
+  applyPriceTierCap,
   calcLTV,
   isMetroRegion,
   METRO_LOAN_CAP,
+  METRO_LOAN_CAP_SINCE,
   NORMAL_LTV,
-  REGULATED_LTV_CAPS,
   REGULATED_LTV_RATE,
   type Zone,
 } from "./regulations";
@@ -14,8 +15,8 @@ import { geoSidoToDbName } from "./regionGeoMapping";
  * `regulations.ts`(LTV·지역 명단)와 같은 꼴: 이름 붙은 상수 + 근거 문서 주석. 수치가 바뀌면 여기 한 곳만.
  */
 
-/** 화면에 적는 기준일 — 금융 탭의 "2026년 10월 기준" 글자는 전부 이 값에서 조립한다(한 곳만 바꾸면 된다). */
-export const LOAN_RULES_BASIS = "2026년 10월";
+/** 화면에 적는 기준일 — 금융 탭의 "2026년 11월 기준" 글자는 전부 이 값에서 조립한다(한 곳만 바꾸면 된다). 11-09 공식 원문 대조(세션706). */
+export const LOAN_RULES_BASIS = "2026년 11월";
 
 /**
  * 은행권 DSR 한도 40% — 연소득 대비 모든 대출의 연 원리금 상환액 비율.
@@ -62,8 +63,8 @@ export type GrandfatherRule = {
   readonly rate: number;
   /** 화면 문장의 사건 이름 */
   readonly eventLabel: string;
-  /** 10·15 의 15억 초과 4억·25억 초과 2억 금액 뚜껑도 그대로 씌우나(보수적으로 — 4구) */
-  readonly keepRegulatedCaps: boolean;
+  /** 「9·7 LTV 강화」 갈래인가(4구 — 이미 규제지역이던 곳의 LTV 50%→40%). 시간표의 사건 제목·출처 글자를 가른다. 금액 계산에는 안 쓴다. */
+  readonly isLtvTightening: boolean;
 };
 
 /**
@@ -74,7 +75,12 @@ export type GrandfatherRule = {
  *   ("효력 발생일 전일(6.30일)까지 입주자모집공고 … 종전규정 적용") https://fsc.go.kr/no010101/87222
  * - 서울 4구(강남·서초·송파·용산) = 2025-09-07 · 종전 50% — 10·15 전부터 규제지역이고 9·7 대책으로 50%→40%
  *   (금융위 2025-09-07 FAQ 5-1 "집단대출의 경우 시행일 전일(9.7일)까지 입주자모집 공고 … 된 사업장에 대해서는 종전 규정 적용"
- *   https://www.fsc.go.kr/edu/news/85343). 15억·25억 금액 뚜껑은 그대로 씌운다(보수적 — 세션659 결정 19).
+ *   https://www.fsc.go.kr/edu/news/85343).
+ * 종전 금액에 10·15 의 15억 초과 4억·25억 초과 2억 금액 한도는 씌우지 않는다 — 9/7 이전 공고는 10/15 이전 공고이기도 하다.
+ *   금융위 10·15 FAQ 13쪽 「조치별 경과규정」 고가주택 주담대 대출한도 축소(10.16일 시행) · 잔금대출:
+ *   "시행일 전일(10.15일)까지 입주자모집 공고 … 된 사업장에 대해 종전규정 적용 가능
+ *    * 단, 기 공고된 사업장의 분양권 등이 시행일(10.16일)부터 전매 … 된 경우는 제외" · 중도금: "규제대상 아님"(세션706).
+ * 수도권 6억 한도는 `METRO_CAP_CUTOFF`(그 시행일 전날)까지 공고면 씌우지 않는다 — 아래 `ltvForPresale`.
  * 경기 키는 `src/data/regulation-zones.json` 표기 그대로(시험이 그 목록에 있는지 지킨다).
  */
 export const GRANDFATHER_RULES: {
@@ -85,13 +91,13 @@ export const GRANDFATHER_RULES: {
     cutoff,
     rate: NORMAL_LTV,
     eventLabel: "규제지역 지정",
-    keepRegulatedCaps: false,
+    isLtvTightening: false,
   });
   const gangnam4: GrandfatherRule = {
     cutoff: "2025-09-07",
     rate: 0.5,
     eventLabel: "규제지역 LTV 강화",
-    keepRegulatedCaps: true,
+    isLtvTightening: true,
   };
   return {
     default: designated("2025-10-15"),
@@ -145,6 +151,36 @@ export function dayAfter(iso: string): string {
   return t.toISOString().slice(0, 10);
 }
 
+/** 'YYYY-MM-DD' 의 전날 — 시행일 → 경과규정 기준일(전일) */
+export function dayBefore(iso: string): string {
+  const [y, m, d] = iso.split("-").map(Number);
+  const t = new Date(Date.UTC(y, m - 1, d - 1));
+  return t.toISOString().slice(0, 10);
+}
+
+/**
+ * 수도권 6억 한도(`METRO_LOAN_CAP`, 2025-06-28 시행)의 경과규정 기준일 = 시행일 전날. 손으로 적지 않고 시행일 상수에서 계산한다.
+ * 이 날까지 입주자모집공고한 수도권 사업장은 종전 규정(6억 한도 없음)이 될 수 있다 — 금융위 2026-10-15 가계부채 점검회의 보도자료
+ * (https://www.fsc.go.kr/no010101/87939) "6.27대책 등 대출규제 강화 과정에서 … 경과규정*을 마련하여, 분양 당시의 대출규제가
+ * 종전대로 적용되도록 하고 있으나" · "* 신축 분양의 경우 '규제 시행일 전까지 입주자 모집공고'가 된 경우 등 종전규정 적용"(세션706).
+ * 반대로 읽히는 옛 원문 두 줄:
+ *   - 금융위 6·27 FAQ(`250627faq` 120~121줄) "중도금·이주비 대출의 경우, 시행일 전까지 입주자 모집공고가 된 경우* 등은
+ *     종전규정 적용" — 잔금대출은 적지 않았다(중도금·이주비만).
+ *   - 금융위 10·15 FAQ 3-3 "6.27대책당시 중도금대출은 6억원 대출한도 규제를 적용하지 않았는 바, 금번 규제에서도 제외됨
+ *     (잔금대출 전환시 적용)".
+ *   2026-10-15 보도자료가 더 새 자료이고 "될 수 있어요(금융사 심사)"로 물러선 문장이라 2026-10-15 보도자료를 따른다
+ *   (👤 2026-11-09 결정).
+ */
+export const METRO_CAP_CUTOFF = dayBefore(METRO_LOAN_CAP_SINCE);
+
+/** 비규제 수도권 단지의 경과규정 — 6/27 까지 공고면 종전 LTV 70% 에 6억 한도 없음(세션706 👤 결정 「공식 원칙대로」) */
+const METRO_CAP_GRANDFATHER: GrandfatherRule = {
+  cutoff: METRO_CAP_CUTOFF,
+  rate: NORMAL_LTV,
+  eventLabel: `수도권 ${METRO_LOAN_CAP / 10000}억 한도`,
+  isLtvTightening: false,
+};
+
 /** 시도 첫 토막을 짧은 이름으로 — "서울특별시"·"경기도" 같은 긴 표기는 `geoSidoToDbName`(regionGeoMapping)으로 바꾼다 */
 export function shortSido(region?: string | null): string {
   const r = (region ?? "").split(",")[0].trim().normalize("NFC");
@@ -185,6 +221,8 @@ export type GrandfatheredLtv = {
   firstDate: string;
   /** 최근 모집공고일(첫 공고와 같을 수 있다) */
   latestDate: string;
+  /** 수도권 단지이고 첫 공고가 `METRO_CAP_CUTOFF` 까지라 종전 금액에 6억 한도를 씌우지 않았나 */
+  metroCapWaived: boolean;
 };
 
 export type PresaleLtv = {
@@ -197,6 +235,9 @@ export type PresaleLtv = {
 /**
  * 분양 단지의 잔금 때 지역 한도(LTV) — 지금 규정 + 경과규정(종전) 값(세션659 결정 16·18·19 · 새 계산기 전용).
  * 첫 공고일은 "묶음 = 한 사업장"일 때 그 사업장의 첫 공고다. 큰 숫자는 지금 규정이라 이 날짜가 숫자를 부풀리지 않는다.
+ * 종전 금액 = 분양가 × 종전 비율 — 10·15 시가별 한도(4억·2억)는 첫 공고가 10·15 시행 전일(`GRANDFATHER_RULES.default.cutoff`)
+ * 뒤인 수도권·규제지역 단지에만 씌우고(그 전 공고는 10·15 FAQ 13쪽 경과규정으로 안 씌움), 수도권 6억 한도는 첫 공고가
+ * `METRO_CAP_CUTOFF` 뒤일 때만 씌운다(세션706). 비규제 수도권도 6/27 까지 공고면 종전 줄(70%, 6억 한도 없음)이 생긴다.
  */
 export function ltvForPresale({
   price,
@@ -217,15 +258,17 @@ export function ltvForPresale({
     amount: calcLTV(price, zone, region),
     rate: zone === "normal" ? NORMAL_LTV : REGULATED_LTV_RATE,
   };
-  const rule = grandfatherRule(zone, region, gu);
   const first = normalizeIsoDate(firstDate);
+  const metro = isMetroRegion(shortSido(region));
+  const metroCapWaived = metro && first != null && first <= METRO_CAP_CUTOFF;
+  // 비규제는 규제지역 경과규정이 없다 — 수도권 6억 한도 경과규정만 본다. 규제지역인데 규칙이 없으면(서울 구 모름) 종전 없음.
+  const rule = zone === "normal" ? (metroCapWaived ? METRO_CAP_GRANDFATHER : null) : grandfatherRule(zone, region, gu);
   if (!rule || !first || first > rule.cutoff) return { current, grandfathered: null };
   let amount = Math.round(price * rule.rate);
-  if (rule.keepRegulatedCaps) {
-    const capped = REGULATED_LTV_CAPS.find((c) => price > c.overPrice);
-    if (capped) amount = Math.min(amount, capped.cap);
-  }
-  if (isMetroRegion(shortSido(region))) amount = Math.min(amount, METRO_LOAN_CAP);
+  // 10·15 시행 뒤 공고면 시가별 한도도 종전 금액에 붙는다(2026-07-01 추가 지정 3곳의 2025-10-16~2026-06-30 공고)
+  if ((metro || zone !== "normal") && first > GRANDFATHER_RULES.default.cutoff)
+    amount = applyPriceTierCap(amount, price);
+  if (metro && !metroCapWaived) amount = Math.min(amount, METRO_LOAN_CAP);
   return {
     current,
     grandfathered: {
@@ -236,6 +279,7 @@ export function ltvForPresale({
       eventLabel: rule.eventLabel,
       firstDate: first,
       latestDate: latestIsoDate(first, latestDate) ?? first,
+      metroCapWaived,
     },
   };
 }

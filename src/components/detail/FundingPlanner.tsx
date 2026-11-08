@@ -1,6 +1,6 @@
 import { memo, useMemo, useRef, useState } from "react";
 import { C, F } from "@/theme";
-import { isMetroRegion, zoneOf } from "@/constants/regulations";
+import { isMetroRegion, METRO_LOAN_CAP, METRO_LOAN_CAP_SINCE, zoneOf } from "@/constants/regulations";
 import {
   DEFAULT_PAYMENT_SPLIT,
   DSR_LIMIT_BANK,
@@ -15,6 +15,7 @@ import {
   isPreSubscription,
   kstYearMonth,
   latestIsoDate,
+  METRO_CAP_CUTOFF,
   moveInStarted,
 } from "@/constants/loanRules";
 import { fmtPrice } from "@/lib/format";
@@ -385,6 +386,19 @@ export const FundingPlanner = memo(function FundingPlanner({
     !isNonHousing(apt.presaleHousingType as string | null | undefined, apt.name as string | null | undefined) &&
     !isPreSubscription(apt.name as string | null | undefined) &&
     !moveInStarted([apt.presaleMoveIn, schedule?.move_in_ym], kstYearMonth());
+  // 규제지역 종전 금액이 6억을 넘는 것은 첫 공고가 수도권 6억 한도 시행 전이라 그 한도가 빠졌기 때문 — 그 사실과
+  // 전매 시점별 차이(6억 한도 시행일~효력일 전날 전매 = 6억 한도 · 효력일 뒤 전매 = 종전 대상 아님)를 문장에 같이 적는다.
+  // 6억 면제 근거 = 금융위 2026-10-15 가계부채 점검회의 보도자료 경과규정(세션706 · 10·15 FAQ 13쪽은 시가별 한도 쪽 근거).
+  // 비규제 수도권 종전 줄(사건 = 수도권 6억 한도)은 기존 문장 틀 그대로.
+  const metroCap = METRO_LOAN_CAP / 10000;
+  const capFree = gf != null && zone !== "normal" && gf.metroCapWaived && gf.amount > METRO_LOAN_CAP;
+  const grandfatherText =
+    gf == null
+      ? ""
+      : `첫 모집공고 ${gf.firstDate}${gf.latestDate !== gf.firstDate ? ` (최근 공고 ${gf.latestDate})` : ""} — ${gf.eventLabel}(${gf.effectiveDate}) 전 공고라 금융사 심사에 따라 종전 규정(LTV ${Math.round(gf.rate * 100)}%${capFree ? `, ${METRO_CAP_CUTOFF}까지 공고라 수도권 ${metroCap}억 한도 없이` : ""})이 적용될 수 있어요. 그 경우 최대 ${fmtPrice(gf.amount)}이에요. ` +
+        (capFree
+          ? `${METRO_LOAN_CAP_SINCE}~${gf.cutoff} 전매로 산 분양권은 ${metroCap}억 한도가 붙고, ${gf.effectiveDate} 이후 전매는 종전 규정 대상이 아니에요.`
+          : `${gf.effectiveDate} 이후 전매로 산 분양권은 제외예요.`);
   const cashNum = toNumber(cash);
   const metroOrRegulated = plan ? plan.stressAdd === STRESS_RATE_METRO : false;
   // 수도권 투기과열지구 잔금대출은 분양가가 아니라 입주 때 감정가·시세로 잰다(결정 나 · 위 REGULATED_BALANCE_BASIS)
@@ -546,7 +560,7 @@ export const FundingPlanner = memo(function FundingPlanner({
               data-testid="fp-grandfather"
               style={{ fontSize: F.micro, color: C.muted, lineHeight: 1.5, margin: "4px 0 6px" }}
             >
-              {`첫 모집공고 ${gf.firstDate}${gf.latestDate !== gf.firstDate ? ` (최근 공고 ${gf.latestDate})` : ""} — ${gf.eventLabel}(${gf.effectiveDate}) 전 공고라 금융사 심사에 따라 종전 규정(LTV ${Math.round(gf.rate * 100)}%)이 적용될 수 있어요. 그 경우 최대 ${fmtPrice(gf.amount)}이에요. ${gf.effectiveDate} 이후 전매로 산 분양권은 제외예요.`}
+              {grandfatherText}
             </div>
           )}
           {plan.incomeLimit != null ? (

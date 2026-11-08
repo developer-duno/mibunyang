@@ -3,6 +3,7 @@ import {
   METRO_LOAN_CAP,
   METRO_LOAN_CAP_SINCE,
   NORMAL_LTV,
+  REGULATED_LTV_CAPS,
   REGULATED_LTV_RATE,
   type Zone,
 } from "@/constants/regulations";
@@ -13,6 +14,7 @@ import {
   isNonHousing,
   isPreSubscription,
   kstYearMonth,
+  METRO_CAP_CUTOFF,
   moveInStarted,
   normalizeIsoDate,
   normalizeYearMonth,
@@ -41,7 +43,12 @@ export type TimelineEvent = {
 };
 export type TimelineVerdictKind =
   "grandfather-may" | "current-only" | "notice-missing" | "local-stress" | "local-stress-ended" | "metro-free";
-export type RegulationTimeline = { verdict: { kind: TimelineVerdictKind; text: string }; events: TimelineEvent[] };
+export type RegulationTimeline = {
+  verdict: { kind: TimelineVerdictKind; text: string };
+  events: TimelineEvent[];
+  /** 수도권 6억 한도 시행 전(`METRO_CAP_CUTOFF` 까지) 공고 · 제외 아님 → 결론·「수도권 6억 시행」 사건에 「6억 한도 없이」 문장이 나왔나(바닥 출처 줄이 읽는다) */
+  metroCapWaived: boolean;
+};
 
 /** 'YYYY-MM-DD' → 'M월 D일' */
 function monthDay(iso: string): string {
@@ -84,6 +91,17 @@ export function buildRegulationTimeline(input: {
         ? "입주가 시작된 단지"
         : null;
   const beforeCutoff = rule != null && first != null && first <= rule.cutoff;
+  // 수도권 6억 한도 시행 전 공고 — 종전 규정이면 6억 한도도 없다(금융위 2026-10-15 보도자료 경과규정 · 세션706).
+  // 규제지역인데 규칙이 없으면(서울 구 모름) 종전 여부를 못 가리니 말하지 않는다.
+  const metroCapWaived =
+    metro && first != null && first <= METRO_CAP_CUTOFF && excludedReason == null && (!regulated || rule != null);
+  // 잔금 카드 종전 줄과 같은 꼴(해까지 · 세션706 보완 R4)
+  const capFreeTail = `${METRO_CAP_CUTOFF}까지 공고라 ${cap}억 한도 없이`;
+  // 수도권 시가별 한도 — 「15억 초과 4억·25억 초과 2억」(상수에서 싼 구간부터 · 세션706 보완 R3)
+  const tierText = [...REGULATED_LTV_CAPS]
+    .reverse()
+    .map((c) => `${c.overPrice / 10000}억 초과 ${c.cap / 10000}억`)
+    .join("·");
 
   // ── 결론 ──
   let verdict: RegulationTimeline["verdict"];
@@ -100,7 +118,9 @@ export function buildRegulationTimeline(input: {
     } else if (beforeCutoff) {
       verdict = {
         kind: "grandfather-may",
-        text: `첫 공고가 지정보다 앞서요 → 집단대출은 종전 ${Math.round(rule.rate * 100)}% 가 될 수 있어요(금융사 심사)`,
+        text:
+          `첫 공고가 지정보다 앞서요 → 집단대출은 종전 ${Math.round(rule.rate * 100)}% 가 될 수 있어요(금융사 심사)` +
+          (metroCapWaived ? ` · ${capFreeTail}` : ""),
       };
     } else {
       // 첫 공고일이 오늘보다 뒤(아직 공고 전)면 과거형을 쓰지 않는다(세션705 보완 7-5)
@@ -112,7 +132,9 @@ export function buildRegulationTimeline(input: {
   } else if (metro) {
     verdict = {
       kind: "metro-free",
-      text: `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · 수도권은 집값과 상관없이 ${cap}억까지`,
+      text: metroCapWaived
+        ? `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · ${capFreeTail} 종전 규정이 될 수 있어요(금융사 심사)`
+        : `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · 수도권은 집값에 따라 최대 ${cap}억(${tierText})`,
     };
   } else if (today <= STRESS_RATE_LOCAL_UNTIL) {
     verdict = {
@@ -149,7 +171,10 @@ export function buildRegulationTimeline(input: {
       dated(METRO_LOAN_CAP_SINCE, {
         kind: "metro-cap",
         title: `수도권 주택구입 대출 최대 ${cap}억 시행`,
-        note: `집값과 상관없이 ${cap}억까지만 (서울·경기·인천)`,
+        note: metroCapWaived
+          ? `이 단지는 그 전에 공고 → ${cap}억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)`
+          : // 6·27 당시엔 집값과 상관없이 6억이었지만 10·15(시행 10-16)부터 시가별 — 결론 줄과 같은 tierText(세션706 재검사 🟠)
+            `최대 ${cap}억 (서울·경기·인천) · ${dayAfter(GRANDFATHER_RULES.default.cutoff)}부터 ${tierText}`,
         mine: false,
       })
     );
@@ -159,12 +184,12 @@ export function buildRegulationTimeline(input: {
       dated(dayAfter(rule.cutoff), {
         kind: "designation",
         // 꼬리(그림 원문) — 4구(LTV 강화)는 없음 · 기본(10·15) 은 서울 전역·경기 12곳 · 그 밖(2026 추가 지정)은 경기 3곳(보완 7-4)
-        title: rule.keepRegulatedCaps
+        title: rule.isLtvTightening
           ? `${rule.eventLabel} 효력`
           : rule.cutoff === GRANDFATHER_RULES.default.cutoff
             ? `${rule.eventLabel} 효력 (서울 전역·경기 12곳)`
             : `${rule.eventLabel} 효력 (화성 동탄·용인 기흥·구리)`,
-        note: rule.keepRegulatedCaps
+        note: rule.isLtvTightening
           ? `이날부터 LTV ${ltv}% · 전날까지 공고한 사업장은 종전 ${Math.round(rule.rate * 100)}% 가 될 수 있어요`
           : `이날부터 LTV ${ltv}% · 전날까지 공고한 사업장은 종전 규정이 될 수 있어요`,
         mine: false,
@@ -219,5 +244,5 @@ export function buildRegulationTimeline(input: {
     const kb = sortKey(b);
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
-  return { verdict, events };
+  return { verdict, events, metroCapWaived };
 }

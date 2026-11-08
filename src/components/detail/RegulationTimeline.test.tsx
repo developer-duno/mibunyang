@@ -51,7 +51,9 @@ describe("RegulationTimeline", () => {
     const { getByTestId } = render(<RegulationTimeline apt={seoulApt()} unit={unitOf()} now={NOW} />);
     const verdict = getByTestId("reg-verdict");
     expect(verdict.getAttribute("data-kind")).toBe("grandfather-may");
-    expect(verdict.textContent).toBe("첫 공고가 지정보다 앞서요 → 집단대출은 종전 70% 가 될 수 있어요(금융사 심사)");
+    expect(verdict.textContent).toBe(
+      "첫 공고가 지정보다 앞서요 → 집단대출은 종전 70% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이"
+    );
     const items = Array.from(getByTestId("reg-timeline").querySelectorAll("li"));
     expect(items.map((li) => li.getAttribute("data-kind"))).toEqual([
       "notice",
@@ -62,9 +64,34 @@ describe("RegulationTimeline", () => {
     ]);
     expect(items.map((li) => li.getAttribute("data-mine"))).toEqual(["true", "false", "false", "false", "true"]);
     expect(items.map((li) => li.getAttribute("data-future"))).toEqual(["false", "false", "false", "false", "true"]);
-    // 지정 전 공고(grandfather-may)일 때만 전매 꼬리
+    // 지정 전 공고(grandfather-may)일 때만 전매 꼬리 · 2025-06-27까지 공고라 경과규정 출처 꼬리(세션706 #6)
     expect(getByTestId("reg-basis").textContent).toBe(
-      "2026년 10월 기준 · 금융위 10·15 대책 FAQ · 지정일 뒤 전매로 산 분양권은 종전 규정 제외"
+      "2026년 11월 기준 · 금융위 10·15 대책 FAQ · 지정일 뒤 전매로 산 분양권은 종전 규정 제외 · 경과규정 = 금융위 2026-10-15 가계부채 점검회의 보도자료"
+    );
+  });
+
+  // 세션706 #6 — 「6억 한도 없이」 문장이 나온 단지만 출처 꼬리. ⚠️ 변이 대상: 꼬리 조건을 뒤집으면 두 쪽 다 빨강.
+  it("바닥줄 경과규정 출처 꼬리 — 6/27 뒤 공고(2025-07-10)면 없음 · 비규제 수도권 6/27 전 공고면 있음", () => {
+    const late = render(
+      <RegulationTimeline apt={seoulApt({ presaleRecruitDate: "2025-07-10" })} unit={unitOf()} now={NOW} />
+    );
+    expect(late.getByTestId("reg-verdict").getAttribute("data-kind")).toBe("grandfather-may");
+    expect(late.getByTestId("reg-basis").textContent).toBe(
+      "2026년 11월 기준 · 금융위 10·15 대책 FAQ · 지정일 뒤 전매로 산 분양권은 종전 규정 제외"
+    );
+    late.unmount();
+    const pt = render(
+      <RegulationTimeline
+        apt={seoulApt({ region: "경기", gu: "평택시", isRegulated: false, presaleRecruitDate: "2024-02-26" })}
+        unit={unitOf()}
+        now={NOW}
+      />
+    );
+    expect(pt.getByTestId("reg-verdict").textContent).toBe(
+      "비규제라 LTV 70% 예요 · 2025-06-27까지 공고라 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)"
+    );
+    expect(pt.getByTestId("reg-basis").textContent).toBe(
+      "2026년 11월 기준 · 금융위 가계부채 관리 강화 방안(2025-06-28 시행) · 경과규정 = 금융위 2026-10-15 가계부채 점검회의 보도자료"
     );
   });
 
@@ -89,19 +116,19 @@ describe("RegulationTimeline", () => {
       />
     );
     expect(local.getByTestId("reg-basis").textContent).toBe(
-      "2026년 10월 기준 · 금융위원회공고 제2026-362호(3단계 스트레스 DSR)"
+      "2026년 11월 기준 · 금융위원회공고 제2026-362호(3단계 스트레스 DSR)"
     );
     local.unmount();
     const metro = render(
       <RegulationTimeline
-        apt={seoulApt({ region: "경기", gu: "평택시", isRegulated: false })}
+        apt={seoulApt({ region: "경기", gu: "평택시", isRegulated: false, presaleRecruitDate: null })}
         unit={unitOf()}
         now={NOW}
       />
     );
     expect(metro.getByTestId("reg-verdict").getAttribute("data-kind")).toBe("metro-free");
     expect(metro.getByTestId("reg-basis").textContent).toBe(
-      "2026년 10월 기준 · 금융위 가계부채 관리 강화 방안(2025-06-28 시행)"
+      "2026년 11월 기준 · 금융위 가계부채 관리 강화 방안(2025-06-28 시행)"
     );
   });
 
@@ -110,7 +137,7 @@ describe("RegulationTimeline", () => {
       <RegulationTimeline apt={seoulApt({ presaleRecruitDate: "2026-02-14" })} unit={unitOf()} now={NOW} />
     );
     expect(getByTestId("reg-verdict").getAttribute("data-kind")).toBe("current-only");
-    expect(getByTestId("reg-basis").textContent).toBe("2026년 10월 기준 · 금융위 10·15 대책 FAQ");
+    expect(getByTestId("reg-basis").textContent).toBe("2026년 11월 기준 · 금융위 10·15 대책 FAQ");
   });
 
   it("계측 — 같은 단지는 두 번 그려도 1회, _reset 뒤 다시 1회", () => {
@@ -144,9 +171,9 @@ describe("RegulationTimeline", () => {
   // 보완 7-3 — 바닥줄 출처는 그 단지의 경과규정 규칙별로(날짜는 rule.cutoff 에서)
   it("바닥줄 출처 — 송파(9·7) · 구리(2026-06-30 추가 지정) · 은평(10·15)", () => {
     const cases: Array<[string, string, string]> = [
-      ["서울", "송파구", "2026년 10월 기준 · 금융위 9·7 대책 FAQ"],
-      ["경기", "구리시", "2026년 10월 기준 · 금융위 2026-06-30 추가 지정 FAQ"],
-      ["서울", "은평구", "2026년 10월 기준 · 금융위 10·15 대책 FAQ"],
+      ["서울", "송파구", "2026년 11월 기준 · 금융위 9·7 대책 FAQ"],
+      ["경기", "구리시", "2026년 11월 기준 · 금융위 2026-06-30 추가 지정 FAQ"],
+      ["서울", "은평구", "2026년 11월 기준 · 금융위 10·15 대책 FAQ"],
     ];
     for (const [region, gu, text] of cases) {
       // 지정 뒤 공고(2026-08-01 · 세 규칙 모두 cutoff 뒤)라 전매 꼬리가 없다
