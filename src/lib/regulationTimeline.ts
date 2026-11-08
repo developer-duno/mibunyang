@@ -8,6 +8,7 @@ import {
 } from "@/constants/regulations";
 import {
   dayAfter,
+  GRANDFATHER_RULES,
   grandfatherRule,
   isNonHousing,
   isPreSubscription,
@@ -102,7 +103,11 @@ export function buildRegulationTimeline(input: {
         text: `첫 공고가 지정보다 앞서요 → 집단대출은 종전 ${Math.round(rule.rate * 100)}% 가 될 수 있어요(금융사 심사)`,
       };
     } else {
-      verdict = { kind: "current-only", text: `지정 뒤에 공고한 단지라 지금 규정(LTV ${ltv}%)이 그대로예요` };
+      // 첫 공고일이 오늘보다 뒤(아직 공고 전)면 과거형을 쓰지 않는다(세션705 보완 7-5)
+      verdict =
+        first > today
+          ? { kind: "current-only", text: `지정 뒤 공고라 지금 규정(LTV ${ltv}%)이 적용돼요` }
+          : { kind: "current-only", text: `지정 뒤에 공고한 단지라 지금 규정(LTV ${ltv}%)이 그대로예요` };
     }
   } else if (metro) {
     verdict = {
@@ -153,7 +158,12 @@ export function buildRegulationTimeline(input: {
     events.push(
       dated(dayAfter(rule.cutoff), {
         kind: "designation",
-        title: `${rule.eventLabel} 효력`,
+        // 꼬리(그림 원문) — 4구(LTV 강화)는 없음 · 기본(10·15) 은 서울 전역·경기 12곳 · 그 밖(2026 추가 지정)은 경기 3곳(보완 7-4)
+        title: rule.keepRegulatedCaps
+          ? `${rule.eventLabel} 효력`
+          : rule.cutoff === GRANDFATHER_RULES.default.cutoff
+            ? `${rule.eventLabel} 효력 (서울 전역·경기 12곳)`
+            : `${rule.eventLabel} 효력 (화성 동탄·용인 기흥·구리)`,
         note: rule.keepRegulatedCaps
           ? `이날부터 LTV ${ltv}% · 전날까지 공고한 사업장은 종전 ${Math.round(rule.rate * 100)}% 가 될 수 있어요`
           : `이날부터 LTV ${ltv}% · 전날까지 공고한 사업장은 종전 규정이 될 수 있어요`,
@@ -188,7 +198,8 @@ export function buildRegulationTimeline(input: {
     if (ym != null && (moveIn == null || ym < moveIn)) moveIn = ym;
   }
   if (moveIn != null) {
-    const future = moveIn > thisMonth;
+    // 이번 달 입주는 아직 시작 전(moveInStarted 의 `<` 와 같은 쪽) → 「입주 예정」 · 정렬도 「오늘」 뒤(보완 7-1)
+    const future = moveIn >= thisMonth;
     events.push({
       date: moveIn,
       kind: "move-in",
@@ -199,10 +210,13 @@ export function buildRegulationTimeline(input: {
     });
   }
 
-  // 날짜 오름차순(안정 정렬 — 같은 날은 넣은 순서) · 날짜 null 은 오늘 날짜로 보고 「오늘」 앞에 넣었으니 그 바로 앞에 선다
+  // 날짜 오름차순(안정 정렬 — 같은 날은 넣은 순서) · 날짜 null 은 오늘 날짜로 보고 「오늘」 앞에 넣었으니 그 바로 앞에 선다.
+  // 이번 달 입주('YYYY-MM' 이라 글자로는 오늘 'YYYY-MM-DD' 보다 앞)도 오늘 날짜로 보고 「오늘」 뒤에 넣었으니 그 바로 뒤에 선다.
+  const sortKey = (e: TimelineEvent): string =>
+    e.date == null || (e.kind === "move-in" && e.date === thisMonth) ? today : e.date;
   events.sort((a, b) => {
-    const ka = a.date ?? today;
-    const kb = b.date ?? today;
+    const ka = sortKey(a);
+    const kb = sortKey(b);
     return ka < kb ? -1 : ka > kb ? 1 : 0;
   });
   return { verdict, events };

@@ -126,4 +126,50 @@ describe("RegulationTimeline", () => {
     render(<RegulationTimeline apt={apt} unit={unitOf()} now={NOW} />);
     expect(views()).toHaveLength(2);
   });
+
+  // 보완 7-2 — 평형표를 불러오는 동안(첫 공고일이 비어 결론이 쏠림)은 보내지 않고, 끝난 뒤 1회
+  // ⚠️ 변이 대상: pending 가드를 지우면 첫 render 에서 notice-missing 으로 1회 나가 빨강.
+  it("계측 — unit.pending 참이면 0회, 거짓으로 바뀐 뒤 1회(그때의 결론)", () => {
+    const apt = seoulApt({ presaleRecruitDate: null });
+    const r = render(<RegulationTimeline apt={apt} unit={unitOf({ pending: true })} now={NOW} />);
+    expect(views()).toHaveLength(0);
+    r.rerender(
+      <RegulationTimeline apt={apt} unit={unitOf({ pending: false, firstRecruitDate: "2024-05-10" })} now={NOW} />
+    );
+    expect(views()).toEqual([
+      ["regulation_timeline_view", { aptId: "ah-77", zone: "overheated", verdict: "grandfather-may" }],
+    ]);
+  });
+
+  // 보완 7-3 — 바닥줄 출처는 그 단지의 경과규정 규칙별로(날짜는 rule.cutoff 에서)
+  it("바닥줄 출처 — 송파(9·7) · 구리(2026-06-30 추가 지정) · 은평(10·15)", () => {
+    const cases: Array<[string, string, string]> = [
+      ["서울", "송파구", "2026년 10월 기준 · 금융위 9·7 대책 FAQ"],
+      ["경기", "구리시", "2026년 10월 기준 · 금융위 2026-06-30 추가 지정 FAQ"],
+      ["서울", "은평구", "2026년 10월 기준 · 금융위 10·15 대책 FAQ"],
+    ];
+    for (const [region, gu, text] of cases) {
+      // 지정 뒤 공고(2026-08-01 · 세 규칙 모두 cutoff 뒤)라 전매 꼬리가 없다
+      const r = render(
+        <RegulationTimeline
+          apt={seoulApt({ region, gu, presaleRecruitDate: "2026-08-01" })}
+          unit={unitOf()}
+          now={NOW}
+        />
+      );
+      expect(r.getByTestId("reg-basis").textContent).toBe(text);
+      r.unmount();
+    }
+  });
+
+  // 보완 7-7 — 날짜 없는 줄(공고일 못 모음)은 「—」
+  // ⚠️ 변이 대상: `—` 를 빈 글자로 바꾸면 빨강.
+  it("공고일 없음 줄의 날짜 칸은 「—」", () => {
+    const { getByTestId } = render(
+      <RegulationTimeline apt={seoulApt({ presaleRecruitDate: null })} unit={unitOf()} now={NOW} />
+    );
+    expect(getByTestId("reg-verdict").getAttribute("data-kind")).toBe("notice-missing");
+    const li = getByTestId("reg-timeline").querySelector('li[data-kind="notice-missing"]')!;
+    expect(li.textContent?.startsWith("—이 단지 첫 입주자모집공고 · 아직 못 모았어요")).toBe(true);
+  });
 });

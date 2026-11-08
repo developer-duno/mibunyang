@@ -98,7 +98,7 @@ describe("buildRegulationTimeline — 사건 순서(A-2)·future(A-3)", () => {
     const d = buildRegulationTimeline({ ...base, firstDate: "2024-05-10" }).events.find(
       (e) => e.kind === "designation"
     )!;
-    expect(d.title).toBe("규제지역 지정 효력");
+    expect(d.title).toBe("규제지역 지정 효력 (서울 전역·경기 12곳)");
     expect(d.note).toBe("이날부터 LTV 40% · 전날까지 공고한 사업장은 종전 규정이 될 수 있어요");
     const g4 = buildRegulationTimeline({ ...base, gu: "송파구", firstDate: "2019-08-19" }).events.find(
       (e) => e.kind === "designation"
@@ -182,6 +182,45 @@ describe("buildRegulationTimeline — 결론(A-4·A-5)", () => {
     expect(
       buildRegulationTimeline({ zone: "normal", region: "경기", gu: "평택시", moveIns: [], now: NOW }).verdict
     ).toEqual({ kind: "metro-free", text: "비규제라 LTV 70% 예요 · 수도권은 집값과 상관없이 6억까지" });
+  });
+});
+
+describe("buildRegulationTimeline — 보완 2차(세션705 ⑦)", () => {
+  // 7-1 — 이번 달 입주는 아직 시작 전(moveInStarted 의 `<` 와 같은 쪽)
+  // ⚠️ 변이 대상: future 를 `>` 로 되돌리면 「입주 시작」·future 거짓·「오늘」 앞으로 가 빨강.
+  it("입주월이 이번 달이면 「입주 예정」 · future 참 · 「오늘」 뒤 · 결론은 grandfather-may 그대로", () => {
+    const t = buildRegulationTimeline({ ...base, gu: "송파구", firstDate: "2019-08-19", moveIns: ["2026-11"] });
+    const mi = t.events.find((e) => e.kind === "move-in")!;
+    expect(mi.title).toBe("이 단지 입주 예정");
+    expect(mi.future).toBe(true);
+    expect(t.events.map((e) => e.kind).slice(-2)).toEqual(["today", "move-in"]);
+    expect(t.verdict.kind).toBe("grandfather-may");
+  });
+
+  // 7-4 — 2026 추가 지정 경기 3곳의 지정 사건 제목 꼬리
+  it("경기 3곳(화성·용인 기흥·구리) 지정 사건 제목 = 「규제지역 지정 효력 (화성 동탄·용인 기흥·구리)」", () => {
+    for (const gu of ["화성시", "용인시 기흥구", "구리시"]) {
+      const d = buildRegulationTimeline({ ...base, region: "경기", gu, firstDate: "2025-12-01" }).events.find(
+        (e) => e.kind === "designation"
+      )!;
+      expect(d.title).toBe("규제지역 지정 효력 (화성 동탄·용인 기흥·구리)");
+    }
+  });
+
+  // 7-5 — 첫 공고일이 오늘보다 뒤(아직 공고 전)
+  it("첫 공고일이 오늘보다 뒤면 결론은 「지정 뒤 공고라 … 적용돼요」 · 공고 사건 future 참", () => {
+    const t = buildRegulationTimeline({ ...base, firstDate: "2026-12-05" });
+    expect(t.verdict).toEqual({ kind: "current-only", text: "지정 뒤 공고라 지금 규정(LTV 40%)이 적용돼요" });
+    const n = t.events.find((e) => e.kind === "notice")!;
+    expect(n.future).toBe(true);
+    expect(t.events.map((e) => e.kind)).toEqual(["metro-cap", "designation", "today", "notice"]);
+  });
+
+  // 재검사 C 🟡 — 공고 당일은 「오늘보다 뒤」가 아니다(과거형 문장 · future 거짓). `>` 를 `>=` 로 바꾸면 빨강.
+  it("첫 공고일이 오늘 당일이면 과거형 결론 · 공고 사건 future 거짓", () => {
+    const t = buildRegulationTimeline({ ...base, firstDate: "2026-11-08" });
+    expect(t.verdict).toEqual({ kind: "current-only", text: "지정 뒤에 공고한 단지라 지금 규정(LTV 40%)이 그대로예요" });
+    expect(t.events.find((e) => e.kind === "notice")!.future).toBe(false);
   });
 });
 
