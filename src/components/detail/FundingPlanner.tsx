@@ -686,6 +686,7 @@ export const FundingPlanner = memo(function FundingPlanner({
         href={LOAN_FILTER_POST.href}
         target="_blank"
         rel="noopener noreferrer"
+        onClick={() => trackEvent("loan_filter_post_click", { aptId: apt.id })} // 세션704 👤 결정 — 개인 수치 없이 단지 id 만
         style={{
           display: "block",
           marginTop: 6,

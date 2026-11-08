@@ -439,6 +439,15 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
     }
   });
 
+  it("2u 거르기 글 링크를 누르면 loan_filter_post_click 한 번(단지 id 만 — 세션704 👤) · 공시 링크는 안 센다", () => {
+    render(<FundingPlanner apt={apt()} rates={RATES} />);
+    const count = () => vi.mocked(trackEvent).mock.calls.filter((c) => c[0] === "loan_filter_post_click");
+    fireEvent.click(screen.getByText("금감원 금융상품 비교공시 ↗"));
+    expect(count()).toEqual([]);
+    fireEvent.click(screen.getByTestId("fp-loan-filter-post"));
+    expect(count()).toEqual([["loan_filter_post_click", { aptId: "ah-1" }]]);
+  });
+
   // 세션675 — 「신청·연결·해결·추천」과 금융회사·상품 이름 0(대부업 문장도 빼기 — 결정 가-2)
   const BANNED = [
     "미분양이라 대출이 더",
