@@ -219,7 +219,10 @@ describe("buildRegulationTimeline — 보완 2차(세션705 ⑦)", () => {
   // 재검사 C 🟡 — 공고 당일은 「오늘보다 뒤」가 아니다(과거형 문장 · future 거짓). `>` 를 `>=` 로 바꾸면 빨강.
   it("첫 공고일이 오늘 당일이면 과거형 결론 · 공고 사건 future 거짓", () => {
     const t = buildRegulationTimeline({ ...base, firstDate: "2026-11-08" });
-    expect(t.verdict).toEqual({ kind: "current-only", text: "지정 뒤에 공고한 단지라 지금 규정(LTV 40%)이 그대로예요" });
+    expect(t.verdict).toEqual({
+      kind: "current-only",
+      text: "지정 뒤에 공고한 단지라 지금 규정(LTV 40%)이 그대로예요",
+    });
     expect(t.events.find((e) => e.kind === "notice")!.future).toBe(false);
   });
 });
