@@ -452,6 +452,20 @@ describe("규칙 — 빈 줄·빈 절·빈칸 글자", () => {
     expect(cb.find((l) => l.startsWith("총 "))).not.toContain("미분양");
     expect(cb).toContain("입주: 2023년 11월");
   });
+  it("세션689 명단 등재·비공개 — 「총 N세대 · 미분양 비공개 (대구시 2026년 9월말 명단)」 · 같음 시험(refSections)도 통과", () => {
+    const d = {
+      ...base,
+      region: "대구",
+      unsold: null,
+      unsoldRate: null,
+      unsoldSource: "govlist",
+      unsoldListedHidden: true,
+      unsoldListedAsOf: "2026-09-30",
+    };
+    const line = N.basicLinesNode(d).find((l) => l.includes("미분양"));
+    expect(line).toMatch(/미분양 비공개 \(대구시 2026년 9월말 명단\)$/);
+    expect(N.buildAptSections(d, { tzOffsetMin: LOCAL_TZ })).toEqual(refSections(d));
+  });
   it("「추가 모집 —」 은 안 나온다(횟수 0 · ap-)", () => {
     expect(all({ ...base, unsoldEventCount: 0 })).not.toContain("추가 모집");
     expect(all({ ...base, id: "ap-1", unsoldEventCount: 3 })).not.toContain("추가 모집");
@@ -574,6 +588,13 @@ describe("사본 함수 = 원본 (경계값 + 픽스처 전 행)", () => {
       expect(N.fmtPriceEok1Node(v)).toBe(fmtPriceEok1(v));
       expect(N.hasKnownAreaNode(v)).toBe(hasKnownArea(v));
       expect(N.unsoldFieldText(v)).toBe(FIELD_META.unsold.fmt(v));
+      // 세션689: 명단 칸이 있는 행도 화면 상세와 같은 글자(비공개 · 명단 출처 0 · 기관 표 밖 시도)
+      for (const a of [
+        { region: "대구", unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30", unsoldSource: "govlist" },
+        { region: "충남", unsoldSource: "govlist", unsoldListedAsOf: "2026-06-30" },
+        { region: "경기", unsoldListedHidden: false, unsoldSource: "kosis" },
+      ])
+        expect(N.unsoldFieldText(v, a)).toBe(FIELD_META.unsold.fmt(v, a));
       for (const w of nums) {
         expect(N.fmtPriceRangeNode(v, w)).toBe(fmtPriceRange(v, w));
         expect(N.fmtPriceRangeEok1Node(v, w)).toBe(fmtPriceRangeEok1(v, w));

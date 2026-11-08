@@ -20,7 +20,14 @@
  *   ⑳ 청약홈 공고 다른 묶음 — 한 공고가 묶음 열쇠가 다른 행 2개+ 에 붙음(모든 묶음이 판정 파일 active 일 때만 제외 · KST 월요일 · 세션630)
  *   ㉑ 청약홈 공고 정리 경고 표식 — applyhome-detail 최신 실행의 NTC_SKIP·UNRESOLVED·NO_EVIDENCE·MANUAL_MISSING(매일 · dedup · 세션632)
  *   ㉒ 시세 이력 바닥 — complex_price_history 의 2u 삭제 조건 밖 조각(A 8글자 옛 줄 · B 6글자 A1 area_no 있음)이 바닥 밑으로(매일 · 세션648)
- *   ㉓ 검색 제외 안전선 — 운영 /data/seo-thin.json 이 JSON·모양 맞음·applied=true 가 아니면(얇은 단지 > 안전선 15 · 파일 없음 · HTML 응답)(매일 · 세션668)
+ *   ㉓ 검색 제외 안전선 — 운영 /data/seo-thin.json 이 JSON·모양 맞음·applied=true 가 아니면(얇은 단지 > 안전선 15 · 파일 없음 · HTML 응답)(매일 · 세션668) · 단지 장 본문 실패(bodyErrors>0) · builtAt 없음 또는 main 마지막 daily refresh 커밋보다 이름(세션697)
+ *   ㉔ 지자체 명단 — unsold-govlist 최근 실행의 GOVLIST_SKIP · 명단 행 수 전 기준월 대비 −50%(실행·명단 0행이면 침묵 · 매일 · dedup · 세션692)
+ *      + ㉔-c 매칭 충돌 ≥1 · 판정 필요 수 증가(GOVLIST_MATCH) · ㉔-d VIEW 비공개 수 = 라이브 목록 JSON 비공개 수(+ 양성 대조군) · 명단 조회는 출처마다 최근 기준월 2개(세션693 PR-4b)
+ *      + ㉔ 재료 조회가 실패하면 ㉔-d 도 실행 실패 1건(침묵하지 않음 · 세션696)
+ *   ㉕ 기준일 상수 만료 — src/constants/loanRules.ts STRESS_RATE_LOCAL_UNTIL 만료 14일 전부터 고칠 때까지 매일(kind rule-expiry · 파일 글자로 읽음 · 세션696)
+ *   ㉖ 명단 총분양 상한 새 단지 — kosis-unsold 최근 실행의 KOSIS_LISTED_CAP 표식 id 중 그 전 실행 표식에 없던 것만(kind kosis-listed-cap · 같은 실행은 한 번만 · 세션697)
+ *   ⑫(i) 미래 기준일 — applyhome·govlist 인데 unsold_as_of 가 오늘(KST) 뒤인 행(⑫ 안 · 세션697 👤 결정 ① 「무시+경보」)
+ *   ⑥-c 시세 범위 빈칸 — trade_stats 적정가(cmp_fair_price) 있음 + 최저가(cmp_min) 빈칸 > 0(⑥-b 바로 뒤 · 세션696)
  *
  * 모드:
  *   --mode=run    workflow_run 트리거 — 방금 끝난 run 1개만 (①②)
@@ -33,9 +40,11 @@
  *   SUPABASE_URL / SUPABASE_SERVICE_KEY   — collector_runs / regions 조회
  */
 import { readFileSync } from "node:fs";
-import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, APPLYHOME_EXPIRY_MONTHS, HWASEONG_LAWD_CODES, parseSgisSidoMismatch, hasSgisFirstRunPending } from "./collectors/_shared.mjs";
+import { loadEnv, getSupabase, selectAll, viewJoinGu, parseRegionUnresolved, isApplyhomeExpired, isAsOfFuture, asOfRespectState, kstDayOf, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS, HWASEONG_LAWD_CODES, parseSgisSidoMismatch, hasSgisFirstRunPending } from "./collectors/_shared.mjs";
 import { isMissingTable } from "./collectors/_trade-deals.mjs";
 import { isLeaseUnit } from "../src/constants/leaseTypes.mjs";
+import { GOVLIST_DROP_RATIO } from "./collectors/_govlist-plan.mjs";
+import { parseListedCap } from "./collectors/collect-unsold-kosis.mjs";
 import { computeAudit, fetchAllFromView } from "./collectors/data-audit.mjs";
 import { sendTelegram, formatIssueForConsole, buildMessages, toKst, CONCLUSION_LABEL } from "./notify-telegram.mjs";
 import { extractMonitoredWorkflows } from "./audit-monitor-coverage.mjs";
@@ -280,7 +289,7 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"|"seo-body-error"|"seo-built-at"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
@@ -343,6 +352,10 @@ export const EXTERNAL_API_COLLECTORS = [
   //    apartments·regions 를 채운다 — 이 배열의 취지가 "GH run 이 없어 ①③ 이 못 보는 수집기의
   //    신선도" 이므로 출처가 API 든 파일이든 같다. 로컬 러너 매월 8일 → 월간 38.
   { collector: "crime-safety",    stale_days: 38, owner: "행안부 지역안전지수 CSV (로컬 매월 8일)" },
+  // ── 세션693 PR-4b: 지자체 단지별 미분양 명단(collect-unsold-govlist.mjs PHASE) — 로컬 러너 매월 8일 `--apply --source=daegu`.
+  //    GH run 이 없어 ①③ 대상 밖 → 이 신선도가 유일한 "안 돌면 알림". 월간 = 31 + 1주 여유 = 38.
+  //    ⑤-a(빈 성공 3연속): 바뀜 0 인 정상 달에도 명단 원문은 읽으므로 그 행 수를 skip 으로 남긴다 — 명단을 못 읽은 달만 ok·skip 0.
+  { collector: "unsold-govlist",  stale_days: 38, owner: "지자체 미분양 명단 대구 (로컬 매월 8일)" },
   // ── data.go.kr = 세션 519. 1613000 만의 문제가 아니었다 — www.data.go.kr(공시가격 CSV)·
   //    apis.data.go.kr/B552584(에어코리아)도 해외 IP 를 막는다. 실측: GH 는 `fetch failed`
   //    (HTTP 코드 없음)인데 같은 요청이 로컬 한국 IP 에선 166ms / 92ms 200 OK.
@@ -1269,7 +1282,22 @@ const SEO_THIN_COLLECTOR = "postbuild-prerender";
 /** ㉓ 알림에 펼칠 단지 명단 수 — 나머지는 "외 N곳". */
 const SEO_THIN_LIST_MAX = 20;
 
-/** @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number }} SeoThinRecord */
+/**
+ * 새 칸 3개(세션697)는 선택 — 옛 기록(칸 없음)도 정상으로 읽는다. 모양이 틀린 새 칸은 그 칸만 빼고 warnings 에 적는다.
+ * bodyErrors = 단지 장 본문이 던져 얇은 본문으로 만든 수 · bodyErrorIds = 그 앞 20개 · builtAt = 빌드 시각(ISO).
+ * newCount = 얇은 단지 중 새 단지(들어온 지 newDays 일 안) 수 — 안전선 셈에서 뺀다(👤 11/06 · 세션698). 없으면 0 으로 셈(옛 기록).
+ * @typedef {{ count: number, ids: string[], names: string[], applied: boolean, cap: number, newCount?: number, newDays?: number, bodyErrors?: number, bodyErrorIds?: string[], builtAt?: string }} SeoThinRecord
+ */
+
+/**
+ * 「얇은 단지 N곳(새 단지 M 제외 K)」 — newCount 가 없으면 「얇은 단지 N곳」(옛 문구). ㉓ 알림·아침 브리핑 공용.
+ * @param {SeoThinRecord} rec
+ * @returns {string}
+ */
+export function formatSeoThinCount(rec) {
+  if (rec.newCount === undefined) return `얇은 단지 ${rec.count}곳`;
+  return `얇은 단지 ${rec.count}곳(새 단지 ${rec.newCount} 제외 ${rec.count - rec.newCount})`;
+}
 
 /**
  * 단지 명단 한 줄 — 앞 max 개 `id 이름`, 넘으면 "외 N곳".
@@ -1289,7 +1317,7 @@ export function formatSeoThinList(rec, max = SEO_THIN_LIST_MAX) {
  * 200 + index.html 이 온다. 던지지 않는다.
  * @param {number} status
  * @param {string} bodyText
- * @returns {{ ok: true, rec: SeoThinRecord } | { ok: false, detail: string, rec?: SeoThinRecord }}
+ * @returns {{ ok: true, rec: SeoThinRecord, warnings: string[] } | { ok: false, detail: string, rec?: SeoThinRecord }}
  */
 export function parseSeoThin(status, bodyText) {
   if (status !== 200) return { ok: false, detail: `검색 제외 기록 응답 ${status} — 오늘 빌드가 기록을 못 올렸거나 배포가 깨졌을 수 있음` };
@@ -1308,12 +1336,40 @@ export function parseSeoThin(status, bodyText) {
   if (!shapeOk) return { ok: false, detail: "검색 제외 기록 모양이 다름(count 정수·ids 배열·names 배열(ids 와 같은 길이)·applied 참거짓·cap 수 중 하나가 틀림)" };
   /** @type {SeoThinRecord} */
   const rec = { count: j.count, ids: j.ids.map(String), names: j.names.map(String), applied: j.applied, cap: j.cap };
-  // 내부 일관성(세션668 보완 F4) — 모양만 맞고 숫자가 서로 어긋난 기록을 정상으로 넘기지 않는다.
-  const consistent = rec.count >= 0 && rec.cap >= 1 && rec.count === rec.ids.length && (rec.count <= rec.cap) === rec.applied;
-  if (!consistent) {
-    return { ok: false, rec, detail: `검색 제외 기록 숫자가 서로 안 맞음(count ${rec.count} · ids ${rec.ids.length}개 · cap ${rec.cap} · applied ${rec.applied})` };
+  /** @type {string[]} */
+  const warnings = [];
+  // 새 단지 수(세션698 👤 11/06) — 0 이상 count 이하 정수면 안전선 셈에서 뺀다. 칸이 없으면 옛 기록 = 0(종전식).
+  //   모양이 틀리면 0 으로 셈 + 경고 → applied:true 인데 count > cap 이면 아래 일관성 검사가 걸린다(조용히 넘기지 않음).
+  let newCount = 0;
+  if (j.newCount !== undefined) {
+    if (Number.isInteger(j.newCount) && j.newCount >= 0 && j.newCount <= j.count) {
+      newCount = j.newCount;
+      rec.newCount = j.newCount;
+    } else warnings.push(`newCount 모양이 다름(0 이상 count 이하 정수 아님: ${JSON.stringify(j.newCount)}) — 0 으로 셈`);
   }
-  return { ok: true, rec };
+  if (j.newDays !== undefined) {
+    if (Number.isInteger(j.newDays) && j.newDays >= 1) rec.newDays = j.newDays;
+    else warnings.push(`newDays 모양이 다름(1 이상 정수 아님: ${JSON.stringify(j.newDays)}) — 무시`);
+  }
+  // 내부 일관성(세션668 보완 F4) — 모양만 맞고 숫자가 서로 어긋난 기록을 정상으로 넘기지 않는다.
+  const consistent = rec.count >= 0 && rec.cap >= 1 && rec.count === rec.ids.length && (rec.count - newCount <= rec.cap) === rec.applied;
+  if (!consistent) {
+    return { ok: false, rec, detail: `검색 제외 기록 숫자가 서로 안 맞음(count ${rec.count} · 새 단지 ${newCount} · ids ${rec.ids.length}개 · cap ${rec.cap} · applied ${rec.applied})` };
+  }
+  // 새 칸(세션697 C7) — 없으면 옛 기록 그대로 정상. 모양이 틀리면 그 칸만 빼고 경고(기록 전체는 살린다 — 아침 브리핑이 깨지지 않게).
+  if (j.bodyErrors !== undefined) {
+    if (Number.isInteger(j.bodyErrors) && j.bodyErrors >= 0) rec.bodyErrors = j.bodyErrors;
+    else warnings.push(`bodyErrors 모양이 다름(0 이상 정수 아님: ${JSON.stringify(j.bodyErrors)}) — 무시`);
+  }
+  if (j.bodyErrorIds !== undefined) {
+    if (Array.isArray(j.bodyErrorIds)) rec.bodyErrorIds = j.bodyErrorIds.map(String);
+    else warnings.push("bodyErrorIds 모양이 다름(배열 아님) — 무시");
+  }
+  if (j.builtAt !== undefined) {
+    if (typeof j.builtAt === "string" && /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(j.builtAt) && Number.isFinite(Date.parse(j.builtAt))) rec.builtAt = j.builtAt;
+    else warnings.push(`builtAt 모양이 다름(시각 글자 아님: ${JSON.stringify(j.builtAt)}) — 무시`);
+  }
+  return { ok: true, rec, warnings };
 }
 
 /**
@@ -1333,10 +1389,89 @@ export function checkSeoThin(status, bodyText) {
   }];
   const p = parseSeoThin(status, bodyText);
   if (!p.ok) return one(p.detail, p.rec);
+  /** @type {Issue[]} */
+  const out = [];
   if (p.rec.applied !== true) {
-    return one(`얇은 단지 ${p.rec.count}곳 > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec);
+    out.push(...one(`${formatSeoThinCount(p.rec)} > 안전선 ${p.rec.cap} — 오늘은 검색 제외를 하나도 적용 안 함, 수집 사고 의심`, p.rec));
+  }
+  // C5(세션697) — 단지 장 본문이 던져 얇은 본문으로 만든 장. 빌드는 초록이라 여기서만 보인다.
+  const bodyErrors = p.rec.bodyErrors ?? 0;
+  if (bodyErrors > 0) {
+    const ids = p.rec.bodyErrorIds ?? [];
+    const rest = bodyErrors - ids.length;
+    out.push({
+      kind: "seo-body-error", // 제목·조치가 얇은 단지 안전선과 다르다(세션697 B6)
+      collector: SEO_THIN_COLLECTOR,
+      detail: `단지 장 본문 실패 ${bodyErrors}곳 — 그 장만 얇은 본문(h1·요약 한 줄 · 검색 제외)으로 배포됨`,
+      lines: [`명단: ${ids.join(" · ") || "없음"}${rest > 0 ? ` 외 ${rest}곳` : ""}`, `주소: ${SEO_THIN_URL}`],
+    });
+  }
+  return out;
+}
+
+/** ㉓ builtAt 판정 대상 커밋 — daily-deploy.yml 의 `git commit -m "data: daily refresh …"`. */
+const DAILY_REFRESH_PREFIX = "data: daily refresh";
+/** ㉓ builtAt 유예(분) — refresh 커밋 뒤 이 시간 안에는 비교하지 않는다(Vercel 빌드 도중 헛경보 방지 · 세션697 B8). */
+export const BUILT_AT_GRACE_MIN = 60;
+
+/** GitHub 인증이 없어(로컬 실행) builtAt 비교를 못 한 것 — ㉓ 는 이것만 조용히 건너뛰고, 그 밖 조회 실패는 실행 실패로 알린다(세션697 B7). */
+export class GithubAuthMissingError extends Error {
+  constructor() {
+    super("GitHub 인증 없음(로컬 실행)");
+    this.name = "GithubAuthMissingError";
+  }
+}
+
+/**
+ * ㉓ builtAt 판정(세션697 C6) — 운영 기록의 빌드 시각이 main 의 가장 최근 daily refresh 커밋보다 이르면
+ * 그 커밋(=오늘 화면 자료)이 배포에 안 실린 것(빌드 실패·롤백 고착 의심). builtAt 이 없으면(옛 빌드) 1건.
+ * refresh 가 null 이면(GitHub 조회 못 함) 비교만 건너뛴다 — builtAt 없음은 그래도 알린다.
+ * 커밋 뒤 BUILT_AT_GRACE_MIN 분 안이면 비교를 건너뛴다(그 커밋의 빌드가 아직 도는 중일 수 있음 · 세션697 B8).
+ * @param {SeoThinRecord} rec
+ * @param {{ at: string, sha: string } | null} refresh
+ * @param {Date} [now] 유예 판정 시각(시험 주입용)
+ * @returns {Issue[]}
+ */
+export function checkSeoThinBuiltAt(rec, refresh, now = new Date()) {
+  /** @param {string} detail @param {string[]} lines @returns {Issue[]} */
+  const one = (detail, lines) => [{ kind: "seo-built-at", collector: SEO_THIN_COLLECTOR, detail, lines: [...lines, `주소: ${SEO_THIN_URL}`] }];
+  if (rec.builtAt == null) {
+    return one("검색 제외 기록에 빌드 시각(builtAt)이 없거나 모양이 틀림 — 운영 배포가 옛 빌드일 수 있음(빌드 실패·롤백 고착 의심)", []);
+  }
+  if (!refresh) return [];
+  if (now.getTime() - Date.parse(refresh.at) < BUILT_AT_GRACE_MIN * 60_000) return [];
+  if (Date.parse(rec.builtAt) < Date.parse(refresh.at)) {
+    return one("오늘 화면 자료 커밋이 배포에 안 실림 — 빌드 실패·롤백 고착 의심", [
+      `운영 빌드 시각 ${rec.builtAt} < main 마지막 daily refresh 커밋 ${refresh.at} (${refresh.sha.slice(0, 8)})`,
+    ]);
   }
   return [];
+}
+
+/**
+ * ㉓ builtAt 재료 — main 의 가장 최근 `data: daily refresh` 커밋 시각(GitHub REST commits 1회 · public/data 를 바꾼 커밋만).
+ * 인증이 없으면(로컬) GithubAuthMissingError — ㉓ 블록이 이 판정만 건너뛴다. 응답 실패는 그냥 던진다(㉓ 가 실행 실패 1건). 목록에 없으면 null.
+ * @returns {Promise<{ at: string, sha: string } | null>}
+ */
+export async function fetchLatestDailyRefresh() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  const token = process.env.GITHUB_TOKEN;
+  if (!repo || !token) throw new GithubAuthMissingError();
+  const res = await fetch(
+    `https://api.github.com/repos/${repo}/commits?sha=main&path=public/data&per_page=30`,
+    {
+      headers: { Authorization: `Bearer ${token}`, Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(20000),
+    },
+  );
+  if (!res.ok) throw new Error(`GitHub API /commits ${res.status} — contents:read 권한 확인`);
+  const list = /** @type {Array<{ sha?: string, commit?: { message?: string, committer?: { date?: string } } }>} */ (await res.json());
+  for (const c of Array.isArray(list) ? list : []) {
+    const msg = c.commit?.message ?? "";
+    const at = c.commit?.committer?.date;
+    if (msg.startsWith(DAILY_REFRESH_PREFIX) && typeof at === "string") return { at, sha: String(c.sha ?? "") };
+  }
+  return null;
 }
 
 /**
@@ -1362,6 +1497,398 @@ export async function loadSeoThinForBriefing(fetchFn = fetchSeoThinLive) {
   } catch (err) {
     console.log(`[monitor] 브리핑 검색 제외 기록 조회 실패(브리핑은 계속): ${err instanceof Error ? err.message : String(err)}`);
     return null;
+  }
+}
+
+// ── ㉔ 지자체 명단 수집 건전성 (세션692 PR-4 · 설계서 §7) ─────────────────────
+/** ㉔ 대상 수집기 — `collect-unsold-govlist.mjs` 의 PHASE 상수 그대로. */
+export const GOVLIST_COLLECTOR = "unsold-govlist";
+/** ㉔ 건너뜀 표식 한 조각 — 수집기가 `GOVLIST_SKIP <출처> <이유>` 를 `" · "` 로 잇는다(`collect-unsold-govlist.mjs` 머리말). */
+const GOVLIST_SKIP_RE = /^GOVLIST_SKIP (\S+) (.+)$/;
+
+/**
+ * error_message 에서 ㉔ 건너뜀 표식을 뽑는다(다른 GOVLIST_* 표식·실패 문구 조각은 머리가 달라 안 걸린다).
+ * @param {string | null | undefined} message
+ * @returns {Array<{ source: string, reason: string }>} 수집기가 남긴 순서
+ */
+export function parseGovlistSkips(message) {
+  if (typeof message !== "string") return [];
+  /** @type {Array<{ source: string, reason: string }>} */
+  const out = [];
+  for (const part of message.split(" · ")) {
+    const m = GOVLIST_SKIP_RE.exec(part.trim());
+    if (m) out.push({ source: m[1], reason: m[2] });
+  }
+  return out;
+}
+
+/**
+ * ㉔-a 「게시 지연」 문턱(일) — 👤 11/04 14:0x 결정(BACKLOG 441): `not_newer` 건너뜀은 저장된 기준일이 오늘(KST)−70일보다 낡았을 때만 알린다.
+ * 대구 9월말 명단이 11/08 러너 회차엔 아직 새 달이 아닌 것이 정상(게시가 한두 달 늦다)이라 그 달마다 울리던 헛경보를 끈다.
+ */
+export const GOVLIST_LATE_DAYS = 70;
+/** `not_newer(파일 <asOf> ≤ 저장된 <prevAsOf>)` — 수집기 `collect-unsold-govlist.mjs` 의 건너뜀 이유 꼴. */
+const GOVLIST_NOT_NEWER_RE = /^not_newer\(.*저장된 (\d{4})-(\d{2})-(\d{2})\)$/;
+
+/**
+ * not_newer 이유의 「저장된 기준일」부터 오늘(KST 날짜)까지 일수 — 못 읽으면(꼴이 다름·없는 날짜) null.
+ * @param {string} reason @param {Date} now
+ * @returns {number | null}
+ */
+export function govlistNotNewerAgeDays(reason, now) {
+  const m = GOVLIST_NOT_NEWER_RE.exec(reason);
+  if (!m) return null;
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const stored = Date.UTC(y, mo - 1, d);
+  const chk = new Date(stored);
+  if (chk.getUTCFullYear() !== y || chk.getUTCMonth() !== mo - 1 || chk.getUTCDate() !== d) return null; // 2026-02-30 같은 없는 날짜
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const todayKst = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+  return Math.round((todayKst - stored) / 86400000);
+}
+
+/**
+ * 알려야 할 건너뜀만 — not_newer 이면서 저장 기준일을 읽을 수 있고 0 ≤ 경과 ≤ GOVLIST_LATE_DAYS 인 것은 뺀다(게시 지연은 아직 정상).
+ * 읽지 못한 not_newer · fetch · header · rows0 은 그대로.
+ * @param {string | null | undefined} message @param {Date} now
+ */
+function alertingGovlistSkips(message, now) {
+  return parseGovlistSkips(message).filter((s) => {
+    if (!s.reason.startsWith("not_newer")) return true;
+    const age = govlistNotNewerAgeDays(s.reason, now);
+    return age == null || age < 0 || age > GOVLIST_LATE_DAYS;
+  });
+}
+
+/**
+ * ㉔-a 명단 건너뜀 — `unsold-govlist` 의 **가장 최근 실행 1행**에 알릴 `GOVLIST_SKIP` 이 있으면 1건(㉑ checkNoticeMarkers 와 같은 꼴).
+ * 게시 지연(not_newer)은 저장된 기준일 + GOVLIST_LATE_DAYS(70)일이 지나야 알린다(세션695 PR-4c · 👤 11/04 BACKLOG 441) — 그 안이면 그 건너뜀만 뺀다.
+ * 실행 기록 0건(러너 등재 전 · dry-run 은 기록을 안 남긴다)이면 침묵. 사람이 출처를 봐야 풀리는 종류라 daily 에서도 dedup —
+ * 지문 = 알릴 표식(출처+이유) 정렬 해시 @ 알릴 표식 없는 success 가 끊는 구간의 첫 실행 시각(같은 건너뜀이 다달이 이어지면 한 번만, 끊겼다 다시 나면 다시).
+ * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC)
+ * @param {Date} [now] 오늘(KST) 판정 시각 — 감시가 넘긴다(시험 주입용)
+ * @returns {Issue[]}
+ */
+export function checkGovlistSkips(runs, now = new Date()) {
+  const latest = runs[0];
+  if (!latest) return [];
+  const skips = alertingGovlistSkips(latest.error_message, now);
+  if (skips.length === 0) return [];
+  let streakStart = latest.finished_at ?? "";
+  for (const r of runs) {
+    const rs = alertingGovlistSkips(r.error_message, now);
+    if (r.status === "success" && rs.length === 0) break;
+    if (rs.length) streakStart = r.finished_at ?? streakStart;
+  }
+  const fp = fingerprintIds(skips.map((s) => `${s.source}=${s.reason}`).sort());
+  return [{
+    kind: "govlist-health",
+    collector: GOVLIST_COLLECTOR,
+    detail: `GOVLIST_SKIP 지자체 명단 건너뜀 — ${skips.map((s) => `${s.source}(${s.reason})`).join(" · ")}`,
+    lines: [
+      "이유: fetch = 누리집에서 파일을 못 받음 · header = 머리줄 글자가 바뀜 · rows0 = 행 0 · not_newer = 전 회차보다 새 기준월이 아님(게시 지연).",
+      ...(skips.some((s) => s.reason.startsWith("future(")) ? ["future = 명단 기준일이 오늘(KST)보다 뒤(파일·제목 오기) — 명단 원표·단지 값에 쓰지 않았습니다. 원문 파일의 기준일을 확인하세요(세션697)."] : []),
+      `게시 지연(not_newer)은 저장된 기준일 + ${GOVLIST_LATE_DAYS}일이 지나야 알립니다.`,
+      "그 출처 단지의 명단 값은 그대로 남고, 기준월 + 6개월이 지나면 KOSIS 가 다시 정합니다(⑫(h) 가 따로 알림).",
+      ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+    ],
+    at: `skip:${fp}@${streakStart}`,
+  }];
+}
+
+/**
+ * ㉔-b 명단 행 수 급감 — 출처마다 가장 새 기준월의 **완성** batch 행 수 < 바로 앞 기준월 완성 batch 행 수 × GOVLIST_DROP_RATIO(0.5).
+ * 수집기 차단기(`_govlist-plan.mjs breaker`)와 같은 잣대 — 승인(`--apply-from`)으로 통과한 급감도 사람이 한 번 보게 알린다.
+ * 완성 = 그 batch 의 실제 행 수 = batch_rows(반쯤 쓰인 batch 는 안 셈 — 수집기 `latestCompleteBatch` 와 같은 뜻). 기준월이 하나뿐이면 침묵.
+ * 지문 = 출처|기준월|행 수|전 행 수 해시(같은 달이면 한 번만). DB 접근 없는 순수 함수.
+ * @param {ReadonlyArray<{ source?: string|null, as_of?: string|null, batch_id?: string|null, batch_rows?: number|null }>} listRows unsold_gov_list 행(칸 넷만)
+ * @returns {Issue[]}
+ */
+export function checkGovlistDrop(listRows) {
+  /** @type {Map<string, number>} 출처|기준월|batch → 실제 행 수 */
+  const counts = new Map();
+  /** @type {Map<string, number>} 같은 열쇠 → batch_rows */
+  const declared = new Map();
+  for (const r of listRows) {
+    if (!r?.source || !r?.as_of || !r?.batch_id) continue;
+    const k = `${r.source}|${r.as_of}|${r.batch_id}`;
+    counts.set(k, (counts.get(k) ?? 0) + 1);
+    declared.set(k, Number(r.batch_rows));
+  }
+  /** @type {Map<string, Map<string, number>>} 출처 → (기준월 → 완성 batch 행 수 중 가장 큰 값) */
+  const bySource = new Map();
+  for (const [k, n] of counts) {
+    if (n !== declared.get(k)) continue;
+    const [source, asOf] = k.split("|");
+    const m = bySource.get(source) ?? new Map();
+    m.set(asOf, Math.max(m.get(asOf) ?? 0, n));
+    bySource.set(source, m);
+  }
+  /** @type {Issue[]} */
+  const issues = [];
+  for (const [source, m] of [...bySource].sort(([a], [b]) => a.localeCompare(b))) {
+    const months = [...m.keys()].sort().reverse();
+    if (months.length < 2) continue;
+    const [latest, prev] = months;
+    const rows = /** @type {number} */ (m.get(latest)), prevRows = /** @type {number} */ (m.get(prev));
+    if (!(rows < prevRows * GOVLIST_DROP_RATIO)) continue;
+    issues.push({
+      kind: "govlist-health",
+      collector: GOVLIST_COLLECTOR,
+      detail: `GOVLIST_DROP ${source} 명단 행 ${rows} < 전 기준월(${prev}) ${prevRows} × ${GOVLIST_DROP_RATIO} — 기준월 ${latest}`,
+      lines: [
+        "지자체 명단 행 수가 전 달의 절반 밑으로 줄었습니다. 파일 형식이 바뀌어 일부만 읽혔거나 지자체가 명단 범위를 바꿨을 수 있습니다.",
+        "원문 파일과 unsold_gov_list 의 그 기준월 행을 맞대 보세요(수집기는 승인 계획 없이 이런 회차를 반영하지 않습니다).",
+      ],
+      at: `drop:${fingerprintIds([`${source}|${latest}|${rows}|${prevRows}`])}`,
+    });
+  }
+  return issues;
+}
+
+/** ㉔-c 매칭 표식 한 조각 — 수집기 `matchMarker()`(collect-unsold-govlist.mjs)와 같은 꼴. */
+const GOVLIST_MATCH_RE = /^GOVLIST_MATCH (\S+) 판정필요 (\d+)\{([^}]*)\} 충돌 (\d+)$/;
+
+/**
+ * error_message 에서 ㉔-c 매칭 표식을 뽑는다(`GOVLIST_MATCH <출처> 판정필요 <N>{<시군구>:<수>,…} 충돌 <M>`).
+ * @param {string | null | undefined} message
+ * @returns {Array<{ source: string, unresolved: number, bySgg: Record<string, number>, conflicts: number }>}
+ */
+export function parseGovlistMatch(message) {
+  if (typeof message !== "string") return [];
+  /** @type {Array<{ source: string, unresolved: number, bySgg: Record<string, number>, conflicts: number }>} */
+  const out = [];
+  for (const part of message.split(" · ")) {
+    const m = GOVLIST_MATCH_RE.exec(part.trim());
+    if (!m) continue;
+    /** @type {Record<string, number>} */ const bySgg = {};
+    for (const kv of m[3] ? m[3].split(",") : []) {
+      const i = kv.lastIndexOf(":");
+      if (i > 0) bySgg[kv.slice(0, i)] = Number(kv.slice(i + 1));
+    }
+    out.push({ source: m[1], unresolved: Number(m[2]), bySgg, conflicts: Number(m[4]) });
+  }
+  return out;
+}
+
+/**
+ * ㉔-c 매칭 감시(설계서 §7 「매칭」 · PR-4b (e)) — `unsold-govlist` **가장 최근 실행**의 출처별 매칭 표식으로:
+ *   (1) 충돌(한 명단 단지 ↔ 두 묶음 · 두 명단 단지 ↔ 한 묶음) ≥ 1 이면 1건
+ *   (2) 판정 필요(weak·none) **시군구별 수 중 하나라도** 그 출처 표식이 있는 바로 앞 실행보다 늘면 1건(전부 그대로·줄면 침묵 —
+ *       지금 33 이 매달 울지 않게 · 합계가 같아도 한 시군구가 늘면 운다(세션693 B7) · 앞 실행이 없으면 비교하지 않는다).
+ * dedup 은 ㉔ 와 같은 `govlist-health`(daily 에서도) — 지문 = 출처|수 해시 @ 그 실행 시각(같은 실행은 한 번만, 다음 회차가 또 늘면 다시).
+ * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC)
+ * @returns {Issue[]}
+ */
+export function checkGovlistMatch(runs) {
+  const latest = runs[0];
+  if (!latest) return [];
+  /** @type {Issue[]} */
+  const issues = [];
+  const when = latest.finished_at ?? "";
+  for (const cur of parseGovlistMatch(latest.error_message)) {
+    if (cur.conflicts >= 1) {
+      issues.push({
+        kind: "govlist-health",
+        collector: GOVLIST_COLLECTOR,
+        detail: `GOVLIST_MATCH_CONFLICT ${cur.source} 매칭 충돌 ${cur.conflicts}곳 — 한 명단 단지가 두 묶음에, 또는 두 명단 단지가 한 묶음에 걸림`,
+        lines: [
+          "충돌 단지는 둘 다 반영하지 않습니다(값이 그대로 남음). 사람 판정 파일 docs/audits/govlist-match-decisions.json 에 짝을 적어 풉니다.",
+          "명단 단지 목록 = 그 회차 impact 파일(.omc/artifacts/govlist/impact-*.json)의 sources[].matches 중 reasons 에 two_bundles·bundle_shared.",
+          ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}`] : []),
+        ],
+        at: `mconf:${fingerprintIds([`${cur.source}|${cur.conflicts}`])}@${when}`,
+      });
+    }
+    let prev = null;
+    for (const r of runs.slice(1)) {
+      prev = parseGovlistMatch(r.error_message).find((x) => x.source === cur.source) ?? null;
+      if (prev) break;
+    }
+    if (!prev) continue;
+    const p = /** @type {{ bySgg: Record<string, number>, unresolved: number }} */ (prev);
+    // 시군구별 수 중 하나라도 늘면 운다 — 한 곳이 풀리고 다른 곳이 새로 weak 가 되면 합계는 그대로다(세션693 보완 B7 · blind🟡4)
+    const grownKeys = Object.keys(cur.bySgg).sort().filter((k) => (cur.bySgg[k] ?? 0) > (p.bySgg[k] ?? 0));
+    if (!grownKeys.length) continue;
+    const grown = grownKeys.map((k) => `${k} ${p.bySgg[k] ?? 0}→${cur.bySgg[k]}`);
+    issues.push({
+      kind: "govlist-health",
+      collector: GOVLIST_COLLECTOR,
+      detail: `GOVLIST_MATCH_GROWTH ${cur.source} 판정 필요 단지 ${p.unresolved}→${cur.unresolved}곳 — 늘어난 시군구: ${grown.join(" · ")}`,
+      lines: [
+        "판정 필요(weak·none) 단지는 미등재→0 을 막고(§5-③(d)) 명단 값도 안 붙입니다. 늘었으면 새 단지·이름 바뀜·우리 쪽 행 변화를 봅니다.",
+        "판정은 docs/audits/govlist-match-decisions.json 에 적습니다(active = 그 묶음에 붙임 · rejected = 짝 금지).",
+        ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}`] : []),
+      ],
+      at: `mgrow:${fingerprintIds([`${cur.source}|${grown.join(",")}`])}@${when}`,
+    });
+  }
+  return issues;
+}
+
+/** ㉔-d 라이브 정적 자료 주소(맨 도메인은 307 → www). */
+export const GOVLIST_LIVE_META_URL = "https://www.xn--hg3bi2ac4o1ig57cnoa.com/data/meta.json";
+export const GOVLIST_LIVE_LIST_URL = "https://www.xn--hg3bi2ac4o1ig57cnoa.com/data/apartments-list.json";
+
+/**
+ * @typedef {{ viewHidden: number, rawAsOf: string[], live: { fetchedAt: string | null, listHidden: number } | null, liveError?: string | null }} GovlistHiddenInputs
+ *   viewHidden = 서비스 열쇠로 센 VIEW `unsoldListedHidden` 카드 수(임대형 제외 — 굽기와 같은 거름) ·
+ *   rawAsOf = 원표 govlist 비공개 행(unsold NULL)의 기준월 목록 · live = 라이브 meta.json fetchedAt + 목록 JSON hidden 수(가져오기 실패면 null)
+ */
+
+/**
+ * ㉔-d 「VIEW hidden 수 = 목록 JSON hidden 수」(설계서 PR-4b (f) — 검사관 맹점5 제안 그대로).
+ *   - 양성 대조군: 원표에 **아직 유효한**(기준월 + 6개월 안) govlist 비공개 행이 1행 이상인데 VIEW hidden 0 → 1건(0=0 만으로는 아무것도 증명하지 못한다).
+ *   - 비교: 라이브 meta.json `fetchedAt` 이 **오늘(KST) 03시 뒤**일 때만 · unsold-govlist 최근 실행이 굽기보다 늦고 실제로 썼으면
+ *     (success 또는 ok>0) 건너뜀 · VIEW hidden ≠ 목록 JSON hidden → 1건. 라이브를 못 가져왔으면(live null) 비교만 건너뛴다(fail-open — 경고는 호출부 한 줄).
+ * DB·네트워크 접근 없는 순수 함수.
+ * @param {GovlistHiddenInputs | null | undefined} h
+ * @param {Date} [now]
+ * @param {{ finished_at?: string | null, status?: string | null, ok_count?: number | null } | null} [lastRun] unsold-govlist 최근 실행(㉔ 재료 runs[0])
+ * @returns {Issue[]}
+ */
+export function checkGovlistHiddenParity(h, now = new Date(), lastRun = null) {
+  if (!h) return [];
+  /** @type {Issue[]} */
+  const issues = [];
+  // 「유효」만 — 미래 기준일 행은 VIEW 도 존중하지 않아 「수 비공개」 카드가 안 된다(세션697 · 그 행은 ⑫(i) 가 따로 알린다)
+  const alive = h.rawAsOf.filter((a) => asOfRespectState(a, now, GOVLIST_EXPIRY_MONTHS) === "valid");
+  if (alive.length >= 1 && h.viewHidden === 0) {
+    issues.push({
+      kind: "govlist-health",
+      collector: GOVLIST_COLLECTOR,
+      detail: `GOVLIST_HIDDEN_VIEW_ZERO 원표 govlist 비공개(유효) ${alive.length}행인데 VIEW 「수 비공개」 카드 0곳`,
+      lines: [
+        "VIEW apartments_flat 의 unsoldListedHidden 이 원표를 못 따라갑니다 — 묶음 순위(청약홈 값이 이김)·VIEW 정의 되돌림·만료 계산을 봅니다.",
+        "VIEW 정의 = supabase/migrations/20261104000000_view_unsold_future_asof.sql(b_listed_hidden · 운영 적용 2026-11-06).",
+      ],
+      at: `hidview0:${fingerprintIds([`raw=${alive.length}`])}`,
+    });
+  }
+  const live = h.live;
+  if (!live || typeof live.fetchedAt !== "string") return issues;
+  const fetchedMs = new Date(live.fetchedAt).getTime();
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const today03 = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate(), 3) - 9 * 3600 * 1000;
+  if (!(fetchedMs >= today03)) return issues; // 오늘 굽기 전 — 비교하지 않는다
+  // 굽기 뒤에 수집기가 **실제로 썼으면**(success 또는 ok>0 — 매달 8일 05:30 러너 반영 · 사람 반영) VIEW 는 「지금」, JSON 은 「굽기 때」라
+  //   달라도 정상 — 건너뜀(세션693 보완 B2 · adv🟠2). 쓰기 0 인 실패 실행(차단기·첫 회차 막음) 뒤에는 비교한다(2차 보완 C2).
+  //   옛 「만료일이 낀 행」 거름은 날짜 단위 판정이라 걸릴 수 없어 지웠다(adv🟡1).
+  const wrote = !!lastRun && (lastRun.status === "success" || Number(lastRun.ok_count ?? 0) > 0);
+  if (wrote && typeof lastRun?.finished_at === "string" && new Date(lastRun.finished_at).getTime() > fetchedMs) return issues;
+  if (h.viewHidden !== live.listHidden) {
+    issues.push({
+      kind: "govlist-health",
+      collector: GOVLIST_COLLECTOR,
+      detail: `GOVLIST_HIDDEN_MISMATCH VIEW 「수 비공개」 ${h.viewHidden}곳 ≠ 라이브 목록 JSON ${live.listHidden}곳`,
+      lines: [
+        `굽기 시각(meta.json fetchedAt): ${toKst(live.fetchedAt) ?? live.fetchedAt} — 굽기(collect-data --from-supabase-only)가 새 칸을 빠뜨렸거나 다른 거름이 끼었습니다.`,
+        "목록 JSON = public/data/apartments-list.json 의 data[].unsoldListedHidden · 정적 출력 = scripts/static-outputs.mjs buildListData.",
+      ],
+      at: `hidmis:${fingerprintIds([`${h.viewHidden}|${live.listHidden}`])}`,
+    });
+  }
+  return issues;
+}
+
+/**
+ * ㉔-d 재료 — VIEW hidden 카드(서비스 열쇠 · id 커서 · 임대형 제외) · 원표 govlist 비공개 행 기준월 · 라이브 두 파일(가져오기 실패 = live null).
+ * @param {{ sb?: any, fetchImpl?: typeof fetch }} [deps]
+ * @returns {Promise<GovlistHiddenInputs>}
+ */
+export async function fetchGovlistHiddenInputs(deps = {}) {
+  const sb = deps.sb ?? getSupabase();
+  const doFetch = deps.fetchImpl ?? fetch;
+  const viewRows = /** @type {Array<Record<string, any>>} */ (await selectAll(
+    (s) => s.from("apartments_flat").select("id, name, presaleType").eq("unsoldListedHidden", true),
+    sb,
+    "id",
+  ));
+  const rawRows = /** @type {Array<Record<string, any>>} */ (await selectAll(
+    (s) => s.from("apartments").select("id, unsold_as_of").eq("unsold_source", "govlist").is("unsold", null),
+    sb,
+    "id",
+  ));
+  /** @type {GovlistHiddenInputs["live"]} */ let live = null;
+  /** @type {string | null} */ let liveError = null;
+  try {
+    const mr = await doFetch(GOVLIST_LIVE_META_URL, { signal: AbortSignal.timeout(20000) });
+    if (!mr.ok) throw new Error(`meta.json HTTP ${mr.status}`);
+    const meta = /** @type {any} */ (await mr.json());
+    const lr = await doFetch(GOVLIST_LIVE_LIST_URL, { signal: AbortSignal.timeout(60000) });
+    if (!lr.ok) throw new Error(`apartments-list.json HTTP ${lr.status}`);
+    const list = /** @type {any} */ (await lr.json());
+    if (!Array.isArray(list?.data)) throw new Error("apartments-list.json 모양 틀림(data 배열 없음)");
+    live = { fetchedAt: typeof meta?.fetchedAt === "string" ? meta.fetchedAt : null, listHidden: list.data.filter((/** @type {any} */ c) => c?.unsoldListedHidden === true).length };
+  } catch (err) {
+    liveError = err instanceof Error ? err.message : String(err);
+  }
+  return {
+    viewHidden: viewRows.filter((r) => !isLeaseUnit(r)).length,
+    rawAsOf: rawRows.map((r) => r.unsold_as_of).filter((a) => typeof a === "string"),
+    live,
+    liveError,
+  };
+}
+
+/** ㉔-b 조회 범위 — 출처마다 최근 기준월 몇 개까지 읽나(설계서 PR-4b (g) · 판정은 가장 새 두 기준월만 본다). */
+export const GOVLIST_LIST_MONTHS = 2;
+
+/**
+ * ㉔-b 재료 — 명단 표를 출처마다 **최근 기준월 GOVLIST_LIST_MONTHS(2)개**로 좁혀 칸 넷만 읽는다(PR-4b (g) — 경기 PR-5 뒤 1년 9천 행+).
+ * 출처 목록은 표에서 고유값 커서로(`.gt("source", 앞)` · 행마다 1회), 기준월은 출처마다 내림차순 `.lt("as_of", 앞)` 1행씩,
+ * 행은 그 출처·기준월 안에서 id 커서(unordered-pagination-loses-rows — 고유 키 커서만 안전). 표가 없으면 던진다(fail-open).
+ * @param {any} sb
+ * @returns {Promise<Array<Record<string, any>>>}
+ */
+export async function fetchGovlistListRows(sb) {
+  /** @type {string[]} */ const sources = [];
+  for (let i = 0; i < 50; i++) {
+    let q = sb.from("unsold_gov_list").select("source").order("source", { ascending: true }).limit(1);
+    if (sources.length) q = q.gt("source", sources[sources.length - 1]);
+    const { data, error } = await q;
+    if (error) throw new Error(`unsold_gov_list 출처 조회 실패: ${error.message}`);
+    const s = data?.[0]?.source;
+    if (typeof s !== "string") break;
+    sources.push(s);
+  }
+  /** @type {Array<Record<string, any>>} */ const rows = [];
+  for (const source of sources) {
+    /** @type {string[]} */ const months = [];
+    for (let i = 0; i < GOVLIST_LIST_MONTHS; i++) {
+      let q = sb.from("unsold_gov_list").select("as_of").eq("source", source).order("as_of", { ascending: false }).limit(1);
+      if (months.length) q = q.lt("as_of", months[months.length - 1]);
+      const { data, error } = await q;
+      if (error) throw new Error(`unsold_gov_list 기준월 조회 실패(${source}): ${error.message}`);
+      const a = data?.[0]?.as_of;
+      if (typeof a !== "string") break;
+      months.push(a);
+    }
+    if (!months.length) continue;
+    rows.push(...await selectAll(
+      (s) => s.from("unsold_gov_list").select("id, source, as_of, batch_id, batch_rows").eq("source", source).in("as_of", months),
+      sb,
+      "id",
+    ));
+  }
+  return rows;
+}
+
+/**
+ * ㉔ 재료 — 수집기 최근 실행(⑪ 과 같은 조회) + 명단 표(출처마다 최근 기준월 2개 · 칸 넷) + ㉔-d 비공개 수 대조 재료.
+ * 표가 없으면(마이그 전) 던진다(fail-open). 라이브 가져오기 실패는 hidden.live = null(경고 한 줄 — 호출부).
+ * ㉔-d 재료(VIEW·원표 조회) 실패는 던지지 않고 `hiddenError` 로 넘긴다 — 호출부가 ㉔-d 만 따로 실행 실패로 알리고 ㉔-a·b·c 는 그대로 돈다(세션693 B5).
+ * @param {{ sb?: any, fetchRuns?: typeof fetchRegionUnresolvedRuns, fetchHidden?: typeof fetchGovlistHiddenInputs }} [deps] 시험 주입용
+ * @returns {Promise<{ runs: Array<{ status: string|null, error_message: string|null, finished_at: string|null }>, listRows: Array<Record<string, any>>, hidden?: GovlistHiddenInputs, hiddenError?: string }>}
+ */
+export async function fetchGovlistHealthInputs(deps = {}) {
+  const runs = (await (deps.fetchRuns ?? fetchRegionUnresolvedRuns)([GOVLIST_COLLECTOR]))[GOVLIST_COLLECTOR] ?? [];
+  const sb = deps.sb ?? getSupabase();
+  const listRows = await fetchGovlistListRows(sb);
+  try {
+    return { runs, listRows, hidden: await (deps.fetchHidden ?? fetchGovlistHiddenInputs)({ sb }) };
+  } catch (err) {
+    return { runs, listRows, hiddenError: err instanceof Error ? err.message : String(err) };
   }
 }
 
@@ -1423,6 +1950,9 @@ export const APPLYHOME_EXPIRY_ALERT_GRACE_DAYS = 35;
 /** ⑫ 경보 detail 에 펼칠 단지 수 — 나머지는 "외 N곳". */
 export const APPLYHOME_UNSOLD_SAMPLE_LIMIT = 8;
 
+/** ⑫(i) 미래 기준일 경보에 펼칠 id 수(세션697 지시 「앞 20개 + n」) — 나머지는 ", …". */
+export const FUTURE_ASOF_ID_LIMIT = 20;
+
 /**
  * ⑫(d) 사람 보류(hold) 기준 명단(세션570, 사장님 결정 2026-09-24 · 지금 21곳 — 세션686 두류 2행까지) — 세션569 가 "자료 없음"으로 비운 11곳.
  * + 세션571 대표 2행(사장님 결정 2026-09-24 ⓐ — 화면 대표 행의 0 도 근거 없음: 마지막 청약홈 기록이 2022 무순위 27/1·8/3, 이후 공고 없음).
@@ -1436,10 +1966,9 @@ export const HOLD_BASELINE_IDS = Object.freeze([
   "ah-2022910330", // 세션684(2026-11-01) 사장님 결정 ⓑ — 출처 없는 0 근거 확인: 마지막 공고 신청 미달(docs/audits/zero-unsold-evidence.json held)
   "ah-2022910338", // 세션636 (같은 결정)
   "ah-2022910363",
-  "ah-2025910146", // 세션686(2026-11-01) 사장님 결정 ③ — 두류 임시 보류(대구시 명단 등재·수 비공개 · docs/audits/2026-11-01-duryu-hold-transition.md)
+  // 세션693(2026-11-04): 두류 2행(ah-2025910146·ah-2025910254)은 대구시 명단 첫 반영(release_hold_to_govlist)으로 보류 해제 → 기준에서 뺌(21→19)
   "ah-2025910160", // 세션684(2026-11-01) 사장님 결정 ⓑ — 출처 없는 0 근거 확인: 마지막 공고 신청 미달(docs/audits/zero-unsold-evidence.json held)
   "ah-2025910235", "ah-2025910236", "ah-2025910250",
-  "ah-2025910254", // 세션686(2026-11-01) 사장님 결정 ③ — 두류 임시 보류(대구시 명단 등재·수 비공개 · docs/audits/2026-11-01-duryu-hold-transition.md)
   "ah-2025910274",
   "ah-2025930034", // 세션636 (같은 결정)
   "ap-6026677", // 세션577(2026-09-26) 음성아이파크 — 옛 배분값 280 은 근거 없음, 새 계산 82% 는 hold_ge50 차단 → 자료 없음 보류
@@ -1471,11 +2000,18 @@ export const HOLD_REVIEW_MONTHS = 6;
  *       (률 0 이 남으면 VIEW unsoldRate 0 → 위험 하위점수 10, 세션684)
  *   (g) 출처 없는 0(unsold 0 · unsold_source NULL)인데 근거 명단(docs/audits/zero-unsold-evidence.json) 밖인 단지
  *       — 따로 `checkUnsourcedZero`(조회·명단 파일이 달라 별도 fail-open 블록, 세션684)
+ * 지자체 명단(govlist, 세션692 PR-4) 두 명단:
+ *   (h-1) 기준월 + 6개월 + 여유(35일)가 지났는데 아직 govlist — KOSIS 가 덮었어야 한다((a) 와 같은 꼴 · 숫자 행 —
+ *         (h-2) 에 이미 걸린 수 비공개 행은 빼서 같은 단지에 두 번 울지 않는다(세션696 B5))
+ *   (h-2) 수 비공개 등재(값 NULL)인데 명단 기준월(unsold_listed_as_of) + 6개월이 지남 — 새 달 명단으로 갱신 안 됨(여유 없음)
+ *   (h-3) 기준월(unsold_as_of)이 빈 govlist — 만료를 못 재어 영구 존중된다((b) 와 같은 꼴 · 정상이면 0곳)
+ * 미래 기준일(세션697 👤 결정 ① 「무시+경보」):
+ *   (i) applyhome·govlist 인데 기준일이 오늘(KST) 뒤 — id·기준일 앞 FUTURE_ASOF_ID_LIMIT(20)개 + n. (a)(h) 는 미래 행을 만료로 세지 않는다
  * `at` 은 시각이 아니라 **명단 지문**이다 — 같은 명단이면 dedup 으로 침묵, 명단이 바뀌면 다시 알린다
  * (`ALWAYS_DEDUP_KINDS`, ⑨ 와 같은 방식).
  *
- * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_rate?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, competition_shortfall?: number|null }>} rows
- *   applyhome·hold 출처 행(다른 출처가 섞여 있어도 걸러낸다).
+ * @param {Array<{ id?: string|null, name?: string|null, unsold?: number|null, unsold_rate?: number|null, unsold_source?: string|null, unsold_as_of?: string|null, unsold_listed_as_of?: string|null, competition_shortfall?: number|null }>} rows
+ *   applyhome·hold·govlist 출처 행(다른 출처가 섞여 있어도 걸러낸다).
  * @param {{ now?: Date, holdBaseline?: readonly string[] }} [opts] holdBaseline 없으면 HOLD_BASELINE_IDS
  * @returns {Issue[]}
  */
@@ -1584,6 +2120,69 @@ export function checkApplyhomeUnsold(rows, opts = {}) {
       at: `holdval:${fingerprintIds(idsOf(holdWithValue))}`,
     });
   }
+
+  // (h) 지자체 명단(govlist, 세션692 PR-4 · 설계서 §7) — 열쇠 접두 `govexp:`·`govstale:` 은 (d) 의 `hold:` 와 겹치지 않는다
+  const gov = rows.filter((r) => r?.unsold_source === "govlist" && r?.id);
+  // (h-2) 명단 — (h-1) 보다 먼저 정한다: 수 비공개 행은 만료 다음 날 (h-2) 가 이미 울렸으므로 35일 뒤 (h-1) 에서 다시 세지 않는다
+  //   (세션696 B5 · BACKLOG 440 adv🟡4 — 같은 단지에 열쇠 둘로 두 번 울던 것). (h-1) 은 숫자 행 + (h-2) 에 안 걸린 행만.
+  const govHiddenStale = gov.filter((r) => r.unsold == null && isApplyhomeExpired(r.unsold_listed_as_of ?? r.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) === true);
+  const govHiddenStaleIds = new Set(govHiddenStale.map((r) => String(r.id)));
+  const govExpired = gov.filter((r) => !govHiddenStaleIds.has(String(r.id)) && isApplyhomeExpired(r.unsold_as_of, graceNow, GOVLIST_EXPIRY_MONTHS) === true);
+  if (govExpired.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-govlist",
+      detail: `(h) 명단 기준월 ${GOVLIST_EXPIRY_MONTHS}개월이 지났는데 아직 지자체 명단 값인 단지 ${govExpired.length}곳 — ${sample(govExpired)}`,
+      lines: [
+        `KOSIS 수집기(매월 9일)가 기준월 + ${GOVLIST_EXPIRY_MONTHS}개월이 지난 명단 값을 덮었어야 하는데 못 덮었습니다(여유 ${APPLYHOME_EXPIRY_ALERT_GRACE_DAYS}일 포함).`,
+        "그 지역 KOSIS 매칭 실패·추정률 50% 이상 보류·임대형이면 값이 그대로 남습니다 — 최근 kosis-unsold 로그의 [govlist] 줄을 보세요.",
+      ],
+      at: `govexp:${fingerprintIds(idsOf(govExpired))}`,
+    });
+  }
+  // (h-3) 기준월이 빈 govlist — 만료를 못 재어 KOSIS 가 영구 존중한다((b) 와 같은 꼴 · 수집기·DB CHECK 가 막아 정상이면 0곳)
+  const govNoDate = gov.filter((r) => isApplyhomeExpired(r.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) == null);
+  if (govNoDate.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-govlist",
+      detail: `(h) 지자체 명단 값인데 기준월(unsold_as_of)이 빈 단지 ${govNoDate.length}곳 — ${sample(govNoDate)}`,
+      lines: [
+        "기준월이 없으면 만료를 판정할 수 없어 KOSIS 가 그 값을 영구히 존중합니다(최근 kosis-unsold 기록의 GOVLIST_NO_DATE).",
+        "수집기는 늘 기준월을 씁니다 — 손으로 쓴 행이면 명단 원문의 기준월을 backfill-unsold-source.mjs --plan= 으로 채우세요.",
+      ],
+      at: `govnodate:${fingerprintIds(idsOf(govNoDate))}`,
+    });
+  }
+  if (govHiddenStale.length > 0) {
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-govlist",
+      detail: `(h) 명단 등재·수 비공개가 ${GOVLIST_EXPIRY_MONTHS}개월 넘게 새 명단으로 갱신 안 됨 ${govHiddenStale.length}곳 — ${sample(govHiddenStale)}`,
+      lines: [
+        "지자체가 새 달 명단을 안 올렸거나(충남 7월분 이후 미게시 같은 경우) 우리 수집기가 그 출처를 건너뛰었습니다 — 최근 unsold-govlist 기록의 GOVLIST_SKIP 을 보세요.",
+        "이 단지는 다음 KOSIS 회차(매월 9일)부터 다시 KOSIS 추정으로 돌아갑니다.",
+      ],
+      at: `govstale:${fingerprintIds(idsOf(govHiddenStale))}`,
+    });
+  }
+  // (i) 미래 기준일(세션697 👤 결정 ① 「무시+경보」) — applyhome·govlist 인데 기준일이 오늘(KST) 뒤. 수집기·VIEW 는 존중하지 않고 KOSIS 로 보낸다.
+  //     (a)(h) 는 isApplyhomeExpired(미래 = false)를 그대로 써서 같은 행을 「만료」로 또 세지 않는다. 열쇠 접두 `future:` 는 `hold:` 와 겹치지 않는다.
+  const future = rows.filter((r) => (r?.unsold_source === "applyhome" || r?.unsold_source === "govlist") && r?.id && isAsOfFuture(r.unsold_as_of, now) === true);
+  if (future.length > 0) {
+    const byId = [...future].sort((a, b) => (String(a.id) < String(b.id) ? -1 : String(a.id) > String(b.id) ? 1 : 0));
+    const shown = byId.slice(0, FUTURE_ASOF_ID_LIMIT).map((r) => `${r.id}(${r.unsold_source} ${r.unsold_as_of})`);
+    issues.push({
+      kind: "applyhome-unsold",
+      collector: "unsold-asof",
+      detail: `(i) 기준일(unsold_as_of)이 오늘(KST ${kstDayOf(now)}) 뒤인 청약홈·지자체 명단 값 n=${future.length}: ${shown.join(", ")}${future.length > shown.length ? ", …" : ""}`,
+      lines: [
+        "미래 기준일 값은 존중하지 않습니다 — KOSIS 수집기(매월 9일)가 그 행을 다시 정하고, 화면(VIEW)도 단지별 실측으로 쓰지 않습니다.",
+        "기준일을 잘못 쓴 곳(명단 파서·손 반영·청약홈 공고일)을 찾아 고치세요 — 최근 kosis-unsold 로그의 [미래 기준일] 줄에 같은 명단이 있습니다.",
+      ],
+      at: `future:${fingerprintIds(idsOf(future))}`,
+    });
+  }
   return issues;
 }
 
@@ -1598,13 +2197,14 @@ export function holdAlertResolved(ahIssues) {
 }
 
 /**
- * ⑫ 대상 행 — applyhome·hold 출처만(전체 3,068행 중 수십 곳). 칸이 없으면(마이그 전) 조회가 실패하고
+ * ⑫ 대상 행 — applyhome·hold·govlist 출처만(govlist 는 세션692 (h) — 경기 PR-5 뒤 수백 곳일 수 있어 id 커서 selectAll 그대로).
+ * 칸이 없으면(마이그 전) 조회가 실패하고
  * 호출부가 fail-open 으로 넘긴다.
  * @returns {Promise<Array<Record<string, any>>>}
  */
 async function fetchApplyhomeUnsoldRows() {
   return /** @type {Array<Record<string, any>>} */ (await selectAll(
-    (s) => s.from("apartments").select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold"]),
+    (s) => s.from("apartments").select("id, name, unsold, unsold_rate, unsold_source, unsold_as_of, unsold_listed_as_of, competition_shortfall").in("unsold_source", ["applyhome", "hold", "govlist"]),
     getSupabase(),
     "id",
   ));
@@ -1732,7 +2332,8 @@ export function checkLocalFailures(rows, opts = {}) {
       detail: `status=failure · 성공 ${ok} · 실패 ${fail}${msg ? ` · ${msg.slice(0, 80)}` : ""} · ${when}`,
       lines: [
         `실패 비율 ${(ratio * 100).toFixed(1)}% (${fail}/${ok + fail}) — 성공 0건이거나 ${Math.round(ratioLimit * 100)}% 이상이면 알립니다.`,
-        `[조치] 로그 = ${name} 를 돌린 로컬 러너 로그 파일(naver-collect.log · kosis-local.log · childcare-local.log) / collector_runs.error_message`,
+        // 세션696 B7(g): failure 행은 GitHub Actions 수집기(예: infra = collect-infra.yml)도 남긴다 — 로컬 러너 로그만 가리키면 엉뚱하다
+        `[조치] 로그 = 로컬 러너 수집기면 러너 로그 파일(naver-collect.log · kosis-local.log · childcare-local.log) · GitHub Actions 수집기(예: infra → collect-infra.yml)면 그 워크플로 실행 로그 / collector_runs.error_message`,
       ],
       at: r.finished_at,
     });
@@ -2689,6 +3290,193 @@ export async function fetchTradeScopeFillCounts(sb = getSupabase()) {
 }
 
 /**
+ * ⑥-c 시세 범위 빈칸(세션696 B8 · BACKLOG 382 「후속 2」 · 세션661 맹점 🟡7) — `trade_stats` 에서
+ * `cmp_fair_price` 가 있는데 `cmp_min` 이 빈 행 수는 0 이어야 한다. 수집기(`_trade-scope.mjs`)는 적정가를 정하는
+ * 모든 갈래(같은 면적·㎡당·동네 또래)에서 최저·최고를 같이 채우므로, 0 이 아니면 범위 계산이 깨진 것 —
+ * 화면은 오류 없이 범위 칩·범위 줄이 빠진 옛 모양으로 돌아간다. DB 접근 없는 순수 함수.
+ * @param {number} fairNoMin cmp_fair_price 있음 + cmp_min 빈칸 행 수
+ * @returns {Issue[]}
+ */
+export function checkTradeRangeGap(fairNoMin) {
+  if (!(fairNoMin > 0)) return [];
+  return [{
+    kind: "nulls",
+    collector: "시세 범위 칸 (cmp_min)",
+    detail: `trade_stats 적정가(cmp_fair_price)는 있는데 최저가(cmp_min)가 빈 행 ${fairNoMin}개 — 범위 계산 회귀 의심(기대 0)`,
+    lines: [
+      "수집기는 적정가를 정할 때 최저·최고를 늘 같이 채웁니다(scripts/collectors/_trade-scope.mjs). 빈 행은 범위 칩·시세 탭 범위 줄이 소리 없이 빠집니다.",
+      "[조치] 최근 trade-stats 회차 로그의 「범위 있음 N」 줄·_trade-scope.mjs 의 cmp_min 채우는 줄을 확인 · 고친 뒤 Actions collect-trade-stats 를 수동 1회(정기 회차는 7·21일뿐이라 그때까지 매일 울림)",
+    ],
+  }];
+}
+
+/**
+ * ⑥-c 조회 — 개수만(head 1회). count 를 못 받거나 오류면 던진다(fail-open 이 실행 실패로 알린다).
+ * @param {any} [sb]
+ * @returns {Promise<number>}
+ */
+export async function fetchTradeRangeGapCount(sb = getSupabase()) {
+  const r = await sb.from("trade_stats").select("*", { count: "exact", head: true }).not("cmp_fair_price", "is", null).is("cmp_min", null);
+  if (r.error) throw new Error(`trade_stats 범위 빈칸 조회 실패: ${r.error.message}`);
+  if (r.count == null) throw new Error("trade_stats 범위 빈칸 개수를 못 받음(count=null)");
+  return r.count;
+}
+
+// ── ㉕ 기준일 상수 만료 예고(세션696 B6 · BACKLOG 365·453 A-23 · 세션675 맹점 검사관 처방) ─────────────
+/** ㉕ 만료 며칠 전부터 알리나 — 12/31 이 마지막 날이면 12/17(14일 전)부터. */
+export const RULE_EXPIRY_WARN_DAYS = 14;
+/**
+ * ㉕ 상수가 사는 파일 — **import 하지 않고 글자로 읽는다**: 감시는 `node scripts/monitor-collectors.mjs`(alias-loader 없음)로
+ * 도는데 `loanRules.ts` 는 TS + 확장자 없는 import(`./regulations`)라 일반 Node ESM 이 못 연다(audit-node-esm-chain 이 지키는
+ * 사슬과 같은 함정 — import 하면 감시 전체가 시작부터 죽는다). 글자와 실제 값이 같은지는 monitor-rule-expiry.test.mjs 가 맞댄다.
+ */
+const LOAN_RULES_URL = new URL("../src/constants/loanRules.ts", import.meta.url);
+const STRESS_UNTIL_RE = /^export const STRESS_RATE_LOCAL_UNTIL = "(\d{4}-\d{2}-\d{2})";\r?$/m;
+
+/**
+ * `src/constants/loanRules.ts` 의 `STRESS_RATE_LOCAL_UNTIL` 값을 글자로 읽는다 — 그 줄을 못 찾으면 던진다(이름·꼴이 바뀐 날 침묵하지 않게).
+ * @param {string} [text] 시험 주입용(생략하면 파일)
+ * @returns {string} "YYYY-MM-DD"
+ */
+export function readStressLocalUntil(text) {
+  const src = text ?? readFileSync(LOAN_RULES_URL, "utf8");
+  const m = STRESS_UNTIL_RE.exec(src);
+  if (!m) throw new Error("src/constants/loanRules.ts 에서 STRESS_RATE_LOCAL_UNTIL 줄을 못 찾음(이름·꼴이 바뀌었으면 ㉕ 도 같이 고칠 것)");
+  return m[1];
+}
+
+/**
+ * ㉕ 판정 — 상수의 마지막 유효일(until, KST 날짜)까지 남은 날 ≤ warnDays 이면 1건(지난 뒤에도 고칠 때까지 매일 — ⑤ 처럼 daily 리마인드).
+ * 오늘은 KST 날짜로 센다. now 를 밖에서 넣는다 — 시험이 실제 날짜에 기대면 12/17 부터 CI 가 빨개진다(원문 처방).
+ * 날짜가 없는 날(2026-02-30 등)이면 던진다.
+ * @param {string} until "YYYY-MM-DD"
+ * @param {Date} [now]
+ * @param {{ name?: string, file?: string, warnDays?: number }} [opts]
+ * @returns {Issue[]}
+ */
+export function checkRuleExpiry(until, now = new Date(), opts = {}) {
+  const name = opts.name ?? "STRESS_RATE_LOCAL_UNTIL";
+  const file = opts.file ?? "src/constants/loanRules.ts";
+  const warnDays = opts.warnDays ?? RULE_EXPIRY_WARN_DAYS;
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(until);
+  if (!m) throw new Error(`${name} 값 꼴이 YYYY-MM-DD 가 아님: ${until}`);
+  const [y, mo, d] = [Number(m[1]), Number(m[2]), Number(m[3])];
+  const last = Date.UTC(y, mo - 1, d);
+  const chk = new Date(last);
+  if (chk.getUTCFullYear() !== y || chk.getUTCMonth() !== mo - 1 || chk.getUTCDate() !== d) throw new Error(`${name} 값이 없는 날짜: ${until}`);
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const todayKst = Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate());
+  const left = Math.round((last - todayKst) / 86400000);
+  if (left > warnDays) return [];
+  return [{
+    kind: "rule-expiry",
+    collector: name,
+    detail: left >= 0
+      ? `${name}(${until})까지 ${left}일 남음 — 지방 스트레스 가산 0.75%p 유예가 끝납니다`
+      : `${name}(${until})가 ${-left}일 지났는데 상수가 그대로 — 잔금 계산기가 끝난 규칙으로 계산 중`,
+    lines: [
+      `금융위원회 12월 발표(스트레스 DSR 다음 단계)를 확인해 ${file} 의 STRESS_RATE_LOCAL·STRESS_RATE_LOCAL_UNTIL 을 고치는 PR 을 냅니다.`,
+      "2u 에도 알립니다(공책 shared/loan/log.md · BACKLOG A-23).",
+    ],
+    at: `until:${until}`,
+  }];
+}
+
+/**
+ * ㉕ 한 번 돌리기 — main 이 매일 부른다(runDailyGuardedChecks 밖: 그 열의 시험들이 실제 날짜에 따라 달라지지 않게).
+ * 읽기·판정 예외는 fail-open 이 실행 실패 1건으로 알린다.
+ * @param {{ now?: Date, readUntil?: () => string }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runRuleExpiryCheck(deps = {}) {
+  return runFailOpenCheck("㉕ 기준일 상수 만료 예고", async () => {
+    const until = (deps.readUntil ?? (() => readStressLocalUntil()))();
+    const is = checkRuleExpiry(until, deps.now ?? new Date());
+    console.log(`[monitor] ㉕ 기준일 상수 만료 예고: STRESS_RATE_LOCAL_UNTIL ${until} → 이상 ${is.length}건`);
+    return is;
+  });
+}
+
+// ── ㉖ 명단 총분양 상한에 새로 걸린 단지(세션697 👤 결정 ② 「새로 걸린 단지만 알림」) ─────────────
+/** ㉖ 대상 수집기 — `collect-unsold-kosis.mjs` 의 PHASE 상수 그대로(`recordCollectorRun` 첫 인자). */
+export const KOSIS_UNSOLD_COLLECTOR = "kosis-unsold";
+
+/**
+ * ㉖ 판정 — `kosis-unsold` **가장 최근 실행 1행**의 `KOSIS_LISTED_CAP` 표식 id 중, 그 전 실행들(조회 창 = ⑪ 과 같은 24행 ≈ 2년)의
+ * 표식에 **한 번도 없던 id** 만 알림 1건. 처음 보는 id 가 없거나 최근 실행에 표식이 없으면 침묵.
+ * 같은 실행으로 이틀 이상 울리지 않는다 — `at` = 그 실행의 finished_at + 「항상 dedup」(`ALWAYS_DEDUP_KINDS`, ⑮·⑱ 과 같은 방식).
+ * 잘린 표식(앞 20개 + 「, …」): 보이는 id 끼리만 비교하고 문구에 「일부만 비교」를 밝힌다 — 이번 실행이 잘렸으면 안 보이는 id 는
+ * 판정 못 함(보이는 id 에 새 것이 없으면 침묵 — 단 이번 n 이 바로 전 표식 회차의 n 보다 크면 「n a→b 늘어남」 1건 · 세션697 보완 S6),
+ * 지난 실행이 잘렸으면 그때 안 보인 id 가 「처음 봄」으로 잡힐 수 있다.
+ * DB 접근 없는 순수 함수.
+ * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs 최근 행(finished_at DESC, [0] 이 최신)
+ * @returns {Issue[]}
+ */
+export function checkListedCapNew(runs) {
+  const latest = runs[0];
+  if (!latest) return [];
+  const cur = parseListedCap(latest.error_message);
+  if (!cur || cur.ids.length === 0) return [];
+  /** @type {Set<string>} */
+  const seen = new Set();
+  let prevTruncated = false;
+  for (const r of runs.slice(1)) {
+    const p = parseListedCap(r.error_message);
+    if (!p) continue;
+    for (const id of p.ids) seen.add(id);
+    if (p.truncated) prevTruncated = true;
+  }
+  const fresh = cur.ids.filter((id) => !seen.has(id));
+  if (fresh.length === 0) {
+    // 잘린 표식(적대 🟡3 · 세션697 보완 S6): 보이는 20개가 다 본 것이어도 이번 n 이 바로 전 표식 회차의 n 보다 크면
+    //   앞 20개 밖에서 새로 걸린 단지가 있을 수 있다 — 1건(같은 회차 반복 금지는 같은 at 으로 그대로).
+    const prevCap = runs.slice(1).map((r) => parseListedCap(r.error_message)).find((p) => p != null) ?? null;
+    if (!cur.truncated || !prevCap || cur.n <= prevCap.n) return [];
+    return [{
+      kind: "kosis-listed-cap",
+      collector: KOSIS_UNSOLD_COLLECTOR,
+      detail: `KOSIS_LISTED_CAP 명단 총분양 상한 단지 수 늘어남 n ${prevCap.n}→${cur.n} — 앞 ${cur.ids.length}개 밖에서 새로 걸린 단지가 있을 수 있음(일부만 비교)`,
+      lines: [
+        `이번 실행 표식이 앞 ${cur.ids.length}개로 잘려(n=${cur.n}) 보이는 단지는 전부 전에 걸린 적이 있습니다 — 늘어난 ${cur.n - prevCap.n}곳은 그 회차 kosis-unsold 로그의 [명단 총분양 상한] 줄에서 확인하세요.`,
+        ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+      ],
+      at: `cap:${latest.finished_at ?? ""}`,
+    }];
+  }
+  /** @type {string[]} */
+  const partial = [];
+  if (cur.truncated) partial.push(`이번 실행 표식이 앞 ${cur.ids.length}개로 잘려(n=${cur.n}) 앞 ${cur.ids.length}개만 비교했습니다 — 나머지 ${cur.n - cur.ids.length}곳은 판정 못 함`);
+  if (prevTruncated) partial.push("지난 실행 표식 중 잘린 회차가 있어, 그때 안 보이던 단지가 「처음」으로 잡혔을 수 있습니다");
+  return [{
+    kind: "kosis-listed-cap",
+    collector: KOSIS_UNSOLD_COLLECTOR,
+    detail: `KOSIS_LISTED_CAP 명단 총분양 상한에 새로 걸린 단지 ${fresh.length}곳${partial.length ? "(일부만 비교)" : ""}: ${fresh.join(", ")}`,
+    lines: [
+      `이번 실행 상한 n=${cur.n} · 그 전 실행 ${runs.length - 1}행의 표식에 없던 단지만 적었습니다.`,
+      ...partial.map((s) => `일부만 비교: ${s}`),
+      ...(toKst(latest.finished_at) ? [`최근 실행: ${toKst(latest.finished_at)}${latest.status === "success" ? "" : ` (${latest.status ?? "상태 없음"})`}`] : []),
+    ],
+    at: `cap:${latest.finished_at ?? ""}`,
+  }];
+}
+
+/**
+ * ㉖ 한 번 돌리기 — main 이 매일 부른다(runDailyGuardedChecks 밖 — ㉕ 와 같은 자리: 그 열의 주입 시험들이 새 조회를 몰라 운영 조회로 새지 않게).
+ * 조회는 ⑪ 과 같은 `fetchRegionUnresolvedRuns`(수집기 이름별 최근 24행). 예외는 fail-open 이 실행 실패 1건으로 알린다.
+ * @param {{ fetchRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns> }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runListedCapCheck(deps = {}) {
+  return runFailOpenCheck("㉖ 명단 총분양 상한 새 단지", async () => {
+    const runs = (await (deps.fetchRuns ?? fetchRegionUnresolvedRuns)([KOSIS_UNSOLD_COLLECTOR]))[KOSIS_UNSOLD_COLLECTOR] ?? [];
+    const is = checkListedCapNew(runs);
+    const cur = runs.length ? parseListedCap(runs[0].error_message) : null;
+    console.log(`[monitor] ㉖ 명단 총분양 상한 새 단지: 최근 실행 ${runs.length ? (cur ? `상한 n=${cur.n}` : "표식 없음") : "실행 없음"} → 이상 ${is.length}건`);
+    return is;
+  });
+}
+
+/**
  * ⑦ VIEW 의 시군구 조인(`rg`)으로 노출되는 컬럼 목록.
  *
  * `apartments_flat` 은 `LEFT JOIN latest_regions_gu rg ON rg.region = a.region
@@ -2804,7 +3592,8 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
 // ⑮ kapt-window 도 at=최근 실행 finished_at — 같은 실행은 한 번만, 다음 회차가 또 건너뛰면 새로 울린다(세션589).
 // ⑱ sgis-map-* 도 at=그 실행의 finished_at — 같은 화요일 행은 한 번만, 다음 화요일 행이 또 그러면 새로 울린다(세션614 보완 W2).
 // ㉑ notice-markers 는 ⑪ 과 같은 지문(표식 이름+값 해시 @ 구간 시작) — 같은 내용이 이어지면 다음 날부터 침묵(세션632).
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers"]);
+// ㉖ kosis-listed-cap 은 at=그 KOSIS 실행의 finished_at — 같은 회차는 한 번만, 다음 회차가 또 새 단지를 걸면 새로 울린다(세션697).
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers", "govlist-health", "kosis-listed-cap"]);
 
 /**
  * @param {Issue} issue
@@ -3711,7 +4500,7 @@ export async function runFailOpenCheck(label, run) {
 }
 
 /**
- * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑫(g) 세션684 → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒ → ㉓, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648 + ㉓ 세션668)을 돌려 이슈를 합친다.
+ * daily 스윕의 fail-open 점검 열(⑦ → ⑨ → ⑧ → ⑪ → ⑫ → ⑫(g) 세션684 → ⑬ → ⑭ → ⑮ → ⑯ → ⑰ → ⑱ → ㉑ → ㉒ → ㉓ → ㉔, 옛 main 순서 그대로 + ⑬ 세션570 + ⑭ 세션588 + ⑮·⑯ 세션589 + ⑰ 세션590 + ⑱ 세션614 + ㉑ 세션632 + ㉒ 세션648 + ㉓ 세션668 + ㉔ 세션692)을 돌려 이슈를 합친다.
  * ⑲(소유권 정본 대조, 세션617)는 KST 월요일에만 돌아 이 열 밖 `runOwnershipCheck` 로 main 이 바로 뒤에 부른다
  * (이 열에 넣으면 요일에 따라 이 열의 시험 결과가 달라진다).
  * 조회 함수는 시험 주입용 — 생략하면 운영 조회를 쓴다.
@@ -3731,8 +4520,11 @@ export async function runFailOpenCheck(label, run) {
  *   fetchNoticeRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>,
  *   fetchPriceHistoryCounts?: () => Promise<Partial<Record<"A" | "B", { count: number | null | undefined, error?: unknown }>>>,
  *   fetchSeoThin?: () => Promise<{ status: number, text: string }>,
+ *   fetchDailyRefresh?: () => Promise<{ at: string, sha: string } | null>,
+ *   fetchGovlistHealth?: () => ReturnType<typeof fetchGovlistHealthInputs>,
  *   clearHoldAlertKeys?: (prefix: string) => Promise<void>,
- * }} [deps]
+ *   now?: Date,
+ * }} [deps] now = ㉔-d 의 「오늘 03시」 판정 시각(시험 주입용 · 생략하면 지금)
  * @returns {Promise<Issue[]>}
  */
 export async function runDailyGuardedChecks(deps = {}) {
@@ -3753,6 +4545,8 @@ export async function runDailyGuardedChecks(deps = {}) {
   const fetchNoticeRuns = deps.fetchNoticeRuns ?? fetchRegionUnresolvedRuns;
   const fetchPriceHistoryCounts = deps.fetchPriceHistoryCounts ?? fetchPriceHistorySliceCounts;
   const fetchSeoThin = deps.fetchSeoThin ?? fetchSeoThinLive;
+  const fetchDailyRefresh = deps.fetchDailyRefresh ?? fetchLatestDailyRefresh;
+  const fetchGovlistHealth = deps.fetchGovlistHealth ?? fetchGovlistHealthInputs;
   const clearHoldAlertKeys = deps.clearHoldAlertKeys ?? clearAlertKeysByPrefix;
   /** @type {Issue[]} */
   let issues = [];
@@ -3808,7 +4602,8 @@ export async function runDailyGuardedChecks(deps = {}) {
     const ahRows = await fetchAhRows();
     const ahIssues = checkApplyhomeUnsold(ahRows);
     const holdCount = ahRows.filter((r) => r?.unsold_source === "hold").length;
-    console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length - holdCount}곳 · hold ${holdCount}곳 → 이상 ${ahIssues.length}건`);
+    const govCount = ahRows.filter((r) => r?.unsold_source === "govlist").length;
+    console.log(`[monitor] ⑫ 청약홈 미분양 값 점검: applyhome ${ahRows.length - holdCount - govCount}곳 · hold ${holdCount}곳 · govlist ${govCount}곳 → 이상 ${ahIssues.length}건`);
     // (d) 해소(DB hold 명단 = 기준) 날 옛 hold 열쇠를 지운다 — 같은 사고가 다시 나면 다시 울리게(세션572).
     // 조회가 throw 한 날은 runFailOpenCheck 가 먼저 잡아 여기까지 안 온다(hold 0 을 해소로 오독하지 않는다).
     if (holdAlertResolved(ahIssues)) await clearHoldAlertKeys(HOLD_ALERT_KEY_PREFIX);
@@ -3915,8 +4710,52 @@ export async function runDailyGuardedChecks(deps = {}) {
   issues = issues.concat(await runFailOpenCheck("㉓ 검색 제외 안전선", async () => {
     const { status, text } = await fetchSeoThin();
     const thinIssues = checkSeoThin(status, text);
+    // builtAt(세션697 C6) — 기록을 읽었을 때만. 토큰 없음(로컬)만 비교를 조용히 건너뛰고,
+    //   토큰이 있는데(Actions) 조회가 실패하면 실행 실패 1건 — 권한이 바뀌어 판정이 영영 꺼지지 않게(B7 · fetchRecentRuns 관례).
+    const parsed = parseSeoThin(status, text);
+    if (parsed.ok) {
+      for (const w of parsed.warnings) console.log(`[monitor] ㉓ 기록 새 칸 경고: ${w}`);
+      /** @type {{ at: string, sha: string } | null} */
+      let refresh = null;
+      try {
+        refresh = await fetchDailyRefresh();
+        if (!refresh) console.log("[monitor] ㉓ builtAt 비교 건너뜀: main 최근 커밋 30개에 daily refresh 없음");
+      } catch (err) {
+        if (err instanceof GithubAuthMissingError) {
+          console.log(`[monitor] ㉓ builtAt 비교 건너뜀: ${err.message}`);
+        } else {
+          console.log(`[monitor] ㉓ builtAt 커밋 조회 실패(감시는 계속): ${err instanceof Error ? err.message : String(err)}`);
+          thinIssues.push(checkFailedIssue("㉓ builtAt 커밋 조회", err));
+        }
+      }
+      thinIssues.push(...checkSeoThinBuiltAt(parsed.rec, refresh, deps.now ?? new Date()));
+    }
     console.log(`[monitor] ㉓ 검색 제외 안전선: 응답 ${status} → 이상 ${thinIssues.length}건`);
     return thinIssues;
+  }));
+
+  // ㉔ 지자체 명단 수집 건전성 — 최근 실행의 GOVLIST_SKIP · 명단 행 수 전 기준월 대비 −50%(세션692 PR-4). 실행·명단 0행이면 침묵.
+  /** ㉔ 재료 — ㉔-d 블록이 같은 재료를 쓴다(조회 1회). @type {Awaited<ReturnType<typeof fetchGovlistHealth>> | null} */
+  let govInputs = null;
+  issues = issues.concat(await runFailOpenCheck("㉔ 지자체 명단 점검", async () => {
+    govInputs = await fetchGovlistHealth();
+    const { runs, listRows } = govInputs;
+    // ㉔-c 매칭(충돌·판정 필요 증가 — 세션693 PR-4b) — 같은 govlist-health 로 dedup
+    const govIssues = checkGovlistSkips(runs, deps.now ?? new Date()).concat(checkGovlistDrop(listRows), checkGovlistMatch(runs));
+    console.log(`[monitor] ㉔ 지자체 명단 점검: 실행 ${runs.length}행 · 명단 ${listRows.length}행 → 이상 ${govIssues.length}건`);
+    return govIssues;
+  }));
+  // ㉔-d 비공개 수 대조 — 따로 fail-open(재료 조회가 실패해도 ㉔-a·b·c 는 위에서 이미 돌았다 · 세션693 B5).
+  //   ㉔ 재료 조회 자체가 실패했으면 ㉔-d 도 결과를 못 낸 것 — 침묵하지 않고 실행 실패 1건(세션696 B4 · BACKLOG 442 adv-re🟡2).
+  issues = issues.concat(await runFailOpenCheck("㉔-d 지자체 명단 비공개 수 대조", async () => {
+    const g = /** @type {Awaited<ReturnType<typeof fetchGovlistHealth>> | null} */ (govInputs);
+    if (!g) throw new Error("㉔ 재료 조회 실패로 비교를 못 함(같은 날 ㉔ 실행 실패 알림 참고)");
+    if (g.hiddenError) throw new Error(g.hiddenError);
+    const hidden = g.hidden;
+    if (hidden?.liveError) console.log(`[monitor] ㉔-d 라이브 목록 JSON 가져오기 실패(비교만 건너뜀 · fail-open): ${hidden.liveError}`);
+    const hidIssues = checkGovlistHiddenParity(hidden, deps.now ?? new Date(), g.runs[0] ?? null);
+    if (hidden) console.log(`[monitor] ㉔-d 비공개 수 대조: VIEW ${hidden.viewHidden}곳 · 목록 JSON ${hidden.live ? `${hidden.live.listHidden}곳` : "못 가져옴"} → 이상 ${hidIssues.length}건`);
+    return hidIssues;
   }));
 
   return issues;
@@ -4280,18 +5119,21 @@ async function fetchExternalApiRuns(targets, limitPer = OUTAGE_MIN_CONSECUTIVE) 
  * ⑪ 대상 수집기별 최근 `REGION_UNRESOLVED_RUN_WINDOW` 행(error_message 포함, [0] 이 최신 — 판정은
  * 최신 행, 나머지는 dedup 구간 시작 찾기용). collector 별 개별 쿼리 — 전역 최신순 limit 은
  * 매일 도는 수집기가 자리를 차지해 월간 수집기 행이 잘린다(fetchExternalApiRuns 와 같은 이유).
+ * `ok_count` 는 ㉔-d 가 「굽기 뒤 실제로 썼나」(success 또는 ok>0)를 가르는 데 쓴다 — select 에서 빠지면
+ * partial+ok>0 실행 뒤에도 비교해 헛경보가 난다(세션696 B2 · monitor-govlist.test.mjs 가 지킨다).
  * @param {readonly string[]} names
- * @returns {Promise<Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null }>>>}
+ * @param {any} [sbArg] 시험 주입용(생략하면 운영 서비스 열쇠)
+ * @returns {Promise<Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null, ok_count?: number|null }>>>}
  */
-async function fetchRegionUnresolvedRuns(names) {
-  const sb = getSupabase();
-  /** @type {Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null }>>} */
+export async function fetchRegionUnresolvedRuns(names, sbArg = null) {
+  const sb = sbArg ?? getSupabase();
+  /** @type {Record<string, Array<{ status: string|null, error_message: string|null, finished_at: string|null, ok_count?: number|null }>>} */
   const grouped = {};
   await Promise.all(
     names.map(async (name) => {
       const { data, error } = await sb
         .from("collector_runs")
-        .select("collector,status,error_message,finished_at")
+        .select("collector,status,error_message,finished_at,ok_count")
         .eq("collector", name)
         .order("finished_at", { ascending: false })
         .limit(REGION_UNRESOLVED_RUN_WINDOW);
@@ -4626,6 +5468,14 @@ async function main() {
       return scopeIssues;
     }));
 
+    // ⑥-c 시세 범위 빈칸 — trade_stats 적정가 있음 + 최저가 빈칸 = 0 이어야 한다(세션696 B8 · BACKLOG 382). fail-open.
+    issues = issues.concat(await runFailOpenCheck("⑥-c 시세 범위 빈칸 점검", async () => {
+      const gap = await fetchTradeRangeGapCount();
+      const rangeIssues = checkTradeRangeGap(gap);
+      console.log(`[monitor] ⑥-c 시세 범위 빈칸: 적정가 있음 + 최저가 빈칸 ${gap}행(기대 0) → 이상 ${rangeIssues.length}건`);
+      return rangeIssues;
+    }));
+
     // ⑦ 시군구 짝 · ⑨ 좌표 부정확 · ⑧ 지역×월 거래 · ⑪ 시도 이름 못 맞춤 · ⑫ 청약홈 미분양 값 · ⑬ 로컬 수집기 실패 · ⑭ 묶음 열쇠 · ⑮ 2u 창 건너뜀 · ⑯ trade_deals · ⑰ 연결 표 · ⑱ SGIS 매핑 표시 · ㉑ 공고 정리 표식 · ㉒ 시세 이력 바닥 · ㉓ 검색 제외 안전선 · ⑲ 소유권 정본 대조(월요일) · ⑳ 공고 다른 묶음(월요일) — 전부 fail-open.
     //    한 점검이 조회 실패해도 나머지는 계속 돌고, 실패한 점검은 "실행 실패" 이슈로 알린다
     //    (세션569 최종 검사관 🔴1 — 전엔 로그만 남아 그날 요약이 "이상 없음" 이 됐다). 본문 = runDailyGuardedChecks.
@@ -4642,6 +5492,12 @@ async function main() {
       // ⑳ 청약홈 공고가 다른 단지 묶음에 같이 붙음(세션630) — 수집기 정리가 매주 지우므로 기준선 0. fail-open.
       issues = issues.concat(await runNoticeCrossBundleCheck());
     }
+
+    // ㉕ 기준일 상수 만료 예고 — STRESS_RATE_LOCAL_UNTIL 14일 전부터 매일(세션696 B6 · BACKLOG A-23). runDailyGuardedChecks 열 밖에
+    //    두는 이유 = 그 열의 시험들이 실제 날짜에 따라 달라지지 않게(시각은 밖에서 넣는다). fail-open.
+    issues = issues.concat(await runRuleExpiryCheck());
+    // ㉖ 명단 총분양 상한에 새로 걸린 단지 — kosis-unsold 최근 실행 표식 중 처음 보는 id 만(세션697 👤 결정 ②). 같은 실행은 한 번만(항상 dedup). fail-open.
+    issues = issues.concat(await runListedCapCheck());
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
     //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를

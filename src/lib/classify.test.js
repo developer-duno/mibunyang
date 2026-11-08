@@ -75,6 +75,32 @@ describe("classify 상수 무결성", () => {
     });
   });
 
+  // 👤 D3(세션691 11/04) — 지자체 명단 등재·수 비공개는 「미입주」에도 넣는다(Q8 과 같은 셈법 · 세션692 PR-4)
+  describe("명단 비공개 등재(unsoldListedHidden) — D3", () => {
+    /** @param {Record<string, unknown>} o */
+    const a = (o) =>
+      /** @type {import('@/types/scoring').Apt} */ (
+        /** @type {unknown} */ ({ completion: "202412", unsold: null, unsoldRate: null, ...o })
+      );
+    it("brief 예시: 준공 202412 · unsold null · hidden true → 미입주 / hidden false → null", () => {
+      expect(classifyMoveIn(a({ unsoldListedHidden: true }))).toBe("미입주");
+      expect(classifyMoveIn(a({ unsoldListedHidden: false }))).toBeNull();
+    });
+    it('칸 없음·null·문자열 "true" 는 비공개 아님 → null(VIEW 가 참이라 한 것만)', () => {
+      expect(classifyMoveIn(a({}))).toBeNull();
+      expect(classifyMoveIn(a({ unsoldListedHidden: null }))).toBeNull();
+      expect(classifyMoveIn(a({ unsoldListedHidden: "true" }))).toBeNull();
+    });
+    it("준공 전이면 hidden 이어도 입주예정 · 준공 없으면 null", () => {
+      expect(classifyMoveIn(a({ completion: "209912", unsoldListedHidden: true }))).toBe("입주예정");
+      expect(classifyMoveIn(a({ completion: null, unsoldListedHidden: true }))).toBeNull();
+    });
+    it("숫자가 있는 행은 옛 판정 그대로(hidden 칸 무관): 0 → 입주완료 · 3 → 미입주", () => {
+      expect(classifyMoveIn(a({ unsold: 0, unsoldListedHidden: false }))).toBe("입주완료");
+      expect(classifyMoveIn(a({ unsold: 3, unsoldListedHidden: false }))).toBe("미입주");
+    });
+  });
+
   // classifyTier 반환값이 항상 TIER_VALUES 중 하나
   it("classifyTier 반환값은 TIER_VALUES 중 하나", () => {
     const validSet = new Set(TIER_VALUES);

@@ -12,6 +12,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { execFileSync } from "node:child_process";
 import {
   auditOwnership,
   checkMigrationSql,
@@ -335,5 +336,47 @@ describe("끄는 법 · 정본 검증", () => {
     const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, "$1")), "..");
     const reg = JSON.parse(fs.readFileSync(path.join(repoRoot, "supabase/ownership.json"), "utf8"));
     expect(validateRegistry(reg, repoRoot)).toEqual([]);
+  });
+});
+
+// ── 세션692 PR-4(세션691 맹점 🟡) — 감사 ④ 대상 = 새로 더한 마이그 + **고친** 마이그(--diff-filter=AM) ──
+describe("changedMigrationFiles — 고친 마이그도 감사 ④ 에 든다(CI 갈래 · 임시 git 저장소)", () => {
+  /** @type {string} */ let repo;
+  /** @type {string | undefined} */ let savedGha;
+  /** @param {string[]} args */
+  const g = (args) => execFileSync("git", ["-C", repo, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
+  /** @param {string} rel @param {string} body */
+  const put = (rel, body) => { fs.mkdirSync(path.dirname(path.join(repo, rel)), { recursive: true }); fs.writeFileSync(path.join(repo, rel), body, "utf8"); };
+  beforeEach(() => {
+    repo = fs.mkdtempSync(path.join(os.tmpdir(), "s692-audit-mig-"));
+    g(["init", "-q"]);
+    g(["config", "user.email", "t@example.invalid"]);
+    g(["config", "user.name", "t"]);
+    g(["config", "core.autocrlf", "false"]);
+    put("supabase/migrations/20261102000000_old.sql", "select 1;\n");
+    put("supabase/migrations/20261102000001_gone.sql", "select 2;\n");
+    g(["add", "-A"]);
+    g(["commit", "-q", "-m", "base"]);
+    savedGha = process.env.GITHUB_ACTIONS;
+    process.env.GITHUB_ACTIONS = "true";
+  });
+  afterEach(() => {
+    if (savedGha === undefined) delete process.env.GITHUB_ACTIONS;
+    else process.env.GITHUB_ACTIONS = savedGha;
+    fs.rmSync(repo, { recursive: true, force: true });
+  });
+  it("고친 파일(M)·새 파일(A)은 들고, 지운 파일(D)은 안 든다", async () => {
+    const { changedMigrationFiles } = await import("./audit-shared-db-ownership.mjs");
+    put("supabase/migrations/20261102000000_old.sql", "select 1; -- 고침\n");
+    put("supabase/migrations/20261104000000_new.sql", "select 3;\n");
+    fs.rmSync(path.join(repo, "supabase/migrations/20261102000001_gone.sql"));
+    g(["add", "-A"]);
+    g(["commit", "-q", "-m", "change"]);
+    const r = changedMigrationFiles(repo);
+    expect(r.error).toBe(null);
+    expect([...r.files].map((f) => f.replace(/\\/g, "/")).sort()).toEqual([
+      "supabase/migrations/20261102000000_old.sql",
+      "supabase/migrations/20261104000000_new.sql",
+    ]);
   });
 });

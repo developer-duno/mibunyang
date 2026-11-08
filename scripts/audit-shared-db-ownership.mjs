@@ -426,7 +426,8 @@ export function auditOwnership({ root, registry, changedMigrations = [], files }
 }
 
 /**
- * 이번 변경에서 새로 더한 마이그(.sql · _rollbacks 제외).
+ * 이번 변경에서 새로 더하거나 **고친** 마이그(.sql · _rollbacks 제외) — `--diff-filter=AM`(세션692: 합친 마이그를 뒤 PR 이 고치면
+ *   `A` 만으로는 감사 ④ 를 건너뛰었다 — 세션691 맹점 🟡, PR-2 가 PR-1 파일을 고친 꼴).
  * CI(GITHUB_ACTIONS): PR 은 합침 커밋의 첫 부모, push 는 직전 커밋과 비교 → `HEAD~1` (ci.yml fetch-depth 2 필요).
  * 로컬: origin/main...HEAD(없으면 main...HEAD) + 아직 추적 안 한 새 파일.
  * @param {string} root
@@ -439,13 +440,13 @@ export function changedMigrationFiles(root) {
   const set = new Set();
   try {
     if (process.env.GITHUB_ACTIONS) {
-      git(["diff", "--name-only", "--diff-filter=A", "HEAD~1", "HEAD", "--", "supabase/migrations"]).split("\n").forEach((f) => set.add(f.trim()));
+      git(["diff", "--name-only", "--diff-filter=AM", "HEAD~1", "HEAD", "--", "supabase/migrations"]).split("\n").forEach((f) => set.add(f.trim()));
     } else {
       let out = "";
       try {
-        out = git(["diff", "--name-only", "--diff-filter=A", "origin/main...HEAD", "--", "supabase/migrations"]);
+        out = git(["diff", "--name-only", "--diff-filter=AM", "origin/main...HEAD", "--", "supabase/migrations"]);
       } catch {
-        out = git(["diff", "--name-only", "--diff-filter=A", "main...HEAD", "--", "supabase/migrations"]);
+        out = git(["diff", "--name-only", "--diff-filter=AM", "main...HEAD", "--", "supabase/migrations"]);
       }
       out.split("\n").forEach((f) => set.add(f.trim()));
       git(["ls-files", "--others", "--exclude-standard", "--", "supabase/migrations"]).split("\n").forEach((f) => set.add(f.trim()));

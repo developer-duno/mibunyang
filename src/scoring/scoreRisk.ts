@@ -40,6 +40,7 @@ import {
   tierMaxLabel,
 } from "@/constants/scoringTiers";
 import { fmtCompetitionRate } from "@/lib/format";
+import { UNSOLD_STATE_LABEL, isUnsoldListedHidden, unsoldListSource } from "@/utils/unsoldState.mjs";
 import type { Apt, Res } from "@/types/scoring";
 
 /**
@@ -108,6 +109,11 @@ export function scoreRisk(apt: Apt): Res {
   const hugGuarantee = apt.hugGuarantee as boolean | null | undefined;
 
   const unsoldUnknown = units <= 1 || unsoldRate == null;
+  // 세션689 PR-3: 미분양 모름의 **글자**만 상태로 가른다 — 지자체 명단 등재·수 비공개(VIEW unsoldListedHidden)는
+  //   「미분양 자료 없음」이 아니라 「미분양 수 비공개 · 대구시 2026년 9월말 명단」. 점수는 그대로 모름 40(👤 Q3).
+  //   글자는 카드 칩·상세·정적 장과 같은 문구표 `UNSOLD_STATE_LABEL`(src/utils/unsoldState.mjs).
+  const unsoldLabelState = isUnsoldListedHidden(apt) ? "hidden" : "unknown";
+  const unsoldLabelSrc = unsoldListSource(apt);
   const unsoldSc: number = unsoldUnknown
     ? UNSOLD_UNKNOWN_SCORE
     : tierMax(unsoldRate, UNSOLD_RATE_TIERS, UNSOLD_HIGH_SCORE);
@@ -236,11 +242,15 @@ export function scoreRisk(apt: Apt): Res {
       {
         name: "미분양률",
         score: 100 - unsoldSc,
-        info: unsoldUnknown ? (units <= 1 ? "세대수 미확인 (중립)" : "미분양 자료 없음 (중립)") : `${unsoldRate}%`,
+        info: unsoldUnknown
+          ? units <= 1
+            ? "세대수 미확인 (중립)"
+            : (UNSOLD_STATE_LABEL[unsoldLabelState].scoreInfo?.(unsoldLabelSrc) ?? "미분양 자료 없음 (중립)")
+          : `${unsoldRate}%`,
         detail: unsoldUnknown
           ? units <= 1
             ? "세대수 미확인 (중립 40점)"
-            : "미분양 자료 없음 (중립 40점)"
+            : (UNSOLD_STATE_LABEL[unsoldLabelState].scoreDetail?.(unsoldLabelSrc) ?? "미분양 자료 없음 (중립 40점)")
           : `${unsoldRate}% (안전 5%↓, 주의 15~30%, 위험 50%↑)`,
       },
       {

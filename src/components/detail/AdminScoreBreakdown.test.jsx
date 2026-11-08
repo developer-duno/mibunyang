@@ -35,6 +35,31 @@ describe("AdminScoreBreakdown", () => {
     expect(screen.getByText(label)).toBeTruthy();
   });
 
+  // 세션689 PR-3 — 미분양 상태 3 한 줄(손님 화면과 같은 문구표) + 출처
+  it.each([
+    [
+      {
+        region: "대구",
+        unsold: null,
+        unsoldSource: "govlist",
+        unsoldListedHidden: true,
+        unsoldListedAsOf: "2026-09-30",
+      },
+      "미분양 상태: 명단 등재 · 수 비공개 (대구시 2026년 9월말 명단) · 출처 govlist",
+    ],
+    [
+      { region: "대구", unsold: 0, unsoldSource: "govlist", unsoldListedAsOf: null },
+      "미분양 상태: 명단 미등재 0 (대구시 명단) · 출처 govlist",
+    ],
+    [{ unsold: null, unsoldSource: undefined }, "미분양 상태: 모름 · 출처 없음"],
+    [{ unsold: 1234, unsoldSource: "kosis" }, "미분양 상태: 1,234세대 · 출처 kosis"],
+  ])("미분양 상태 %o → '%s'", (over, text) => {
+    const { apt, res } = /** @type {any} */ (makeScoredItem());
+    Object.assign(apt, over);
+    render(<AdminScoreBreakdown apt={apt} res={res} profile="live" />);
+    expect(screen.getByTestId("admin-unsold-state").textContent).toBe(text);
+  });
+
   it("세션607 보완(B1) — 범위 칸이 아예 없으면(옛 점수 캐시) '갱신 전'으로 알리고 '실거래 없음'과 섞지 않는다", () => {
     const { apt, res } = /** @type {any} */ (makeScoredItem());
     delete res.cats.price.fairPriceScope;

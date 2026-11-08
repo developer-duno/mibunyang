@@ -35,6 +35,8 @@ const LABELS = {
   fetchNoticeRuns: "㉑ 청약홈 공고 정리 표식 점검",
   fetchPriceHistoryCounts: "㉒ 시세 이력 바닥 점검",
   fetchSeoThin: "㉓ 검색 제외 안전선",
+  fetchDailyRefresh: "㉓ builtAt 커밋 조회",
+  fetchGovlistHealth: "㉔ 지자체 명단 점검",
 };
 
 /** 전부 정상으로 도는 가짜 조회 — 판정 결과(이상)는 나올 수 있지만 실행 실패는 없다. */
@@ -71,8 +73,10 @@ function okDeps() {
     fetchNoticeRuns: async () => ({}),
     // 시세 이력 두 조각이 바닥 그대로 — ㉒ 는 이상 없이 지나간다(세션648)
     fetchPriceHistoryCounts: async () => ({ A: { count: 163140 }, B: { count: 129 } }),
+    fetchGovlistHealth: async () => ({ runs: [], listRows: [] }), // ㉔(세션692) — 운영 조회가 나가지 않게
     // 검색 제외 기록이 정상 — ㉓ 은 이상 없이 지나간다(세션668) · 운영 GET 이 나가지 않게
     fetchSeoThin: async () => ({ status: 200, text: JSON.stringify({ count: 0, ids: [], names: [], applied: true, cap: 15 }) }),
+    fetchDailyRefresh: async () => null, // ㉓ builtAt(세션697) — 환경에 토큰이 있어도 진짜 GitHub 를 부르지 않게
     // 운영 monitor_alert_state 를 절대 지우지 않게 — 시험은 항상 가짜(세션572)
     clearHoldAlertKeys: async (/** @type {string} */ _prefix) => {},
   };
@@ -94,9 +98,10 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
       const deps = { ...okDeps(), [dep]: async () => { throw new Error(`boom-${dep}`); } };
       const issues = await runDailyGuardedChecks(/** @type {any} */ (deps));
       const f = failed(issues);
-      expect(f).toHaveLength(1);
+      // ㉔ 재료 조회가 실패하면 ㉔-d 도 결과를 못 낸다 — 침묵하지 않고 따로 1건(세션696 B4 · BACKLOG 442 adv-re🟡2)
+      const extra = dep === "fetchGovlistHealth" ? ["㉔-d 지자체 명단 비공개 수 대조 실행 실패 — ㉔ 재료 조회 실패로 비교를 못 함(같은 날 ㉔ 실행 실패 알림 참고)"] : [];
+      expect(f.map((i) => i.detail)).toEqual([`${label} 실행 실패 — boom-${dep}`, ...extra]);
       expect(f[0].collector).toBe("monitor");
-      expect(f[0].detail).toBe(`${label} 실행 실패 — boom-${dep}`);
       expect(issues.length).toBeGreaterThan(0); // main 은 issues.length === 0 일 때만 "이상 없음"
       // daily 하루 1회 리마인드 대상 — "항상 dedup" 이면 둘째 날부터 조용해진다
       expect(isAlwaysDedup(f[0])).toBe(false);
@@ -110,19 +115,20 @@ describe("runDailyGuardedChecks — 점검 실행 실패는 알림 1건(세션56
     expect(issues.some((i) => i.kind === "applyhome-unsold")).toBe(true);
   });
 
-  it("열다섯 다 실패하면 15건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑫(g)(세션684) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) + ⑱(세션614) + ㉑(세션632) + ㉒(세션648) + ㉓(세션668) 그대로", async () => {
+  it("열여섯 다 실패하면 16건, 옛 main 순서(⑦ ⑨ ⑧ ⑪ ⑫) + ⑫(g)(세션684) + ⑬(세션570) + ⑭(세션588) + ⑮·⑯(세션589) + ⑰(세션590) + ⑱(세션614) + ㉑(세션632) + ㉒(세션648) + ㉓(세션668) + ㉔(세션692) 그대로", async () => {
     const boom = async () => { throw new TypeError("column x does not exist"); };
     const issues = await runDailyGuardedChecks({
       fetchGuPairs: boom, fetchCoordRows: boom, fetchTradeRows: boom, fetchRegionRuns: boom, fetchAhRows: boom, fetchUnsourcedZero: boom, fetchFailureRuns: boom, fetchKeyHealth: boom,
       fetchKaptWindowRuns: boom, fetchTradeDeals: boom, fetchTradeLinks: boom, fetchSgisMapRun: boom, fetchNoticeRuns: boom, fetchPriceHistoryCounts: boom,
-      fetchSeoThin: boom,
+      fetchSeoThin: boom, fetchGovlistHealth: boom,
       clearHoldAlertKeys: async () => {},
     });
     expect(failed(issues).map((i) => i.detail.split(" 실행 실패")[0])).toEqual([
       "⑦ 시군구 짝 점검", "⑨ 좌표 부정확 점검", "⑧ 지역×월 거래 점검", "⑪ 시도 이름 못 맞춤 점검", "⑫ 청약홈 미분양 값 점검",
       "⑫(g) 출처 없는 0 근거 명단 점검",
       "⑬ 로컬 수집기 실패 점검", "⑭ 묶음 열쇠 칸 점검", "⑮ 2u 창 건너뜀 점검", "⑯ trade_deals 점검", "⑰ 연결 표 점검",
-      "⑱ SGIS 매핑 표시 점검", "㉑ 청약홈 공고 정리 표식 점검", "㉒ 시세 이력 바닥 점검", "㉓ 검색 제외 안전선",
+      "⑱ SGIS 매핑 표시 점검", "㉑ 청약홈 공고 정리 표식 점검", "㉒ 시세 이력 바닥 점검", "㉓ 검색 제외 안전선", "㉔ 지자체 명단 점검",
+      "㉔-d 지자체 명단 비공개 수 대조", // 세션696 B4 — ㉔ 재료가 없으면 ㉔-d 도 실행 실패(침묵 아님)
     ]);
   });
 });

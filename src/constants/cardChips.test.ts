@@ -601,6 +601,51 @@ describe("buildCardChips — 추가 모집은 청약홈(ah-) 단지만", () => {
   });
 });
 
+// 세션689 PR-3(설계서 govlist §6 · 👤 Q4·Q7) — 지자체 명단 등재·수 비공개 칩
+describe("buildCardChips — 명단 등재·수 비공개 칩 (세션689)", () => {
+  const HIDDEN = { id: "ah-2025910146", region: "대구", unsold: null, unsoldRate: null, unsoldSource: "govlist" };
+  it("VIEW unsoldListedHidden 이 참이면 주황 약점 칩 하나 — 「미분양 수 비공개 · 대구시 9월 명단」", () => {
+    const chips = build({ ...HIDDEN, unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30" });
+    expect(chips.filter((c) => c.id === "unsoldListedHidden")).toEqual([
+      { id: "unsoldListedHidden", text: "미분양 수 비공개 · 대구시 9월 명단", tone: "amber", layer: "bad" },
+    ]);
+    // 수를 모르니 「미분양 30%↑」 칩은 없다
+    expect(idsOf(chips)).not.toContain("unsoldHigh");
+  });
+  it("칸이 없거나 false 면 칩 없음(운영 DB 적용 전 화면 그대로)", () => {
+    for (const v of [undefined, null, false, "true"])
+      expect(idsOf(build({ ...HIDDEN, unsoldListedHidden: v }))).not.toContain("unsoldListedHidden");
+  });
+  it("상태 칩은 손대지 않는다 — 준공 지난 비공개 단지는 날짜만(moveInUnknown)", () => {
+    const st = build({
+      ...HIDDEN,
+      unsoldListedHidden: true,
+      unsoldListedAsOf: "2026-09-30",
+      completion: "202601",
+    }).filter((c) => c.layer === "status");
+    expect(st.map((c) => [c.id, c.text])).toEqual([["moveInUnknown", "2026년 01월"]]);
+  });
+  it("순서 = 계급 3(감점 0) 안 — 복도식 뒤 · LPG·추가 모집 앞(👤 Q4)", () => {
+    expect(CHIP_ORDER.unsoldListedHidden).toBeGreaterThan(CHIP_ORDER.corridor);
+    expect(CHIP_ORDER.unsoldListedHidden).toBeGreaterThan(CHIP_ORDER.noxiousNear); // 계급 2 보다 뒤
+    expect(CHIP_ORDER.unsoldListedHidden).toBeLessThan(CHIP_ORDER.heatLpg);
+    expect(CHIP_ORDER.unsoldListedHidden).toBeLessThan(CHIP_ORDER.unsoldEvent);
+  });
+  it("두류 꼴 — 약점 2칸이 차면 「추가 모집」이 접힘으로 밀린다(목업과 같음 · 지우지 않음)", () => {
+    const s = splitCardChips(
+      build({
+        ...HIDDEN,
+        unsoldListedHidden: true,
+        unsoldListedAsOf: "2026-09-30",
+        unsoldEventCount: 2,
+        heatFuel: "LPG",
+      })
+    );
+    expect(s.bad.map((c) => c.id)).toEqual(["unsoldListedHidden", "heatLpg"]);
+    expect(s.hidden.map((c) => c.id)).toContain("unsoldEvent");
+  });
+});
+
 describe("splitCardChips — 상한을 걸어도 정보가 사라지지 않는다", () => {
   const many = build({
     // 강점 3개 (+ 전세가율은 세션651 부터 회색 사실 칩)
@@ -746,6 +791,7 @@ describe("CHIP_ORDER — 순서표 자체의 건전성", () => {
       { crimeSafetyGrade: 4 },
       { crimeSafetyGrade: 1, noxious: ["장례식장"], noxiousDist: 1500, dsr40pass: true },
       { noxious: ["소각장"], noxiousDist: 200, id: "ah-1", unsoldEventCount: 3 },
+      { region: "대구", unsoldListedHidden: true, unsoldListedAsOf: "2026-09-30" }, // 세션689 명단 비공개
       { noxious: ["공장"], noxiousDist: 200 }, // 감점 없는 쪽(noxiousFact) 도 만들어지는지
       { transitDev: "GTX-A 동탄역", devDist: 1, presaleStage: "분양중", competitionRate: 9 },
       { subwayDist: 300, subwayName: "아라역" },

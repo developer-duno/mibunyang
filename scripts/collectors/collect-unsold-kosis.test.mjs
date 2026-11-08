@@ -347,7 +347,7 @@ describe("apartments 조회 배선 — select 에 unsold_source 포함", () => {
 
   it("apartmentsTyped 조회 select 문자열에 unsold_source 가 들어 있다", () => {
     expect(src).toMatch(
-      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of, complex_key, naver_presale_no, unit_source"\), sb, "id"\)/, // 세션569 C6: 공고일 칸 · 세션635: 묶음 재료 3칸
+      /apartmentsTyped = [\s\S]{0,60}await selectAll\(\(s\) => s\.from\("apartments"\)\.select\("id, name, region, gu, units, unsold, unsold_rate, naver_sell_count, presale_type, unsold_source, unsold_as_of, unsold_listed_total, complex_key, naver_presale_no, unit_source"\), sb, "id"\)/, // 세션569 C6: 공고일 칸 · 세션635: 묶음 재료 3칸 · 세션692: 명단 총분양 상한 칸
     );
   });
 });
@@ -1570,7 +1570,7 @@ describe("사람 보류 hold (세션570)", () => {
     expect(src).toContain('sb.from("apartments").update(payload).eq("id", id).or(NOT_HOLD_FILTER).select("id")');
     expect(src.match(/await updateApartmentUnlessHold\(sb, p\.id, /g) ?? []).toHaveLength(2);
     // 세션635: 시계열은 묶음 단위로 만든다 — hold 행을 빼는 자리는 묶음의 받는 행(targets) 거르기다(A7 그대로).
-    expect(src).toContain('const targets = b.members.filter((m) => m.unsold_source !== "hold").map((m) => m.id);');
+    expect(src).toContain('const targets = b.members.filter((m) => m.unsold_source !== "hold" && !isGovlistRespected(m, now)).map((m) => m.id);'); // 세션692: 유효 govlist 도 점 없음
   });
 
   describe("main() 배선", () => {
@@ -2134,5 +2134,209 @@ describe("main() — --apply-from 배선·첫 반영 차단기(세션636 F4·F6)
     getSupabase.mockReturnValue({ from: () => ({ select: () => ({ eq: () => ({ eq: () => ({ like: () => ({ limit: () => Promise.resolve({ data: null, error: { message: "boom" } }) }) }) }) }) }) });
     await expect(runMain([])).rejects.toThrow(/collector_runs 조회 실패/);
     expect(fetchWithRetryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("govlist 존중·시계열 건너뜀·명단 총분양 상한 (세션692 PR-4)", () => {
+  /** @type {any} */ let mod;
+  beforeEach(async () => { mod = await import("./collect-unsold-kosis.mjs"); });
+  const NOW_IN = new Date("2026-11-08T01:00:00Z"); // KST 11/08 — 기준월 09-30 + 6개월 안
+  /** @param {Record<string, unknown>} o */
+  const g = (o = {}) => ({ unsold: null, units: 500, region: "대구", gu: "달서구", unsold_source: "govlist", unsold_as_of: "2026-09-30", ...o });
+
+  describe("항목 1 — shouldSkipKosisFill · govlistStatus 만료 경계(기준월 + 6개월, KST 날짜)", () => {
+    it("brief 예시: as_of 2026-09-30 · now 2026-11-08 → 존중 / now 2027-04-01 → KOSIS 가 정한다", () => {
+      expect(mod.shouldSkipKosisFill(g(), NOW_IN)).toBe(true);
+      expect(mod.shouldSkipKosisFill(g(), new Date("2027-04-01T01:00:00Z"))).toBe(false);
+    });
+    it("경계: 2026-03-15 기준월 → 하루 전·당일(09-15)은 존중, 다음 날은 만료(KST 자정)", () => {
+      const a = g({ unsold_as_of: "2026-03-15" });
+      expect(mod.govlistStatus(a, new Date("2026-09-14T03:00:00Z"))).toBe("valid");
+      expect(mod.govlistStatus(a, new Date("2026-09-15T14:59:00Z"))).toBe("valid"); // KST 09-15 23:59
+      expect(mod.govlistStatus(a, new Date("2026-09-15T15:00:00Z"))).toBe("expired"); // KST 09-16 00:00
+      expect(mod.shouldSkipKosisFill(a, new Date("2026-09-15T14:59:00Z"))).toBe(true);
+      expect(mod.shouldSkipKosisFill(a, new Date("2026-09-15T15:00:00Z"))).toBe(false);
+    });
+    it("숫자 명단 행(unsold 값 있음)도 같은 규칙 · 날짜 없음은 applyhome 과 같이 존중 유지", () => {
+      expect(mod.shouldSkipKosisFill(g({ unsold: 4 }), NOW_IN)).toBe(true);
+      expect(mod.govlistStatus(g({ unsold_as_of: null }), NOW_IN)).toBe("no_date");
+      expect(mod.shouldSkipKosisFill(g({ unsold_as_of: null }), NOW_IN)).toBe(true);
+      expect(mod.govlistStatus({ unsold_source: "kosis", unsold_as_of: "2026-09-30" }, NOW_IN)).toBe("not_govlist");
+    });
+    it("만료 기간은 _shared GOVLIST_EXPIRY_MONTHS(6) 를 쓴다 — applyhome 기간과 따로", async () => {
+      const shared = /** @type {any} */ (await import("./_shared.mjs"));
+      expect(shared.GOVLIST_EXPIRY_MONTHS).toBe(6);
+      const src = readFileSync(path.join(process.cwd(), "scripts/collectors/collect-unsold-kosis.mjs"), "utf8");
+      // 세션697: 판정 함수가 isApplyhomeExpired → asOfRespectState(만료 + 미래 기준일 · 같은 기간 인자)로 바뀌었다
+      expect(src).toContain("asOfRespectState(apt.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS)");
+    });
+  });
+
+  describe("항목 1·3 — planUnsoldUpdates 묶음 경로", () => {
+    const guMap = { 대구: { 달서구: 1000 } };
+    const base = { name: "두류", region: "대구", gu: "달서구", unsold: 165, unsold_rate: 38.1, naver_sell_count: null, presale_type: null, unsold_source: "kosis", unsold_as_of: null, unit_source: null, naver_presale_no: null, complex_key: null, unsold_listed_total: null };
+    it("유효 govlist 행은 skip_preserved(값 유지) · 형제 kosis 행은 묶음 값을 받되 명단 총분양 상한에 걸린다", () => {
+      const apartments = [
+        { ...base, id: "ah-g", units: 433, unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-09-30", unsold_listed_total: 52, complex_key: "D" },
+        { ...base, id: "ah-k", units: 3, complex_key: "D" },
+        { ...base, id: "ot", name: "다른", units: 2192 },
+      ];
+      const plan = mod.planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap, now: NOW_IN });
+      const by = Object.fromEntries(plan.map((/** @type {any} */ p) => [p.id, p]));
+      expect(by["ah-g"].action).toBe("skip_preserved");
+      expect(by["ah-g"].govlistExpired).toBe(false);
+      // 분모 = 433 + 2192 = 2625 · 묶음 추정 = round(1000 × 433/2625) = 165 → 상한 52
+      expect(by["ah-k"].action).toBe("write");
+      expect(by["ah-k"].newEstimate).toBe(52);
+      expect(by["ah-k"].newRate).toBe(12); // 52/433 = 12.0%
+      expect(by["ah-k"].capped).toBe(true);
+      expect(by["ah-k"].listedCap).toBe(52);
+      expect(by["ot"].capped).toBe(false); // 다른 묶음은 상한 없음
+      expect(by["ot"].newEstimate).toBe(835);
+    });
+    it("만료된 govlist 행은 KOSIS 가 쓰고(write) 상한은 남은 명단 총분양으로 · 만료 표시", () => {
+      const apartments = [
+        { ...base, id: "ah-g", units: 433, unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-03-31", unsold_listed_total: 52 },
+        { ...base, id: "ot", name: "다른", units: 2192 },
+      ];
+      const plan = mod.planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap, now: new Date("2026-10-09T01:00:00Z") });
+      const g0 = plan.find((/** @type {any} */ p) => p.id === "ah-g");
+      expect(g0.govlistExpired).toBe(true);
+      expect(g0.action).toBe("write");
+      expect(g0.newEstimate).toBe(52);
+      expect(g0.capped).toBe(true);
+    });
+    it("상한보다 작은 추정은 그대로(안 걸림) · 상한 없는 묶음은 옛 결과 그대로", () => {
+      const apartments = [
+        { ...base, id: "a", units: 433, unsold_listed_total: 500 },
+        { ...base, id: "b", units: 2192 },
+      ];
+      const plan = mod.planUnsoldUpdates({ apartments, unsoldByRegionGu: guMap, now: NOW_IN });
+      expect(plan.map((/** @type {any} */ p) => [p.id, p.newEstimate, p.capped])).toEqual([["a", 165, false], ["b", 835, false]]);
+    });
+    it("만료 govlist 를 KOSIS 가 덮은 뒤에도 명단 총분양이 남아 다음 회차 상한이 걸린다(쓰기 내용에 명단 칸 없음 · 세션692 보완 S4)", () => {
+      const now = new Date("2026-10-09T01:00:00Z");
+      const row = { ...base, id: "ah-g", units: 433, unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: "2026-03-31", unsold_listed_total: 52 };
+      const other = { ...base, id: "ot", name: "다른", units: 2192 };
+      const first = mod.planUnsoldUpdates({ apartments: [row, other], unsoldByRegionGu: guMap, now }).find((/** @type {any} */ p) => p.id === "ah-g");
+      expect([first.action, first.newEstimate, first.capped]).toEqual(["write", 52, true]);
+      const payload = mod.kosisWritePayload(first.newEstimate, first.newRate, "2026-10-09T01:00:00.000Z");
+      expect(Object.keys(payload).sort()).toEqual(["unsold", "unsold_as_of", "unsold_rate", "unsold_source", "updated_at"]);
+      // DB 가 payload 만 덮은 다음 달 — 출처 kosis · 명단 총분양 52 그대로 → 여전히 상한
+      const after = { ...row, ...payload };
+      expect([after.unsold_source, after.unsold_listed_total]).toEqual(["kosis", 52]);
+      const second = mod.planUnsoldUpdates({ apartments: [after, other], unsoldByRegionGu: guMap, now: new Date("2026-11-09T01:00:00Z") }).find((/** @type {any} */ p) => p.id === "ah-g");
+      expect([second.action, second.newEstimate, second.capped, second.listedCap]).toEqual(["write", 52, true, 52]);
+    });
+    it("50% 보류는 상한 전 추정으로 판정 — 상한이 믿을 수 없던 추정을 쓰게 만들지 않는다", () => {
+      const apartments = [{ ...base, id: "a", units: 100, unsold_listed_total: 10 }, { ...base, id: "b", units: 66 }];
+      const plan = mod.planUnsoldUpdates({ apartments, unsoldByRegionGu: { 대구: { 달서구: 100 } }, now: NOW_IN });
+      const a = plan.find((/** @type {any} */ p) => p.id === "a");
+      expect(a.action).toBe("hold_ge50"); // round(100×100/166)=60 → 60% ≥ 50
+      expect(a.capped).toBe(false);
+    });
+  });
+
+  describe("항목 3 — listedCapOf · applyListedCap · 표식", () => {
+    it("brief 예시: 두류 KOSIS 165 · 명단 총분양 52 → 52(률 = 52/433)", () => {
+      expect(mod.applyListedCap({ estimated: 165, unsoldRate: 38.1 }, 52, 433)).toEqual({ estimated: 52, unsoldRate: 12, capped: true });
+    });
+    it("경계: 추정 = 상한이면 안 걸림 · 상한 + 1 이면 걸림 · 상한 null 은 그대로", () => {
+      expect(mod.applyListedCap({ estimated: 52, unsoldRate: 12 }, 52, 433).capped).toBe(false);
+      expect(mod.applyListedCap({ estimated: 53, unsoldRate: 12.2 }, 52, 433).capped).toBe(true);
+      expect(mod.applyListedCap({ estimated: 165, unsoldRate: 38.1 }, null, 433)).toEqual({ estimated: 165, unsoldRate: 38.1, capped: false });
+    });
+    it("listedCapOf — 값 있는 구성원 중 가장 큰 값 · 0·음수·빈칸·글자는 무시 · 없으면 null", () => {
+      expect(mod.listedCapOf([{ unsold_listed_total: 52 }, { unsold_listed_total: 80 }, { unsold_listed_total: null }])).toBe(80);
+      expect(mod.listedCapOf([{ unsold_listed_total: 0 }, { unsold_listed_total: -3 }, { unsold_listed_total: "52" }, {}])).toBe(null);
+      expect(mod.listedCapOf([])).toBe(null);
+    });
+    it("formatListedCap — 걸린 행 없으면 null · 있으면 n= 과 id(20개까지)", () => {
+      expect(mod.formatListedCap([])).toBe(null);
+      expect(mod.formatListedCap(["a", "b"])).toBe("KOSIS_LISTED_CAP n=2: a, b");
+      const many = Array.from({ length: 25 }, (_, i) => `id${i}`);
+      expect(mod.formatListedCap(many)).toMatch(/^KOSIS_LISTED_CAP n=25: id0, .*id19, …$/);
+    });
+  });
+
+  describe("항목 2·3 — main() unsold_history 와 기록 표식", () => {
+    beforeEach(() => {
+      selectAllMock.mockReset();
+      fetchWithRetryMock.mockReset();
+      recordCollectorRun.mockClear();
+    });
+    /** 실행 시각(실제 now)에 기대지 않게 — 유효 = 이번 달 1일 기준월(6개월 안), 만료 = 2020년 기준월. */
+    const kstToday = new Date(Date.now() + 9 * 3600 * 1000);
+    const VALID_ASOF = `${kstToday.getUTCFullYear()}-${String(kstToday.getUTCMonth() + 1).padStart(2, "0")}-01`;
+    /** @param {Record<string, unknown>} o */
+    const r = (o) => ({ name: "단지", region: "경기", gu: "수원시", units: 500, unsold: null, unsold_rate: null, naver_sell_count: null, presale_type: null, unsold_source: null, unsold_as_of: null, unsold_listed_total: null, complex_key: null, ...o });
+    /** @param {any[]} apts @param {string} dt */
+    async function runApply(apts, dt) {
+      selectAllMock.mockResolvedValueOnce([]).mockResolvedValueOnce(apts);
+      fetchWithRetryMock.mockResolvedValue({ json: async () => [{ C1_NM: "경기", C2_NM: "수원시", PRD_DE: "202607", DT: dt }] });
+      /** @type {any[]} */
+      const updateCalls = [];
+      mockSb({ from: (/** @type {string} */ table) => ({ update: (/** @type {any} */ payload) => ({ eq: fakeEq(updateCalls, table, payload) }) }) });
+      const { upsertBatch } = /** @type {any} */ (await import("./_shared.mjs"));
+      upsertBatch.mockReset();
+      upsertBatch.mockResolvedValue(0);
+      const originalArgv = process.argv;
+      process.argv = [...originalArgv.filter((a) => a !== "--dry-run")];
+      try { await main(); } finally { process.argv = originalArgv; getSupabase.mockReset(); }
+      const history = upsertBatch.mock.calls.find((/** @type {any[]} */ c) => c[0] === "unsold_history")?.[1] ?? [];
+      return { updateCalls, history: history.map((/** @type {any} */ x) => [x.apartment_id, x.unsold_count]).sort() };
+    }
+    it("brief 예시: govlist 유효 1행 + kosis 1행 묶음 → history 에 kosis 행만(분모는 둘 다 — 묶음 1개)", async () => {
+      const { history, updateCalls } = await runApply([
+        r({ id: "g-1", complex_key: "K", unsold_source: "govlist", unsold_as_of: VALID_ASOF, unsold_listed_as_of: VALID_ASOF }),
+        r({ id: "k-1", complex_key: "K", unsold_source: "kosis", unsold: 3, unsold_rate: 0.6 }),
+        r({ id: "o-1", units: 1500 }),
+      ], "200");
+      expect(history).toEqual([["k-1", 50], ["o-1", 150]]); // 200 × 500/2000 = 50
+      expect(updateCalls.filter((c) => c.table === "apartments").map((c) => c.id).sort()).toEqual(["k-1", "o-1"]);
+    });
+    it("만료된 govlist 행은 다시 점을 받는다", async () => {
+      const { history } = await runApply([
+        r({ id: "g-1", complex_key: "K", unsold_source: "govlist", unsold_as_of: "2020-01-31", unsold_listed_as_of: "2020-01-31" }),
+        r({ id: "o-1", units: 1500 }),
+      ], "200");
+      expect(history).toEqual([["g-1", 50], ["o-1", 150]]);
+    });
+    it("상한에 걸리면 헤드라인·시계열 둘 다 상한값 · 성공 기록에 KOSIS_LISTED_CAP 표식(명단)", async () => {
+      const { history, updateCalls } = await runApply([
+        r({ id: "k-1", complex_key: "K", unsold_source: "kosis", unsold: 3, unsold_rate: 0.6, unsold_listed_total: 20 }),
+        r({ id: "o-1", units: 1500 }),
+      ], "200");
+      expect(history).toEqual([["k-1", 20], ["o-1", 150]]);
+      expect(updateCalls.find((c) => c.id === "k-1")?.payload.unsold).toBe(20);
+      expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 2, errorMessage: "KOSIS_LISTED_CAP n=1: k-1" });
+    });
+    it("기준월 빈 govlist 1행 → 존중 유지(쓰기·점 0) + 기록 표식 GOVLIST_NO_DATE n=1 · 경고 로그", async () => {
+      const { logError: logErrorMock, log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
+      logErrorMock.mockClear();
+      logMock.mockClear();
+      const { history, updateCalls } = await runApply([
+        r({ id: "g-nd", complex_key: "K", unsold_source: "govlist", unsold_as_of: null, unsold_listed_as_of: "2026-09-30" }),
+        r({ id: "o-1", units: 1500 }),
+      ], "200");
+      expect(updateCalls.map((c) => c.id)).toEqual(["o-1"]);
+      expect(history.map((/** @type {any[]} */ h) => h[0])).toEqual(["o-1"]);
+      expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1, errorMessage: "GOVLIST_NO_DATE n=1: g-nd" });
+      expect(logErrorMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).startsWith("[경고][govlist 기준월 없음] 1건"))).toBe(true);
+      expect(logMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).startsWith("[govlist] 존중 0건 · 날짜 없음 1건(존중 유지)"))).toBe(true);
+    });
+    it("기준월 빈 govlist 0행 → 날짜 없음 표식·경고 없음(침묵)", async () => {
+      const { logError: logErrorMock, log: logMock } = /** @type {any} */ (await import("./_shared.mjs"));
+      logErrorMock.mockClear();
+      logMock.mockClear();
+      await runApply([r({ id: "g-ok", unsold_source: "govlist", unsold_as_of: VALID_ASOF }), r({ id: "o-1", units: 1500 })], "200");
+      expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 1 });
+      expect(logErrorMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).includes("govlist 기준월 없음"))).toBe(false);
+      expect(logMock.mock.calls.some((/** @type {any[]} */ c) => String(c[1]).startsWith("[govlist] 존중 1건 · 날짜 없음 0건(존중 유지)"))).toBe(true);
+    });
+    it("상한에 안 걸리면 표식 없음(옛 기록 꼴 그대로)", async () => {
+      await runApply([r({ id: "k-1", unsold_listed_total: 999 }), r({ id: "o-1", units: 1500 })], "200");
+      expect(recordCollectorRun).toHaveBeenCalledWith("kosis-unsold", { ok: 2 });
+    });
   });
 });

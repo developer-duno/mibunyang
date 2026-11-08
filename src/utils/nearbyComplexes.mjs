@@ -10,6 +10,8 @@
 // - 거리 = 직선(하버사인, 지구 반지름 6,371km). 글자는 distanceText.
 // - 허브를 만드는지는 정적 생성기(buildRegionPages)와 같은 판정: 시도 17종 안 · 구 이름이 폴더로 쓸 수 있는 꼴.
 
+import { UNSOLD_STATE_LABEL, countsAsUnsold, unsoldListSource, unsoldStateOf } from "./unsoldState.mjs";
+
 /** 칩 최대 개수 (결정 41) */
 export const NEARBY_MAX = 6;
 
@@ -27,7 +29,8 @@ export function badDirName(s) {
 
 /**
  * @typedef {{ id?: unknown, name?: unknown, region?: unknown, gu?: unknown, lat?: unknown, lng?: unknown,
- *   unsold?: unknown, coordShared?: unknown, complexKey?: unknown, memberIds?: unknown, aliasIds?: unknown }} NearbyApt
+ *   unsold?: unknown, coordShared?: unknown, complexKey?: unknown, memberIds?: unknown, aliasIds?: unknown,
+ *   unsoldSource?: unknown, unsoldListedHidden?: unknown, unsoldListedAsOf?: unknown }} NearbyApt
  */
 
 /** @param {unknown} v @returns {string} */
@@ -71,18 +74,26 @@ export function distanceText(d, shared = false) {
 
 /**
  * 미분양 글자 — 남음 `미분양 29세대` · 0 `분양 완료` · 모름 `미분양 —`(허브 hubUnsoldText 와 같은 말).
- * @param {unknown} v @returns {string}
+ * 세션689 PR-3: 지자체 명단 등재·수 비공개 → `미분양 비공개 (대구시 2026년 9월말 명단)`, 명단 출처 0 →
+ *   `미분양 0 (… 명단 미등재)` — 허브 줄과 같은 문구표 `UNSOLD_STATE_LABEL`(unsoldState.mjs) 의 hub 글자.
+ *   단지 행 `a` 가 없거나 명단 칸이 없으면 옛 그대로.
+ * @param {unknown} v @param {NearbyApt} [a] @returns {string}
  */
-export function nearbyUnsoldText(v) {
-  if (v == null) return "미분양 —";
+export function nearbyUnsoldText(v, a) {
+  const st = unsoldStateOf({ ...(a ?? {}), unsold: v });
+  if (st === "hidden" || st === "listedZero") return UNSOLD_STATE_LABEL[st].hub(unsoldListSource(a));
+  if (v == null) return UNSOLD_STATE_LABEL.unknown.hub(unsoldListSource(a));
   const n = Number(v);
   if (n > 0) return `미분양 ${n.toLocaleString("ko-KR")}세대`;
   if (n === 0) return "분양 완료";
-  return "미분양 —";
+  return UNSOLD_STATE_LABEL.unknown.hub(unsoldListSource(a));
 }
 
-/** @param {NearbyApt} a @returns {boolean} */
-const hasUnsold = (a) => Number(a.unsold) > 0;
+/**
+ * 「미분양 남은 단지 먼저」 판정 — 목록 「미분양만 보기」·허브와 같은 함수(세션689 👤 Q8: 명단 비공개도 「남음」).
+ * @param {NearbyApt} a @returns {boolean}
+ */
+const hasUnsold = (a) => countsAsUnsold(a);
 
 /** @param {unknown} v @returns {string[]} */
 const ids = (v) => (Array.isArray(v) ? v.map(String) : []);
@@ -164,7 +175,7 @@ export function pickNearby(self, index, max = NEARBY_MAX) {
   });
   return cands.slice(0, max).map(({ c, d, u, id }) => {
     const distText = distanceText(d, selfShared || c.coordShared === true);
-    const unsoldText = nearbyUnsoldText(c.unsold);
+    const unsoldText = nearbyUnsoldText(c.unsold, c);
     return {
       id,
       name: String(c.name),

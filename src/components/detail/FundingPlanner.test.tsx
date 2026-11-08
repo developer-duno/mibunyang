@@ -422,15 +422,30 @@ describe("FundingPlanner — 평형 칩·계측·링크·금지 문구", () => {
     expect(vi.mocked(trackEvent).mock.calls).toEqual([["funding_planner_use", { aptId: "ah-1" }]]);
   });
 
-  it("공시 링크 두 곳은 새 탭 · noopener noreferrer · 언제나 보인다", () => {
+  it("공시 링크 두 곳 + 2u 거르기 글은 새 탭 · noopener noreferrer · 언제나 보인다", () => {
     render(<FundingPlanner apt={apt()} rates={RATES} />);
     type("fp-cash", "90000"); // 더 필요한 돈 ≤ 0
     const links = screen.getAllByRole("link");
-    expect(links.map((l) => l.getAttribute("href"))).toEqual(["https://finlife.fss.or.kr", "https://portal.kfb.or.kr"]);
+    expect(links.map((l) => l.getAttribute("href"))).toEqual([
+      "https://finlife.fss.or.kr",
+      "https://portal.kfb.or.kr",
+      "https://2u.pe.kr/blog/illegal-loan-filter",
+    ]);
+    expect(screen.getByTestId("fp-loan-filter-post").textContent).toContain("2u 블로그 글");
+    expect(screen.getByTestId("fp-loan-filter-post").style.minHeight).toBe("36px"); // 누르는 높이(세션701 설계 3)
     for (const l of links) {
       expect(l.getAttribute("target")).toBe("_blank");
       expect(l.getAttribute("rel")).toBe("noopener noreferrer");
     }
+  });
+
+  it("2u 거르기 글 링크를 누르면 loan_filter_post_click 한 번(단지 id 만 — 세션704 👤) · 공시 링크는 안 센다", () => {
+    render(<FundingPlanner apt={apt()} rates={RATES} />);
+    const count = () => vi.mocked(trackEvent).mock.calls.filter((c) => c[0] === "loan_filter_post_click");
+    fireEvent.click(screen.getByText("금감원 금융상품 비교공시 ↗"));
+    expect(count()).toEqual([]);
+    fireEvent.click(screen.getByTestId("fp-loan-filter-post"));
+    expect(count()).toEqual([["loan_filter_post_click", { aptId: "ah-1" }]]);
   });
 
   // 세션675 — 「신청·연결·해결·추천」과 금융회사·상품 이름 0(대부업 문장도 빼기 — 결정 가-2)

@@ -3,6 +3,7 @@ import { estimateParkingRatio } from "./parkingEstimate";
 import { SENTINEL_RADIUS_KM } from "./sentinels";
 import { fmtPrice, fmtMoveIn, fmtRecruitDate, fmtPresaleSchedule, fmtCompetitionRate } from "@/lib/format";
 import { fmtArea } from "@/lib/area";
+import { UNSOLD_STATE_LABEL, unsoldListSource, unsoldStateOf } from "@/utils/unsoldState.mjs";
 
 // fmt/isEstimated 등 함수의 v/apt 매개변수는 동적 dict — DB row 타입 박제는 BACKLOG-M4c-fieldMeta-apt-type.
 // 좁힘 보류 — `any` 사용. 호출처 호환성 우선.
@@ -73,7 +74,14 @@ export const FIELD_META: Record<string, FieldMetaEntry> = {
     label: "미분양 세대",
     section: "개요",
     unit: "세대",
-    fmt: (v) => (v != null && v > 0 ? nk(v, "세대") : "—"),
+    // 세션689 PR-3: 지자체 명단 등재·수 비공개(VIEW unsoldListedHidden) → 「비공개 (대구시 2026년 9월말 명단)」,
+    //   명단 출처 0 → 「0 (… 명단 미등재)」. 글자는 문구표 `UNSOLD_STATE_LABEL`(src/utils/unsoldState.mjs) 한 곳 —
+    //   카드 칩·정적 장·점수 detail 과 같은 말. 새 칸이 없으면 옛 그대로(숫자 = N세대 · 0·모름 = 「—」).
+    fmt: (v, apt) => {
+      const st = unsoldStateOf({ ...(apt ?? {}), unsold: v });
+      if (st == null) return nk(v, "세대");
+      return UNSOLD_STATE_LABEL[st].field(unsoldListSource(apt));
+    },
   },
   // 세션513: ① `resolveBuilder` 경유(표기 변형 68곳이 "기타"로 떨어지던 것 구제 — brands.ts 참조)
   //   ② 조합·신탁·공공은 "기타"가 아니라 **해당없음**이다. "기타"는 배점표의 3군·미등재 칸(5점)을

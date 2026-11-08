@@ -3,7 +3,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import {
   planSource, listedValue, summarize, breaker, comparePlans, buildBackup, buildListRows, changeClass, cityKey, rowCheckViolations,
-  GOVLIST_EXPIRY_MONTHS, GOVLIST_BREAKER_MAX_BUNDLES, VALUE_KEYS, RESTORE_EXPECT_KEYS, GOVLIST_ROW_CHECKS,
+  GOVLIST_EXPIRY_MONTHS, GOVLIST_BREAKER_MAX_BUNDLES, GOVLIST_BREAKER_LIMITS, SAME_VALUE_CLASS, NEW_HIDDEN_CLASS, VALUE_KEYS, RESTORE_EXPECT_KEYS, GOVLIST_ROW_CHECKS,
 } from "./_govlist-plan.mjs";
 import { buildBundles, matchComplexes } from "./_govlist-match.mjs";
 
@@ -215,12 +215,56 @@ describe("전이표 · 차단기 · 승인 대조 · 사본·역계획 · 명단
     expect(s.sourceShift).toEqual({ "kosis→govlist": 2 });
     expect(changeClass(/** @type {any} */ ({ action: "write_x", before: { unsold: null }, after: { unsold: 3 } }))).toBe("빈칸→값");
   });
-  it(`차단기: 바뀔 단지 > ${GOVLIST_BREAKER_MAX_BUNDLES} · 행 수 −50%`, () => {
-    expect(breaker({ changedBundles: 50, lists: [] }).tripped).toBe(false);
-    expect(breaker({ changedBundles: 51, lists: [] }).tripped).toBe(true);
-    expect(breaker({ changedBundles: 0, lists: [{ source: "daegu", rows: 146, prevRows: 293 }] }).tripped).toBe(true);
-    expect(breaker({ changedBundles: 0, lists: [{ source: "daegu", rows: 147, prevRows: 293 }] }).tripped).toBe(false);
-    expect(breaker({ changedBundles: 0, lists: [{ source: "daegu", rows: 1, prevRows: null }] }).tripped).toBe(false);
+  it(`차단기: 출처별 값 바뀔 단지 > 기준(대구·충남 10 임시 · 경기 ${GOVLIST_BREAKER_MAX_BUNDLES}) · 행 수 −50%`, () => {
+    expect(GOVLIST_BREAKER_LIMITS).toEqual({ daegu: 10, chungnam: 10, gyeonggi: 50 }); // 임시값 — 12/08 첫 평시 회차 뒤 실측(BACKLOG A-28)
+    expect(breaker({ valueChangedBySource: { daegu: 10 }, lists: [] }).tripped).toBe(false);
+    expect(breaker({ valueChangedBySource: { daegu: 11 }, lists: [] })).toEqual({ tripped: true, reasons: ["daegu 값 바뀔 단지 11곳 > 10곳"] });
+    expect(breaker({ valueChangedBySource: { chungnam: 11 }, lists: [] }).tripped).toBe(true);
+    expect(breaker({ valueChangedBySource: { gyeonggi: 50 }, lists: [] }).tripped).toBe(false);
+    expect(breaker({ valueChangedBySource: { gyeonggi: 51 }, lists: [] }).tripped).toBe(true);
+    expect(breaker({ valueChangedBySource: { 모르는출처: 11 }, lists: [] }).tripped).toBe(true); // 표에 없으면 가장 작은 기준
+    expect(breaker({ valueChangedBySource: {}, lists: [{ source: "daegu", rows: 146, prevRows: 293 }] }).tripped).toBe(true);
+    expect(breaker({ valueChangedBySource: {}, lists: [{ source: "daegu", rows: 147, prevRows: 293 }] }).tripped).toBe(false);
+    expect(breaker({ valueChangedBySource: {}, lists: [{ source: "daegu", rows: 1, prevRows: null }] }).tripped).toBe(false);
+  });
+  it("세션693 B1 — 차단기 재료는 값이 바뀌는 묶음만: 「값 같음·칸만 바뀜」 51곳 → 안 걸림 · 대구 값 변화 11곳 → 걸림 · 10곳 → 안 걸림 · 섞인 묶음은 셈", () => {
+    const six = (/** @type {number | null} */ unsold, /** @type {string} */ asOf) => ({ unsold, unsold_rate: unsold == null ? null : 10, unsold_source: "govlist", unsold_as_of: asOf, unsold_listed_as_of: asOf, unsold_listed_total: 100 });
+    const row = (/** @type {string} */ source, /** @type {string} */ bk, /** @type {number | null} */ from, /** @type {number | null} */ to) =>
+      /** @type {any} */ ({ source, id: `${bk}-${from}-${to}`, name: bk, region: "대구", gu: "달서구", bundle_key: bk, action: "write_listed_number", reasons: [], before: six(from, "2026-09-30"), after: six(to, "2026-10-31"), list_keys: [] });
+    const onlyFields = Array.from({ length: 51 }, (_, i) => row("daegu", `b${i}`, 5, 5));
+    const s51 = summarize(onlyFields);
+    expect(s51.changedBundles).toBe(51); // 전이표의 「바뀔 단지」(쓰는 묶음)는 그대로
+    expect(s51.valueChangedBySource).toEqual({});
+    expect(breaker({ valueChangedBySource: s51.valueChangedBySource, lists: [] }).tripped).toBe(false);
+    const real = (/** @type {number} */ n) => Array.from({ length: n }, (_, i) => row("daegu", `v${i}`, 5, 6));
+    expect(breaker({ valueChangedBySource: summarize([...onlyFields, ...real(11)]).valueChangedBySource, lists: [] }).tripped).toBe(true);
+    expect(breaker({ valueChangedBySource: summarize([...onlyFields, ...real(10)]).valueChangedBySource, lists: [] }).tripped).toBe(false);
+    // 한 묶음에 칸만 바뀜 행 + 값 바뀜 행이 섞이면 그 묶음은 센다 · 출처마다 따로
+    const mixed = summarize([row("daegu", "m", 5, 5), row("daegu", "m", 5, 0), row("chungnam", "c", null, 3)]);
+    expect(mixed.valueChangedBySource).toEqual({ chungnam: 1, daegu: 1 });
+    // C1(2차 보완): 모름(빈칸 — kosis·null·hold) → 등재·수 비공개 = 새 꼴 「빈칸→비공개(새 등재)」로 세고, 차단기 수에 든다
+    const hid = (/** @type {string | null} */ src, /** @type {string} */ asOf) => ({ unsold: null, unsold_rate: null, unsold_source: src, unsold_as_of: src === "govlist" ? asOf : null, unsold_listed_as_of: src === "govlist" ? asOf : null, unsold_listed_total: src === "govlist" ? 52 : null });
+    const toHidden = (/** @type {string} */ bk, /** @type {string | null} */ from) => /** @type {any} */ ({ source: "daegu", id: bk, name: bk, region: "대구", gu: "달서구", bundle_key: bk, action: "write_listed_hidden", reasons: [], before: hid(from, "2026-09-30"), after: hid("govlist", "2026-10-31"), list_keys: [] });
+    expect(changeClass(toHidden("x", "kosis"))).toBe(NEW_HIDDEN_CLASS);
+    expect(changeClass(toHidden("x", null))).toBe(NEW_HIDDEN_CLASS);
+    expect(changeClass(toHidden("x", "hold"))).toBe(NEW_HIDDEN_CLASS);
+    expect(changeClass(toHidden("x", "govlist"))).toBe(SAME_VALUE_CLASS); // 이미 비공개 → 같은 비공개(기준월만)
+    const newHidden = (/** @type {number} */ k) => Array.from({ length: k }, (_, i) => toHidden(`h${i}`, "kosis"));
+    const s11 = summarize(newHidden(11));
+    expect(s11.byChange["대구"]).toEqual({ [NEW_HIDDEN_CLASS]: 11 }); // 전이표에도 그 이름
+    expect(breaker({ valueChangedBySource: s11.valueChangedBySource, lists: [] }).tripped).toBe(true);
+    expect(breaker({ valueChangedBySource: summarize(newHidden(10)).valueChangedBySource, lists: [] }).tripped).toBe(false);
+    const sameHidden = Array.from({ length: 51 }, (_, i) => toHidden(`s${i}`, "govlist"));
+    expect(summarize(sameHidden).valueChangedBySource).toEqual({});
+    // 같은 값인데 앞이 govlist 가 아니거나(kosis 5 → govlist 5) 비율만 바뀌면 「값 같음·출처·비율 바뀜」 — 센다
+    const kosisSame = /** @type {any} */ ({ ...row("daegu", "k", 5, 5), before: { ...six(5, "2026-09-30"), unsold_source: "kosis" } });
+    expect(changeClass(kosisSame)).toBe("값 같음·출처·비율 바뀜");
+    const rateOnly = /** @type {any} */ ({ ...row("daegu", "r", 5, 5), after: { ...six(5, "2026-10-31"), unsold_rate: 11 } });
+    expect(changeClass(rateOnly)).toBe("값 같음·출처·비율 바뀜");
+    expect(summarize([kosisSame, rateOnly]).valueChangedBySource).toEqual({ daegu: 2 });
+    const gg = Array.from({ length: 51 }, (_, i) => row("gyeonggi", `g${i}`, 5, 6));
+    expect(breaker({ valueChangedBySource: summarize(gg).valueChangedBySource, lists: [] }).tripped).toBe(true);
+    expect(breaker({ valueChangedBySource: summarize(gg.slice(1)).valueChangedBySource, lists: [] }).tripped).toBe(false);
   });
   it("--apply-from 대조: 같으면 same · 새 값 하나만 달라도 changed · 행 하나 빠져도 다름", () => {
     const a = run({ absentZero: true });
@@ -346,5 +390,59 @@ describe("G3·G4 거짓 0 길 막기(검사관 탐침 A·B·E 꼴)", () => {
     // 달서구 명단 단지가 none(미해소)이라도 중구는 별개 — 총괄표 중구 0 이면 중구 행은 0 을 받는다
     const r2 = go(rows, [...args[0]], [...args[1]], list, ["달서구", "중구"], { 달서구: 10, 중구: 0 }).plan[0];
     expect(r2.action).toBe("write_absent_zero");
+  });
+});
+
+describe("만료 상수 정본 하나 (세션692 PR-4 · 691 적대 🟡3)", () => {
+  it("이 모듈의 GOVLIST_EXPIRY_MONTHS 는 _shared.mjs 것을 다시 내보낸 것 — 쌍둥이 상수가 돌아오면 빨강", async () => {
+    const shared = /** @type {any} */ (await import("./_shared.mjs"));
+    const plan = /** @type {any} */ (await import("./_govlist-plan.mjs"));
+    expect(plan.GOVLIST_EXPIRY_MONTHS).toBe(shared.GOVLIST_EXPIRY_MONTHS);
+    const { readFileSync } = await import("node:fs");
+    const { fileURLToPath } = await import("node:url");
+    const src = readFileSync(fileURLToPath(new URL("./_govlist-plan.mjs", import.meta.url)), "utf8");
+    expect(src).not.toMatch(/export\s+const\s+GOVLIST_EXPIRY_MONTHS\s*=/);
+    expect(src).toMatch(/import \{[^}]*\bGOVLIST_EXPIRY_MONTHS\b[^}]*\} from "\.\/_shared\.mjs";/);
+  });
+});
+
+describe("미래 기준일(세션697 👤 결정 ① 「무시+경보」) — 만료와 같은 길 · 사유는 「미래 기준일」", () => {
+  it("이번 명단 기준일이 오늘(KST) 뒤면 skip_expired_source · 사유 = `as_of <기준일> = 미래 기준일(오늘 <KST 날짜>)`", () => {
+    const r = byId(run({ now: new Date("2026-09-29T12:00:00+09:00") }), "ah-2024000001");
+    expect(r.action).toBe("skip_expired_source");
+    expect(r.reasons).toEqual([`as_of ${AS_OF} = 미래 기준일(오늘 2026-09-29)`]);
+    expect(r.reasons[0]).not.toContain("개월 지남");
+  });
+  it("경계: 기준일 당일(KST 09-30 00:30)은 미래 아님 → 씀 · 하루 전 밤(KST 09-29 23:59)은 미래", () => {
+    expect(byId(run({ now: new Date("2026-09-30T00:30:00+09:00") }), "ah-2024000001").action).toBe("write_listed_hidden");
+    expect(byId(run({ now: new Date("2026-09-29T23:59:00+09:00") }), "ah-2024000001").action).toBe("skip_expired_source");
+  });
+  it("미등재 길(켬)도 미래 명단이면 skip_expired_source + 같은 사유 · 만료 사유 글자는 그대로", () => {
+    const fut = byId(run({ absentZero: true, now: new Date("2026-09-29T12:00:00+09:00") }), "ah-2024000009");
+    expect(fut).toMatchObject({ action: "skip_expired_source", reasons: [`as_of ${AS_OF} = 미래 기준일(오늘 2026-09-29)`] });
+    const exp = byId(run({ now: new Date("2027-03-31T00:30:00+09:00") }), "ah-2024000001");
+    expect(exp.reasons).toEqual([`as_of ${AS_OF} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`]);
+  });
+  it("기존 행의 미래 기준일 값은 존중하지 않는다 — 미래 청약홈은 skip_applyhome 아님 · 미래 명단은 「더 새 명단」·(e) 유효 명단이 아님", () => {
+    // 대조군(NOW = KST 11/02): 9월 청약홈은 지금처럼 skip_applyhome
+    expect(byId(run({ absentZero: true, zRow: { unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-09-01" } }), "ah-2024000009").action).toBe("skip_applyhome");
+    expect(byId(run({ absentZero: true, zRow: { unsold: 3, unsold_source: "applyhome", unsold_as_of: "2026-12-01" } }), "ah-2024000009").action).toBe("write_absent_zero");
+    // 「미등재 0」 꼴 명단 값(listed_as_of 없음) — 옛 판정이면 기준일이 이번 명단보다 「더 새」라 skip_newer_govlist, 그다음 (e) 유효 명단
+    const futGov = { unsold: 0, unsold_rate: 0, unsold_source: "govlist", unsold_as_of: "2027-01-31", unsold_listed_as_of: null };
+    const r = byId(run({ absentZero: true, zRow: futGov }), "ah-2024000009");
+    expect(r.action).toBe("write_absent_zero");
+    expect(r.reasons).not.toContain("e_govlist_valid");
+    // 대조군: 같은 꼴의 과거(유효) 명단 값은 (e) 로 막힌다(옛 0 이라도 기준일이 이번과 같으면 ownOldZero 아님)
+    expect(byId(run({ absentZero: true, zRow: { ...futGov, unsold_as_of: AS_OF } }), "ah-2024000009").reasons).toContain("e_govlist_valid");
+  });
+  it("반대 방향(적대 🟡1) — 날짜 없는 값은 지금처럼 존중: 공고일 빈 청약홈 행을 명단에 실어도 skip_applyhome · 미등재 길도 같음 · 날짜 없는 govlist 는 (e) 유효", () => {
+    const listedZ = [res({}), res({ complex_no: 2, list_key: "daegu|달서구|z", bundle_key: "Z", apartment_id: "ah-2024000009" })];
+    const twoCx = [cx({}), cx({ complex_no: 2, list_key: "daegu|달서구|z" })];
+    const noDateAh = { unsold: 3, unsold_rate: 3, unsold_source: "applyhome", unsold_as_of: null };
+    expect(byId(run({ zRow: noDateAh, complexes: twoCx, results: listedZ }), "ah-2024000009")).toMatchObject({ action: "skip_applyhome", after: null });
+    expect(byId(run({ absentZero: true, zRow: noDateAh }), "ah-2024000009").action).toBe("skip_applyhome");
+    const r = byId(run({ absentZero: true, zRow: { unsold: null, unsold_rate: null, unsold_source: "govlist", unsold_as_of: null, unsold_listed_as_of: null } }), "ah-2024000009");
+    expect(r.action).toBe("not_listed");
+    expect(r.reasons).toContain("e_govlist_valid");
   });
 });

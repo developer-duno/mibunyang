@@ -1116,6 +1116,38 @@ export async function supabaseOnlyMode() {
   const apartments = excludeLeaseUnits(loaded);
   log(`  ${loaded.length}건 로드 → 임대형 ${loaded.length - apartments.length}건 제외, ${apartments.length}건`);
 
+  // 들어온 날짜(createdAt · 세션698 👤 11/06) — VIEW 에 없어 apartments 표에서 id 로 붙인다(읽기 전용).
+  //   postbuild 의 얇은 단지 안전선이 「들어온 지 30일 안 새 단지」를 상한 셈에서 뺀다.
+  //   Vercel 빌드는 커밋된 apartments.json 을 split 해 목록을 다시 만드므로 목록뿐 아니라 apartments.json 행에도 싣는다
+  //   (상세 버킷은 칸을 골라 담아 안 실린다). 짝 없는 id 는 null — postbuild 는 null 을 옛 단지로 센다.
+  //   한 단지 = 한 장(세션635)이라 카드 id 는 대표 행 — 대표가 새 공고(ah-*) 행이어도 묶음은 몇 달 됐을 수 있다 →
+  //   자기 + memberIds 구성원 중 **가장 이른** created_at 을 쓴다(맹점 검사관 A12 · ISO 글자는 사전순 = 시간순).
+  log("apartments created_at SELECT...");
+  const createdRows = await selectAll((s) => s.from("apartments").select("id,created_at"), supabase, "id");
+  /** @type {Map<string, string>} */
+  const createdById = new Map();
+  for (const r of createdRows) {
+    if (!r || r.id == null || !r.created_at) continue;
+    const d = new Date(String(r.created_at)); // PostgREST "2026-11-05T03:12:34.123456+00:00" → ISO 로 고르게
+    if (!Number.isNaN(d.getTime())) createdById.set(String(r.id), d.toISOString());
+  }
+  let createdMissing = 0;
+  let createdFromMember = 0;
+  for (const a of apartments) {
+    const memberIds = Array.isArray(a.memberIds) ? a.memberIds : [];
+    const own = createdById.get(String(a.id)) ?? null;
+    /** @type {string | null} */
+    let v = own;
+    for (const m of memberIds) {
+      const c = createdById.get(String(m));
+      if (c != null && (v == null || c < v)) v = c;
+    }
+    if (v == null) createdMissing++;
+    else if (v !== own) createdFromMember++;
+    a.createdAt = v;
+  }
+  log(`  createdAt 붙임 ${apartments.length - createdMissing}건(구성원 날짜가 더 이른 묶음 ${createdFromMember}) · 짝 없음 ${createdMissing}건 (apartments ${createdRows.length}행)`);
+
   // 회귀 가드 — count 절대값
   const MIN_COUNT = 1000;
   if (apartments.length < MIN_COUNT) {

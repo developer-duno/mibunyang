@@ -120,6 +120,16 @@ describe("planHistoryRecalc — 손계산 대조(분류 4종)", () => {
     expect(rows.map((r) => r.id)).toEqual([1, 5]); // a2 의 4번 줄은 계산 밖 · a1·a3 값은 그대로(분모 1,000 유지)
     expect(summary.counts.orphan).toBe(3);
   });
+  it("유효한 govlist 행은 계산 밖(명단 점을 덮지 않음) · 만료(기준일+6개월 지남)면 다시 계산 · 분모에는 남는다(세션696)", () => {
+    // a3 = 대구식 명단 숫자 행(기준일 2026-09-30) — 이력 5번 줄(100)이 명단 점이라 치고, KOSIS 셈법(30)으로 덮이면 안 된다
+    const gl = (/** @type {string} */ asOf) => APTS().map((a) => (a.id === "a3" ? { ...a, unsold: 100, unsold_source: "govlist", unsold_as_of: asOf } : a));
+    const valid = planHistoryRecalc({ apartments: gl("2026-09-30"), history: HIST(), kosisRows: KOSIS, now: new Date("2026-11-04T00:00:00+09:00") });
+    expect(valid.rows.map((r) => [r.id, r.old, r.new])).toEqual([[1, 4, 5], [4, 20, 30]]); // a3 의 5번 줄 없음 · a1·a2 값 그대로(분모 1,000 유지)
+    expect(valid.summary.counts).toEqual({ changed: 2, same: 2, orphan: 3, held: 1 }); // a3 두 줄(5·6) + c1 = orphan
+    // 만료 — 기준일 2026-03-31 + 6개월 = 09-30 이 지난 11/04 → KOSIS 가 다시 정한다(수집기 isGovlistRespected 와 같은 판정)
+    const expired = planHistoryRecalc({ apartments: gl("2026-03-31"), history: HIST(), kosisRows: KOSIS, now: new Date("2026-11-04T00:00:00+09:00") });
+    expect(expired.rows.map((r) => [r.id, r.old, r.new])).toEqual([[1, 4, 5], [4, 20, 30], [5, 100, 30]]);
+  });
   it("diffBucket · kstMonth", () => {
     expect(diffBucket(null, 3)).toBe("이전 빈칸");
     expect(diffBucket(10, 12)).toBe("1~2");

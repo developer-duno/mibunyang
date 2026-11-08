@@ -13,7 +13,7 @@
  */
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
-import { esc, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP } from "./postbuild-prerender.mjs";
+import { esc, buildAptHtml, buildAptJsonLd, buildHomeSkeleton, buildUpcomingHtml, buildSitemap, isThinApt, planThin, buildAptPages, SEO_THIN_CAP, seoThinRecord, isNewApt, SEO_NEW_DAYS } from "./postbuild-prerender.mjs";
 
 /** index.html 의 관련 태그만 추린 최소 틀 (실제 파일과 같은 형태) */
 const TEMPLATE = [
@@ -337,6 +337,7 @@ describe("planThin — 안전선 15", () => {
     const list = [full("a1"), thin("t1"), thin("t2"), full("a2"), thin("t3"), thin("t4"), thin("t5")];
     expect(planThin(list)).toEqual({
       count: 5, ids: ["t1", "t2", "t3", "t4", "t5"], names: ["단지t1", "단지t2", "단지t3", "단지t4", "단지t5"], applied: true, cap: 15,
+      newCount: 0, newDays: 30, // createdAt 칸 없음 = 옛 단지(세션698)
     });
   });
   it("경계: 15곳 → applied:true, 16곳 → applied:false(ids 는 기록용으로 그대로)", () => {
@@ -349,6 +350,71 @@ describe("planThin — 안전선 15", () => {
   });
   it("id·name 없는 행은 세지 않는다", () => {
     expect(planThin([{ ...thin("x"), name: "" }, { ...thin("y"), id: "" }, thin("z")]).ids).toEqual(["z"]);
+  });
+});
+
+// ── 새 단지는 안전선 셈에서 뺀다 (👤 11/06 결정 · 세션698) ─────────────────────
+// 기대값 출처 = 결정 원문(「새 단지는 상한 셈에서 뺌」 · 30일 추천) + 11/06 운영 실측(얇은 19곳 전부 created_at 10/29~11/05).
+const NOW_1106 = new Date("2026-11-06T11:00:00Z");
+/** @param {string} id @param {string | null} createdAt */
+const thinAt = (id, createdAt) => ({ ...thin(id), createdAt });
+
+describe("isNewApt — 들어온 지 30일 안", () => {
+  it("기준 날수는 30 (👤 11/06)", () => {
+    expect(SEO_NEW_DAYS).toBe(30);
+  });
+  it("11/05 생성 · now 11/06 → true", () => {
+    expect(isNewApt({ createdAt: "2026-11-05T09:12:00.000Z" }, NOW_1106)).toBe(true);
+  });
+  it("10/01 생성 → false", () => {
+    expect(isNewApt({ createdAt: "2026-10-01T00:00:00.000Z" }, NOW_1106)).toBe(false);
+  });
+  it("createdAt null·칸 없음 → false(옛 단지로 셈)", () => {
+    expect(isNewApt({ createdAt: null }, NOW_1106)).toBe(false);
+    expect(isNewApt({}, NOW_1106)).toBe(false);
+  });
+  it("깨진 문자열·빈 문자열 → false", () => {
+    expect(isNewApt({ createdAt: "어제" }, NOW_1106)).toBe(false);
+    expect(isNewApt({ createdAt: "" }, NOW_1106)).toBe(false);
+  });
+  it("경계: 29일 23시간 → true · 정확히 30일 → false · 31일 → false", () => {
+    expect(isNewApt({ createdAt: "2026-10-07T12:00:00.000Z" }, NOW_1106)).toBe(true); // 29일 23시간 전
+    expect(isNewApt({ createdAt: "2026-10-07T11:00:00.000Z" }, NOW_1106)).toBe(false); // 정확히 30일 전
+    expect(isNewApt({ createdAt: "2026-10-06T11:00:00.000Z" }, NOW_1106)).toBe(false); // 31일 전
+  });
+  it("적대 🟡: 미래 createdAt(now+1일 — 시계 어긋남)은 true 로 고정(새 단지로 셈)", () => {
+    expect(isNewApt({ createdAt: "2026-11-07T11:00:00.000Z" }, NOW_1106)).toBe(true);
+  });
+});
+
+describe("planThin — 새 단지는 안전선 셈에서 빼고 명단에는 남긴다", () => {
+  it("11/06 운영 꼴: 얇은 19곳 전부 새 단지 → count 19 · newCount 19 · applied true(명단 19 그대로)", () => {
+    const list = [full("a1"), ...Array.from({ length: 19 }, (_, i) => thinAt(`n${i}`, "2026-11-05T03:00:00.000Z"))];
+    const p = planThin(list, NOW_1106);
+    expect(p).toMatchObject({ count: 19, newCount: 19, newDays: 30, applied: true, cap: 15 });
+    expect(p.ids).toHaveLength(19);
+  });
+  it("옛 단지 16곳 → applied false", () => {
+    const list = Array.from({ length: 16 }, (_, i) => thinAt(`o${i}`, "2026-01-01T00:00:00.000Z"));
+    expect(planThin(list, NOW_1106)).toMatchObject({ count: 16, newCount: 0, applied: false });
+  });
+  it("옛 15 + 새 10 → applied true · 옛 16 + 새 5 → applied false", () => {
+    const old15 = Array.from({ length: 15 }, (_, i) => thinAt(`o${i}`, "2026-01-01T00:00:00.000Z"));
+    const new10 = Array.from({ length: 10 }, (_, i) => thinAt(`n${i}`, "2026-10-29T00:00:00.000Z"));
+    expect(planThin([...old15, ...new10], NOW_1106)).toMatchObject({ count: 25, newCount: 10, applied: true });
+    const old16 = Array.from({ length: 16 }, (_, i) => thinAt(`o${i}`, "2026-01-01T00:00:00.000Z"));
+    expect(planThin([...old16, ...new10.slice(0, 5)], NOW_1106)).toMatchObject({ count: 21, newCount: 5, applied: false });
+  });
+  it("얇지 않은 새 단지는 newCount 에 안 든다 · createdAt null 은 옛 단지", () => {
+    const list = [{ ...full("f1"), createdAt: "2026-11-05T00:00:00.000Z" }, thinAt("t1", null), thinAt("t2", "2026-11-01T00:00:00.000Z")];
+    expect(planThin(list, NOW_1106)).toMatchObject({ count: 2, newCount: 1, applied: true });
+  });
+  it("buildAptPages 경로: 얇은 새 단지 19곳도 applied 면 noindex 를 받고 sitemap 에서 빠진다", () => {
+    const list = [full("a1"), ...Array.from({ length: 19 }, (_, i) => thinAt(`n${i}`, new Date(Date.now() - 86_400_000).toISOString()))];
+    const r = buildAptPages(TEMPLATE, list, D(...list));
+    expect(r.thin).toMatchObject({ count: 19, newCount: 19, applied: true });
+    expect(r.sitemapIds).toEqual(["a1"]);
+    expect(r.pages.filter((p) => countOf(p.html, 'name="robots"') === 1)).toHaveLength(19);
   });
 });
 
@@ -396,11 +462,16 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
     for (const t of ["t1", "t2", "t3", "t4", "t5"]) expect(urls.some((u) => u.endsWith(`/apt/${t}`))).toBe(false);
     expect(xml.includes("lastmod")).toBe(false);
   });
-  it("seo-thin 기록 모양 = {count, ids, applied, cap}", () => {
+  it("seo-thin 기록 모양 = {count, ids, names, applied, cap, newCount, newDays, bodyErrors, bodyErrorIds} (+ builtAt 은 seoThinRecord 가 · 세션697·698)", () => {
     expect(JSON.parse(JSON.stringify(r.thin))).toEqual({
       count: 5, ids: ["t1", "t2", "t3", "t4", "t5"], names: ["단지t1", "단지t2", "단지t3", "단지t4", "단지t5"], applied: true, cap: 15,
+      newCount: 0, newDays: 30, bodyErrors: 0, bodyErrorIds: [],
     });
-    expect(Object.keys(r.thin)).toEqual(["count", "ids", "names", "applied", "cap"]);
+    expect(Object.keys(r.thin)).toEqual(["count", "ids", "names", "applied", "cap", "newCount", "newDays", "bodyErrors", "bodyErrorIds"]);
+    expect(r.errors).toEqual([]);
+    const rec = seoThinRecord(r.thin, new Date("2026-11-05T18:05:00.000Z"));
+    expect(rec.builtAt).toBe("2026-11-05T18:05:00.000Z");
+    expect(Object.keys(rec)).toEqual(["count", "ids", "names", "applied", "cap", "newCount", "newDays", "bodyErrors", "bodyErrorIds", "builtAt"]);
   });
   it("names 는 ids 와 같은 순서·같은 길이(안전선 초과 날도)", () => {
     const many = Array.from({ length: 16 }, (_, i) => thin(`t${i}`));
@@ -410,17 +481,19 @@ describe("buildAptPages — 얇은 장은 noindex + sitemap 제외, 장은 계�
   });
   it("main() 연결부 — 사이트맵은 buildAptPages 가 준 sitemapIds 로, 기록 파일은 applied 와 무관하게 늘 쓴다(세션668 보완 F3)", () => {
     const src = readFileSync(new URL("./postbuild-prerender.mjs", import.meta.url), "utf-8");
-    const start = src.indexOf("function main() {");
+    const start = src.indexOf("export function main(dist = DIST) {");
     const end = src.indexOf("// CLI 로 직접 실행");
     expect(start).toBeGreaterThan(0);
     expect(end).toBeGreaterThan(start);
     const body = src.slice(start, end);
-    expect(body).toMatch(/const \{ pages, sitemapIds, thin \} = buildAptPages\(template, list, details\);/);
+    expect(body).toMatch(/const \{ pages, sitemapIds, thin, errors \} = buildAptPages\(template, list, details\);/);
+    // 본문 실패 단지마다 로그 한 줄(id·오류 첫 줄 · 세션697 C3)
+    expect(body).toMatch(/for \(const e of errors\) \{\r?\n\s+console\.error\(`\[postbuild-prerender\] 단지 장 본문 실패 → 얇은 본문으로: \$\{e\.id\} — \$\{e\.message\}`\);/);
     // 사이트맵 쓰기는 얇은 장을 뺀 목록만 — 전 장(pages·list)을 넘기면 빨강
     expect(body).toMatch(/writeFileSync\(DIST_SITEMAP, buildSitemap\(sitemapIds, region\.sitemapEntries\), "utf-8"\);/);
     expect((body.match(/buildSitemap\(/g) ?? []).length).toBe(1);
     // 기록 파일 쓰기는 main 맨 바깥 줄(들여쓰기 2칸)에 — 조건 한 줄(`if (…) writeFileSync`)이면 빨강
-    expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(thin\), "utf-8"\);\r?\n/);
+    expect(body).toMatch(/\r?\n  writeFileSync\(DIST_SEO_THIN, JSON\.stringify\(seoThinRecord\(thin\)\), "utf-8"\);\r?\n/);
     // 조건 블록 안으로 들어가면 그 앞까지 중괄호가 안 맞는다 — buildAptPages 부터 기록 쓰기까지 { 와 } 개수가 같아야 한다
     const between = body.slice(body.indexOf("buildAptPages(template, list, details)"), body.indexOf("writeFileSync(DIST_SEO_THIN"));
     expect((between.match(/\{/g) ?? []).length).toBe((between.match(/\}/g) ?? []).length);

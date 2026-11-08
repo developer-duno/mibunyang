@@ -80,7 +80,7 @@
 ① **등재 + 숫자 공개**(경기 — 면적대 행 전부가 맞은 단지만): `unsold = Σ행` · `unsold_rate = Σ행 / 분모`(분모 = Q9: 명단 총분양 Σ(공공기관 기준) vs 묶음 세대수) · `unsold_source 'govlist'` · `unsold_as_of = as_of` · `unsold_listed_as_of = as_of`. hold 행은 건드리지 않음. applyhome 유효 값과 겹치면 VIEW 순위 0 의 **기준일 새 쪽**이 이김(§3-3).
 ② **등재 + 비공개**(대구·충남): `unsold NULL · rate NULL · source 'govlist' · as_of · listed_as_of`. 만료 = Q2(4개월 / 6개월 / 만료 없음+경보) — 지나면 KOSIS 가 다시 정한다(`shouldSkipKosisFill` 규칙 추가: govlist 는 만료 전 존중). 충남은 최신 6월이라 4개월이면 첫 회차에 이미 만료(Q2 에 적시).
 ③ **명단 커버 지역인데 미등재 → 0** — 기본 **꺼짐**(`--absent-zero`) · **대상 = 대구·충남만**(경기는 비공개 행을 단지로 못 모아 "없다"를 말할 수 없다). 켜면 조건 **전부**: (a) 그 시도·그 달 명단 정상 수집(행 수 > 0 · 전월 대비 −50% 이내) (b) 민간 분양(`presale_type` 임대·공공 아님) (c) 분양 공고가 명단 기준월 **이전**(`presale_schedule_official`·`competition_*`) (d) **그 시군구의 명단 행이 전부 `strong`·`decided`·`rejected` 로 해소**됐을 때만 — weak·none 이 하나라도 남은 시군구는 미등재 판정을 하지 않는다(매칭 실패 ≠ 명단에 없음) (e) 그 행이 hold·applyhome 유효·govlist 가 아님. 시험 회차(dry-run)는 꺼짐·켬 **두 전이표를 같이** 세어 Q5 를 여쭐 재료로.
-④ KOSIS 와의 관계: 로컬 러너 `kosis-local-runner.mjs` `DAY_TABLE` **8일 항목에 govlist 추가**(8일엔 crime-safety 와 같은 날 순차 · 러너 05:30 · 시각 칸 없음) → 9일 KOSIS. KOSIS 는 govlist 유효 행을 존중하고 묶음 분모에는 남긴다 · **KOSIS 시계열(`unsold_history`)은 govlist 유효 행에 점을 만들지 않는다**(`collect-unsold-kosis.mjs:995~1003` 루프에 조건 추가 — 같은 열쇠 (단지·달) 라 9일 KOSIS 가 8일 점을 덮는 경합 차단) · govlist 수집기는 숫자 행(경기)에만 `unsold_history` 점을 쓰고 비공개는 쓰지 않는다 · [v2] **등재 단지의 KOSIS 추정은 명단 총분양 Σ 를 상한으로**(두류 165 > 52 같은 거짓을 규칙으로 막음 — PR-4).
+④ KOSIS 와의 관계: 로컬 러너 `kosis-local-runner.mjs` `DAY_TABLE` **8일 항목에 govlist 추가**(8일엔 crime-safety 와 같은 날 순차 · 러너 05:30 · 시각 칸 없음) → 9일 KOSIS. KOSIS 는 govlist 유효 행을 존중하고 묶음 분모에는 남긴다 · **KOSIS 시계열(`unsold_history`)은 govlist 유효 행에 점을 만들지 않는다**(`collect-unsold-kosis.mjs:995~1003` 루프에 조건 추가 — 같은 열쇠 (단지·달) 라 9일 KOSIS 가 8일 점을 덮는 경합 차단) · govlist 수집기는 숫자 행(행 종류로 판정 — 대구에도 있음, 세션696)에만 `unsold_history` 점을 쓰고 비공개는 쓰지 않는다 · [v2] **등재 단지의 KOSIS 추정은 명단 총분양 Σ 를 상한으로**(두류 165 > 52 같은 거짓을 규칙으로 막음 — PR-4).
 ⑤ 실행 위치 = 로컬 러너(한국 IP · 해외 IP 차단 여부 미확인). 러너가 죽으면 감시 ⑤ stale 38일이 잡는다(네이버 러너와 같은 결).
 ⑥ 안전장치(`data-changing-run-approval` 순서): 조회 → 계획 → `--dry-run --impact-out` 항상 → 차단기(바뀔 단지 > 50곳 또는 명단 행 수 전월 −50%) → **바꾸기 전 사본·역계획 저장** → 쓰기. 첫 회차는 `--apply-from=<승인 impact>`(경기만으로 50곳을 넘을 수 있어 사실상 확정). `collector_runs` PHASE `unsold-govlist` · 표식 `GOVLIST_SKIP <source> <이유>`(파일 못 받음 · 머리줄 바뀜 · 행 0 · **as_of 가 전보다 새롭지 않음**).
 ⑦ 파서: xlsx 는 `exceljs`(MIT · 새 의존은 `package.json` 명시 + `audit-declared-deps`) · 칸 뜻은 머리줄 글자로 · 대구 첨부는 파일 이름 `.xlsx` 로 · as_of 는 파일 본문·제목에서 · 경기 API `pSize=1000` + `pIndex` 끝까지(`list_total_count` 와 받은 행 수 대조). `.xls`(인천)는 범위 밖.
@@ -96,7 +96,7 @@
 | 사전 렌더 글자 · 점수 detail | 「미분양 —」·「미분양 자료 없음 (중립)」 세 자리를 같은 문구표 `UNSOLD_STATE_LABEL`(상태 3 × 자리)로 — 칩과 모순 금지 | `aptStaticBody.mjs:93·965` · `scoreRisk.ts:239` |
 | 점수 | Q3(모름 40 유지 vs 명단 총분양/묶음 세대수 상한 범위 점수 — 두류 52/433 = ≤12% → 10~25) | `scoreRisk.ts` |
 | 관리자 점수 분해표 · e2e | 상태 3 노출 1행 · e2e 칩 1건 · 점수 detail 문구가 점수 캐시·`sanitize` 앞단을 지나 살아 있는지 `calcCats` 경유 시험 1건(guards-must-be-mutation-tested §세션508) | PR-3 |
-| 추이 그래프(경기 숫자 단지) | 옛 KOSIS 추정 점과 새 명단 점이 한 줄에 섞임 — 점마다 출처가 없으므로(`unsold_history` 에 source 칸 없음) 🟡 후속: 명단 첫 달 이전 점은 그대로 두고 범례 한 줄 | 후속 |
+| 추이 그래프(숫자 행 단지 — 대구 대명헤리티지 · 경기 PR-5) | 옛 KOSIS 추정 점과 새 명단 점이 한 줄에 섞임 — 점마다 출처가 없으므로(`unsold_history` 에 source 칸 없음) · ~~명단 첫 달 이전 점은 그대로 두고 범례 한 줄~~ → **👤 11/04 세션696: 명단 첫 달 이전 KOSIS 추정 점은 지운다**(대명 = 손으로 1회 · 4점 삭제 + 9월 점 1개 · 전이표 `.omc/artifacts/session696/transition-daemyung-history-v2.md`) · 일반화 = PR-5 전에 수집기 규칙(명단 첫 달인 숫자 행의 앞선 이력 점을 사본 뜨고 지움 · 첫 회차 지울 점 수를 전이표로) | 후속(PR-5 전) |
 
 문구는 사실만("명단 등재·수 비공개·어느 기관 어느 달") — 우리 결함을 손님 경고로 떠넘기는 문구 금지.
 
@@ -117,6 +117,7 @@
 | **PR-2 수집기(dry-run 전용)** | 어댑터 3 + 파서 + 매칭 + 계획·impact·사본·역계획 · `--apply` 는 차단기·`--apply-from` 만 · 픽스처(§4 대조군 + 반대 방향) · 러너 등재 아직 안 함 | 적대 Opus(수집기) + 맹점 Opus | 없음 → **첫 전이표(꺼짐·켬 둘 다)** 👤 |
 | **PR-3 화면** | §6 전부(칩·필터·사전 렌더·상세·점수 문구표) · jsdom 부품 · playwright 전/후 캡처 | ui-adversary(Sonnet) | 굽기 뒤 라이브 확인 |
 | **PR-4 규칙** | `shouldSkipKosisFill` govlist 존중 · 시계열 건너뜀 · KOSIS 상한 = 명단 총분양 · 러너 8일 · 감시 ⑤⑫(h)㉔ · `--absent-zero` · **hold → govlist 직행 op**(`release_hold_to_govlist`) · 기준 명단 21 → 19 | 적대 Opus + 맹점 Opus | 첫 회차 `--apply-from` |
+| **PR-5 경기** | 경기 OpenAPI 어댑터(15057206 `CopertnhousngUnsol`) · 인증키(§12) 발급 뒤 · 매칭·전이표는 같은 틀 — 👤 2026-11-04 D1 「PR-5 로 따로, 키 발급 뒤」(세션691 맹점 🟠1: PR-2 에 경기 0줄·계획표에 자리 없음) | 적대 Opus + 맹점 Opus | 첫 회차 `--apply-from` |
 | **운영 1회** | 두류 2행 `release_hold_to_govlist`(첫 회차 안에서 — KOSIS 9일 회차보다 먼저) · 되돌림 파일 | — | 전이표 |
 
 PR-1·PR-2 병렬(워크트리 분리) · PR-3 은 PR-1 적용 뒤 · PR-4 는 PR-2 첫 전이표 승인 뒤. 비용 추정: PR 4 + 운영 + 검사 ≈ **세션 3~4개**.
@@ -135,6 +136,22 @@ PR-1·PR-2 병렬(워크트리 분리) · PR-3 은 PR-1 적용 뒤 · PR-4 는 P
 | Q8 | 「미분양만 보기」·시장 요약에서 등재 카드 | 미분양 있음으로 센다(추천) — 단점: 비공개 뒤의 값이 0 일 수도 있어(충남 명단에 0 단지 잔존) "미분양 단지 N곳" 이 약간 과장될 수 있음 · 대안 = 세지 않되 기본 목록엔 남김(필터만 통과) |
 | Q9 | 미분양률 분모(숫자 행) | 명단 총분양 Σ(공공기관 기준) |
 | Q10 | 등재 단지의 KOSIS 추정 상한 = 명단 총분양 Σ(§5-④) — 손님 숫자가 바뀜 | 켠다(두류 165 > 52 거짓 차단) — 첫 전이표에 바뀌는 카드 수 |
+
+**👤 2026-11-04 세션691 2단 결정(맹점 검사관 🟠 5건 → 전부 추천안)**: D1 경기 = PR-5 로 따로(키 발급 뒤) · D2 충남 6월분 = 첫 반영(PR-4)에서 뺀다 — 6개월 규칙으로 12/30 만료 → 1/9 KOSIS 전까지 「모름」 → 다시 KOSIS, 6주 만에 값이 오락가락(7월분 이후 게시 뒤 넣기) · D3 수 비공개 등재 단지 = 「미입주」 필터에도 넣는다(`src/lib/classify.ts:39` — Q8 과 같은 셈법 · PR-4 · 전이표에 그 수 열 추가) · D4 「0 (명단 미등재)」 달 표시 = Q5 를 켤 때만 **별도 칸**으로(`unsold_listed_as_of` 를 채우면 VIEW `20261102000002…sql:96` 이 「실린 행」으로 봐 청약홈 값을 막는다 — 그 칸은 쓰지 않는다). D5(출처 표시 — 지금 칩·상세 문구로 충분 vs 상세에 원문 링크) 미결 → 👤 11/04 08:3x 「지금 문구로 충분」(세션691 메모 경과).
+
+**👤 2026-11-04 세션692 Q5 = 「꺼 둔 채 PR-4 진행」** — 재료: 대구만(D2) dry-run 다시 뽑기(`.omc/artifacts/session692/govlist-impact-daegu.json` · 전이표 `govlist-transition-{off,on}.md`) = 쓰는 행 33 · 바뀔 카드 26 · 총점 ↑3 ↓6 =17 · 등급 바뀜 1 · 「미분양만 보기」 PR-3 뒤 빠짐 0 · 꺼짐·켬 결과 동일(대구 명단 60단지 중 판정 필요 33곳이 남아 (d) 가 46행 전부를 막음) · 「미입주」 필터: 지금 25 → D3 없이 PR-4 면 1(24곳 빠짐) → D3 반영 PR-4 면 25(빠짐 0) — `.omc/artifacts/session692/movein-count.log`. 판정 33곳을 푼 뒤 다시 여쭘. D4 별도 칸은 그때.
+
+**메인 판정 2026-11-04 세션692(기술 순서 — §8 PR-4 행을 둘로 나눔)**: 수집기 머리말 「반영 잠금은 PR-4 를 합친 뒤 켜는 PR 에서만」(`collect-unsold-govlist.mjs:18·43`)과 맞추어 **PR-4 = 반영을 안전하게 하는 규칙**(KOSIS govlist 존중·시계열 건너뜀·KOSIS 상한·`release_hold_to_govlist` op·⑫(h)·㉔·D3·입력 묶음 🟡) / **PR-4b 켜기 = 잠금 해제 + 러너 8일 + 감시 ⑤ 등재 + 기준 명단 21→19**(잠긴 채 러너에 올리면 매달 exit 2 · dry-run 은 `collector_runs` 를 안 남겨 ⑤ 가 헛경보 · 21→19 는 첫 반영의 두류 해제와 같은 날이어야 ⑫(d) 헛경보가 없다 — BACKLOG A-28 (a)).
+
+**PR-4b 범위 보충(세션692 검사관 맹점 🟠2 · 적대 🟡 — PR-4 를 합친 뒤 PR-4b 지시서에 그대로)**:
+- (a) **평시 `--apply` 조건** — 지금 `collect-unsold-govlist.mjs:80` 은 `--apply` 마다 `--apply-from` 을 요구한다. 러너 8일 등재만으로는 매달 쓰기 0 이고, 6개월 뒤 전부 만료되어 ⑫(h-2) 가 한꺼번에 운다 → 첫 회차 뒤 평시(승인 파일 없는) 반영의 조건(차단기·전월 대비)을 정한다.
+- (b) **D2 충남 6월분 러너 제외 수단** — 러너 인자로 출처를 대구로만 거는 등(`--source=daegu`). 충남 7월분 이후가 게시되면 푼다.
+- (c) **본 폴더 npm 설치 선행** — BACKLOG A-28 (b). 러너 등재 전 본 폴더에서 `exceljs` import 가 되는지 확인(`node -e "import('exceljs')"` 꼴 1회).
+- (d) **`--absent-zero`(미등재 → 0)** 는 PR-4b 가 아니다 — 판정 33곳을 푼 뒤 Q5 를 다시 여쭐 때(👤 11/04 「꺼 둔 채」).
+- (e) **§7 「매칭」 감시**(한 명단 행 ↔ 두 묶음 · weak 미판정 누적 수, 시군구별)는 PR-4b 에서.
+- (f) **「VIEW hidden 수 = 목록 JSON hidden 수」 감시**(감시 ㉔ 옆 한 줄 — 검사관 맹점5 제안 그대로): 서비스 열쇠로 센 VIEW `unsoldListedHidden` 수 vs 라이브 목록 JSON 의 hidden 수 · 라이브 `meta.json` `fetchedAt` 이 오늘 03시 뒤일 때만 비교 · 굽기 시각과 지금 사이에 만료일이 낀 행이 있으면 건너뜀 · **양성 대조군**: 원표에 govlist 비공개 행이 1행 이상인데 VIEW hidden 0 이면 따로 알림(0=0 만으로는 아무것도 증명하지 못한다).
+- (g) **㉔ 조회 범위** — 지금은 명단 표 전체를 매일 읽는다(경기 PR-5 뒤 1년 9천 행+). PR-5 전에 출처마다 최근 기준월 2개로 좁힌다.
+- **실행 순서**: PR-4b 합침 → 본 폴더 `git pull --ff-only` → 본 폴더 `grep -c govlistStatus scripts/collectors/collect-unsold-kosis.mjs` ≥ 1(옛 코드가 9일 KOSIS 를 돌지 않게) → 대구 `--apply --apply-from`(두류 2행 `release_hold_to_govlist` 포함 — op 는 반영 잠금이 풀려야 쓴다) → 같은 날 ⑫(d) 기준 명단 21→19 → 9일 KOSIS 회차 전.
 
 ## 10. 위험·함정 [v2]
 

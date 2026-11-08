@@ -37,7 +37,7 @@ import type { Apt } from "@/types/scoring";
  * - 큰 숫자(지역 한도·주담대·월 상환·더 필요한 돈)는 늘 지금 규정 — 위 막대와 같은 `calcLTV`(결정 18).
  *   경과규정(규제지역 지정 전 공고 → 종전 LTV)은 "될 수 있어요 — 그 경우 최대 N" 사실 한 줄로만 알린다(결정 16·18).
  *
- * 금융사로 넘기는 자리는 공시 사이트 두 곳뿐이다. 금융 탭 전체에 금융회사 이름·상품 이름·금리 순위는 0 이다(세션665) —
+ * 금융사로 넘기는 자리는 공시 사이트 두 곳뿐이다(그 아래 2u 거르기 글 한 줄은 금융사가 아니다 — 세션701). 금융 탭 전체에 금융회사 이름·상품 이름·금리 순위는 0 이다(세션665) —
  * 아래 은행 금리(`BankRateBars`)와 2금융 탭은 "N개 회사 최저 ~ 최고" 범위만 보여 준다. 이 카드도 금융사·상품 이름을 쓰지 않는다
  * (대부업법 §9조의2① — 대부업자·여신금융기관이 아니면 대부업 광고를 할 수 없다).
  */
@@ -47,6 +47,17 @@ const LINKS = [
   { href: "https://finlife.fss.or.kr", label: "금감원 금융상품 비교공시" },
   { href: "https://portal.kfb.or.kr", label: "은행연합회 소비자포털" },
 ] as const;
+
+/**
+ * 2u 블로그 「불법·고금리 대출 거르기 글」(세션701 👤 안 B — 버튼 줄 아래 따로 한 줄 · 「2u 블로그 글」 표시로 공시 사이트와 구분).
+ * 👤 11-07 결정: 글은 2u 한 곳에만 두고 미분양·상가는 링크만. 새 탭 — 2u 는 X-Frame-Options DENY 라 화면 안 팝업 불가,
+ * 새 탭이면 이 화면(입력값 포함)이 그대로 남아 탭만 닫으면 돌아온다.
+ */
+const LOAN_FILTER_POST = {
+  href: "https://2u.pe.kr/blog/illegal-loan-filter",
+  label: "대출이 급할 때 불법·고금리 대출 걸러 내는 법",
+  source: "2u 블로그 글 · 새 탭",
+} as const;
 
 /**
  * 「더 필요한 돈」 바로 아래 금융사 종류별 안내(세션675 결정 가 「안 A · 예고 한 줄」) — 부족한 이유에 따라 세 갈래.
@@ -669,6 +680,31 @@ export const FundingPlanner = memo(function FundingPlanner({
           </a>
         ))}
       </div>
+
+      <a
+        data-testid="fp-loan-filter-post"
+        href={LOAN_FILTER_POST.href}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={() => trackEvent("loan_filter_post_click", { aptId: apt.id })} // 세션704 👤 결정 — 개인 수치 없이 단지 id 만
+        style={{
+          display: "block",
+          marginTop: 6,
+          minHeight: 36,
+          boxSizing: "border-box",
+          padding: "9px 2px",
+          fontSize: F.xs,
+          color: C.blue,
+          lineHeight: 1.5,
+          textDecoration: "underline",
+          textUnderlineOffset: 2,
+        }}
+      >
+        {LOAN_FILTER_POST.label} ↗{" "}
+        <span style={{ color: C.muted, textDecoration: "none", display: "inline-block" }}>
+          · {LOAN_FILTER_POST.source}
+        </span>
+      </a>
 
       {/* 회색 작은 글 한 덩어리(세션675 「회색 작은 글 합치기」) — 문장·testid 는 그대로 */}
       <div

@@ -1,6 +1,7 @@
 // @ts-check
 import { describe, it, expect } from "vitest";
 import { simulateCard, unsoldFilterNow, unsoldFilterPr3 } from "./govlist-screen-impact.mjs";
+import { countsAsUnsold } from "../src/utils/unsoldState.mjs";
 
 describe("govlist 화면 변화 흉내 — VIEW apartments_flat 식과 같게", () => {
   const after = new Map([["ah-1", { unsold: null, unsold_rate: null }], ["ap-2", { unsold: 25, unsold_rate: 80.6 }], ["ah-3", { unsold: 40, unsold_rate: 9 }]]);
@@ -21,5 +22,16 @@ describe("govlist 화면 변화 흉내 — VIEW apartments_flat 식과 같게", 
     const hidden = { unsold: null, unsoldListedHidden: true };
     expect([unsoldFilterNow(hidden), unsoldFilterPr3(hidden)]).toEqual([false, true]);
     expect([unsoldFilterNow({ unsold: 3 }), unsoldFilterPr3({ unsold: 0 })]).toEqual([true, false]);
+  });
+  // 세션689 PR-3: 화면 코드(목록·시장 요약·허브)가 부르는 countsAsUnsold 가 이 흉내 규칙과 같은지 맞댄다 — VIEW 가 주는 값(불리언·null·칸 없음)만
+  it("PR-3 뒤 규칙 = 화면의 countsAsUnsold(src/utils/unsoldState.mjs) — VIEW 값 꼴 전 조합", () => {
+    let n = 0;
+    for (const unsold of [undefined, null, 0, 1, 25])
+      for (const unsoldListedHidden of [undefined, null, false, true]) {
+        const c = unsoldListedHidden === undefined ? { unsold } : { unsold, unsoldListedHidden };
+        expect(countsAsUnsold(c), JSON.stringify(c)).toBe(unsoldFilterPr3(c));
+        n++;
+      }
+    expect(n).toBe(20);
   });
 });

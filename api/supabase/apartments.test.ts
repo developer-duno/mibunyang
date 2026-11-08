@@ -586,6 +586,32 @@ describe('sanitize — 한 단지 = 한 장 묶음 칸 통과(세션635 다)', (
   });
 });
 
+// 세션689 PR-3 — 미분양 상태 칸 3(VIEW 20261102000002 끝 3줄)을 허용목록이 통과시킨다. 줄을 빼면 이 응답에서 칩·상세 「비공개」가 사라져 red.
+describe('sanitize — 지자체 명단 상태 칸 통과(세션689)', () => {
+  it('unsoldSource·unsoldListedHidden·unsoldListedAsOf 를 그대로 낸다', async () => {
+    const row = {
+      id: 'ah-2025910146', name: '두류', region: '대구', unsold: null, unsoldRate: null,
+      unsoldSource: 'govlist', unsoldListedHidden: true, unsoldListedAsOf: '2026-09-30',
+    };
+    mockQuery.range.mockResolvedValue({ data: [row], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.unsoldSource).toBe('govlist');
+    expect(d.unsoldListedHidden).toBe(true);
+    expect(d.unsoldListedAsOf).toBe('2026-09-30');
+  });
+  it('칸이 없으면(옛 VIEW) 출처·기준월 null · 비공개 false(화면 = 지금 그대로)', async () => {
+    mockQuery.range.mockResolvedValue({ data: [{ id: 'ah-1', name: 'X', region: '대구' }], error: null, count: 1 });
+    const res = makeRes();
+    await handler(makeReq(), res);
+    const d = res.json.mock.calls[0][0].data[0];
+    expect(d.unsoldSource).toBeNull();
+    expect(d.unsoldListedHidden).toBe(false);
+    expect(d.unsoldListedAsOf).toBeNull();
+  });
+});
+
 // 세션607 다) 보완(검사관 A M12 · 사장님 결정 B4) — VIEW 마이그 파일을 직접 읽는 정적 가드.
 //   VIEW 별칭 하나가 오타면 그 칸은 화이트리스트에서 늘 undefined → null 이 되어 점수가 조용히 중립이 된다.
 //   주석(-- …)은 걷어내고 본다 — 머리말에 칸 이름·옛 식이 설명으로 적혀 있어 그대로 세면 무효다.

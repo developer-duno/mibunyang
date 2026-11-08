@@ -277,6 +277,34 @@ describe("useDataPipeline", () => {
       expect(ids).toEqual(["ah-clamped", "ah-normal"]); // 미분양 0 단지만 빠짐
     });
 
+    // 세션689 PR-3(👤 Q8): 지자체 명단 등재·수 비공개(unsold null · unsoldListedHidden)는 「있음」으로 남고
+    //   필터 개수 배지(filterOptionCounts)도 같은 모집단으로 센다. 옛 조건(unsold>0)으로 되돌리면 red.
+    it("hideNoUnsold=true → 명단 비공개 단지는 남고(목록·개수 배지 둘 다), 칸 없는 모름은 빠진다", () => {
+      const apts = [
+        makeApt({
+          id: "ah-hidden",
+          region: "대구",
+          price: 30000,
+          unsold: null,
+          unsoldRate: null,
+          unsoldListedHidden: true,
+        }),
+        makeApt({ id: "ah-unknown", region: "대구", price: 30000, unsold: null, unsoldRate: null }),
+        makeApt({
+          id: "ah-false",
+          region: "대구",
+          price: 30000,
+          unsold: null,
+          unsoldRate: null,
+          unsoldListedHidden: false,
+        }),
+        makeApt({ id: "ah-normal", region: "대구", price: 30000, unsold: 5, unsoldRate: 5 }),
+      ];
+      const { result } = renderPipeline({ apartments: apts, hideNoUnsold: true });
+      expect(result.current.filtered.map((x) => x.apt.id).sort()).toEqual(["ah-hidden", "ah-normal"]);
+      expect(result.current.filterOptionCounts?.regionCounts?.["대구"]).toBe(2);
+    });
+
     it("sortKey=moveInSoon → 준공완료(최근순) → 예정(가까운순) → 미정/null 맨뒤 (세션 424)", () => {
       // NOW_YM 기준 과거/미래 동적 생성 (시간 흐름에 안정). YYYYMM 고정폭.
       const yy = new Date().getFullYear();
@@ -562,6 +590,23 @@ describe("useDataPipeline", () => {
       expect(total).toBe(1); // known(입주완료) 1건만 — unknown 은 어느 키에도 안 들어간다
       expect(Object.keys(moveInCounts).sort()).toEqual(["미입주", "입주완료", "입주예정"].sort());
       expect(moveInCounts["입주완료"]).toBe(1);
+    });
+
+    // 👤 D3(세션691 11/04 · 세션692 PR-4) — 준공 지난 명단 비공개 단지는 「미입주」 필터 목록·개수 배지 둘 다에 든다.
+    //   옛 판정(unsold null → null)으로 되돌리면 두 단언이 red.
+    it("준공 지남 + 명단 비공개(hidden) → 「미입주」 목록·개수 배지에 들고, 칸 없는 모름은 여전히 안 세진다", () => {
+      const apts = [
+        makeApt({ id: "ah-hidden", completion: "202412", unsold: null, unsoldRate: null, unsoldListedHidden: true }),
+        makeApt({ id: "ah-unknown", completion: "202412", unsold: null, unsoldRate: null }),
+        makeApt({ id: "ah-num", completion: "202412", unsold: 4, unsoldRate: 1 }),
+      ];
+      const counts = renderPipeline({ apartments: apts }).result.current.filterOptionCounts?.moveInCounts ?? {};
+      expect(counts["미입주"]).toBe(2);
+      expect(Object.values(counts).reduce((s, n) => s + Number(n), 0)).toBe(2);
+      const ids = renderPipeline({ apartments: apts, moveInFilter: "미입주" })
+        .result.current.filtered.map((x) => x.apt.id)
+        .sort();
+      expect(ids).toEqual(["ah-hidden", "ah-num"]);
     });
   });
 

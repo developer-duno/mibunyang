@@ -29,6 +29,7 @@ import {
   daysBetween,
   describeEntry,
   isCatchupStale,
+  planEntryRun,
   readLastProcessed,
   writeLastProcessed,
   ymd,
@@ -132,6 +133,8 @@ describe("collectorsDueOn — 일자 디스패치", () => {
         "lhzone-status.mjs",
         // 세션 614: SGIS 좌표→행정동 매핑(매주 화요일 `dow: 2`). GH 워크플로가 없어 여기 없으면 아예 안 돈다.
         "sgis-map-emd.mjs",
+        // 세션 693(PR-4b): 지자체 단지별 미분양 명단(대구) 평시 반영 — 매월 8일, 9일 KOSIS 앞.
+        "collect-unsold-govlist.mjs",
       ].sort(),
     );
   });
@@ -204,8 +207,9 @@ describe("MOLIT 5종 이전 (세션 515)", () => {
 
   it("main 배선이 entry.args 를 spawn 인자에 싣는다 (표의 args 가드만으론 배선 삭제가 초록 — 뮤테이션 실증)", () => {
     const src = readFileSync(new URL("./kosis-local-runner.mjs", import.meta.url), "utf8");
-    // 좌변(const args = [scriptPath,)까지 고정해 호출부만 매칭 — 선언·주석 오탐 차단
-    expect(src).toMatch(/const args = \[scriptPath, \.\.\.\(entry\.args \?\? \[\]\),/);
+    // 좌변까지 고정해 호출부만 매칭 — 선언·주석 오탐 차단. 세션696 B3: 인자 조립이 planEntryRun 으로 옮겨 갔다
+    //   (main 이 plan.args 로 spawn 하는지는 아래 「러너 --dry-run 이면 govlist …」 시험이 지킨다)
+    expect(src).toMatch(/return \{ args: \[scriptPath, \.\.\.\(entry\.args \?\? \[\]\),/);
   });
 
   it("--list 출력에 게이트가 사람이 읽는 형태로 붙는다", () => {
@@ -399,6 +403,31 @@ describe("행안부 인구 2종 이전 (세션 550)", () => {
     expect(dayOf("collect-market-stats.mjs")).toEqual([6]);
     expect(dayOf("migration.mjs")).toEqual([7]);
     expect(dayOf("collect-crime-safety.mjs")).toEqual([8]);
+  });
+
+  // 세션693 PR-4b: 지자체 명단은 9일 KOSIS **앞**(그 달 명단을 KOSIS 가 존중) · 출처는 대구만(👤 D2 — 충남 6월분 제외).
+  it("지자체 명단(govlist)은 매월 8일 한 줄 · crime-safety 다음 차례 · 인자 --apply --source=daegu · KOSIS 미분양은 9일", () => {
+    const rows = DAY_TABLE.filter((e) => e.script === "collect-unsold-govlist.mjs");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toEqual({ day: 8, script: "collect-unsold-govlist.mjs", args: ["--apply", "--source=daegu"], noDryRun: true });
+    expect(DAY_TABLE.filter((e) => e.script === "collect-unsold-kosis.mjs").map((e) => e.day)).toEqual([9]);
+    expect(collectorsDueOn(at(2026, 11, 8))).toEqual(["collect-crime-safety.mjs", "collect-unsold-govlist.mjs", ...DAILY]); // 11/08 = 일요일(화요일 SGIS 안 낌)
+  });
+
+  // 세션696 B3(BACKLOG 442 adv🟡6 · 메인 판정 (나)): 러너 --dry-run 을 덧붙이면 govlist 수집기가 인자 오류(--apply 와 동시 금지 · --impact-out 필수)로 exit 1 이었다.
+  it("러너 --dry-run 이면 govlist 항목은 부르지 않고 「--dry-run 미지원 — 건너뜀」 로그만 · 평시엔 그대로 · 다른 항목은 --dry-run 을 덧붙인다", () => {
+    const gov = /** @type {(typeof DAY_TABLE)[number]} */ (DAY_TABLE.find((e) => e.script === "collect-unsold-govlist.mjs"));
+    const crime = /** @type {(typeof DAY_TABLE)[number]} */ (DAY_TABLE.find((e) => e.script === "collect-crime-safety.mjs"));
+    const dry = planEntryRun(gov, "/x/collect-unsold-govlist.mjs", true);
+    expect(dry).toEqual({ skip: "⏭ collect-unsold-govlist.mjs — --dry-run 미지원 — 건너뜀(미리보기는 수집기 단독 --dry-run --impact-out=<경로>)" });
+    expect(planEntryRun(gov, "/x/collect-unsold-govlist.mjs", false)).toEqual({ args: ["/x/collect-unsold-govlist.mjs", "--apply", "--source=daegu"] });
+    expect(planEntryRun(crime, "/x/collect-crime-safety.mjs", true)).toEqual({ args: ["/x/collect-crime-safety.mjs", "--dry-run"] });
+    // 이 표식이 붙은 항목은 govlist 하나뿐(다른 항목의 --dry-run 시험 경로는 그대로)
+    expect(DAY_TABLE.filter((e) => e.noDryRun === true).map((e) => e.script)).toEqual(["collect-unsold-govlist.mjs"]);
+    // 배선 — main 이 이 판정으로 부르고, 건너뜀이면 spawn 없이 다음 항목으로(실패 목록에 안 들어감)
+    const src = readFileSync(new URL("./kosis-local-runner.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    expect(src).toMatch(/const plan = planEntryRun\(entry, scriptPath, dryRun\);\n\s+if \("skip" in plan\) \{\n\s+log\(PHASE, plan\.skip\);\n\s+continue;\n\s+\}/);
+    expect(src).toMatch(/const res = spawnSync\(process\.execPath, plan\.args, /);
   });
 
   it("6일은 market-stats → trades 순서 그대로다 (인구가 끼어들지 않았다 · molit-units 는 세션612 에 뺐다)", () => {

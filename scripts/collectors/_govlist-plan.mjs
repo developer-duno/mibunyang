@@ -10,8 +10,10 @@
  *   (§5-① 「hold 행은 건드리지 않음」 · 청약홈 유효 값과의 우열은 VIEW 순위 0 이 기준일로 가린다 — 행 값을 덮지 않는다).
  * - ③ 미등재 → 0: 기본 꺼짐 · 대구·충남만 · 조건 (a)~(e) 전부(§5-③ 원문). dry-run 은 꺼짐·켬 두 계획을 같이 만든다.
  * - 만료(Q2 6개월): 이번 명단 기준일 + 6개월이 이미 지났으면 쓰지 않는다(`skip_expired_source`). 지난 명단 값의 만료 뒤 처리는 KOSIS(PR-4).
+ * - 미래 기준일(세션697 👤 결정 ① 「무시+경보」): 이번 명단 기준일이 오늘(KST) 뒤면 만료와 같은 `skip_expired_source`(사유 「미래 기준일」) ·
+ *   기존 행의 청약홈·명단 값도 기준일이 미래면 존중하지 않는다(판정 = `_shared.mjs` asOfRespectState — KOSIS 수집기와 같은 함수).
  */
-import { clampUnsoldRate, isApplyhomeExpired } from "./_shared.mjs";
+import { clampUnsoldRate, asOfRespectState, kstDayOf, APPLYHOME_EXPIRY_MONTHS, GOVLIST_EXPIRY_MONTHS } from "./_shared.mjs";
 import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
 
 /** @typedef {import("./_govlist-match.mjs").AptRow} AptRow */
@@ -27,12 +29,25 @@ import { isLeaseUnit } from "../../src/constants/leaseTypes.mjs";
  */
 
 /**
- * govlist 값 존중 기간(개월) — 사장님 결정 Q2 「6개월」(11/02 01:1x).
- * ⚠️ PR-1 이 `_shared.mjs` 에 같은 값 `GOVLIST_EXPIRY_MONTHS` 를 넣는다(VIEW SQL 과 맞대는 시험 포함) — 합친 뒤 이 줄을 그 import 로 바꾼다.
+ * govlist 값 존중 기간(개월) — 사장님 결정 Q2 「6개월」(11/02 01:1x). 정본 = `_shared.mjs` GOVLIST_EXPIRY_MONTHS 하나(VIEW SQL ·
+ * KOSIS 수집기 · 감시 ⑫(h) 가 같은 상수 — `_view-unsold-govlist-sql.test.mjs` 가 VIEW 와 맞댄다). 세션692 PR-4 에서 이 파일의 쌍둥이 상수를 지우고
+ * 다시 내보내기만 한다(이 모듈에서 가져다 쓰던 시험·도구 호환).
  */
-export const GOVLIST_EXPIRY_MONTHS = 6;
-/** 바뀔 단지(묶음) 수 차단기(설계서 §5-⑥). */
+export { GOVLIST_EXPIRY_MONTHS };
+/** asOfRespectState 중 존중하는 상태(유효·날짜 없음) — KOSIS 수집기 isRespectedState 와 같은 뜻. @param {string} s */
+const isRespected = (s) => s === "valid" || s === "no_date";
+/** 바뀔 단지(묶음) 수 차단기 — 경기 기준(설계서 §5-⑥ · :85 「경기만으로 50곳을 넘을 수 있어」). */
 export const GOVLIST_BREAKER_MAX_BUNDLES = 50;
+/**
+ * 출처별 차단 기준 — **값이 바뀌는** 묶음 수(「값 같음·칸만 바뀜」 = 이미 govlist 인 행의 기준월만 새로 쓰는 묶음은 안 센다 ·
+ * 「빈칸→비공개(새 등재)」·「값 같음·출처·비율 바뀜」은 센다)가 이 값을 넘으면 막는다.
+ * 대구·충남 = 10곳 **임시** — 12/08 첫 평시 회차 뒤 실측해 다시 정함(BACKLOG A-28). 👤 「기준은 첫 반영 실측 뒤 정함」 —
+ * 실측 전에는 멈춤이 더 잦은 쪽(사장님 승인이 늘 뿐 데이터는 안전)으로 둔다(세션693 검사 adv🟠1·blind🟠1).
+ * 표에 없는 출처는 가장 작은 기준(10)을 쓴다.
+ */
+export const GOVLIST_BREAKER_LIMITS = Object.freeze({ daegu: 10, chungnam: 10, gyeonggi: GOVLIST_BREAKER_MAX_BUNDLES });
+/** @param {string} source */
+export const breakerLimitOf = (source) => /** @type {Record<string, number>} */ (GOVLIST_BREAKER_LIMITS)[source] ?? Math.min(...Object.values(GOVLIST_BREAKER_LIMITS));
 /** 명단 행 수 급감 차단기 — 전 회차 대비 이 비율 미만이면 막는다(−50%). */
 export const GOVLIST_DROP_RATIO = 0.5;
 /** 미등재 → 0 을 판정할 수 있는 출처(경기는 비공개 행을 단지로 못 모아 "없다"를 말할 수 없다 — §5-③). */
@@ -111,8 +126,10 @@ export function rowCheckViolations(s) {
 export function skipReason(m, asOf, now) {
   if (m.unsold_source === "hold") return "skip_hold";
   if (isLeaseUnit(m)) return "skip_lease";
-  if (m.unsold_source === "applyhome" && isApplyhomeExpired(m.unsold_as_of, now) !== true) return "skip_applyhome";
-  if (m.unsold_source === "govlist" && typeof m.unsold_as_of === "string" && m.unsold_as_of > asOf) return "skip_newer_govlist";
+  if (m.unsold_source === "applyhome" && isRespected(asOfRespectState(m.unsold_as_of, now, APPLYHOME_EXPIRY_MONTHS))) return "skip_applyhome";
+  // 기준일이 미래인 명단 값은 「더 새」 값이 아니라 존중하지 않는 값이다(세션697)
+  if (m.unsold_source === "govlist" && typeof m.unsold_as_of === "string" && m.unsold_as_of > asOf
+    && asOfRespectState(m.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) !== "future") return "skip_newer_govlist";
   return null;
 }
 
@@ -135,7 +152,7 @@ export function absentZeroFails({ m, b, asOf, now, listOk, covered, unresolvedCi
   // (e) 유효한 명단 값은 덮지 않는다 — 단 이 수집기가 지난 회차에 쓴 「미등재 0」(listed_as_of 없음 · 더 옛 기준일)은 기준일만 새로 한다
   // (안 그러면 6개월 뒤 만료 → KOSIS 가 채움 → 다음 회차 다시 0 으로 오락가락한다).
   const ownOldZero = m.unsold === 0 && m.unsold_listed_as_of == null && typeof m.unsold_as_of === "string" && m.unsold_as_of < asOf;
-  if (m.unsold_source === "govlist" && !ownOldZero && isApplyhomeExpired(m.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS) !== true) f.push("e_govlist_valid");
+  if (m.unsold_source === "govlist" && !ownOldZero && isRespected(asOfRespectState(m.unsold_as_of, now, GOVLIST_EXPIRY_MONTHS))) f.push("e_govlist_valid");
   return f;
 }
 
@@ -156,7 +173,10 @@ export function planSource(p) {
     attached.set(r.bundle_key, [...(attached.get(r.bundle_key) ?? []), cx]);
     keysOf.set(r.bundle_key, [...(keysOf.get(r.bundle_key) ?? []), cx.list_key]);
   }
-  const expiredSource = isApplyhomeExpired(asOf, now, GOVLIST_EXPIRY_MONTHS) === true;
+  // 이번 명단의 기준일이 만료됐거나 미래(세션697 — 오늘 KST 뒤)면 쓰지 않는다. 형식 불량(no_date)은 지금처럼 막지 않는다(파서가 형식을 강제).
+  const sourceState = asOfRespectState(asOf, now, GOVLIST_EXPIRY_MONTHS);
+  const expiredSource = sourceState === "expired" || sourceState === "future";
+  const sourceSkipReason = sourceState === "future" ? `as_of ${asOf} = 미래 기준일(오늘 ${kstDayOf(now)})` : `as_of ${asOf} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`;
   const listOk = p.listRowCount > 0 && (p.prevRowCount == null || p.listRowCount >= p.prevRowCount * GOVLIST_DROP_RATIO);
   const covered = new Set([...p.sggUniverse.map(cityKey), ...complexes.map((c) => cityKey(c.sgg))].filter(Boolean));
   const unresolvedCities = new Set(results.filter((r) => !RESOLVED.has(r.state)).map((r) => cityKey(cxByNo.get(r.complex_no)?.sgg)));
@@ -183,7 +203,7 @@ export function planSource(p) {
       const head = { source, id: m.id, name: m.name, region: m.region, gu: m.gu, bundle_key: b.key, before, list_keys: keysOf.get(b.key) ?? [] };
       const skip = skipReason(m, asOf, now);
       if (listed) {
-        if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [`as_of ${asOf} + ${GOVLIST_EXPIRY_MONTHS}개월 지남`], after: null }); continue; }
+        if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [sourceSkipReason], after: null }); continue; }
         if (skip) { out.push({ ...head, action: skip, reasons: [], after: null }); continue; }
         if (listed.kind === "blank") { out.push({ ...head, action: "skip_unsold_blank", reasons: ["명단에 실렸으나 미분양 칸 빈칸·「-」 — 비공개 표시 없음"], after: null }); continue; }
         if (listed.kind === "over") { out.push({ ...head, action: "skip_list_inconsistent", reasons: ["명단 미분양 > 총분양(원본 오기)"], after: null }); continue; }
@@ -196,7 +216,7 @@ export function planSource(p) {
         continue;
       }
       if (!zeroOn) { out.push({ ...head, action: "not_listed", reasons: [p.absentZero ? "absent_zero_not_for_source" : "absent_zero_off"], after: null }); continue; }
-      if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: [], after: null }); continue; }
+      if (expiredSource) { out.push({ ...head, action: "skip_expired_source", reasons: sourceState === "future" ? [sourceSkipReason] : [], after: null }); continue; }
       if (skip) { out.push({ ...head, action: skip, reasons: ["absent"], after: null }); continue; }
       const fails = absentZeroFails({ m, b, asOf, now, listOk, covered, unresolvedCities });
       if (candidateBundles.has(b.key)) fails.unshift("d_candidate_of_list");
@@ -225,8 +245,22 @@ export function changeClass(r) {
   if (a != null && b == null) return a > 0 ? "값>0→빈칸" : "0→빈칸";
   if (a != null && b != null && a > 0 && b === 0) return "값>0→0";
   if (a !== b) return "값→다른 값";
-  return "값 같음·칸만 바뀜";
+  // 여기부터 unsold 가 같다(둘 다 빈칸이거나 같은 수). 세션693 2차 보완 C1(재검사 adv🟠1): 「칸만 바뀜」은
+  //   앞이 이미 govlist + 비공개 여부 같음 + 비율 같음일 때만 — 나머지(새 비공개 등재 · 출처·비율만 바뀜)는 손님 화면이 바뀌므로 따로 센다.
+  const hiddenBefore = isHiddenSix(r.before), hiddenAfter = isHiddenSix(r.after);
+  if (!hiddenBefore && hiddenAfter) return NEW_HIDDEN_CLASS;
+  if (r.before.unsold_source === "govlist" && hiddenBefore === hiddenAfter && (r.before.unsold_rate ?? null) === (r.after.unsold_rate ?? null)) return SAME_VALUE_CLASS;
+  return "값 같음·출처·비율 바뀜";
 }
+/** govlist 비공개 등재(값 빈칸)인가. @param {Six | null} s */
+const isHiddenSix = (s) => !!s && s.unsold_source === "govlist" && s.unsold == null;
+/**
+ * 앞이 이미 govlist 이고 값·비율·비공개 여부가 그대로이며 기준월 등 칸만 바뀌는 쓰는 행의 꼴 이름 — 차단기는 이 꼴만 있는 묶음을 세지 않는다.
+ * (빈칸 → 비공개 = `NEW_HIDDEN_CLASS` · 다른 출처 → govlist 같은 값 = 「값 같음·출처·비율 바뀜」은 센다)
+ */
+export const SAME_VALUE_CLASS = "값 같음·칸만 바뀜";
+/** 모름(빈칸 — kosis·null·hold) → 등재·수 비공개(govlist 빈칸) — 새 비공개 등재. 칩·필터·점수 문구가 바뀌므로 차단기가 센다(C1). */
+export const NEW_HIDDEN_CLASS = "빈칸→비공개(새 등재)";
 
 /**
  * 전이표 요약(시도별 · 행동별 · 값 변화 꼴 · 출처 전이 · 바뀔 단지 수).
@@ -237,6 +271,7 @@ export function summarize(plan) {
   /** @type {Record<string, Record<string, number>>} */ const byChange = {};
   /** @type {Record<string, number>} */ const sourceShift = {};
   /** @type {Set<string>} */ const bundles = new Set();
+  /** 값이 바뀌는 묶음(출처별) — 「값 같음·칸만 바뀜」만 있는 묶음은 뺀다(차단기 재료). @type {Map<string, Set<string>>} */ const valueBundles = new Map();
   for (const r of plan) {
     const reg = r.region ?? "?";
     (byAction[reg] ??= {})[r.action] = (byAction[reg][r.action] ?? 0) + 1;
@@ -246,18 +281,29 @@ export function summarize(plan) {
     const k = `${r.before.unsold_source ?? "null"}→${r.after?.unsold_source ?? "null"}`;
     sourceShift[k] = (sourceShift[k] ?? 0) + 1;
     bundles.add(`${r.source}|${r.bundle_key}`);
+    if (c !== SAME_VALUE_CLASS) {
+      const s = valueBundles.get(r.source) ?? new Set();
+      s.add(r.bundle_key);
+      valueBundles.set(r.source, s);
+    }
   }
-  return { byAction, byChange, sourceShift, writeRows: plan.filter(isWrite).length, changedBundles: bundles.size };
+  /** @type {Record<string, number>} */ const valueChangedBySource = {};
+  for (const [s, set] of [...valueBundles].sort(([a], [b]) => a.localeCompare(b))) valueChangedBySource[s] = set.size;
+  return { byAction, byChange, sourceShift, writeRows: plan.filter(isWrite).length, changedBundles: bundles.size, valueChangedBySource };
 }
 
 /**
- * 차단기(설계서 §5-⑥): 바뀔 단지 > 50곳 · 명단 행 수가 전 회차의 50% 미만.
- * @param {{ changedBundles: number; lists: Array<{ source: string; rows: number; prevRows: number | null }> }} p
+ * 차단기(설계서 §5-⑥ · 세션693 보완 B1): 출처마다 **값이 바뀌는** 묶음 수 > 출처 기준(`GOVLIST_BREAKER_LIMITS` — 대구·충남 10 임시 · 경기 50)
+ * · 명단 행 수가 전 회차의 50% 미만. 기준월만 새로 쓰는 묶음(「값 같음·칸만 바뀜」)은 평시 달마다 있는 일이라 세지 않는다(쓰기는 그대로).
+ * @param {{ valueChangedBySource: Record<string, number>; lists: Array<{ source: string; rows: number; prevRows: number | null }> }} p
  * @returns {{ tripped: boolean; reasons: string[] }}
  */
-export function breaker({ changedBundles, lists }) {
+export function breaker({ valueChangedBySource, lists }) {
   /** @type {string[]} */ const reasons = [];
-  if (changedBundles > GOVLIST_BREAKER_MAX_BUNDLES) reasons.push(`바뀔 단지 ${changedBundles}곳 > ${GOVLIST_BREAKER_MAX_BUNDLES}곳`);
+  for (const [source, n] of Object.entries(valueChangedBySource)) {
+    const limit = breakerLimitOf(source);
+    if (n > limit) reasons.push(`${source} 값 바뀔 단지 ${n}곳 > ${limit}곳`);
+  }
   for (const l of lists) if (l.prevRows != null && l.rows < l.prevRows * GOVLIST_DROP_RATIO) reasons.push(`${l.source} 명단 행 ${l.rows} < 전 회차 ${l.prevRows} × ${GOVLIST_DROP_RATIO}`);
   return { tripped: reasons.length > 0, reasons };
 }

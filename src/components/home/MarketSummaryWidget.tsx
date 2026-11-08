@@ -1,6 +1,7 @@
 import { memo, useMemo, useState } from "react";
 import { C, F } from "@/theme";
 import { WidgetCard } from "./WidgetCard";
+import { countsAsUnsold } from "@/utils/unsoldState.mjs";
 import type { ScoredApt } from "@/types/hooks";
 
 /** 가격대 칸 클릭 = 그 예산으로 목록 보기. 억 단위(BudgetPanel 과 같은 단위). */
@@ -73,7 +74,8 @@ export type BudgetBucket = { label: string; count: number; minEok: number | null
  * 다섯 칸 전부 어긋난 것을 실측으로 잡았다(3~5억 819 표시 → 729 노출, 3억미만 184 → 219로
  * 되레 증가). 원인이 셋이었고 그 셋을 여기서 맞춘다:
  *
- *   ① **모집단** — 목록은 `hideNoUnsold` 기본 켜짐이라 `unsold > 0` 인 1,691곳만 보여준다.
+ *   ① **모집단** — 목록은 `hideNoUnsold` 기본 켜짐이라 `unsold > 0` 인 1,691곳만 보여준다
+ *      (세션689: + 명단 등재·수 비공개 — 판정은 목록과 같은 `countsAsUnsold`).
  *      위젯이 전체 1,895곳을 세면 손님이 본 수보다 적게 나온다 → 같은 조건으로 센다.
  *   ② **경계** — 목록 필터는 `<= max`(폐구간)인데 위젯이 `< hi`(반개구간)였다. 정확히
  *      3·5·7·10억인 단지(실측 4+2+1곳)가 어긋난다 → 목록과 같은 폐구간으로 맞춘다.
@@ -91,7 +93,8 @@ export function buildBudgetBuckets(scored: ScoredApt[]): BudgetBucket[] {
       // 가격이 없거나 0 이하면 제외 — "3억 미만"에 쓸어 담지 않는다
       if (typeof p !== "number" || !Number.isFinite(p) || p <= 0) return false;
       // 목록의 기본값(hideNoUnsold)과 같은 모집단 — 미분양이 없는 단지는 목록에 안 뜬다
-      if (!(Number(s.apt.unsold ?? 0) > 0)) return false;
+      //   세션689 PR-3: 목록 필터와 **같은 함수**(countsAsUnsold — 명단 등재·수 비공개도 「있음」, 👤 Q8)
+      if (!countsAsUnsold(s.apt)) return false;
       return p >= lo && p <= hi; // 폐구간 — filterEngine 과 같은 잣대
     }).length;
     return { label: b.label, count, minEok: b.minEok, maxEok: b.maxEok };

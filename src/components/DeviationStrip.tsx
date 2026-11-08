@@ -2,7 +2,7 @@ import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { HelpHint } from "./HelpHint";
 import { DeviationRow, ROW_HEIGHT } from "./DeviationRow";
-import { computeDeviation, estimatedDeviation, resolveDeviationInput } from "@/lib/deviation";
+import { computeDeviation, estimatedDeviation, resolveDeviationInput, withMissingText } from "@/lib/deviation";
 import type { DeviationFieldSpec } from "@/constants/deviationFields";
 import type { RegionalStats } from "@/scoring/regionalStats";
 import type { Apt } from "@/types/scoring";
@@ -107,9 +107,10 @@ export const DeviationStrip = memo(function DeviationStrip({
           //   필드명으로 분기하지 않는다 — 이 컴포넌트는 어느 필드인지 모른 채 그린다(G2 주석과 같은 원칙).
           //   추정치는 지역 분포와 견주지 않는다 — 추정 오차가 분포 폭보다 커서 막대 위치가 소음이다.
           const input = resolveDeviationInput(spec, raw);
+          // 세션689: 값이 빈 줄은 spec.missingText 가 아는 사실(미분양 「비공개」)로 끝 글자만 바꾼다.
           const dev = input.estimated
             ? estimatedDeviation(spec, input.value)
-            : computeDeviation(spec, input.value, region, regionStats);
+            : withMissingText(spec, raw, computeDeviation(spec, input.value, region, regionStats));
           return { spec, input, dev };
         })
         // 세션651: 값이 없으면 줄을 안 그리는 필드(`hideWhenMissing` — 같은 단지 전세가율)는 "미수집" 대신 뺀다.

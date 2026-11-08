@@ -47,7 +47,7 @@ export const UnsoldChart = memo(function UnsoldChart({ apartmentId, siblingIds, 
 
   if (!apartmentId) return null;
   // 현재 미분양 값이 없는(hold·출처 없이 비움) 단지의 옛 이력은 "지금도 미분양이 줄고 있다"로 읽힌다 — 세션577 검사관 C 1-2.
-  // unsold_source 는 화면에 안 오므로 현재 값 null 로 판정한다. 0 은 "자료 있음"이라 그린다.
+  // 이 부품은 현재 값 `unsold` 만 받는다(DetailModal 이 apt.unsold 를 넘김) — hold 와 govlist 비공개(수 비공개 등재)는 둘 다 unsold null 이라 이 판정으로 같이 걸린다. 0 은 "자료 있음"이라 그린다.
   if (unsold == null) return null;
   if (loading)
     return (
