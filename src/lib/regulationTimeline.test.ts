@@ -62,7 +62,7 @@ describe("buildRegulationTimeline — 사건 순서(A-2)·future(A-3)", () => {
     const t = buildRegulationTimeline({ zone: "normal", region: "인천", gu: "연수구", moveIns: [], now: NOW });
     expect(t.events.map((e) => e.kind)).toEqual(["metro-cap", "today"]);
     expect(t.events[0].title).toBe("수도권 주택구입 대출 최대 6억 시행");
-    expect(t.events[0].note).toBe("집값과 상관없이 6억까지만 (서울·경기·인천)");
+    expect(t.events[0].note).toBe("최대 6억 (서울·경기·인천) · 2025-10-16부터 15억 초과 4억·25억 초과 2억");
   });
 
   it("규제인데 공고일 없음 → notice-missing(date null)이 「오늘」 바로 앞", () => {
@@ -190,7 +190,7 @@ describe("buildRegulationTimeline — 결론(A-4·A-5)", () => {
 
 // 세션706 #4·#5 — 수도권 6억 한도 시행(2025-06-28) 전날까지 공고 = 6억 한도 없이 종전 규정이 될 수 있다(금융위 2026-10-15 보도자료)
 describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션706)", () => {
-  const OLD_NOTE = "집값과 상관없이 6억까지만 (서울·경기·인천)";
+  const OLD_NOTE = "최대 6억 (서울·경기·인천) · 2025-10-16부터 15억 초과 4억·25억 초과 2억";
   const NEW_NOTE = "이 단지는 그 전에 공고 → 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)";
   const metroNote = (t: ReturnType<typeof buildRegulationTimeline>) =>
     t.events.find((e) => e.kind === "metro-cap")?.note;

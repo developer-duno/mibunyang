@@ -173,7 +173,8 @@ export function buildRegulationTimeline(input: {
         title: `수도권 주택구입 대출 최대 ${cap}억 시행`,
         note: metroCapWaived
           ? `이 단지는 그 전에 공고 → ${cap}억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)`
-          : `집값과 상관없이 ${cap}억까지만 (서울·경기·인천)`,
+          : // 6·27 당시엔 집값과 상관없이 6억이었지만 10·15(시행 10-16)부터 시가별 — 결론 줄과 같은 tierText(세션706 재검사 🟠)
+            `최대 ${cap}억 (서울·경기·인천) · ${dayAfter(GRANDFATHER_RULES.default.cutoff)}부터 ${tierText}`,
         mine: false,
       })
     );
