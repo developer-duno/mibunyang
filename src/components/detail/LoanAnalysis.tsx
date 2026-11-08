@@ -186,9 +186,10 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
               2.4억, 신혼·2자녀 이상 3.2억), 금리 연 2.85~4.15% {`(${LOAN_RULES_BASIS} 기준 · 주택도시기금)`}
             </div>
             <div style={{ marginBottom: 6 }}>
-              <strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 연소득 7천만원 이하(신혼
-              8.5천만원), 주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리{" "}
-              {`(${LOAN_RULES_BASIS} 기준 · 한국주택금융공사)`}
+              {/* 원문: 한국주택금융공사 보금자리론 안내(hf.go.kr/ko/sub01/sub01_01_01.do · 2026-11-09 조회 · 세션706) */}
+              <strong style={{ color: C.text }}>보금자리론</strong> — 무주택자·1주택자, 부부합산 연소득 7천만원
+              이하(신혼 8.5천만원·1자녀 9천만원·다자녀 1억원, 신혼가구는 부부 중 1인 연소득이 7천만원 이하여도 가능),
+              주택가격 6억 이하, 최대 3.6억(생애최초 4.2억), 고정금리 {`(${LOAN_RULES_BASIS} 기준 · 한국주택금융공사)`}
             </div>
             <div style={{ marginBottom: 6 }}>
               자세한 조건은 주택도시기금·한국주택금융공사 누리집에서 확인할 수 있어요.

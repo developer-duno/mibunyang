@@ -9,7 +9,9 @@ import {
   STRESS_RATE_LOCAL,
   STRESS_RATE_LOCAL_UNTIL,
   STRESS_RATE_METRO,
+  METRO_CAP_CUTOFF,
   dayAfter,
+  dayBefore,
   earliestIsoDate,
   grandfatherRule,
   isNonHousing,
@@ -39,19 +41,19 @@ describe("loanRules 상수 — 원문 숫자 그대로", () => {
     expect(DEFAULT_PAYMENT_SPLIT).toEqual({ contract: 10, interim: 60, balance: 30 });
   });
 
-  it("기준일 글자는 한 곳 — '2026년 10월'", () => {
-    expect(LOAN_RULES_BASIS).toBe("2026년 10월");
+  it("기준일 글자는 한 곳 — '2026년 11월'(11-09 공식 대조 · 세션706)", () => {
+    expect(LOAN_RULES_BASIS).toBe("2026년 11월");
   });
 
-  it("경과규정 표 — 기본 2025-10-15·70% · 7/1 지정 3곳 2026-06-30·70% · 서울 4구 2025-09-07·50%·금액 뚜껑 유지", () => {
+  it("경과규정 표 — 기본 2025-10-15·70% · 7/1 지정 3곳 2026-06-30·70% · 서울 4구 2025-09-07·50%·「LTV 강화」 갈래", () => {
     expect(GRANDFATHER_RULES.default).toEqual({
       cutoff: "2025-10-15",
       rate: 0.7,
       eventLabel: "규제지역 지정",
-      keepRegulatedCaps: false,
+      isLtvTightening: false,
     });
-    const g4 = { cutoff: "2025-09-07", rate: 0.5, eventLabel: "규제지역 LTV 강화", keepRegulatedCaps: true };
-    const d71 = { cutoff: "2026-06-30", rate: 0.7, eventLabel: "규제지역 지정", keepRegulatedCaps: false };
+    const g4 = { cutoff: "2025-09-07", rate: 0.5, eventLabel: "규제지역 LTV 강화", isLtvTightening: true };
+    const d71 = { cutoff: "2026-06-30", rate: 0.7, eventLabel: "규제지역 지정", isLtvTightening: false };
     expect(GRANDFATHER_RULES.byZone).toEqual({
       "서울 강남구": g4,
       "서울 서초구": g4,
@@ -95,6 +97,14 @@ describe("날짜 도우미 — new Date(문자열) 없이", () => {
     expect(dayAfter("2025-09-07")).toBe("2025-09-08");
     expect(dayAfter("2026-06-30")).toBe("2026-07-01");
     expect(dayAfter("2024-02-28")).toBe("2024-02-29");
+  });
+
+  it("dayBefore — 시행일 → 기준일(전일) · 월·해 넘김 · 수도권 6억 기준일은 2025-06-27(시행 2025-06-28 의 전날)", () => {
+    expect(dayBefore("2025-06-28")).toBe("2025-06-27");
+    expect(dayBefore("2025-07-01")).toBe("2025-06-30");
+    expect(dayBefore("2026-01-01")).toBe("2025-12-31");
+    expect(dayBefore("2024-03-01")).toBe("2024-02-29");
+    expect(METRO_CAP_CUTOFF).toBe("2025-06-27");
   });
 
   it("입주월 — 형식 이상은 모름(null), 이번 달보다 앞일 때만 '시작됨', KST 이번 달", () => {
@@ -170,9 +180,16 @@ describe("지역 판정", () => {
 });
 
 describe("ltvForPresale — 큰 숫자는 지금 규정, 종전은 따로 (대조군 · 라이브 apartments.json 2026-10-25)", () => {
-  it("비규제 ah-2022910270 인천 남동구 4억 6,268만 → 지금 70% = 3억 2,388만 · 종전 없음", () => {
+  it("비규제 ah-2022910270 인천 남동구 4억 6,268만 · 2022 공고 → 지금 70% = 3억 2,388만 · 종전도 같은 값(6억 아래라 줄은 안 보임)", () => {
     const r = ltvForPresale({ price: 46268, zone: "normal", region: "인천", gu: "남동구", firstDate: "2022-07-08" });
-    expect(r).toEqual({ current: { amount: 32388, rate: 0.7 }, grandfathered: null });
+    expect(r.current).toEqual({ amount: 32388, rate: 0.7 });
+    expect(r.grandfathered?.amount).toBe(32388);
+    expect(r.grandfathered?.eventLabel).toBe("수도권 6억 한도");
+  });
+
+  it("지방 비규제는 6/27 전 공고여도 종전 없음(수도권 6억 한도가 원래 없다)", () => {
+    const r = ltvForPresale({ price: 90000, zone: "normal", region: "부산", gu: "해운대구", firstDate: "2022-07-08" });
+    expect(r).toEqual({ current: { amount: 63000, rate: 0.7 }, grandfathered: null });
   });
 
   it("중구 ah-2021910042 3억 8,850만 · 첫 공고 2021-05-04 → 지금 40% = 1억 5,540만 · 종전 70% 2억 7,195만", () => {
@@ -193,6 +210,7 @@ describe("ltvForPresale — 큰 숫자는 지금 규정, 종전은 따로 (대�
       eventLabel: "규제지역 지정",
       firstDate: "2021-05-04",
       latestDate: "2022-12-19",
+      metroCapWaived: true,
     });
   });
 
@@ -210,19 +228,46 @@ describe("ltvForPresale — 큰 숫자는 지금 규정, 종전은 따로 (대�
     expect(r.grandfathered?.eventLabel).toBe("규제지역 LTV 강화");
   });
 
-  it("서초 ap-6021215 15억 1,440만 · 2024-08-16 → 지금 4억 · 종전 50% 도 15억 초과 4억 뚜껑 → 같은 값", () => {
+  // 세션706 — 4구 종전 금액에 10·15 시가별 한도(15억 초과 4억·25억 초과 2억)를 씌우지 않는다(10·15 FAQ 13쪽 경과규정 표).
+  // ⚠️ 변이 대상: 시가별 한도를 되살리면 112,250 → 40,000 으로 빨강.
+  it("서초 2024-08-16 공고 22.45억 → 지금 4억 · 종전 50% = 11억 2,250만(시가별 한도 없음 · 6/27 전이라 6억 한도도 없음)", () => {
     const r = ltvForPresale({
+      price: 224500,
+      zone: "overheated",
+      region: "서울",
+      gu: "서초구",
+      firstDate: "2024-08-16",
+    });
+    expect(r.current).toEqual({ amount: 40000, rate: 0.4 });
+    expect(r.grandfathered?.amount).toBe(112250);
+    expect(r.grandfathered?.rate).toBe(0.5);
+    expect(r.grandfathered?.metroCapWaived).toBe(true);
+    // 15억대도 같다 — 옛 계산은 4억 뚜껑으로 지금과 같은 값이었다
+    const s = ltvForPresale({
       price: 151440,
       zone: "overheated",
       region: "서울",
       gu: "서초구",
       firstDate: "2024-08-16",
     });
-    expect(r.current.amount).toBe(40000);
-    expect(r.grandfathered?.amount).toBe(40000);
+    expect(s.current.amount).toBe(40000);
+    expect(s.grandfathered?.amount).toBe(75720);
   });
 
-  it("강북 ah-2022910077 9억 4,573만 — 큰 숫자는 첫 공고와 상관없이 3억 7,829만 · 종전(2021 첫 공고)은 6억", () => {
+  it("용산 2025-07-10 공고 29.83억 → 지금 2억 · 종전 min(50% 14억 9,150만, 6억) = 6억(6/27 뒤 공고라 6억 한도는 붙음)", () => {
+    const r = ltvForPresale({
+      price: 298300,
+      zone: "overheated",
+      region: "서울",
+      gu: "용산구",
+      firstDate: "2025-07-10",
+    });
+    expect(r.current).toEqual({ amount: 20000, rate: 0.4 });
+    expect(r.grandfathered?.amount).toBe(60000);
+    expect(r.grandfathered?.metroCapWaived).toBe(false);
+  });
+
+  it("강북 ah-2022910077 9억 4,573만 — 큰 숫자는 첫 공고와 상관없이 3억 7,829만 · 종전(2021 첫 공고)은 70% 6억 6,201만(6억 한도 없음)", () => {
     const r = ltvForPresale({
       price: 94573,
       zone: "overheated",
@@ -232,7 +277,7 @@ describe("ltvForPresale — 큰 숫자는 지금 규정, 종전은 따로 (대�
       latestDate: "2026-06-12",
     });
     expect(r.current.amount).toBe(37829);
-    expect(r.grandfathered?.amount).toBe(60000);
+    expect(r.grandfathered?.amount).toBe(66201);
     expect(r.grandfathered?.latestDate).toBe("2026-06-12");
     const late = ltvForPresale({
       price: 94573,
@@ -266,6 +311,48 @@ describe("ltvForPresale — 큰 숫자는 지금 규정, 종전은 따로 (대�
     expect(at("경기", "구리시", "2026-07-01")).toBe(false);
     expect(at("서울", "강남구", "2025-09-07")).toBe(true);
     expect(at("서울", "강남구", "2025-09-08")).toBe(false);
+  });
+
+  // 세션706 #2 — 수도권 6억 한도 경과규정. 기준일 2025-06-27 은 시행일 상수에서 계산한 값.
+  // ⚠️ 변이 대상: `first <= METRO_CAP_CUTOFF` 를 `<` 로 바꾸면 6/27 당일 단언이 빨강.
+  it("수도권 6억 — 6/27 당일 공고는 6억 한도 없음 · 6/28 공고는 6억 한도(규제·비규제 둘 다)", () => {
+    const reg = (d: string) =>
+      ltvForPresale({ price: 100000, zone: "overheated", region: "서울", gu: "중구", firstDate: d }).grandfathered;
+    expect(reg("2025-06-27")).toMatchObject({ amount: 70000, metroCapWaived: true });
+    expect(reg("2025-06-28")).toMatchObject({ amount: 60000, metroCapWaived: false });
+    const nor = (d: string) =>
+      ltvForPresale({ price: 87300, zone: "normal", region: "경기", gu: "평택시", firstDate: d }).grandfathered;
+    expect(nor("2025-06-27")?.amount).toBe(61110);
+    expect(nor("2025-06-28")).toBeNull();
+  });
+
+  it("평택 2024-02-26 공고 비규제 8.73억 → 지금 min(6억 1,110만, 6억) = 6억 · 종전 70% 6억 1,110만 · 사건 「수도권 6억 한도」 2025-06-27/28", () => {
+    const r = ltvForPresale({
+      price: 87300,
+      zone: "normal",
+      region: "경기",
+      gu: "평택시",
+      firstDate: "2024-02-26",
+    });
+    expect(r.current).toEqual({ amount: 60000, rate: 0.7 });
+    expect(r.grandfathered).toEqual({
+      rate: 0.7,
+      amount: 61110,
+      cutoff: "2025-06-27",
+      effectiveDate: "2025-06-28",
+      eventLabel: "수도권 6억 한도",
+      firstDate: "2024-02-26",
+      latestDate: "2024-02-26",
+      metroCapWaived: true,
+    });
+    // 대조군 — 2025-07-10 공고는 6억 그대로 · 종전 없음
+    const late = ltvForPresale({ price: 87300, zone: "normal", region: "경기", gu: "평택시", firstDate: "2025-07-10" });
+    expect(late).toEqual({ current: { amount: 60000, rate: 0.7 }, grandfathered: null });
+  });
+
+  it("규제지역인데 서울 구를 모르면 6/27 전 공고여도 종전 없음(수도권 규칙으로 메우지 않는다)", () => {
+    const r = ltvForPresale({ price: 100000, zone: "overheated", region: "서울", gu: null, firstDate: "2021-01-01" });
+    expect(r.grandfathered).toBeNull();
   });
 
   it("공고일 형식 이상('2025-10'·''·null)은 종전 없음", () => {

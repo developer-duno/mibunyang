@@ -72,7 +72,7 @@ export const RegulationTimeline = memo(function RegulationTimeline({
   // 잔금 카드(FundingPlanner)와 같은 식 — 첫·최근 공고일 · 입주월 후보
   const firstDate = earliestIsoDate(apt.presaleRecruitDate, unit.firstRecruitDate);
   const latestDate = latestIsoDate(apt.presaleRecruitDate, unit.schedule?.recruit_date, unit.firstRecruitDate);
-  const { verdict, events } = buildRegulationTimeline({
+  const { verdict, events, metroCapWaived } = buildRegulationTimeline({
     zone,
     region: apt.region as string | null | undefined,
     gu: apt.gu as string | null | undefined,
@@ -99,16 +99,18 @@ export const RegulationTimeline = memo(function RegulationTimeline({
   const regSource =
     rule == null || rule.cutoff === GRANDFATHER_RULES.default.cutoff
       ? "금융위 10·15 대책 FAQ"
-      : rule.keepRegulatedCaps
+      : rule.isLtvTightening
         ? "금융위 9·7 대책 FAQ"
         : `금융위 ${rule.cutoff} 추가 지정 FAQ`;
   const basis =
-    zone !== "normal"
+    (zone !== "normal"
       ? `${LOAN_RULES_BASIS} 기준 · ${regSource}` +
         (verdict.kind === "grandfather-may" ? " · 지정일 뒤 전매로 산 분양권은 종전 규정 제외" : "")
       : verdict.kind === "metro-free"
         ? `${LOAN_RULES_BASIS} 기준 · 금융위 가계부채 관리 강화 방안(${METRO_LOAN_CAP_SINCE} 시행)`
-        : `${LOAN_RULES_BASIS} 기준 · 금융위원회공고 제2026-362호(3단계 스트레스 DSR)`;
+        : `${LOAN_RULES_BASIS} 기준 · 금융위원회공고 제2026-362호(3단계 스트레스 DSR)`) +
+    // 「6억 한도 없이」 문장(결론·수도권 6억 사건)이 나온 단지만 — 그 경과규정의 출처(세션706)
+    (metroCapWaived ? " · 경과규정 = 금융위 2026-10-15 가계부채 점검회의 보도자료" : "");
   const vc = VERDICT_COLOR[verdict.kind];
 
   return (
