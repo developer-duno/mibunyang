@@ -52,7 +52,7 @@ describe("RegulationTimeline", () => {
     const verdict = getByTestId("reg-verdict");
     expect(verdict.getAttribute("data-kind")).toBe("grandfather-may");
     expect(verdict.textContent).toBe(
-      "첫 공고가 지정보다 앞서요 → 집단대출은 종전 70% 가 될 수 있어요(금융사 심사) · 6/27까지 공고라 6억 한도 없이"
+      "첫 공고가 지정보다 앞서요 → 집단대출은 종전 70% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이"
     );
     const items = Array.from(getByTestId("reg-timeline").querySelectorAll("li"));
     expect(items.map((li) => li.getAttribute("data-kind"))).toEqual([
@@ -64,7 +64,7 @@ describe("RegulationTimeline", () => {
     ]);
     expect(items.map((li) => li.getAttribute("data-mine"))).toEqual(["true", "false", "false", "false", "true"]);
     expect(items.map((li) => li.getAttribute("data-future"))).toEqual(["false", "false", "false", "false", "true"]);
-    // 지정 전 공고(grandfather-may)일 때만 전매 꼬리 · 6/27까지 공고라 경과규정 출처 꼬리(세션706 #6)
+    // 지정 전 공고(grandfather-may)일 때만 전매 꼬리 · 2025-06-27까지 공고라 경과규정 출처 꼬리(세션706 #6)
     expect(getByTestId("reg-basis").textContent).toBe(
       "2026년 11월 기준 · 금융위 10·15 대책 FAQ · 지정일 뒤 전매로 산 분양권은 종전 규정 제외 · 경과규정 = 금융위 2026-10-15 가계부채 점검회의 보도자료"
     );
@@ -88,7 +88,7 @@ describe("RegulationTimeline", () => {
       />
     );
     expect(pt.getByTestId("reg-verdict").textContent).toBe(
-      "비규제라 LTV 70% 예요 · 6/27까지 공고라 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)"
+      "비규제라 LTV 70% 예요 · 2025-06-27까지 공고라 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)"
     );
     expect(pt.getByTestId("reg-basis").textContent).toBe(
       "2026년 11월 기준 · 금융위 가계부채 관리 강화 방안(2025-06-28 시행) · 경과규정 = 금융위 2026-10-15 가계부채 점검회의 보도자료"

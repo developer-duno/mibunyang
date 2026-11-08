@@ -1,4 +1,5 @@
 import {
+  applyPriceTierCap,
   calcLTV,
   isMetroRegion,
   METRO_LOAN_CAP,
@@ -162,6 +163,13 @@ export function dayBefore(iso: string): string {
  * 이 날까지 입주자모집공고한 수도권 사업장은 종전 규정(6억 한도 없음)이 될 수 있다 — 금융위 2026-10-15 가계부채 점검회의 보도자료
  * (https://www.fsc.go.kr/no010101/87939) "6.27대책 등 대출규제 강화 과정에서 … 경과규정*을 마련하여, 분양 당시의 대출규제가
  * 종전대로 적용되도록 하고 있으나" · "* 신축 분양의 경우 '규제 시행일 전까지 입주자 모집공고'가 된 경우 등 종전규정 적용"(세션706).
+ * 반대로 읽히는 옛 원문 두 줄:
+ *   - 금융위 6·27 FAQ(`250627faq` 120~121줄) "중도금·이주비 대출의 경우, 시행일 전까지 입주자 모집공고가 된 경우* 등은
+ *     종전규정 적용" — 잔금대출은 적지 않았다(중도금·이주비만).
+ *   - 금융위 10·15 FAQ 3-3 "6.27대책당시 중도금대출은 6억원 대출한도 규제를 적용하지 않았는 바, 금번 규제에서도 제외됨
+ *     (잔금대출 전환시 적용)".
+ *   2026-10-15 보도자료가 더 새 자료이고 "될 수 있어요(금융사 심사)"로 물러선 문장이라 2026-10-15 보도자료를 따른다
+ *   (👤 2026-11-09 결정).
  */
 export const METRO_CAP_CUTOFF = dayBefore(METRO_LOAN_CAP_SINCE);
 
@@ -227,8 +235,9 @@ export type PresaleLtv = {
 /**
  * 분양 단지의 잔금 때 지역 한도(LTV) — 지금 규정 + 경과규정(종전) 값(세션659 결정 16·18·19 · 새 계산기 전용).
  * 첫 공고일은 "묶음 = 한 사업장"일 때 그 사업장의 첫 공고다. 큰 숫자는 지금 규정이라 이 날짜가 숫자를 부풀리지 않는다.
- * 종전 금액 = 분양가 × 종전 비율 — 10·15 시가별 한도(4억·2억)는 씌우지 않고, 수도권 6억 한도는 첫 공고가 `METRO_CAP_CUTOFF`
- * 뒤일 때만 씌운다(세션706). 비규제 수도권도 6/27 까지 공고면 종전 줄(70%, 6억 한도 없음)이 생긴다.
+ * 종전 금액 = 분양가 × 종전 비율 — 10·15 시가별 한도(4억·2억)는 첫 공고가 10·15 시행 전일(`GRANDFATHER_RULES.default.cutoff`)
+ * 뒤인 수도권·규제지역 단지에만 씌우고(그 전 공고는 10·15 FAQ 13쪽 경과규정으로 안 씌움), 수도권 6억 한도는 첫 공고가
+ * `METRO_CAP_CUTOFF` 뒤일 때만 씌운다(세션706). 비규제 수도권도 6/27 까지 공고면 종전 줄(70%, 6억 한도 없음)이 생긴다.
  */
 export function ltvForPresale({
   price,
@@ -256,6 +265,9 @@ export function ltvForPresale({
   const rule = zone === "normal" ? (metroCapWaived ? METRO_CAP_GRANDFATHER : null) : grandfatherRule(zone, region, gu);
   if (!rule || !first || first > rule.cutoff) return { current, grandfathered: null };
   let amount = Math.round(price * rule.rate);
+  // 10·15 시행 뒤 공고면 시가별 한도도 종전 금액에 붙는다(2026-07-01 추가 지정 3곳의 2025-10-16~2026-06-30 공고)
+  if ((metro || zone !== "normal") && first > GRANDFATHER_RULES.default.cutoff)
+    amount = applyPriceTierCap(amount, price);
   if (metro && !metroCapWaived) amount = Math.min(amount, METRO_LOAN_CAP);
   return {
     current,

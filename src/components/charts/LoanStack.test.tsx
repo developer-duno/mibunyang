@@ -70,14 +70,14 @@ describe("LoanStack — 금액은 만원까지 (세션593 D1)", () => {
   });
 
   it("조각이 30% 보다 좁으면 그 조각 안 글자는 비우고 아래 줄에만 금액 (넘침 방지)", () => {
-    // 경기 비규제 30억 → 수도권 최대 6억 = 20% 조각
+    // 경기 비규제 30억 → 수도권 25억 초과 2억 = 7% 조각(세션706 — 비규제 수도권도 시가별 한도)
     render(<LoanStack price={300000} region="경기" gu="평택시" isRegulated={false} />);
     const [loanSeg, ownSeg] = [
       ...(screen.getByRole("img").firstElementChild?.firstElementChild as HTMLElement).children,
     ] as HTMLElement[];
     expect(loanSeg.textContent).toBe("");
-    expect(ownSeg.textContent).toBe("내 돈 24억");
-    expect(screen.getByText("빌릴 수 있는 돈 6억")).toBeInTheDocument();
+    expect(ownSeg.textContent).toBe("내 돈 28억");
+    expect(screen.getByText("빌릴 수 있는 돈 2억")).toBeInTheDocument();
   });
 });
 
@@ -92,9 +92,23 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
     expect(screen.getByText("빌릴 수 있는 돈 6억")).toBeInTheDocument();
     // 6억 한도로 깎였으면 "비규제지역 기준 최대 60%" 처럼 비규제 규칙이 바뀐 것처럼 쓰지 않는다
     expect(
-      screen.getByText(/비규제지역이지만 수도권 주택구입 대출은 최대 6억이라 분양가의 60%까지 빌릴 수 있어요/)
+      screen.getByText(
+        /비규제지역이지만 수도권 주택구입 대출은 이 집값이면 최대 6억이라 분양가의 60%까지 빌릴 수 있어요/
+      )
     ).toBeInTheDocument();
     expect(screen.queryByText(/비규제지역 기준 최대 60%/)).toBeNull();
+  });
+
+  // 세션706 보완 R1·R3 — 문장 금액은 실제로 걸린 한도(옛 글자 「최대 6억」 고정이면 4억 단지에서 거짓)
+  it("인천 연수구 비규제 21.39억 → 4억 · 문장도 「이 집값이면 최대 4억」", () => {
+    render(<LoanStack price={213900} region="인천" gu="연수구" isRegulated={false} />);
+    expect(screen.getByText("빌릴 수 있는 돈 4억")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /비규제지역이지만 수도권 주택구입 대출은 이 집값이면 최대 4억이라 분양가의 19%까지 빌릴 수 있어요/
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/최대 6억이라/)).toBeNull();
   });
 
   it("6억 한도에 안 걸리면 옛 문장 그대로 — 경기 비규제 5억 → 최대 70%", () => {

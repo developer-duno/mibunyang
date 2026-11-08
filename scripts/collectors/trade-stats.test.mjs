@@ -637,6 +637,10 @@ describe("calcDsr40pass — 대출액은 화면 규정과 같다 (세션619 PR-E
     expect(r.zone).toBe("overheated");
     expect(r.loan).toBe(40000);
   });
+  it("비규제 수도권 시가별 한도 — 인천 21.39억 → 4억 · 경기 30억 → 2억 (세션706)", () => {
+    expect(calcDsr40pass({ price: 213900, pir: 30, is_regulated: false, region: "인천", gu: "연수구" }).loan).toBe(40000);
+    expect(calcDsr40pass({ price: 300000, pir: 30, is_regulated: false, region: "경기", gu: "평택시" }).loan).toBe(20000);
+  });
   it("지방 비규제 15억 → 한도 없이 70% = 10.5억", () => {
     expect(calcDsr40pass({ price: 150000, pir: 10, is_regulated: false, region: "부산", gu: "해운대구" }).loan).toBe(105000);
   });
@@ -650,10 +654,12 @@ describe("calcDsr40pass — 대출액은 화면 규정과 같다 (세션619 PR-E
     // 칸이 아예 없어도(undefined) 같은 길
     expect(calcDsr40pass({ price: 200000, pir: 30, region: "서울", gu: "강남구" }).zone).toBe("overheated");
   });
-  it("is_regulated 가 참/거짓이면 이름보다 먼저 — 서울 강남구라도 false 면 비규제(70% → 수도권 6억)", () => {
-    const r = calcDsr40pass({ price: 200000, pir: 30, is_regulated: false, region: "서울", gu: "강남구" });
+  it("is_regulated 가 참/거짓이면 이름보다 먼저 — 서울 강남구라도 false 면 비규제(10억: 70% → 수도권 6억 · 규제였으면 4억)", () => {
+    const r = calcDsr40pass({ price: 100000, pir: 30, is_regulated: false, region: "서울", gu: "강남구" });
     expect(r.zone).toBe("normal");
     expect(r.loan).toBe(60000);
+    // 20억이면 비규제 수도권도 10·15 시가별 한도 15억 초과 4억(세션706 — 10·15 FAQ "수도권·규제지역내 … 차등화")
+    expect(calcDsr40pass({ price: 200000, pir: 30, is_regulated: false, region: "서울", gu: "강남구" }).loan).toBe(40000);
   });
   it("통과 판정 = (연 상환액 ÷ 연소득) ≤ 40% — 규제 서울 20억·PIR 30 은 이제 통과(옛 70% 식이면 미통과)", () => {
     const r = calcDsr40pass({ price: 200000, pir: 30, is_regulated: true, region: "서울", gu: "강남구" });

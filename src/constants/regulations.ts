@@ -32,7 +32,7 @@ export const METRO_REGIONS: readonly string[] = ["서울", "경기", "인천"];
 // 규제지역 LTV 비율 (무주택자 기준, 10·15 대책)
 export const REGULATED_LTV_RATE = 0.4;
 
-// 규제지역 주택가격별 대출한도 캡 (만원 단위). 비싼 구간부터 검사한다.
+// 수도권·규제지역 주택가격별 대출한도 캡 (만원 단위 · 10·15 대책 — 이름은 옛 「규제지역 전용」 때 그대로). 비싼 구간부터 검사한다.
 export const REGULATED_LTV_CAPS: ReadonlyArray<{ overPrice: number; cap: number }> = [
   { overPrice: 250000, cap: 20000 }, // 25억 초과 → 2억
   { overPrice: 150000, cap: 40000 }, // 15억 초과 → 4억
@@ -84,21 +84,23 @@ export function isMetroRegion(region?: string | null): boolean {
  * LTV 대출한도 계산 (만원 단위, **무주택자 기준** — 실제 한도는 소득·신용·기존 대출에 따라
  * 더 낮아질 수 있으니 금융기관 확인이 필요하다).
  *
- * - 비규제지역: 70% (금융위 10·15 대책 FAQ)
- * - 규제지역: 40% 단일 비율. 단 집값이 비싸면 금액 자체에 뚜껑이 씌워진다
- *   (15억 초과 4억 / 25억 초과 2억). 2025 「10·15 대책」.
- * - 수도권(서울·경기·인천)은 위 결과에 다시 최대 6억(`METRO_LOAN_CAP`) — 2025-06-28 시행.
+ * - 비규제지역: 70% · 규제지역: 40% (금융위 10·15 대책 FAQ)
+ * - 수도권(서울·경기·인천)·규제지역은 집값이 비싸면 금액 자체에 뚜껑이 씌워진다(15억 초과 4억 / 25억 초과 2억) —
+ *   10·15 FAQ "수도권·규제지역내 주택구입목적 주담대한도를 주택가격(시가)에 따라 차등화
+ *   * 15억원 이하 : 6억원, 15억원 초과~25억원 이하 : 4억원, 25억원 초과 : 2억원" — 비규제 수도권도 대상(세션706).
+ * - 수도권은 그 위에 다시 최대 6억(`METRO_LOAN_CAP`) — 2025-06-28 시행(= 위 「15억 이하 6억」).
  *   그래서 시도(`region`)를 꼭 받는다. 지방 비규제는 금액 한도가 없다.
  */
 export function calcLTV(price: number | null | undefined, zone: Zone, region: string | null | undefined): number {
   const p = price ?? 0;
-  let loan: number;
-  if (zone === "normal") {
-    loan = Math.round(p * NORMAL_LTV);
-  } else {
-    const base = Math.round(p * REGULATED_LTV_RATE);
-    const capped = REGULATED_LTV_CAPS.find((c) => p > c.overPrice);
-    loan = capped ? Math.min(base, capped.cap) : base;
-  }
-  return isMetroRegion(region) ? Math.min(loan, METRO_LOAN_CAP) : loan;
+  const metro = isMetroRegion(region);
+  let loan = Math.round(p * (zone === "normal" ? NORMAL_LTV : REGULATED_LTV_RATE));
+  if (zone !== "normal" || metro) loan = applyPriceTierCap(loan, p);
+  return metro ? Math.min(loan, METRO_LOAN_CAP) : loan;
+}
+
+/** 집값 구간별 금액 한도(`REGULATED_LTV_CAPS` — 15억 초과 4억 / 25억 초과 2억)를 씌운다. 수도권·규제지역 주담대에만 쓴다. */
+export function applyPriceTierCap(loan: number, price: number): number {
+  const capped = REGULATED_LTV_CAPS.find((c) => price > c.overPrice);
+  return capped ? Math.min(loan, capped.cap) : loan;
 }

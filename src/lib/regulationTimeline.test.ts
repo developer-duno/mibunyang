@@ -110,11 +110,11 @@ describe("buildRegulationTimeline — 사건 순서(A-2)·future(A-3)", () => {
 });
 
 describe("buildRegulationTimeline — 결론(A-4·A-5)", () => {
-  it("grandfather-may — 4구(송파 · 2019-08-19) 는 종전 50% · 6/27까지 공고라 6억 한도 없이(세션706)", () => {
+  it("grandfather-may — 4구(송파 · 2019-08-19) 는 종전 50% · 2025-06-27까지 공고라 6억 한도 없이(세션706)", () => {
     const v = buildRegulationTimeline({ ...base, gu: "송파구", firstDate: "2019-08-19" }).verdict;
     expect(v).toEqual({
       kind: "grandfather-may",
-      text: "첫 공고가 지정보다 앞서요 → 집단대출은 종전 50% 가 될 수 있어요(금융사 심사) · 6/27까지 공고라 6억 한도 없이",
+      text: "첫 공고가 지정보다 앞서요 → 집단대출은 종전 50% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이",
     });
   });
 
@@ -181,7 +181,10 @@ describe("buildRegulationTimeline — 결론(A-4·A-5)", () => {
   it("metro-free — 수도권 비규제", () => {
     expect(
       buildRegulationTimeline({ zone: "normal", region: "경기", gu: "평택시", moveIns: [], now: NOW }).verdict
-    ).toEqual({ kind: "metro-free", text: "비규제라 LTV 70% 예요 · 수도권은 집값과 상관없이 6억까지" });
+    ).toEqual({
+      kind: "metro-free",
+      text: "비규제라 LTV 70% 예요 · 수도권은 집값에 따라 최대 6억(15억 초과 4억·25억 초과 2억)",
+    });
   });
 });
 
@@ -193,11 +196,11 @@ describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션7
     t.events.find((e) => e.kind === "metro-cap")?.note;
   const pyeongtaek = { zone: "normal" as const, region: "경기", gu: "평택시", moveIns: [] as unknown[], now: NOW };
 
-  it("규제 grandfather-may + 6/27 전 공고 → 결론 끝에 「 · 6/27까지 공고라 6억 한도 없이」 · 6억 사건 note 새 문장 · 플래그 참", () => {
+  it("규제 grandfather-may + 6/27 전 공고 → 결론 끝에 「 · 2025-06-27까지 공고라 6억 한도 없이」 · 6억 사건 note 새 문장 · 플래그 참", () => {
     const t = buildRegulationTimeline({ ...base, firstDate: "2024-05-10" });
     expect(t.verdict).toEqual({
       kind: "grandfather-may",
-      text: "첫 공고가 지정보다 앞서요 → 집단대출은 종전 70% 가 될 수 있어요(금융사 심사) · 6/27까지 공고라 6억 한도 없이",
+      text: "첫 공고가 지정보다 앞서요 → 집단대출은 종전 70% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이",
     });
     expect(metroNote(t)).toBe(NEW_NOTE);
     expect(t.metroCapWaived).toBe(true);
@@ -227,7 +230,7 @@ describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션7
     const t = buildRegulationTimeline({ ...pyeongtaek, firstDate: "2024-02-26" });
     expect(t.verdict).toEqual({
       kind: "metro-free",
-      text: "비규제라 LTV 70% 예요 · 6/27까지 공고라 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)",
+      text: "비규제라 LTV 70% 예요 · 2025-06-27까지 공고라 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)",
     });
     expect(metroNote(t)).toBe(NEW_NOTE);
     expect(t.metroCapWaived).toBe(true);
@@ -235,7 +238,7 @@ describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션7
 
   it("metro-free + 6/27 뒤 공고(2025-07-10) 대조군 → 결론·note 그대로", () => {
     const t = buildRegulationTimeline({ ...pyeongtaek, firstDate: "2025-07-10" });
-    expect(t.verdict.text).toBe("비규제라 LTV 70% 예요 · 수도권은 집값과 상관없이 6억까지");
+    expect(t.verdict.text).toBe("비규제라 LTV 70% 예요 · 수도권은 집값에 따라 최대 6억(15억 초과 4억·25억 초과 2억)");
     expect(metroNote(t)).toBe(OLD_NOTE);
     expect(t.metroCapWaived).toBe(false);
   });
@@ -249,7 +252,9 @@ describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션7
       expect(metroNote(reg)).toBe(OLD_NOTE);
       expect(reg.metroCapWaived).toBe(false);
       const nor = buildRegulationTimeline({ ...pyeongtaek, firstDate: "2024-02-26", ...x });
-      expect(nor.verdict.text).toBe("비규제라 LTV 70% 예요 · 수도권은 집값과 상관없이 6억까지");
+      expect(nor.verdict.text).toBe(
+        "비규제라 LTV 70% 예요 · 수도권은 집값에 따라 최대 6억(15억 초과 4억·25억 초과 2억)"
+      );
       expect(metroNote(nor)).toBe(OLD_NOTE);
       expect(nor.metroCapWaived).toBe(false);
     }

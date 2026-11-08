@@ -350,6 +350,33 @@ describe("ltvForPresale — 큰 숫자는 지금 규정, 종전은 따로 (대�
     expect(late).toEqual({ current: { amount: 60000, rate: 0.7 }, grandfathered: null });
   });
 
+  // 세션706 보완 R2 — 10·15 시행 전일(2025-10-15) **뒤** 공고면 종전 금액에도 시가별 한도.
+  // ⚠️ 변이 대상: `first > cutoff` 를 `>=` 로 바꾸면 10-15 당일 단언이 빨강 · 조건을 지우면 동탄 단언이 빨강.
+  it("동탄 2026-03-06 공고 17억 → 종전 70% 11.9억에 15억 초과 4억 → 4억 = 지금 4억(줄 숨김 조건)", () => {
+    const r = ltvForPresale({
+      price: 170000,
+      zone: "overheated",
+      region: "경기",
+      gu: "화성시",
+      firstDate: "2026-03-06",
+    });
+    expect(r.current).toEqual({ amount: 40000, rate: 0.4 });
+    expect(r.grandfathered?.amount).toBe(40000);
+    expect(r.grandfathered?.cutoff).toBe("2026-06-30");
+  });
+
+  it("서울 2025-10-15 공고 17억 → 시가별 한도 없음 · 6/27 뒤라 6억 → 종전 6억 · 10-16 공고면 종전 없음", () => {
+    const at = (d: string) =>
+      ltvForPresale({ price: 170000, zone: "overheated", region: "서울", gu: "중구", firstDate: d }).grandfathered;
+    expect(at("2025-10-15")?.amount).toBe(60000);
+    expect(at("2025-10-16")).toBeNull();
+    // 같은 날짜 경계를 7/1 지정 지역으로 — 10-15 공고는 시가별 없이 6억, 10-16 공고는 시가별 4억
+    const dt = (d: string) =>
+      ltvForPresale({ price: 170000, zone: "overheated", region: "경기", gu: "구리시", firstDate: d }).grandfathered;
+    expect(dt("2025-10-15")?.amount).toBe(60000);
+    expect(dt("2025-10-16")?.amount).toBe(40000);
+  });
+
   it("규제지역인데 서울 구를 모르면 6/27 전 공고여도 종전 없음(수도권 규칙으로 메우지 않는다)", () => {
     const r = ltvForPresale({ price: 100000, zone: "overheated", region: "서울", gu: null, firstDate: "2021-01-01" });
     expect(r.grandfathered).toBeNull();

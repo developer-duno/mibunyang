@@ -3,6 +3,7 @@ import {
   METRO_LOAN_CAP,
   METRO_LOAN_CAP_SINCE,
   NORMAL_LTV,
+  REGULATED_LTV_CAPS,
   REGULATED_LTV_RATE,
   type Zone,
 } from "@/constants/regulations";
@@ -55,12 +56,6 @@ function monthDay(iso: string): string {
   return `${m}월 ${d}일`;
 }
 
-/** 'YYYY-MM-DD' → 'M/D' */
-function slashMonthDay(iso: string): string {
-  const [, m, d] = iso.split("-").map(Number);
-  return `${m}/${d}`;
-}
-
 export function buildRegulationTimeline(input: {
   zone: Zone;
   region?: string | null;
@@ -100,7 +95,13 @@ export function buildRegulationTimeline(input: {
   // 규제지역인데 규칙이 없으면(서울 구 모름) 종전 여부를 못 가리니 말하지 않는다.
   const metroCapWaived =
     metro && first != null && first <= METRO_CAP_CUTOFF && excludedReason == null && (!regulated || rule != null);
-  const capFreeTail = `${slashMonthDay(METRO_CAP_CUTOFF)}까지 공고라 ${cap}억 한도 없이`;
+  // 잔금 카드 종전 줄과 같은 꼴(해까지 · 세션706 보완 R4)
+  const capFreeTail = `${METRO_CAP_CUTOFF}까지 공고라 ${cap}억 한도 없이`;
+  // 수도권 시가별 한도 — 「15억 초과 4억·25억 초과 2억」(상수에서 싼 구간부터 · 세션706 보완 R3)
+  const tierText = [...REGULATED_LTV_CAPS]
+    .reverse()
+    .map((c) => `${c.overPrice / 10000}억 초과 ${c.cap / 10000}억`)
+    .join("·");
 
   // ── 결론 ──
   let verdict: RegulationTimeline["verdict"];
@@ -133,7 +134,7 @@ export function buildRegulationTimeline(input: {
       kind: "metro-free",
       text: metroCapWaived
         ? `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · ${capFreeTail} 종전 규정이 될 수 있어요(금융사 심사)`
-        : `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · 수도권은 집값과 상관없이 ${cap}억까지`,
+        : `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · 수도권은 집값에 따라 최대 ${cap}억(${tierText})`,
     };
   } else if (today <= STRESS_RATE_LOCAL_UNTIL) {
     verdict = {
