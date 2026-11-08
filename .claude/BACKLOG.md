@@ -432,6 +432,7 @@
 - 🟢 **금융 탭 작은 것(PR-A 검사관 🟡 · 세션675 📌)** — (세션679: rent-loans 흔적 ✅ #843 · ✅ 세션696 #869 `.vercelignore:23-25` 죽은 줄 3개 `api/admin/stats.js`·`api/auth/refresh.js`·`api/finlife/loans.js`(파일은 `.ts` 거나 없음) · 🟡 `App.test.jsx` waitFor 1초 빠듯(세션697 실측 줄 :837·:849·:854) · 잔금 카드 근거 접힘·금융 탭 작은 수정은 👤 그림 2장 https://claude.ai/artifact/V4tsURC2xa22AYc8645o1a · https://claude.ai/artifact/R1hP5m5P8kFvSsj4BM5Suw 답 대기) — 금리 못 받은 날 「연소득을 넣으면…」 회색 줄 2개(지킬 수 없는 약속) · 정책대출 확인일을 `LOAN_RULES_BASIS` 와 따로 · 지운 rent-loans 이름 흔적(`.vercelignore:26` `api/finlife/rent-loans.js` · `docs/prompts/cache-key-and-visual-verification.md:244` — `api/_lib/finlife.ts:3` 주석은 고쳐짐) · 70dB 초과 소음 칸 글자 「보통」인데 빨강(지금 0곳) · 우수 파랑/양호 초록 역전 · 「못 모았어요」 문구 7곳·지역 단위 값 자리(`.omc/handoffs/session675/review-b-blind.md` 🟡2·3).
 - ✅ 청약홈 API 응답(`api/applyhome/apartments.ts:159` `resolveBuilder`)의 시공사 글자도 꼬리를 뗀 대표사로 바뀜 — 레포 안 호출처 0(세션678 grep) · 확인 끝(검사관 C 🟡 `review-c-blind.md:46`).
 - 🟢 마케팅 동의 문구의 「맞춤 추천」(`MarketingConsentModal:91` · `InfoPage:147`)은 동의 문구라 안 바꿈 — 👤 결정 대기(바꾸면 동의 다시 받기 문제).
+- 🟡 **2u 거르기 글 링크(#883 `FundingPlanner.tsx:684~706`)의 생존 감시 0 · 클릭 계측 0**(세션703 2단 맹점 🟡3 — monitor ①~㉖·e2e 어디도 `2u.pe.kr` 을 안 본다 · 같은 파일 `trackEvent` 2개는 unit·use 뿐이고 링크엔 onClick 없음): 글이 사라지면 조용히 죽는 링크 1개 — 같은 주인의 글이라 감시는 이 줄로 갈음 · 👤 결정 후보 = (a) 링크에 `trackEvent("loan_filter_post_click")`(추천 — 같은 파일 방식, 2u 분석에 안 기댐) / (b) 주소에 UTM(2u 서치콘솔 쪽) / (c) 그대로.
 
 ### A-28. 🔵 지자체 단지별 미분양 명단 = 새 출처 + 「출처 없는 0」 마무리 트랙 (세션683~686 · 2026-11-01)
 
@@ -658,6 +659,7 @@
    ③ 글로벌은 **적용 안 함**(세션551 실측: 22개 중 20개가 이미 이력 분리 완료, 미분리 2개 합 1.4KB, 잔여 사건성 2~24%).
    글로벌 최대 덩어리는 **OMC 플러그인 블록 4,803B/63줄**(CLAUDE.md 의 24%)인데 OMC 가 실제 활성이라 스킬 자동발동 의존 여부 조사가 먼저 — 미착수 후보.
    기법 정본 = 글로벌 스킬 `doc-diet`(어느 레포든 자동 발동).
+- 🟡 **dependabot 열린 2건 처리 순서(세션703 2단 맹점 🟡6 — 세션696 👤 목록에 있다가 699 옮길 때 빠짐)**: 둘 다 CI·e2e 초록(10/31·11/01 기준, `package-lock.json` 공유) → ① #849(dompurify 3.4.17 · lock 만) 먼저 → 봇이 #855 를 다시 맞춤 → CI 재실행 → ② #855(minor 묶음 · `@upstash/redis` 1.40 = 실행 코드라 `api/` 시험 확인 뒤). 번호는 바뀐다 — 패키지 이름으로 grep.
 2. **dependabot 메이저 3건 — 세션555 실측 재분류**(옛 "#496·#497" 은 닫힘, 번호가 바뀐다. **PR 번호 말고 패키지 이름으로 grep 할 것**).
    실패 로그·상류 peer 범위를 직접 읽어 원인을 갈랐다. **셋 다 우리 코드 결함이 아니다** — 하나는 봇의 반쪽 판올림, 둘은 상류 미지원.
    로봇(Dependabot) PR 비밀값(2u 참고 ② · 세션597 10-06 사장님 결정 **등록 안 함**): 로봇 보관함 0건이지만 `e2e.yml:57-58` 의 `VITE_SUPABASE_URL`·`VITE_SUPABASE_ANON_KEY` 를 읽는 코드가 `src/`·`e2e/` 에 0곳(vite dev `/api` 프록시 → 운영 도메인)이라 빈 값이어도 영향 0 — 로봇 #685 E2E 24 통과·20 건너뜀 = 같은 시각 사람 PR 2건(37234510463·37232040348)과 동일. 두 줄은 죽은 줄 → ✅ 세션598 삭제(e2e.yml + `playwright.config.ts` 전달 2줄) · e2e 가 그 값을 쓰게 바뀌면 그때 `gh secret set <NAME> --app dependabot`.
