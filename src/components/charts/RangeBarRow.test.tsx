@@ -78,8 +78,9 @@ describe("RangeBarRow", () => {
     expect(plain.style.fontWeight).toBe("400");
     const strong = draw({ label: "★ 84㎡", emphasized: true, testId: "row2" }).getByText("★ 84㎡");
     expect(strong.style.fontWeight).toBe("700");
-    expect(screen.getByTestId("row2").style.background).not.toBe("transparent");
-    expect(screen.getAllByTestId("row")[0].style.background).toBe("transparent");
+    // background 줄임말은 jsdom 31 에서 "transparent" 를 "none" 으로 읽는다 — 색 칸(backgroundColor)은 30·31 같음
+    expect(screen.getByTestId("row2").style.backgroundColor).not.toBe("transparent");
+    expect(screen.getAllByTestId("row")[0].style.backgroundColor).toBe("transparent");
   });
 
   it("좁으면 오른쪽 글자가 아래 줄로 내려가게 줄이 접힌다 (flex-wrap) — 글자 칸은 폭 고정·한 줄", () => {

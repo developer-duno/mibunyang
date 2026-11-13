@@ -13,6 +13,9 @@ import { DetailModal } from "./DetailModal";
 import { makeScoredItem } from "@/__tests__/factories";
 import { createNearbyIndex } from "@/utils/nearbyComplexes.mjs";
 
+/** jsdom 31 은 `minmax(0, 1fr)` 를 `minmax(0px, 1fr)` 로 읽는다(30 은 `0`) — 두 판에서 같은 값으로 비교 @param {string} s */
+const normGrid = (s) => s.replace(/\b0px\b/g, "0");
+
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 vi.mock("@/services/staticDataApi", async (importOriginal) => {
   const orig = /** @type {Record<string, unknown>} */ (await importOriginal());
@@ -115,7 +118,9 @@ describe("DetailModal — 경로 줄 + 같은 구 가까운 단지 (세션671)",
     const cta = screen.getByTestId("detail-cta-bar");
     expect(block.compareDocumentPosition(spacer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(block.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByTestId("detail-nearby-chips").style.gridTemplateColumns).toBe("repeat(2, minmax(0, 1fr))");
+    expect(normGrid(screen.getByTestId("detail-nearby-chips").style.gridTemplateColumns)).toBe(
+      "repeat(2, minmax(0, 1fr))"
+    );
     const focusable = screen.getByRole("dialog").querySelectorAll(FOCUSABLE);
     const last = focusable[focusable.length - 1];
     expect(block.contains(last)).toBe(false);
@@ -127,7 +132,9 @@ describe("DetailModal — 경로 줄 + 같은 구 가까운 단지 (세션671)",
     const block = screen.getByTestId("detail-nearby");
     expect(screen.getByTestId("detail-scroll-body").contains(block)).toBe(true);
     expect(screen.queryByTestId("detail-cta-bar")).toBeNull();
-    expect(screen.getByTestId("detail-nearby-chips").style.gridTemplateColumns).toBe("repeat(3, minmax(0, 1fr))");
+    expect(normGrid(screen.getByTestId("detail-nearby-chips").style.gridTemplateColumns)).toBe(
+      "repeat(3, minmax(0, 1fr))"
+    );
     const rail = screen.getByTestId("detail-rail");
     const focusable = screen.getByRole("dialog").querySelectorAll(FOCUSABLE);
     const last = focusable[focusable.length - 1];
