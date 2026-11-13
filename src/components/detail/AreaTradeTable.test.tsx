@@ -13,6 +13,9 @@ import {
 } from "./AreaTradeTable";
 import type { Apt } from "@/types/scoring";
 
+/** jsdom 31 은 `minmax(0, 1fr)` 를 `minmax(0px, 1fr)` 로 읽는다(30 은 `0`) — 두 판에서 같은 값으로 비교 */
+const normGrid = (s: string) => s.replace(/\b0px\b/g, "0");
+
 /**
  * 시세 탭 「이 단지 평형별 실거래」 표 (세션662 👤 B안 — 평형대로 묶기).
  * 고정값 = 표본 ah-2020910009(더샵 광교산퍼스트파크) 최근 12개월 — 지시서 그대로.
@@ -123,7 +126,7 @@ describe("AreaTradeTable — 평형별 실거래 표 (세션662)", () => {
     const head = [...none.querySelectorAll("div")].find((d) => d.textContent === "전용매매") as HTMLElement;
     expect(head).toBeTruthy();
     for (const r of [head, ...none.querySelectorAll<HTMLElement>("[data-area-group]")]) {
-      expect(r.style.gridTemplateColumns).toBe(AREA_TABLE_COLUMNS_NO_JEONSE);
+      expect(normGrid(r.style.gridTemplateColumns)).toBe(AREA_TABLE_COLUMNS_NO_JEONSE);
     }
     expect(AREA_TABLE_COLUMNS_NO_JEONSE).toBe("80px minmax(0, 1fr)");
   });
@@ -205,7 +208,7 @@ describe("AreaTradeTable — 평형별 실거래 표 (세션662)", () => {
     const head = screen.getByText("전용").parentElement as HTMLElement;
     const rows = [head, ...container.querySelectorAll<HTMLElement>("[data-area-group]")];
     expect(rows).toHaveLength(5);
-    for (const r of rows) expect(r.style.gridTemplateColumns).toBe(AREA_TABLE_COLUMNS);
+    for (const r of rows) expect(normGrid(r.style.gridTemplateColumns)).toBe(AREA_TABLE_COLUMNS);
     // 첫 칸은 내용에 따라 늘어나는 폭(auto·min-content)이 아니라 고정 px
     expect(AREA_TABLE_COLUMNS).toMatch(/^\d+px /);
   });
