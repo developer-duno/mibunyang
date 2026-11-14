@@ -3,6 +3,7 @@ import { render } from "@testing-library/react";
 import { RegulationTimeline, _resetRegulationTimelineTracking } from "./RegulationTimeline";
 import { trackEvent } from "@/lib/analytics";
 import { makeApt } from "@/__tests__/factories";
+import { STRESS_RATE_LOCAL_UNTIL, dayAfter } from "@/constants/loanRules";
 import type { UnitChoice } from "@/hooks/useUnitChoice";
 import type { Apt } from "@/types/scoring";
 
@@ -198,5 +199,49 @@ describe("RegulationTimeline", () => {
     expect(getByTestId("reg-verdict").getAttribute("data-kind")).toBe("notice-missing");
     const li = getByTestId("reg-timeline").querySelector('li[data-kind="notice-missing"]')!;
     expect(li.textContent?.startsWith("—이 단지 첫 입주자모집공고 · 아직 못 모았어요")).toBe(true);
+  });
+
+  // A-26 ⑧ — 점 표기 공고일(`2024.05.10`)은 정규화(`normalizeIsoDate` — YYYY-MM-DD 만)를 못 지나 「못 모았어요」로 간다.
+  //   잔금 카드(FundingPlanner)와 같은 정규화를 쓰는 일관 동작을 고정한다(동작은 그대로 · 시험만).
+  // ⚠️ 변이 대상: normalizeIsoDate 정규식이 점을 받게 바꾸면(`[-.]`) 결론이 grandfather-may 로 바뀌어 빨강.
+  it("점 표기 공고일(2024.05.10)은 공고일로 읽지 않아 결론·줄 모두 「못 모았어요」", () => {
+    const { getByTestId, unmount } = render(
+      <RegulationTimeline apt={seoulApt({ presaleRecruitDate: "2024.05.10" })} unit={unitOf()} now={NOW} />
+    );
+    expect(getByTestId("reg-verdict").getAttribute("data-kind")).toBe("notice-missing");
+    expect(getByTestId("reg-verdict").textContent).toBe(
+      "첫 공고일을 아직 못 모아 종전 규정 해당 여부는 공고문으로 확인하세요"
+    );
+    const kinds = Array.from(getByTestId("reg-timeline").querySelectorAll("li")).map((li) =>
+      li.getAttribute("data-kind")
+    );
+    expect(kinds).toContain("notice-missing");
+    expect(kinds).not.toContain("notice");
+    unmount();
+    // 대조군 — 같은 날짜를 하이픈으로 쓰면 공고일로 읽힌다(점 표기만의 동작임을 보인다)
+    const hyphen = render(
+      <RegulationTimeline apt={seoulApt({ presaleRecruitDate: "2024-05-10" })} unit={unitOf()} now={NOW} />
+    );
+    expect(hyphen.getByTestId("reg-verdict").getAttribute("data-kind")).toBe("grandfather-may");
+  });
+
+  // A-26 ⑨ — 유예가 끝난 뒤(local-stress-ended) 칩은 주황(초록은 어색 · 보완 7-6). 유예 중(local-stress)은 초록.
+  // jsdom 은 hex 를 rgb 로 바꿔 돌려준다 — C.amberLight #FFF9EB · C.amberText #B45309 · C.greenLight #EDFCF2 · C.green.
+  // ⚠️ 변이 대상: VERDICT_COLOR["local-stress-ended"] 를 초록(local-stress 와 같은 값)으로 바꾸면 빨강.
+  it("지방 칩 색 — 유예 끝(local-stress-ended) 주황 · 유예 중(local-stress) 초록", () => {
+    const busan = seoulApt({ region: "부산", gu: "해운대구", isRegulated: false });
+    const ended = render(
+      <RegulationTimeline apt={busan} unit={unitOf()} now={new Date(`${dayAfter(STRESS_RATE_LOCAL_UNTIL)}T03:00:00Z`)} />
+    );
+    const ev = ended.getByTestId("reg-verdict");
+    expect(ev.getAttribute("data-kind")).toBe("local-stress-ended");
+    expect(ev.style.background).toBe("rgb(255, 249, 235)");
+    expect(ev.style.color).toBe("rgb(180, 83, 9)");
+    ended.unmount();
+    const during = render(<RegulationTimeline apt={busan} unit={unitOf()} now={NOW} />);
+    const dv = during.getByTestId("reg-verdict");
+    expect(dv.getAttribute("data-kind")).toBe("local-stress");
+    expect(dv.style.background).toBe("rgb(237, 252, 242)");
+    expect(dv.style.background).not.toBe(ev.style.background);
   });
 });
