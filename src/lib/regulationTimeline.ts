@@ -50,6 +50,12 @@ export type RegulationTimeline = {
   metroCapWaived: boolean;
 };
 
+/** 'YYYY-MM-DD' → 'M/D' */
+function slashDay(iso: string): string {
+  const [, m, d] = iso.split("-").map(Number);
+  return `${m}/${d}`;
+}
+
 /** 'YYYY-MM-DD' → 'M월 D일' */
 function monthDay(iso: string): string {
   const [, m, d] = iso.split("-").map(Number);
@@ -82,14 +88,17 @@ export function buildRegulationTimeline(input: {
   const ltv = Math.round(REGULATED_LTV_RATE * 100);
   const cap = METRO_LOAN_CAP / 10000;
 
-  // 종전 대상 제외 — 잔금 카드(FundingPlanner 종전 줄 숨김)와 같은 셋
+  // 종전 대상 제외 — 잔금 카드(FundingPlanner 종전 줄 숨김)와 같은 둘
   const excludedReason = isNonHousing(input.housingType, input.name)
     ? "비주택 담보"
     : isPreSubscription(input.name)
       ? "사전청약 단지"
-      : moveInStarted(input.moveIns, thisMonth)
-        ? "입주가 시작된 단지"
-        : null;
+      : null;
+  // 입주가 시작된 단지는 빼지 않는다 — 입주 뒤 계약 세대 해당 여부는 원문에 없음(2025~2026 원문은 사업장 단위 ·
+  // 2020-07-02 해명은 세대 단위) → 종전 판정은 보이고 금융사 확인 꼬리 · 질의서 질의 9 ⑥ 회신 대기(세션709 👤 결정 ⑪ · 잔금 카드와 같은 문구)
+  const moveInTail = moveInStarted(input.moveIns, thisMonth)
+    ? " · 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요"
+    : "";
   const beforeCutoff = rule != null && first != null && first <= rule.cutoff;
   // 수도권 6억 한도 시행 전 공고 — 종전 규정이면 6억 한도도 없다(금융위 2026-10-15 보도자료 경과규정 · 세션706).
   // 규제지역인데 규칙이 없으면(서울 구 모름) 종전 여부를 못 가리니 말하지 않는다.
@@ -120,7 +129,8 @@ export function buildRegulationTimeline(input: {
         kind: "grandfather-may",
         text:
           `첫 공고가 지정보다 앞서요 → 집단대출은 종전 ${Math.round(rule.rate * 100)}% 가 될 수 있어요(금융사 심사)` +
-          (metroCapWaived ? ` · ${capFreeTail}` : ""),
+          (metroCapWaived ? ` · ${capFreeTail}` : "") +
+          moveInTail,
       };
     } else {
       // 첫 공고일이 오늘보다 뒤(아직 공고 전)면 과거형을 쓰지 않는다(세션705 보완 7-5)
@@ -133,7 +143,7 @@ export function buildRegulationTimeline(input: {
     verdict = {
       kind: "metro-free",
       text: metroCapWaived
-        ? `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · ${capFreeTail} 종전 규정이 될 수 있어요(금융사 심사)`
+        ? `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · ${capFreeTail} 종전 규정이 될 수 있어요(금융사 심사)${moveInTail}`
         : `비규제라 LTV ${Math.round(NORMAL_LTV * 100)}% 예요 · 수도권은 집값에 따라 최대 ${cap}억(${tierText})`,
     };
   } else if (today <= STRESS_RATE_LOCAL_UNTIL) {
@@ -172,7 +182,9 @@ export function buildRegulationTimeline(input: {
         kind: "metro-cap",
         title: `수도권 주택구입 대출 최대 ${cap}억 시행`,
         note: metroCapWaived
-          ? `이 단지는 그 전에 공고 → ${cap}억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)`
+          ? `이 단지는 그 전에 공고 → ${cap}억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)` +
+            // 6/27 보도자료 각주 「잔금대출로 전환시에는 6억원 한도 적용」 — 2026-10-15 보도자료와 엇갈린다(세션709 C2)
+            ` · 다만 ${slashDay(METRO_CAP_CUTOFF)} 첫 발표 자료는 잔금 전환 때 ${cap}억 한도라고 적어 금융위 자료끼리 말이 달라요(금융사 확인)`
           : // 6·27 당시엔 집값과 상관없이 6억이었지만 10·15(시행 10-16)부터 시가별 — 결론 줄과 같은 tierText(세션706 재검사 🟠)
             `최대 ${cap}억 (서울·경기·인천) · ${dayAfter(GRANDFATHER_RULES.default.cutoff)}부터 ${tierText}`,
         mine: false,

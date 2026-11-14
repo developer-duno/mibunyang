@@ -191,7 +191,10 @@ describe("buildRegulationTimeline — 결론(A-4·A-5)", () => {
 // 세션706 #4·#5 — 수도권 6억 한도 시행(2025-06-28) 전날까지 공고 = 6억 한도 없이 종전 규정이 될 수 있다(금융위 2026-10-15 보도자료)
 describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션706)", () => {
   const OLD_NOTE = "최대 6억 (서울·경기·인천) · 2025-10-16부터 15억 초과 4억·25억 초과 2억";
-  const NEW_NOTE = "이 단지는 그 전에 공고 → 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)";
+  // 세션709 C2 — 6/27 보도자료 각주(「잔금대출로 전환시에는 6억원 한도 적용」)와 2026-10-15 보도자료가 엇갈린다는 사실 꼬리.
+  // ⚠️ 변이 대상: 꼬리를 지우면 이 note 단언 둘이 빨강.
+  const NEW_NOTE =
+    "이 단지는 그 전에 공고 → 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사) · 다만 6/27 첫 발표 자료는 잔금 전환 때 6억 한도라고 적어 금융위 자료끼리 말이 달라요(금융사 확인)";
   const metroNote = (t: ReturnType<typeof buildRegulationTimeline>) =>
     t.events.find((e) => e.kind === "metro-cap")?.note;
   const pyeongtaek = { zone: "normal" as const, region: "경기", gu: "평택시", moveIns: [] as unknown[], now: NOW };
@@ -243,8 +246,8 @@ describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션7
     expect(t.metroCapWaived).toBe(false);
   });
 
-  it("제외 셋(비주택·사전청약·입주 시작)은 6/27 전 공고여도 6억 문장 없음 — 규제·비규제 둘 다", () => {
-    const excl = [{ housingType: "오피스텔" }, { name: "평택 사전청약 A1" }, { moveIns: ["2024-02"] }];
+  it("제외 둘(비주택·사전청약)은 6/27 전 공고여도 6억 문장 없음 — 규제·비규제 둘 다", () => {
+    const excl = [{ housingType: "오피스텔" }, { name: "평택 사전청약 A1" }];
     for (const x of excl) {
       const reg = buildRegulationTimeline({ ...base, firstDate: "2024-05-10", ...x });
       expect(reg.verdict.kind).toBe("current-only");
@@ -336,10 +339,39 @@ describe("buildRegulationTimeline — 종전 대상 제외(A-6)", () => {
       "사전청약 단지라 지금 규정(LTV 40%)이 그대로예요"
     );
   });
-  it("입주가 시작된 단지(입주 2024-02)", () => {
-    expect(buildRegulationTimeline({ ...g4, moveIns: ["2024-02"] }).verdict.text).toBe(
-      "입주가 시작된 단지라 지금 규정(LTV 40%)이 그대로예요"
-    );
+  // 세션709 👤 결정 ⑪ — 입주 뒤 계약 세대 해당 여부는 원문에 없음 → 빼지 않고 종전 판정 + 금융사 확인 꼬리(잔금 카드와 같은 문구).
+  // ⚠️ 변이 대상: excludedReason 에 입주 시작을 되돌리면 첫 단언이 빨강 · 꼬리 조건을 지우면 「입주 전」 단언이 빨강.
+  const MOVEIN_TAIL = " · 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요";
+  it("입주가 시작된 단지(입주 2024-02) — 종전 판정은 그대로 · 끝에 금융사 확인 꼬리 · 6억 사건 note 도 종전 문장", () => {
+    const t = buildRegulationTimeline({ ...g4, moveIns: ["2024-02"] });
+    expect(t.verdict).toEqual({
+      kind: "grandfather-may",
+      text: `첫 공고가 지정보다 앞서요 → 집단대출은 종전 50% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이${MOVEIN_TAIL}`,
+    });
+    expect(t.metroCapWaived).toBe(true);
+    // 입주 전(2027-03)·이번 달(2026-11)·모름은 꼬리 없음
+    for (const mi of ["2027-03", "2026-11", "미정"]) {
+      expect(buildRegulationTimeline({ ...g4, moveIns: [mi] }).verdict.text).not.toContain("입주가 시작된 뒤");
+    }
+  });
+  it("비규제 수도권 6/27 전 공고 + 입주 시작 — metro-free 결론 끝에 같은 꼬리", () => {
+    const t = buildRegulationTimeline({
+      zone: "normal",
+      region: "경기",
+      gu: "평택시",
+      firstDate: "2024-02-26",
+      moveIns: ["2025-01"],
+      now: NOW,
+    });
+    expect(t.verdict).toEqual({
+      kind: "metro-free",
+      text: `비규제라 LTV 70% 예요 · 2025-06-27까지 공고라 6억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)${MOVEIN_TAIL}`,
+    });
+  });
+  it("입주가 시작됐어도 지정 뒤 공고면 꼬리 없음(종전 판정이 아니라서)", () => {
+    const t = buildRegulationTimeline({ ...base, gu: "강북구", firstDate: "2026-06-12", moveIns: ["2026-09"] });
+    expect(t.verdict.kind).toBe("current-only");
+    expect(t.verdict.text).not.toContain("입주가 시작된 뒤");
   });
   // 메인 판정 2(세션705) — 제외 사유가 공고일 없음보다 먼저. 공고일 없음 줄(사실)은 그대로 그린다.
   // ⚠️ 변이 대상: 분기 순서를 되돌리면(공고일 없음 먼저) notice-missing 이 나와 빨강.

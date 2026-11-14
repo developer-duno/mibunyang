@@ -336,7 +336,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     expect(screen.getByTestId("fp-region-limit").textContent).toContain("4억");
     expect(screen.getByTestId("fp-loan").textContent).toContain("4억");
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(
-      "첫 모집공고 2024-08-16 — 규제지역 LTV 강화(2025-09-08) 전 공고라 금융사 심사에 따라 종전 규정(LTV 50%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 11억 2,250만이에요. 2025-06-28~2025-09-07 전매로 산 분양권은 6억 한도가 붙고, 2025-09-08 이후 전매는 종전 규정 대상이 아니에요."
+      "첫 모집공고 2024-08-16 — 규제지역 LTV 강화(2025-09-08) 전 공고라 금융사 심사에 따라 종전 규정(LTV 50%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 11억 2,250만이에요. 2025-06-28~2025-09-07 전매로 산 분양권은 6억 한도가 붙고, 2025-09-08 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요."
     );
     resetDetail();
   });
@@ -346,7 +346,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     withFirst("2021-05-04");
     render(<FundingPlanner apt={regulated({ price: 96140 })} rates={RATES} />);
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(
-      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요."
+      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요."
     );
     resetDetail();
   });
@@ -391,7 +391,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     resetDetail();
   });
 
-  it("평택 비규제 6/27까지 공고라도 제외 셋(오피스텔·사전청약·입주 시작)은 줄 없음", () => {
+  it("평택 비규제 6/27까지 공고라도 제외 둘(오피스텔·사전청약)은 줄 없음 · 입주 시작은 줄 + 금융사 확인 꼬리(세션709 B1)", () => {
     withFirst(null);
     const base = {
       price: 87300,
@@ -402,24 +402,23 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
       presaleHousingType: "아파트",
       presaleMoveIn: "2099-12",
     };
-    for (const o of [
-      { presaleHousingType: "오피스텔" },
-      { name: "평택 어떤 사전청약 A1" },
-      { presaleMoveIn: "2024-01" },
-    ]) {
+    for (const o of [{ presaleHousingType: "오피스텔" }, { name: "평택 어떤 사전청약 A1" }]) {
       const r = render(<FundingPlanner apt={apt({ ...base, ...o })} rates={RATES} />);
       expect(screen.queryByTestId("fp-grandfather")).toBeNull();
       r.unmount();
     }
+    render(<FundingPlanner apt={apt({ ...base, presaleMoveIn: "2024-01" })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(
+      "첫 모집공고 2024-02-26 — 수도권 6억 한도(2025-06-28) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%)이 적용될 수 있어요. 그 경우 최대 6억 1,110만이에요. 2025-06-28 이후 전매로 산 분양권은 제외예요. 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요."
+    );
     resetDetail();
   });
 
-  it("줄을 숨기는 경우 — 비주택(오피스텔·이름 (오)) · 입주 시작(카드·일정 어느 쪽이든) · 종전이 지금보다 크지 않음", () => {
+  it("줄을 숨기는 경우 — 비주택(오피스텔·이름 (오)) · 종전이 지금보다 크지 않음", () => {
     withFirst("2021-05-04");
     const cases = [
       regulated({ presaleHousingType: "오피스텔" }),
       regulated({ presaleHousingType: null, name: "어떤단지(오)" }),
-      regulated({ presaleMoveIn: "2000-01" }),
       // 종전이 지금보다 크지 않음 — 비규제 수도권 6억 아래(종전 70% = 지금 70%). 세션706 전엔 서초 15억(4억 뚜껑)이었는데
       // 4구 종전에 시가별 한도를 안 씌우게 되어(10·15 FAQ 13쪽) 그 단지는 이제 줄이 보인다.
       apt({ presaleRecruitDate: "2021-05-04", presaleHousingType: "아파트", presaleMoveIn: "2099-12" }),
@@ -429,13 +428,46 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
       expect(screen.queryByTestId("fp-grandfather")).toBeNull();
       r.unmount();
     }
+    resetDetail();
+  });
+
+  // 세션709 👤 결정 ⑪ — 입주 뒤 계약 세대의 경과규정 해당 여부는 금융위 원문에 없다(2025~2026 원문은 사업장 단위 ·
+  // 2020-07-02 해명은 세대 단위) → 줄은 보이고 끝에 금융사 확인 꼬리. 입주 전 단지는 꼬리 없음.
+  // ⚠️ 변이 대상: showGrandfather 에 `!moveInBegun` 을 되돌리면 첫 단언이 빨강 · 꼬리 조건을 지우면 「입주 전」 단언이 빨강.
+  const MOVEIN_TAIL = "입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요.";
+  it("입주가 시작된 단지(카드·일정 어느 쪽이든)도 종전 줄이 보이고 끝에 금융사 확인 꼬리 · 입주 전·모름은 꼬리 없음", () => {
+    withFirst("2021-05-04");
+    const base =
+      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%)이 적용될 수 있어요. 그 경우 최대 2억 7,195만이에요. 2025-10-16 이후 전매로 산 분양권은 제외예요.";
+    let r = render(<FundingPlanner apt={regulated({ presaleMoveIn: "2000-01" })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(`${base} ${MOVEIN_TAIL}`);
+    r.unmount();
     withFirst("2021-05-04", "200001"); // 일정의 입주월만 지남
-    const r = render(<FundingPlanner apt={regulated({ presaleMoveIn: "미정" })} rates={RATES} />);
-    expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+    r = render(<FundingPlanner apt={regulated({ presaleMoveIn: "미정" })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(`${base} ${MOVEIN_TAIL}`);
     r.unmount();
     withFirst("2021-05-04");
-    render(<FundingPlanner apt={regulated({ presaleMoveIn: "미정" })} rates={RATES} />); // 모름 = 숨기지 않음
-    expect(screen.getByTestId("fp-grandfather")).toBeTruthy();
+    for (const mi of ["2099-12", "미정"]) {
+      r = render(<FundingPlanner apt={regulated({ presaleMoveIn: mi })} rates={RATES} />);
+      expect(screen.getByTestId("fp-grandfather").textContent).toBe(base);
+      r.unmount();
+    }
+    // 비주택·사전청약은 입주가 시작돼도 여전히 숨김
+    for (const o of [{ presaleHousingType: "오피스텔" }, { name: "어떤 사전청약 A1" }]) {
+      r = render(<FundingPlanner apt={regulated({ ...o, presaleMoveIn: "2000-01" })} rates={RATES} />);
+      expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+      r.unmount();
+    }
+    resetDetail();
+  });
+
+  // 세션709 C1 → B1 순서 — 6/27까지 공고(capFree)이고 입주도 시작된 단지는 6/27 자료 엇갈림 꼬리 뒤에 입주 꼬리.
+  it("capFree + 입주 시작 — 꼬리 순서 C1(6/27 자료 엇갈림) → B1(입주 뒤 계약 세대)", () => {
+    withFirst("2021-05-04");
+    render(<FundingPlanner apt={regulated({ price: 96140, presaleMoveIn: "2000-01" })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(
+      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요. 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요."
+    );
     resetDetail();
   });
 
