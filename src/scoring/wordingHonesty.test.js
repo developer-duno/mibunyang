@@ -278,7 +278,8 @@ describe("괴리도 — 잰 잣대를 밝힌다 (세션531 · 세션607)", () =>
 // 어느 한 자리라도 옛 문구로 되돌리면 red 다(변이 실증은 세션651 작업 보고의 변이 표).
 // 범위 밖: 관리비(혜택 축 "지역 중앙값보다 비쌈")는 가격 판정이 아니라 다른 축의 사실 비교다.
 describe("가격 축 손님 문자열에 판정어가 없다 (세션651)", () => {
-  const JUDGE = /적정가|저렴|비쌈/;
+  // 세션716(BACKLOG A-22 판정어 가드 확장): 저평가·고평가·싸요/비싸요 도 같은 판정어다(#790 은 앞 셋만 봤다).
+  const JUDGE = /적정가|저렴|비쌈|저평가|고평가|싸요/;
   const SCOPES = /** @type {const} */ ([
     { cmpScope: "complex", cmpSrc: "sale", cmpAreaMode: "same_area" },
     { cmpScope: "complex", cmpSrc: "presale", cmpAreaMode: "same_area" },

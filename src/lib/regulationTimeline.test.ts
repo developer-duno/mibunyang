@@ -143,6 +143,14 @@ describe("buildRegulationTimeline — 결론(A-4·A-5)", () => {
     ).toBe("current-only");
   });
 
+  // A-26 ⑧ — 점 표기(`2024.05.10`)는 normalizeIsoDate 를 못 지나 공고일 없음과 같다(동작 고정 · 시험만).
+  // ⚠️ 변이 대상: normalizeIsoDate 가 점을 받게 바꾸면 grandfather-may 로 바뀌어 빨강.
+  it("notice-missing — 점 표기 공고일(2024.05.10)도 공고일 없음과 같다", () => {
+    const t = buildRegulationTimeline({ ...base, firstDate: "2024.05.10", latestDate: "2024.05.10" });
+    expect(t.verdict.kind).toBe("notice-missing");
+    expect(t.events.map((e) => e.kind)).toEqual(["metro-cap", "designation", "notice-missing", "today"]);
+  });
+
   it("notice-missing — 규제 & 공고 없음", () => {
     expect(buildRegulationTimeline({ ...base }).verdict).toEqual({
       kind: "notice-missing",
