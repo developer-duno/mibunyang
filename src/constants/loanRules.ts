@@ -49,7 +49,15 @@ export const STRESS_RATE_METRO = 3.0;
  *   "실제로 적용되는 지방 주담대의 스트레스 금리는 1.5%의 절반인 0.75%포인트 수준" https://view.asiae.co.kr/article/2026063015591295914).
  */
 export const STRESS_RATE_LOCAL = 0.75;
-/** `STRESS_RATE_LOCAL` 이 유효한 마지막 날 — 스트레스 금리는 6월·12월에 다시 정해진다(그 뒤는 미정) */
+/**
+ * `STRESS_RATE_LOCAL` 이 유효한 마지막 날 — 스트레스 금리는 6월·12월에 다시 정해진다(그 뒤는 미정)
+ *
+ * 바꿀 때 같이 볼 자리(BACKLOG A-26 ③ · 세션716 — 감시 ㉕ 알림이 이 파일을 가리킨다):
+ * - `stressAddFor`(아래)는 날짜를 안 본다 — 이 날이 지나도 0.75 그대로 계산하므로 새 값은 `STRESS_RATE_LOCAL` 로 고친다
+ * - 금융 탭 규제 시간표 바닥줄의 공고 번호(`RegulationTimeline.tsx` 「금융위원회공고 제2026-362호」)
+ * - 시간표 「유예 끝」 사건 note(`lib/regulationTimeline.ts` stress-until — 「6월·12월에 다시 정해져요」)
+ * - 잔금 카드 「지방 0.75%p(…까지)」(`FundingPlanner.tsx`)는 이 두 상수에서 읽어 따라온다
+ */
 export const STRESS_RATE_LOCAL_UNTIL = "2026-12-31";
 
 /** 계약금·중도금·잔금 기본 비율(%) — 공고마다 다르다. 손님이 "더 자세히"에서 고칠 수 있다. */
