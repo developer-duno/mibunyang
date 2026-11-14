@@ -27,6 +27,13 @@ describe("warn-worktree-location 훅", () => {
     "git worktree add \\\n  .claude/worktrees/s714-x",
     "git status\ngit worktree add .claude/worktrees/s714-x",
     "git -C F:/mibunyang worktree add .claude/worktrees/s714-x",
+    // 재검사 지적 — 큰따옴표 안 Windows 경로 · git.exe 전체 경로 · if/for/time 안
+    'git worktree add "F:\\mibunyang\\.claude\\worktrees\\s714-x" main',
+    'git worktree add "F:\\my dir\\.claude\\worktrees\\s714-x"',
+    '"C:\\Program Files\\Git\\cmd\\git.exe" worktree add .claude\\worktrees\\s714-x',
+    "if true; then git worktree add .claude/worktrees/s714-x; fi",
+    "for b in x; do git worktree add .claude/worktrees/$b; done",
+    "time git worktree add .claude/worktrees/s714-x",
   ])("규칙 밖 위치에 만들면 경고: %s", (cmd) => {
     expect(bash(cmd)).toEqual({ code: 0, warned: true });
   });

@@ -12,6 +12,7 @@
 // 명령으로 치지 않는다 — 검사관 rv-s714 🟠 지적으로 정규식 대신 작은 셸 낱말 쪼개기.
 const OPT_WITH_VALUE = new Set(["-b", "-B", "--reason"]);
 const GIT_OPT_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
+const SHELL_PREFIX = new Set(["then", "do", "else", "time", "{", "!", "&"]);
 
 /** 셸 글자를 명령 조각(낱말 배열)들로 — 따옴표·역슬래시·줄 이음을 알고, ; & | 줄바꿈 ( ) $( 에서 조각을 끊는다 */
 function shellSegments(cmd) {
@@ -26,7 +27,8 @@ function shellSegments(cmd) {
     const c = s[i];
     if (q) {
       if (c === q) q = null;
-      else if (c === "\\" && q === '"' && i + 1 < s.length) tok += s[++i];
+      // 큰따옴표 안 역슬래시는 $ ` " \ 앞에서만 이스케이프(bash 규칙) — 그 밖엔 글자 그대로("F:\…\.claude\worktrees")
+      else if (c === "\\" && q === '"' && /[$`"\\]/.test(s[i + 1] ?? "")) tok += s[++i];
       else tok += c;
       continue;
     }
@@ -45,7 +47,8 @@ function shellSegments(cmd) {
 function gitAddsUnderClaudeWorktrees(cmd) {
   for (const toks of shellSegments(cmd)) {
     let i = 0;
-    while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // 앞 환경 변수 대입
+    // 앞 환경 변수 대입 · 셸 꾸밈 낱말(then·do·else·time·{·!) 건너뜀
+    while (i < toks.length && (/^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i]) || SHELL_PREFIX.has(toks[i]))) i++;
     if (!/(?:^|[\\/])git(?:\.exe)?$/i.test(toks[i] ?? "")) continue;
     i++;
     while (i < toks.length && toks[i].startsWith("-")) i += GIT_OPT_WITH_VALUE.has(toks[i]) ? 2 : 1;
