@@ -664,6 +664,26 @@ describe("hold op 2종 추가 (세션686) — mark_hold_from_kosis / release_hol
     expect(() => buildHoldPlanRow("release_hold_to_kosis", { id: "x", unsold_rate: 38.1 })).toThrow(/unsold/);
   });
 
+  // 세션716(BACKLOG A-28 두류 적대 🟡) — 값·률을 받는 op 3종은 0 이상 유한한 수만 받는다(옛 typeof 검사는 NaN·Infinity·음수를 통과시켰다).
+  // ⚠️ 변이 대상: isNonNegNumber 를 옛 `typeof v === "number"` 로 되돌리거나 `v >= 0` 을 지우면 음성 쪽이 빨강 · 0 을 거부하게(`> 0`) 바꾸면 양성 쪽이 빨강.
+  it("값·률 op 3종(applyhome·kosis 풀기·kosis 걸기) — NaN·Infinity·음수 거부, 0·소수는 받음", async () => {
+    const { buildHoldPlanRow } = await import("./backfill-unsold-source.mjs");
+    const ops = /** @type {const} */ (["release_hold_to_applyhome", "release_hold_to_kosis", "mark_hold_from_kosis"]);
+    const bad = [NaN, Infinity, -Infinity, -1, -0.1];
+    for (const op of ops) {
+      for (const v of bad) {
+        expect(() => buildHoldPlanRow(op, { id: "x", unsold: v, unsold_rate: 4.1, date: "2026-10-02" }), `${op} unsold=${v}`).toThrow(/unsold/);
+        expect(() => buildHoldPlanRow(op, { id: "x", unsold: 12, unsold_rate: v, date: "2026-10-02" }), `${op} rate=${v}`).toThrow(/unsold/);
+      }
+      // 양성 — 0(완판 공고)·소수 률은 정상 값이다
+      const zero = buildHoldPlanRow(op, { id: "x", unsold: 0, unsold_rate: 0, date: "2026-10-02" });
+      const side = op === "mark_hold_from_kosis" ? zero.expect : zero.set;
+      expect(side.unsold, op).toBe(0);
+      expect(side.unsold_rate, op).toBe(0);
+      expect(() => buildHoldPlanRow(op, { id: "x", unsold: 3, unsold_rate: 0.7, date: "2026-10-02" })).not.toThrow();
+    }
+  });
+
   it("★ 정본 계획 파일 대조 — hold-plan-2026-11-01-duryu(.json·-REVERT.json) 의 행마다 expect·set 이 buildHoldPlanRow 출력과 같다", async () => {
     const { readFileSync } = await import("node:fs");
     const { fileURLToPath } = await import("node:url");

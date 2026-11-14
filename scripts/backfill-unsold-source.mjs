@@ -129,7 +129,9 @@ export function checkPlanRow(row, dbRow) {
  * @returns {PlanRow & { note?: string }}
  */
 export function buildHoldPlanRow(op, p) {
-  const head = { id: p.id, ...(p.name != null ? { name: p.name } : {}), op, ...(p.note != null ? { note: p.note } : {}) };
+  // 세션716(A-28 두류 적대 🟡): typeof 만 보면 NaN·Infinity·음수가 통과해 계획 행(set·expect)에 실린다 — 0 이상 유한한 수만 받는다
+  const isNonNegNumber = (/** @type {unknown} */ v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
+  const head ={ id: p.id, ...(p.name != null ? { name: p.name } : {}), op, ...(p.note != null ? { note: p.note } : {}) };
   const needDate = () => {
     if (typeof p.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new Error(`${op}: date(YYYY-MM-DD) 필요 — ${p.id}`);
     return p.date;
@@ -166,7 +168,7 @@ export function buildHoldPlanRow(op, p) {
     };
   }
   if (op === "mark_hold_from_kosis") {
-    if (typeof p.unsold !== "number" || typeof p.unsold_rate !== "number") throw new Error(`${op}: unsold·unsold_rate 숫자 필요 — ${p.id}`);
+    if (!isNonNegNumber(p.unsold) || !isNonNegNumber(p.unsold_rate)) throw new Error(`${op}: unsold·unsold_rate 0 이상 유한한 숫자 필요 — ${p.id}`);
     return {
       ...head,
       expect: { unsold: p.unsold, unsold_rate: p.unsold_rate, unsold_source: "kosis", unsold_as_of: null },
@@ -174,7 +176,7 @@ export function buildHoldPlanRow(op, p) {
     };
   }
   if (op === "release_hold_to_kosis") {
-    if (typeof p.unsold !== "number" || typeof p.unsold_rate !== "number") throw new Error(`${op}: unsold·unsold_rate 숫자 필요 — ${p.id}`);
+    if (!isNonNegNumber(p.unsold) || !isNonNegNumber(p.unsold_rate)) throw new Error(`${op}: unsold·unsold_rate 0 이상 유한한 숫자 필요 — ${p.id}`);
     return {
       ...head,
       expect: { unsold: null, unsold_source: "hold" },
@@ -202,7 +204,7 @@ export function buildHoldPlanRow(op, p) {
     return { ...head, expect: { unsold: null, unsold_source: "hold" }, set: { unsold_source: null, unsold_as_of: null } };
   }
   if (op === "release_hold_to_applyhome") {
-    if (typeof p.unsold !== "number" || typeof p.unsold_rate !== "number") throw new Error(`${op}: unsold·unsold_rate 숫자 필요 — ${p.id}`);
+    if (!isNonNegNumber(p.unsold) || !isNonNegNumber(p.unsold_rate)) throw new Error(`${op}: unsold·unsold_rate 0 이상 유한한 숫자 필요 — ${p.id}`);
     return {
       ...head,
       expect: { unsold: null, unsold_source: "hold" },
