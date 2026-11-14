@@ -11,7 +11,7 @@ concurrency:
 
 jobs:
   post-process:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 세션118 30→60, 세션224 60→90, 세션227 90→120
     # 세션229 D-2 분리 후 core 단독 sync 55:39 + setup 24s = 56:03 (90m 한도 마진 33:57)
     # incremental (transport/infra/schools) = .github/workflows/collect-naver-listings-incremental.yml 로 분리
