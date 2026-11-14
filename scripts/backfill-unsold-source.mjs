@@ -131,7 +131,7 @@ export function checkPlanRow(row, dbRow) {
 export function buildHoldPlanRow(op, p) {
   // 세션716(A-28 두류 적대 🟡): typeof 만 보면 NaN·Infinity·음수가 통과해 계획 행(set·expect)에 실린다 — 0 이상 유한한 수만 받는다
   const isNonNegNumber = (/** @type {unknown} */ v) => typeof v === "number" && Number.isFinite(v) && v >= 0;
-  const head ={ id: p.id, ...(p.name != null ? { name: p.name } : {}), op, ...(p.note != null ? { note: p.note } : {}) };
+  const head = { id: p.id, ...(p.name != null ? { name: p.name } : {}), op, ...(p.note != null ? { note: p.note } : {}) };
   const needDate = () => {
     if (typeof p.date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(p.date)) throw new Error(`${op}: date(YYYY-MM-DD) 필요 — ${p.id}`);
     return p.date;

@@ -231,7 +231,11 @@ describe("RegulationTimeline", () => {
   it("지방 칩 색 — 유예 끝(local-stress-ended) 주황 · 유예 중(local-stress) 초록", () => {
     const busan = seoulApt({ region: "부산", gu: "해운대구", isRegulated: false });
     const ended = render(
-      <RegulationTimeline apt={busan} unit={unitOf()} now={new Date(`${dayAfter(STRESS_RATE_LOCAL_UNTIL)}T03:00:00Z`)} />
+      <RegulationTimeline
+        apt={busan}
+        unit={unitOf()}
+        now={new Date(`${dayAfter(STRESS_RATE_LOCAL_UNTIL)}T03:00:00Z`)}
+      />
     );
     const ev = ended.getByTestId("reg-verdict");
     expect(ev.getAttribute("data-kind")).toBe("local-stress-ended");
