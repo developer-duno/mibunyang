@@ -43,12 +43,6 @@ export interface DetailModalProps extends ResponsiveProps {
   /** 블라인드 자리 카카오 CTA 클릭 — 로그인 유도 모달 열기. 미전달 시 CTA 는 눌러도 무동작. */
   onRequestLogin?: () => void;
   /**
-   * 떠 있는 '문의' 버튼(FeedbackFab)이 이 모달 하단 버튼 묶음 위에 겹쳐 떠 있다(세션594 S6) — App 이
-   * FAB 를 그리는 조건(관리자·지도 탭 아님) && 휴대폰(!isPC) 으로 넘긴다. true 면 스크롤 끝에 버튼 높이만큼
-   * 빈 칸을 둬 맨 아래 줄 글자가 버튼 밑에 깔리지 않게 한다. 기본 false = 변화 0.
-   */
-  fabOverlaps?: boolean;
-  /**
    * 맨 아래 "같은 구 가까운 단지" 칩의 후보 색인(세션671 PR-S3) — App 이 **필터 전 전체 목록**으로 useMemo 해 넘긴다
    * (손님 필터·정렬·프로필로 칩이 바뀌면 안 된다 · 허브와 같은 목록). 없으면 블록을 그리지 않는다.
    */

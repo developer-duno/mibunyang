@@ -387,7 +387,16 @@ export const CompareSheet = memo(function CompareSheet({
               ))}
             </tr>
             <tr>
-              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>필요자본</td>
+              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>
+                필요자본
+                {/* 무엇에서 무엇을 뺀 값인지 — 바로 위 LTV한도 칸의 기준 줄과 같은 꼴(A-26 ㉒ · 세션714) */}
+                <div
+                  data-testid="compare-needcash-basis"
+                  style={{ fontSize: F.micro, color: C.muted, fontWeight: 400 }}
+                >
+                  분양가 − LTV한도
+                </div>
+              </td>
               {zoneData.map((d: { zone: keyof typeof ZONE_TYPE; ltv: number; needCash: number }, i: number) => (
                 <td
                   key={items[i].apt.id}
