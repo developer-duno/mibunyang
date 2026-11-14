@@ -74,10 +74,21 @@ export function zoneOf(apt: { isRegulated?: boolean | null; region?: string | nu
   return getZone(apt.region, apt.gu);
 }
 
-/** 수도권(서울·경기·인천)인가 — region 이 "경기,서울" 같은 복합값이면 `getZone` 처럼 첫 값으로 본다. */
+/**
+ * 수도권 긴 시도 이름 → 짧은 이름 — `regionGeoMapping.ts` `SIDO_GEO_TO_DB` 의 세 줄과 같은 글자.
+ * 그 파일을 import 하지 않는 이유: 이 파일은 로더 없는 일반 node(`collect-trade-stats.yml` → trade-stats.mjs)도
+ * 직접 여는데, 확장자 없는 상대 import 는 거기서 ERR_MODULE_NOT_FOUND 로 죽는다(세션713 보완 1 ·
+ * 가드 = scripts/_regulations-plain-node-import.test.mjs).
+ */
+const METRO_LONG_NAMES: Readonly<Record<string, string>> = { 서울특별시: "서울", 경기도: "경기", 인천광역시: "인천" };
+
+/**
+ * 수도권(서울·경기·인천)인가 — region 이 "경기,서울" 같은 복합값이면 `getZone` 처럼 첫 값으로 본다.
+ * "인천광역시"·"경기도" 같은 긴 표기도 짧은 이름으로 줄여 본다(`loanRules.shortSido` 와 같은 결과 · A-26 ⑭ · 세션713).
+ */
 export function isMetroRegion(region?: string | null): boolean {
   const r = (region ?? "").split(",")[0].trim().normalize("NFC");
-  return METRO_REGIONS.includes(r);
+  return METRO_REGIONS.includes(METRO_LONG_NAMES[r] ?? r);
 }
 
 /**

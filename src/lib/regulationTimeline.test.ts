@@ -284,15 +284,38 @@ describe("buildRegulationTimeline — 수도권 6억 한도 경과규정(세션7
 });
 
 describe("buildRegulationTimeline — 보완 2차(세션705 ⑦)", () => {
-  // 7-1 — 이번 달 입주 사건 제목은 「입주 예정」(결론 꼬리의 moveInStarted 는 세션711 부터 이번 달 포함 — 제목은 그대로 두기로 👤 결정)
-  // ⚠️ 변이 대상: future 를 `>` 로 되돌리면 「입주 시작」·future 거짓·「오늘」 앞으로 가 빨강.
-  it("입주월이 이번 달이면 「입주 예정」 · future 참 · 「오늘」 뒤 · 결론은 grandfather-may 그대로", () => {
+  // 7-1 — 이번 달 입주 사건 제목은 「입주 시작(이번 달)」(A-26 ㉑ · 세션713 👤 — 결론 꼬리의 moveInStarted 와 말을 맞춤)
+  // future 참·「오늘」 뒤 정렬은 그대로.
+  // ⚠️ 변이 대상: future 를 `>` 로 되돌리면 future 거짓·「오늘」 앞으로 가 빨강 · 이번 달 분기를 지우면 제목이 「입주 예정」이라 빨강.
+  it("입주월이 이번 달이면 「입주 시작(이번 달)」 · future 참 · 「오늘」 뒤 · 결론은 grandfather-may 그대로", () => {
     const t = buildRegulationTimeline({ ...base, gu: "송파구", firstDate: "2019-08-19", moveIns: ["2026-11"] });
     const mi = t.events.find((e) => e.kind === "move-in")!;
-    expect(mi.title).toBe("이 단지 입주 예정");
+    expect(mi.title).toBe("이 단지 입주 시작(이번 달)");
     expect(mi.future).toBe(true);
     expect(t.events.map((e) => e.kind).slice(-2)).toEqual(["today", "move-in"]);
     expect(t.verdict.kind).toBe("grandfather-may");
+  });
+
+  // ㉑ 경계 3개 — 앞달·이번 달·다음 달(시각은 NOW = 2026-11-08 로 고정)
+  it("입주 제목 경계 — 2026-10 「입주 시작」 · 2026-11 「입주 시작(이번 달)」 · 2026-12 「입주 예정」", () => {
+    const title = (mi: string) =>
+      buildRegulationTimeline({ ...base, firstDate: "2024-05-10", moveIns: [mi] }).events.find(
+        (e) => e.kind === "move-in"
+      )!;
+    expect(title("2026-10").title).toBe("이 단지 입주 시작");
+    expect(title("2026-10").future).toBe(false);
+    expect(title("2026-11").title).toBe("이 단지 입주 시작(이번 달)");
+    expect(title("2026-11").future).toBe(true);
+    expect(title("2026-12").title).toBe("이 단지 입주 예정");
+    expect(title("2026-12").future).toBe(true);
+    // 다른 날 「지금」을 넣어도 같은 규칙 — 2027-03 이 이번 달이면 「입주 시작(이번 달)」
+    const t = buildRegulationTimeline({
+      ...base,
+      firstDate: "2024-05-10",
+      moveIns: ["2027-03"],
+      now: kstNoon("2027-03-15"),
+    });
+    expect(t.events.find((e) => e.kind === "move-in")!.title).toBe("이 단지 입주 시작(이번 달)");
   });
 
   // 7-4 — 2026 추가 지정 경기 3곳의 지정 사건 제목 꼬리
@@ -349,7 +372,7 @@ describe("buildRegulationTimeline — 종전 대상 제외(A-6)", () => {
       text: `첫 공고가 지정보다 앞서요 → 집단대출은 종전 50% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이${MOVEIN_TAIL}`,
     });
     expect(t.metroCapWaived).toBe(true);
-    // 이번 달(2026-11) 입주는 꼬리 있음(세션711 ㉑ — 잔금 카드와 같은 moveInStarted · 사건 제목은 그대로 「입주 예정」)
+    // 이번 달(2026-11) 입주는 꼬리 있음(세션711 ㉑ — 잔금 카드와 같은 moveInStarted · 사건 제목은 세션713 부터 「입주 시작(이번 달)」)
     expect(buildRegulationTimeline({ ...g4, moveIns: ["2026-11"] }).verdict.text).toContain(MOVEIN_TAIL);
     // 입주 전(2027-03·다음 달 2026-12)·모름은 꼬리 없음
     for (const mi of ["2027-03", "2026-12", "미정"]) {

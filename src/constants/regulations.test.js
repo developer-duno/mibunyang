@@ -22,6 +22,7 @@ import {
   METRO_LOAN_CAP,
   METRO_REGIONS,
 } from "@/constants/regulations";
+import { SIDO_GEO_TO_DB } from "@/constants/regionGeoMapping";
 import zonesJson from "../data/regulation-zones.json";
 
 // 10·15 대책 지정 경기 12곳 (공식 표기)
@@ -182,6 +183,34 @@ describe("isMetroRegion — 수도권(서울·경기·인천)", () => {
   it("복합값은 getZone 처럼 첫 값으로 본다", () => {
     expect(isMetroRegion("경기,서울")).toBe(true);
     expect(isMetroRegion("부산,경기")).toBe(false);
+  });
+
+  // A-26 ⑭ (세션713) — 긴 시도 이름도 짧은 이름으로 줄여 본다(loanRules.shortSido 와 같은 geoSidoToDbName)
+  // ⚠️ 변이 대상: 줄임(geoSidoToDbName)을 지우면 긴 이름 단언과 calcLTV 동치 단언이 빨강.
+  it.each([
+    ["인천광역시", true],
+    ["서울특별시", true],
+    ["경기도", true],
+    ["부산광역시", false],
+    ["세종특별자치시", false],
+    ["경기도,서울특별시", true],
+  ])("긴 이름 %s → %s", (region, want) => {
+    expect(isMetroRegion(region)).toBe(want);
+  });
+
+  // regulations.ts 는 일반 node 때문에 regionGeoMapping 을 import 못 해 수도권 세 줄을 안에 따로 둔다(세션713 보완 1) —
+  // 긴 이름 표 전체와 판정이 어긋나지 않는지 묶는다(한쪽만 바뀌면 빨강).
+  it("긴 이름 표(SIDO_GEO_TO_DB) 전체와 판정이 같다 — 짧은 이름이 수도권인 긴 이름만 참", () => {
+    for (const [long, short] of Object.entries(SIDO_GEO_TO_DB)) {
+      expect([long, isMetroRegion(long)]).toEqual([long, METRO_REGIONS.includes(short)]);
+    }
+  });
+
+  it("긴 이름이어도 대출 계산이 짧은 이름과 같다 — 경기도 비규제 16억 = 경기 = 4억(수도권 15억 초과 한도)", () => {
+    expect(calcLTV(160000, "normal", "경기도")).toBe(calcLTV(160000, "normal", "경기"));
+    expect(calcLTV(160000, "normal", "경기도")).toBe(40000);
+    // 지방은 긴 이름이어도 한도 없음 — 16억 × 70%
+    expect(calcLTV(160000, "normal", "부산광역시")).toBe(112000);
   });
 });
 

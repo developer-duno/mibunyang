@@ -1,18 +1,10 @@
 import { memo, useState } from "react";
 import { C, F } from "@/theme";
-import {
-  zoneOf,
-  calcLTV,
-  isMetroRegion,
-  ZONE_TYPE,
-  NORMAL_LTV,
-  REGULATED_LTV_RATE,
-  METRO_LOAN_CAP,
-} from "@/constants/regulations";
+import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE, NORMAL_LTV, REGULATED_LTV_RATE } from "@/constants/regulations";
 import { useLoanRates } from "@/hooks/useLoanRates";
 import { useUnitChoice } from "@/hooks/useUnitChoice";
 import { DEFAULT_GROUP } from "@/constants/loanGroups";
-import { LoanStack } from "@/components/charts/LoanStack";
+import { LoanStack, METRO_TIER_TEXT } from "@/components/charts/LoanStack";
 import { LoanRatesSection } from "./LoanRatesSection";
 import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
 import { SkeletonBox } from "@/components/primitives";
@@ -48,12 +40,13 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
   const zoneName = (ZONE_TYPE as Record<string, string>)[zone];
   const metro = isMetroRegion(apt.region);
   // 규제지역은 비율 하나로 못 적는다 — 40% 를 곱한 뒤 집값 구간별 금액 뚜껑이 또 씌워지기 때문.
-  // 수도권(서울·경기·인천)은 구역과 상관없이 주택구입 대출 최대 6억이 한 번 더 씌워진다.
+  // 수도권(서울·경기·인천)은 구역과 상관없이 집값 구간별 금액 한도(15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억)가
+  // 걸린다 — 글자는 막대 문장과 같은 `METRO_TIER_TEXT`(A-26 ⑬ · 세션713).
   const ltvSummary =
     zone === "normal"
-      ? `LTV: ${Math.round(NORMAL_LTV * 100)}% (무주택자 기준)` +
-        (metro ? ` · 수도권 대출한도 최대 ${METRO_LOAN_CAP / 10000}억` : "")
-      : `LTV: ${Math.round(REGULATED_LTV_RATE * 100)}% (무주택자 기준) · 대출한도 15억 초과 4억 / 25억 초과 2억`;
+      ? `LTV: ${Math.round(NORMAL_LTV * 100)}% (무주택자 기준)` + (metro ? ` · 수도권 대출한도 ${METRO_TIER_TEXT}` : "")
+      : `LTV: ${Math.round(REGULATED_LTV_RATE * 100)}% (무주택자 기준) · 대출한도 ` +
+        (metro ? METRO_TIER_TEXT : "15억 초과 4억 / 25억 초과 2억");
   // 2단 통일(세션508 PR-3a A3) — 종합 탭(2단: normal→초록/그외→빨강)과 여기(옛 3단:
   // overheated→주황/speculative→빨강)가 갈려 있었다. ZONE_MAP 이 전 항목을 overheated 하나로만
   // 매핑(PR-1)해 실제로는 같은 단지가 종합=빨강·금융=주황으로 보이는 모순이 생겼다.
@@ -64,7 +57,8 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
   // 대출액 — 위 막대·잔금 카드와 같은 평수 값(unit.price)·같은 계산(calcLTV)
   const ltvBase = calcLTV(unit.price, zone, apt.region);
   // 아래 잔금 카드에 종전 줄이 보이면 막대 문장 끝에 그 카드로 잇는 한 문장 — 카드와 같은 판정 함수(A-26 ⑫-② · 세션711)
-  const gfNotice = grandfatherNotice(apt, unit);
+  // 평형표를 기다리는 동안(unit.pending)은 막대를 안 그리므로 계산하지 않는다(A-26 ⑫ · 세션713)
+  const gfNotice = unit.pending ? null : grandfatherNotice(apt, unit);
 
   return (
     <>
@@ -91,7 +85,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
             isRegulated={apt.isRegulated as boolean | null}
             dsr40pass={apt.dsr40pass as boolean | null}
             basisLabel={unit.hasPrice ? unitBasisLabel(unit) : null}
-            grandfatherDate={gfNotice.show ? gfNotice.firstDate : null}
+            grandfatherDate={gfNotice?.show ? gfNotice.firstDate : null}
           />
           {/* 잔금 계획(세션659) — 위에서 받은 은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다 */}
           <FundingPlanner apt={apt} rates={bankRates} unit={unit} />

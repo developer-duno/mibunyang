@@ -236,12 +236,13 @@ export function buildRegulationTimeline(input: {
     if (ym != null && (moveIn == null || ym < moveIn)) moveIn = ym;
   }
   if (moveIn != null) {
-    // 이번 달 입주 사건은 「입주 예정」 · 정렬도 「오늘」 뒤(보완 7-1) — 결론 꼬리의 moveInStarted 는 세션711 부터 이번 달 포함(👤 결정 ② = 꼬리만 · 제목을 그대로 둔 것은 메인 판단 — 바꿀지는 BACKLOG A-26)
+    // 이번 달 입주 사건 제목은 「입주 시작(이번 달)」 — 결론 꼬리의 moveInStarted(세션711 부터 이번 달 포함)와 말을 맞춘다(A-26 ㉑ · 세션713 👤).
+    // `future`(이번 달 포함)와 정렬(「오늘」 뒤 · 보완 7-1)은 그대로 — 바뀌는 건 제목 글자뿐.
     const future = moveIn >= thisMonth;
     events.push({
       date: moveIn,
       kind: "move-in",
-      title: future ? "이 단지 입주 예정" : "이 단지 입주 시작",
+      title: moveIn === thisMonth ? "이 단지 입주 시작(이번 달)" : future ? "이 단지 입주 예정" : "이 단지 입주 시작",
       note: regulated ? "잔금대출은 분양가가 아니라 입주 때 시세·감정가 기준이에요" : undefined,
       mine: true,
       future,
