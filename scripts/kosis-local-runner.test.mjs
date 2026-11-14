@@ -33,6 +33,11 @@ import {
   readLastProcessed,
   writeLastProcessed,
   ymd,
+  judgeWorkflowStates,
+  checkGithubWorkflowStates,
+  buildWorkflowDisabledMessage,
+  GH_WORKFLOWS_URL,
+  GH_WORKFLOW_STATE_ALLOWLIST,
 } from "./kosis-local-runner.mjs";
 
 /** @param {number} y @param {number} m @param {number} d */
@@ -593,5 +598,85 @@ describe("상태 파일 읽기·쓰기", () => {
 
   it("쓸 수 없는 경로여도 throw 하지 않는다 (best-effort)", () => {
     expect(writeLastProcessed("2026-08-21", path.join(tmpdir(), "없는폴더", "x", "state.json"))).toBe(false);
+  });
+});
+
+describe("GitHub 예약 워크플로 꺼짐 감시 — 세션716 M1", () => {
+  /** @param {Array<{ name?: string, path?: string, state?: string }>} wfs */
+  const body = (wfs) => JSON.stringify({ total_count: wfs.length, workflows: wfs });
+  const active = (/** @type {string} */ p) => ({ name: p, path: `.github/workflows/${p}.yml`, state: "active" });
+
+  it("전부 active → ok(알림 없음)", () => {
+    expect(judgeWorkflowStates(body([active("a"), active("b")]))).toEqual({ status: "ok", count: 2 });
+  });
+  it("disabled_inactivity 1개 → disabled + 그 워크플로만", () => {
+    const r = judgeWorkflowStates(body([active("a"), { name: "감시", path: ".github/workflows/monitor-collectors.yml", state: "disabled_inactivity" }]));
+    expect(r.status).toBe("disabled");
+    expect(r.status === "disabled" && r.items).toEqual([{ name: "감시", path: ".github/workflows/monitor-collectors.yml", state: "disabled_inactivity" }]);
+  });
+  it("허용 명단에 든 꺼진 워크플로 → ok", () => {
+    const off = { name: "x", path: ".github/workflows/x.yml", state: "disabled_manually" };
+    expect(judgeWorkflowStates(body([active("a"), off]), [".github/workflows/x.yml"]).status).toBe("ok");
+    expect(judgeWorkflowStates(body([active("a"), off]), []).status).toBe("disabled");
+  });
+  it("빈 목록·깨진 JSON·모양 다름 → unknown(꺼짐 0 으로 읽지 않음)", () => {
+    expect(judgeWorkflowStates(body([])).status).toBe("unknown");
+    expect(judgeWorkflowStates("<html>rate limit</html>").status).toBe("unknown");
+    expect(judgeWorkflowStates(JSON.stringify({ message: "API rate limit exceeded" })).status).toBe("unknown");
+  });
+  it("허용 명단 기본값은 빈 명단(2026-11-14 실측 35개 전부 active)", () => {
+    expect(GH_WORKFLOW_STATE_ALLOWLIST).toEqual([]);
+  });
+  it("알림 문장은 HTML 특수문자를 막는다", () => {
+    const t = buildWorkflowDisabledMessage([{ name: "A&B <x>", path: ".github/workflows/a.yml", state: "disabled_inactivity" }]);
+    expect(t).toContain("A&amp;B &lt;x&gt;");
+    expect(t).toContain("꺼짐 1개");
+  });
+
+  /** @param {number} status @param {string} text */
+  const fakeRes = (status, text) => /** @type {any} */ ({ ok: status >= 200 && status < 300, status, text: async () => text });
+
+  it("꺼진 것이 있으면 토큰 없이 그 주소를 1회 읽고 알림 1통", async () => {
+    /** @type {any[]} */
+    const calls = [];
+    const send = vi.fn(async () => ({ sent: true }));
+    const r = await checkGithubWorkflowStates({
+      fetchImpl: /** @type {any} */ (async (/** @type {any} */ url, /** @type {any} */ init) => {
+        calls.push([url, init]);
+        return fakeRes(200, body([{ name: "n", path: ".github/workflows/n.yml", state: "disabled_inactivity" }]));
+      }),
+      send,
+    });
+    expect(r).toEqual({ status: "disabled", sent: true });
+    expect(calls).toHaveLength(1);
+    expect(calls[0][0]).toBe(GH_WORKFLOWS_URL);
+    expect(calls[0][1].headers.Authorization).toBeUndefined();
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+  it("전부 active 면 알림 0", async () => {
+    const send = vi.fn(async () => ({ sent: true }));
+    const r = await checkGithubWorkflowStates({ fetchImpl: /** @type {any} */ (async () => fakeRes(200, body([active("a")]))), send });
+    expect(r.status).toBe("ok");
+    expect(send).not.toHaveBeenCalled();
+  });
+  it("실패해도 던지지 않는다 — 네트워크 예외·403 한도·깨진 JSON·전송 예외 전부 unknown/결과로 끝남", async () => {
+    const send = vi.fn(async () => ({ sent: true }));
+    await expect(checkGithubWorkflowStates({ fetchImpl: /** @type {any} */ (async () => { throw new Error("fetch failed"); }), send })).resolves.toMatchObject({ status: "unknown", reason: "fetch failed" });
+    await expect(checkGithubWorkflowStates({ fetchImpl: /** @type {any} */ (async () => fakeRes(403, "{}")), send })).resolves.toMatchObject({ status: "unknown", reason: "HTTP 403" });
+    await expect(checkGithubWorkflowStates({ fetchImpl: /** @type {any} */ (async () => fakeRes(200, "not json")), send })).resolves.toMatchObject({ status: "unknown" });
+    await expect(checkGithubWorkflowStates({ fetchImpl: /** @type {any} */ (async () => fakeRes(200, body([]))), send })).resolves.toMatchObject({ status: "unknown" });
+    expect(send).not.toHaveBeenCalled();
+    const throwingSend = vi.fn(async () => { throw new Error("telegram down"); });
+    await expect(checkGithubWorkflowStates({
+      fetchImpl: /** @type {any} */ (async () => fakeRes(200, body([{ name: "n", path: "p", state: "disabled_inactivity" }]))),
+      send: /** @type {any} */ (throwingSend),
+    })).resolves.toMatchObject({ status: "unknown", reason: "telegram down" });
+  });
+  it("main 은 예약 실행(--dry-run·--date 아님)에서만, 수집기 루프 앞에서 await 로 부른다", () => {
+    const src = readFileSync(new URL("./kosis-local-runner.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    const mainSrc = src.slice(src.indexOf("async function main()"));
+    const callIdx = mainSrc.search(/\n\s*if \(!dryRun && !dateArg\) await checkGithubWorkflowStates\(\);/);
+    expect(callIdx).toBeGreaterThan(0);
+    expect(callIdx).toBeLessThan(mainSrc.indexOf("for (const targetStr of targets)"));
   });
 });
