@@ -119,6 +119,10 @@ describe("CompareSheet", () => {
     // ⚠️ 변이 대상: 둘째 줄을 지우면 빨강.
     expect(ltvRow?.querySelector("td")?.textContent).toBe("LTV한도지금 규정·분양가 기준");
     expect(screen.getByTestId("compare-ltv-basis").closest("tr")).toBe(ltvRow);
+    // 세션714 A-26 ㉒ — 필요자본 이름 칸 아래 「분양가 − LTV한도」(U+2212) 작은 글자. ⚠️ 변이 대상: 지우면 빨강.
+    const needRow = screen.getByText("필요자본").closest("tr");
+    expect(needRow?.querySelector("td")?.textContent).toBe("필요자본분양가 − LTV한도");
+    expect(screen.getByTestId("compare-needcash-basis").closest("tr")).toBe(needRow);
     const zoneRow = screen.getByText("규제현황").closest("tr");
     const zones = [...(zoneRow?.querySelectorAll("td") ?? [])].slice(1).map((td) => td.textContent);
     expect(zones).toEqual(["비규제지역", "규제지역"]);

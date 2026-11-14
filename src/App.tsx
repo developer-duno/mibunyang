@@ -471,8 +471,9 @@ export default function App() {
   });
 
   // 문의 버튼(FeedbackFab)을 그리는 조건 — 관리자 대시보드·지도 탭에서는 숨김(세션574 사장님 결정).
-  // 휴대폰 상세 모달도 같은 변수로 "버튼이 위에 떠 있나"를 판단해 맨 아래 여백을 둔다(세션594 S6).
-  const fabVisible = tab !== "admin" && tab !== "map";
+  // 휴대폰(!isPC)에서 상세 창이 열려 있으면 숨김 — 상세 창 아래 「이 단지 문의하기」가 같은 문의 창의 입구다
+  // (A-26 ⑳ · 세션714 사장님 결정 — 떠 있는 버튼이 탭 맨 아래 줄을 덮던 일을 버튼째 없앰 · 옛 세션594 S6 빈 칸 대체).
+  const fabVisible = tab !== "admin" && tab !== "map" && !(detail.detailAptId && !isPC);
 
   // 상세 창 로딩 뼈대 — DetailModal(lazy) 받는 중 + 단지 주소 직접 진입의 데이터 받는 중(세션641) 두 자리가 함께 쓴다
   const detailSkeleton = (
@@ -886,7 +887,6 @@ export default function App() {
                 onShare={handleShareDetail}
                 isPC={isPC}
                 isDesktop={isDesktop}
-                fabOverlaps={fabVisible && !isPC}
                 onConsult={feedback.openFeedback}
                 profile={profile}
                 adminLoggedIn={admin.adminLoggedIn}
@@ -902,14 +902,8 @@ export default function App() {
           );
         })()}
 
-      {/* 문의 버튼 — 관리자 대시보드·지도 탭에서는 숨김(지도는 현위치·선택 단지 카드와 겹침, 사장님 결정) (세션574) */}
-      {fabVisible && (
-        <FeedbackFab
-          onClick={feedback.openFeedback}
-          isDesktop={isDesktop}
-          detailOpen={Boolean(detail.detailAptId) && !isPC}
-        />
-      )}
+      {/* 문의 버튼 — 관리자 대시보드·지도 탭에서는 숨김(지도는 현위치·선택 단지 카드와 겹침, 사장님 결정) (세션574) · 휴대폰 상세 창 열림도 숨김(세션714 ⑳) */}
+      {fabVisible && <FeedbackFab onClick={feedback.openFeedback} isDesktop={isDesktop} />}
       {feedback.open && (
         <Suspense fallback={null}>
           <FeedbackForm

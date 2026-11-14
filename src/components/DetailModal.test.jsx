@@ -1390,21 +1390,10 @@ describe("DetailModal 헤더 면적 토큰", () => {
   });
 });
 
-// 세션594 S6·S7 — 휴대폰 '문의' 버튼 여백 · 입지·분양 탭 위 여백
-describe("DetailModal — 문의 버튼 아래 여백 · 탭 위 여백 (세션594)", () => {
-  it("fabOverlaps=true(휴대폰·문의 버튼 보임)면 CTA 바 바로 앞에 버튼 높이+12 = 64px 빈 칸", () => {
-    render(<DetailModal {...makeProps({ fabOverlaps: true })} />);
-    const spacer = /** @type {HTMLElement} */ (screen.getByTestId("detail-fab-spacer"));
-    expect(spacer.style.height).toBe("64px");
-    expect(spacer.getAttribute("aria-hidden")).toBe("true");
-    expect(spacer.nextElementSibling).toBe(screen.getByTestId("detail-cta-bar"));
-  });
-
-  it("fabOverlaps 미전달(PC·지도·관리자 탭)이면 빈 칸이 없다 — 변화 0", () => {
-    render(<DetailModal {...makeProps()} />);
-    expect(screen.queryByTestId("detail-fab-spacer")).toBeNull();
-  });
-
+// 세션594 S7 — 입지·분양 탭 위 여백
+// (S6 「문의 버튼 아래 빈 칸」 시험 2개는 세션714 ⑳ 에서 지웠다 — 휴대폰 상세 창이 열리면 App 이 문의 버튼을
+//  아예 안 그려 빈 칸(detail-fab-spacer)도 함께 없앴다. 새 동작 시험 = App.test.jsx 「휴대폰 상세 창에서는 문의 버튼 숨김」)
+describe("DetailModal — 탭 위 여백 (세션594)", () => {
   // 첫 블록이 붙박이 탭 줄에 붙지 않게 하는 위 여백(세션591 L8) — 지키는 시험이 없었다.
   it("입지 탭 패널은 위 여백 12px", () => {
     const { container } = render(<DetailModal {...makeProps()} />);
