@@ -16,7 +16,7 @@ import { LoanStack } from "@/components/charts/LoanStack";
 import { LoanRatesSection } from "./LoanRatesSection";
 import { MonthlyPaymentBlock, BankRateBars } from "./BankLoanBlocks";
 import { SkeletonBox } from "@/components/primitives";
-import { FundingPlanner, UnitChips, unitBasisLabel } from "./FundingPlanner";
+import { FundingPlanner, UnitChips, unitBasisLabel, grandfatherNotice } from "./FundingPlanner";
 import { LOAN_RULES_BASIS } from "@/constants/loanRules";
 import { RegulationTimeline } from "./RegulationTimeline";
 import type { LoanAnalysisProps } from "@/types/components/LoanAnalysis.types";
@@ -63,6 +63,8 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
   const zoneColor = zone === "normal" ? C.green : C.red;
   // 대출액 — 위 막대·잔금 카드와 같은 평수 값(unit.price)·같은 계산(calcLTV)
   const ltvBase = calcLTV(unit.price, zone, apt.region);
+  // 아래 잔금 카드에 종전 줄이 보이면 막대 문장 끝에 그 카드로 잇는 한 문장 — 카드와 같은 판정 함수(A-26 ⑫-② · 세션711)
+  const gfNotice = grandfatherNotice(apt, unit);
 
   return (
     <>
@@ -89,6 +91,7 @@ export const LoanAnalysis = memo(function LoanAnalysis({ apt }: LoanAnalysisProp
             isRegulated={apt.isRegulated as boolean | null}
             dsr40pass={apt.dsr40pass as boolean | null}
             basisLabel={unit.hasPrice ? unitBasisLabel(unit) : null}
+            grandfatherDate={gfNotice.show ? gfNotice.firstDate : null}
           />
           {/* 잔금 계획(세션659) — 위에서 받은 은행권 금리 응답을 그대로 넘겨 호출이 늘지 않는다 */}
           <FundingPlanner apt={apt} rates={bankRates} unit={unit} />

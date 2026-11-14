@@ -389,4 +389,63 @@ describe("LoanAnalysis", () => {
     expect(screen.queryByTestId("fp-unit-chips")).toBeNull();
     expect(screen.queryByTestId("loan-stack-basis")).toBeNull();
   });
+
+  // A-26 ⑫-② (세션711 👤 안 1) — 막대 문장 끝 「잔금 카드로 잇는 문장」은 이 부품이 카드와 같은 판정(grandfatherNotice)으로
+  // 첫 공고일을 막대에 넘겨야 붙는다. 기대 날짜·조건은 카드 시험(FundingPlanner.test.tsx)과 같은 단지 꼴에서 옮겼다.
+  // ⚠️ 변이 대상: LoanStack 에 grandfatherDate 를 안 넘기면 첫 단언이 빨강 · 조건 없이 늘 넘기면 「없음」 단언들이 빨강.
+  describe("막대 문장 → 잔금 카드 잇기 (세션711)", () => {
+    const BRIDGE = (/** @type {string} */ d) =>
+      `이 단지는 첫 공고 날짜(${d})에 따라 종전 규정이 적용될 수도 있어요. 자세한 금액은 아래 잔금 카드에 있어요.`;
+    const rendered = (/** @type {Record<string, unknown>} */ o) =>
+      render(
+        <LoanAnalysis
+          apt={
+            /** @type {any} */ (
+              makeApt({
+                price: 100000,
+                region: "경기",
+                gu: "평택시",
+                isRegulated: false,
+                presaleHousingType: "아파트",
+                ...o,
+              })
+            )
+          }
+        />
+      );
+
+    it("경기 비규제 10억 · 첫 공고 2025-05-20(6/27 전) → 막대 문장에 잇는 문장(카드에 종전 줄이 보이는 단지)", () => {
+      const r = rendered({ presaleRecruitDate: "2025-05-20" });
+      expect(screen.getByTestId("loan-stack-grandfather").textContent).toBe(` ${BRIDGE("2025-05-20")}`);
+      expect(r.container.textContent).toContain("비규제지역이지만 지금 규정에서 수도권 주택구입 대출은");
+    });
+
+    it("규제지역 40% 갈래에도 — 서울 중구 3.885억 · 첫 공고 2022-12-19", () => {
+      rendered({ price: 38850, region: "서울", gu: "중구", isRegulated: true, presaleRecruitDate: "2022-12-19" });
+      expect(screen.getByTestId("loan-stack-grandfather").textContent).toBe(` ${BRIDGE("2022-12-19")}`);
+    });
+
+    it("묶음 첫 공고일(firstRecruitDate)이 카드 공고일보다 이르면 그 날짜로(카드와 같은 첫 공고일)", () => {
+      vi.mocked(usePresaleDetail).mockReturnValue({ ...NO_UNITS, firstRecruitDate: "2021-05-04" });
+      rendered({ price: 38850, region: "서울", gu: "중구", isRegulated: true, presaleRecruitDate: "2026-06-12" });
+      expect(screen.getByTestId("loan-stack-grandfather").textContent).toBe(` ${BRIDGE("2021-05-04")}`);
+    });
+
+    it("종전 줄이 없는 단지는 안 붙음 — 2025-10-16 뒤 공고 · 공고일 없음 · 지방 비규제 · 사전청약 · 비주택", () => {
+      /** @type {Record<string, unknown>[]} */
+      const cases = [
+        { presaleRecruitDate: "2025-10-20" },
+        { presaleRecruitDate: null },
+        { region: "부산", gu: "해운대구", presaleRecruitDate: "2021-05-04" },
+        { presaleRecruitDate: "2025-05-20", name: "어떤 사전청약 A1" },
+        { presaleRecruitDate: "2025-05-20", presaleHousingType: "오피스텔" },
+      ];
+      for (const o of cases) {
+        const r = rendered(o);
+        expect(screen.queryByTestId("loan-stack-grandfather")).toBeNull();
+        expect(r.container.textContent).not.toContain("종전 규정이 적용될 수도");
+        r.unmount();
+      }
+    });
+  });
 });

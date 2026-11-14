@@ -1208,7 +1208,7 @@ describe("DetailModal — 비로그인 점수 블라인드", () => {
       const t = await financeText({ price: 53020, region: "서울", gu: "강남구", isRegulated: true });
       expect(t).toContain("대출 2억 1,208만");
       expect(t).toContain("내 돈 3억 1,812만");
-      expect(t).toContain("분양가 5억 3,020만 · 규제지역 기준 최대 40%");
+      expect(t).toContain("분양가 5억 3,020만 · 지금 규정으로 규제지역 기준 최대 40%");
       expect(t).not.toContain("LTV 대출한도");
       expect(t).not.toContain("필요 자기자본");
       expect(t).not.toContain("은행별 금리 비교");

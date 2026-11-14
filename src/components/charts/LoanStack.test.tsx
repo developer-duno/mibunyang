@@ -65,7 +65,9 @@ describe("LoanStack — 금액은 만원까지 (세션593 D1)", () => {
     expect(ownSeg.textContent).toBe("내 돈 3억 1,812만");
     expect(screen.getByText("빌릴 수 있는 돈 2억 1,208만")).toBeInTheDocument();
     expect(screen.getByText("직접 준비할 돈 3억 1,812만")).toBeInTheDocument();
-    expect(screen.getByText(/^분양가 5억 3,020만 · 규제지역 기준 최대 40%까지 빌릴 수 있어요\./)).toBeInTheDocument();
+    expect(
+      screen.getByText(/^분양가 5억 3,020만 · 지금 규정으로 규제지역 기준 최대 40%까지 빌릴 수 있어요\./)
+    ).toBeInTheDocument();
     expect(container.textContent).not.toMatch(/\d\.\d억/);
   });
 
@@ -93,7 +95,7 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
     // 6억 한도로 깎였으면 "비규제지역 기준 최대 60%" 처럼 비규제 규칙이 바뀐 것처럼 쓰지 않는다
     expect(
       screen.getByText(
-        /비규제지역이지만 수도권 주택구입 대출은 분양가로 계산하면 최대 6억이라 분양가의 60%까지 빌릴 수 있어요\. 실제 한도는 대출 받을 때 시세로 정해져요\(15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억\)\./
+        /비규제지역이지만 지금 규정에서 수도권 주택구입 대출은 분양가로 계산하면 최대 6억이라 분양가의 60%까지 빌릴 수 있어요\. 실제 한도는 대출 받을 때 시세로 정해져요\(15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억\)\./
       )
     ).toBeInTheDocument();
     expect(screen.queryByText(/비규제지역 기준 최대 60%/)).toBeNull();
@@ -107,7 +109,7 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
     expect(screen.getByText("빌릴 수 있는 돈 4억")).toBeInTheDocument();
     expect(
       screen.getByText(
-        /비규제지역이지만 수도권 주택구입 대출은 분양가로 계산하면 최대 4억이라 분양가의 19%까지 빌릴 수 있어요\. 실제 한도는 대출 받을 때 시세로 정해져요/
+        /비규제지역이지만 지금 규정에서 수도권 주택구입 대출은 분양가로 계산하면 최대 4억이라 분양가의 19%까지 빌릴 수 있어요\. 실제 한도는 대출 받을 때 시세로 정해져요/
       )
     ).toBeInTheDocument();
     expect(screen.queryByText(/최대 6억이라/)).toBeNull();
@@ -184,6 +186,59 @@ describe("LoanStack — DSR 은 막대가 아니라 한 줄 안내", () => {
   it("모르면 아무 말도 안 한다 (모르는 걸 단정하지 않는다)", () => {
     render(<LoanStack price={50000} region="서울" gu="강남구" dsr40pass={null} />);
     expect(screen.queryByText(/DSR/)).toBeNull();
+  });
+});
+
+// A-26 ⑫-② (세션711 👤 안 1) — 막대 금액은 늘 지금 규정이라 문장에 「지금 규정」을 밝히고,
+// 아래 잔금 카드에 종전 줄이 보이는 단지면(부모가 grandfatherDate 를 넘김) 그 카드로 잇는 한 문장을 DSR 문장 앞에 붙인다.
+describe("LoanStack — 「지금 규정」 · 잔금 카드로 잇는 문장 (세션711)", () => {
+  const BRIDGE =
+    "이 단지는 첫 공고 날짜(2025-05-20)에 따라 종전 규정이 적용될 수도 있어요. 자세한 금액은 아래 잔금 카드에 있어요.";
+
+  // ⚠️ 변이 대상: 그 밖 갈래의 「지금 규정으로 」를 지우면 첫 단언, metroCapped 갈래의 「지금 규정에서 」를 지우면 둘째 단언이 빨강.
+  it("두 갈래 모두 화면 글과 aria 에 같은 「지금 규정」 문장", () => {
+    const a = render(<LoanStack price={50000} region="부산" gu="해운대구" />);
+    const zoneLine = "지금 규정으로 비규제지역 기준 최대 70%까지 빌릴 수 있어요.";
+    expect(a.container.textContent).toContain(`분양가 5억 · ${zoneLine}`);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toContain(zoneLine);
+    a.unmount();
+    render(<LoanStack price={100000} region="경기" gu="평택시" />);
+    const capped =
+      "비규제지역이지만 지금 규정에서 수도권 주택구입 대출은 분양가로 계산하면 최대 6억이라 분양가의 60%까지 빌릴 수 있어요.";
+    expect(document.body.textContent).toContain(capped);
+    expect(screen.getByRole("img").getAttribute("aria-label")).toContain(capped);
+  });
+
+  // ⚠️ 변이 대상: grandfatherDate 가 있어도 문장을 안 붙이면 빨강 · 늘 붙이면 「없음」 단언이 빨강.
+  it("grandfatherDate 가 있으면 시세 문장 뒤·DSR 문장 앞에 잇는 문장(화면·aria 둘 다) · 없으면 안 붙음", () => {
+    const a = render(
+      <LoanStack price={100000} region="경기" gu="평택시" dsr40pass={false} grandfatherDate="2025-05-20" />
+    );
+    expect(screen.getByTestId("loan-stack-grandfather").textContent).toBe(` ${BRIDGE}`);
+    const t = a.container.textContent ?? "";
+    expect(t.indexOf("시세로 정해져요")).toBeLessThan(t.indexOf(BRIDGE));
+    expect(t.indexOf(BRIDGE)).toBeLessThan(t.indexOf("다만 소득 대비 상환 부담(DSR)"));
+    const label = screen.getByRole("img").getAttribute("aria-label") ?? "";
+    expect(label).toContain(BRIDGE);
+    expect(label.indexOf(BRIDGE)).toBeLessThan(label.indexOf("다만 소득 대비 상환 부담(DSR)"));
+    a.unmount();
+    for (const g of [null, undefined, ""]) {
+      const r = render(<LoanStack price={100000} region="경기" gu="평택시" grandfatherDate={g} />);
+      expect(screen.queryByTestId("loan-stack-grandfather")).toBeNull();
+      expect(r.container.textContent).not.toContain("종전 규정");
+      expect(screen.getByRole("img").getAttribute("aria-label")).not.toContain("종전 규정");
+      r.unmount();
+    }
+  });
+
+  it("규제지역 40% 갈래에도 같은 문장(metroCapped 여부와 무관) · 규제 꼬리는 그 뒤", () => {
+    const { container } = render(
+      <LoanStack price={38850} region="서울" gu="중구" isRegulated grandfatherDate="2021-05-04" />
+    );
+    const t = container.textContent ?? "";
+    expect(t).toContain(
+      "지금 규정으로 규제지역 기준 최대 40%까지 빌릴 수 있어요. 이 단지는 첫 공고 날짜(2021-05-04)에 따라 종전 규정이 적용될 수도 있어요. 자세한 금액은 아래 잔금 카드에 있어요. 잔금 때는 감정가·시세로 다시 재요."
+    );
   });
 });
 

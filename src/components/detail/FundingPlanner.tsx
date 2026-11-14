@@ -15,8 +15,10 @@ import {
   isPreSubscription,
   kstYearMonth,
   latestIsoDate,
+  ltvForPresale,
   METRO_CAP_CUTOFF,
   moveInStarted,
+  type PresaleLtv,
 } from "@/constants/loanRules";
 import { fmtPrice } from "@/lib/format";
 import { pickMonthlyRate } from "@/lib/loanRates";
@@ -310,6 +312,32 @@ export function unitBasisLabel(unit: Pick<UnitChoice, "unitLabel">): string {
   return unit.unitLabel ? `${unit.unitLabel} 기준` : "대표 분양가 기준";
 }
 
+/**
+ * 잔금 카드 종전 규정 줄(`fp-grandfather`)을 보일지 — 카드와 위 막대 문장(`LoanStack` 공고일 잇기 · A-26 ⑫-② 세션711)이
+ * 이 함수 하나로 같은 판정을 쓴다(조건 복사 금지). 종전 값이 지금보다 클 때만 · 비주택·사전청약은 숨김(아래 카드 주석).
+ * 첫 공고일 = 카드 공고일과 묶음 첫 공고일 중 이른 쪽("묶음 = 한 사업장" 전제 — 경과규정은 사업장 단위).
+ */
+export function grandfatherNotice(
+  apt: Apt,
+  unit: Pick<UnitChoice, "price" | "schedule" | "firstRecruitDate">
+): { firstDate: string | null; latestDate: string | null; ltv: PresaleLtv; show: boolean } {
+  const zone = zoneOf({
+    isRegulated: apt.isRegulated as boolean | null | undefined,
+    region: apt.region,
+    gu: apt.gu,
+  });
+  const firstDate = earliestIsoDate(apt.presaleRecruitDate, unit.firstRecruitDate);
+  const latestDate = latestIsoDate(apt.presaleRecruitDate, unit.schedule?.recruit_date, unit.firstRecruitDate);
+  const ltv = ltvForPresale({ price: unit.price, zone, region: apt.region, gu: apt.gu, firstDate, latestDate });
+  const gf = ltv.grandfathered;
+  const show =
+    gf != null &&
+    gf.amount > ltv.current.amount &&
+    !isNonHousing(apt.presaleHousingType as string | null | undefined, apt.name as string | null | undefined) &&
+    !isPreSubscription(apt.name as string | null | undefined);
+  return { firstDate, latestDate, ltv, show };
+}
+
 export const FundingPlanner = memo(function FundingPlanner({
   apt,
   rates,
@@ -321,7 +349,7 @@ export const FundingPlanner = memo(function FundingPlanner({
   /** 부모(`LoanAnalysis`)가 고른 평수 — 막대·한 달 상환과 같은 값(`useUnitChoice`) */
   unit: UnitChoice;
 }) {
-  const { hasPrice, price, schedule, firstRecruitDate } = unit;
+  const { hasPrice, price, schedule } = unit;
 
   const [income, setIncome] = useState("");
   const [cash, setCash] = useState("");
@@ -339,10 +367,10 @@ export const FundingPlanner = memo(function FundingPlanner({
     region: apt.region,
     gu: apt.gu,
   });
-  // 첫 공고일 = 카드 공고일과 묶음 첫 공고일 중 이른 쪽 — "묶음 = 한 사업장" 전제(경과규정은 사업장 단위)다.
+  // 첫 공고일·종전 줄 판정은 `grandfatherNotice` 한 곳(위 막대 문장과 같은 판정 · 세션711).
   // 큰 숫자는 지금 규정이라 이 날짜가 숫자를 부풀리지 않고, 종전 줄은 "될 수 있어요" 사실 안내다(결정 18).
-  const firstDate = earliestIsoDate(apt.presaleRecruitDate, firstRecruitDate);
-  const latestDate = latestIsoDate(apt.presaleRecruitDate, schedule?.recruit_date, firstRecruitDate);
+  const notice = grandfatherNotice(apt, unit);
+  const { firstDate, latestDate } = notice;
   const bankRate = useMemo(() => pickMonthlyRate(rates), [rates]);
   const splitNum: PaymentSplit = {
     contract: Number(split.contract || 0),
@@ -379,14 +407,10 @@ export const FundingPlanner = memo(function FundingPlanner({
   // 사전청약 단지도 숨긴다 — 첫 공고가 사전당첨자모집공고라 경과규정의 "입주자모집공고"가 아니다(세션660 사장님 결정).
   // 입주 뒤 계약 세대 해당 여부는 원문에 없음(2025~2026 원문은 사업장 단위 · 2020-07-02 해명은 세대 단위) → 줄은 보이고
   // 금융사 확인 문구 · 질의서 질의 9 ⑥ 회신 대기(세션709 👤 결정 ⑪).
-  const gf = plan?.ltv.grandfathered ?? null;
+  // 판정 = `grandfatherNotice`(위 막대 잇는 문장과 같은 함수 — 조건을 여기 다시 적지 않는다 · 세션711)
+  const gf = notice.ltv.grandfathered;
   const moveInBegun = moveInStarted([apt.presaleMoveIn, schedule?.move_in_ym], kstYearMonth());
-  const showGrandfather =
-    gf != null &&
-    cur != null &&
-    gf.amount > cur.amount &&
-    !isNonHousing(apt.presaleHousingType as string | null | undefined, apt.name as string | null | undefined) &&
-    !isPreSubscription(apt.name as string | null | undefined);
+  const showGrandfather = notice.show;
   // 규제지역 종전 금액이 6억을 넘는 것은 첫 공고가 수도권 6억 한도 시행 전이라 그 한도가 빠졌기 때문 — 그 사실과
   // 전매 시점별 차이(6억 한도 시행일~효력일 전날 전매 = 6억 한도 · 효력일 뒤 전매 = 종전 대상 아님)를 문장에 같이 적는다.
   // 6억 면제 근거 = 금융위 2026-10-15 가계부채 점검회의 보도자료 경과규정(세션706 · 10·15 FAQ 13쪽은 시가별 한도 쪽 근거).
@@ -399,12 +423,22 @@ export const FundingPlanner = memo(function FundingPlanner({
       : `첫 모집공고 ${gf.firstDate}${gf.latestDate !== gf.firstDate ? ` (최근 공고 ${gf.latestDate})` : ""} — ${gf.eventLabel}(${gf.effectiveDate}) 전 공고라 금융사 심사에 따라 종전 규정(LTV ${Math.round(gf.rate * 100)}%${capFree ? `, ${METRO_CAP_CUTOFF}까지 공고라 수도권 ${metroCap}억 한도 없이` : ""})이 적용될 수 있어요. 그 경우 최대 ${fmtPrice(gf.amount)}이에요. ` +
         (capFree
           ? `${METRO_LOAN_CAP_SINCE}~${gf.cutoff} 전매로 산 분양권은 ${metroCap}억 한도가 붙고, ${gf.effectiveDate} 이후 전매는 종전 규정 대상이 아니에요.` +
-            // 6/27 보도자료 각주는 「잔금대출로 전환시에는 6억원 한도 적용」 — 2026-10-15 보도자료(종전규정 적용)와 엇갈린다(세션709 C1)
-            ` 다만 ${METRO_CAP_CUTOFF} 첫 발표 자료는 잔금대출로 바꿀 때 ${metroCap}억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요.`
+            // 6/27 보도자료 각주(새 규칙 범위 설명) — 엇갈린다는 판단은 우리 해석이라 화면엔 사실만(세션711 ⑲)
+            ` 다만 ${METRO_CAP_CUTOFF} 첫 발표 자료 각주에는 잔금대출로 바꿀 때 ${metroCap}억 한도를 적용한다고 적혀 있어요. 그 금액이 될지는 금융사에 꼭 확인하세요.`
           : `${gf.effectiveDate} 이후 전매로 산 분양권은 제외예요.`) +
         (moveInBegun
           ? " 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요."
           : "");
+  // 종전 줄 — 계산 묶음(plan) 안팎 어디서든 같은 `grandfatherNotice` 결과로 그린다(세션711 #7)
+  const grandfatherLine =
+    showGrandfather && gf ? (
+      <div
+        data-testid="fp-grandfather"
+        style={{ fontSize: F.micro, color: C.muted, lineHeight: 1.5, margin: "4px 0 6px" }}
+      >
+        {grandfatherText}
+      </div>
+    ) : null;
   const cashNum = toNumber(cash);
   const metroOrRegulated = plan ? plan.stressAdd === STRESS_RATE_METRO : false;
   // 수도권 투기과열지구 잔금대출은 분양가가 아니라 입주 때 감정가·시세로 잰다(결정 나 · 위 REGULATED_BALANCE_BASIS)
@@ -539,6 +573,8 @@ export const FundingPlanner = memo(function FundingPlanner({
           계약·중도·잔금 비율을 더해 100%가 되어야 계산해요 (지금 {splitTotal(splitNum)}%).
         </div>
       )}
+      {/* 비율 합이 틀려 계산 묶음이 없어도 종전 줄은 남긴다 — 위 막대가 「아래 잔금 카드에 있어요」라고 늘 말하므로(세션711 #7) */}
+      {plan == null && grandfatherLine}
 
       {plan && open && (
         <div style={{ marginTop: 4, padding: "6px 8px", background: C.white, borderRadius: 8 }}>
@@ -561,14 +597,7 @@ export const FundingPlanner = memo(function FundingPlanner({
           <div data-testid="fp-balance-basis" style={{ fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
             {balanceBasis}
           </div>
-          {showGrandfather && gf && (
-            <div
-              data-testid="fp-grandfather"
-              style={{ fontSize: F.micro, color: C.muted, lineHeight: 1.5, margin: "4px 0 6px" }}
-            >
-              {grandfatherText}
-            </div>
-          )}
+          {grandfatherLine}
           {plan.incomeLimit != null ? (
             <Row
               testId="fp-income-limit"

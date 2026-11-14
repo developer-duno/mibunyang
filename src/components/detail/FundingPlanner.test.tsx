@@ -1,6 +1,12 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
-import { FundingPlanner as RawPlanner, UnitChips, pathsState, _resetFundingPlannerTracking } from "./FundingPlanner";
+import {
+  FundingPlanner as RawPlanner,
+  UnitChips,
+  pathsState,
+  _resetFundingPlannerTracking,
+  grandfatherNotice,
+} from "./FundingPlanner";
 import { usePresaleDetail } from "@/hooks/usePresaleDetail";
 import { useUnitChoice } from "@/hooks/useUnitChoice";
 import { trackEvent } from "@/lib/analytics";
@@ -337,7 +343,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     expect(screen.getByTestId("fp-region-limit").textContent).toContain("4억");
     expect(screen.getByTestId("fp-loan").textContent).toContain("4억");
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(
-      "첫 모집공고 2024-08-16 — 규제지역 LTV 강화(2025-09-08) 전 공고라 금융사 심사에 따라 종전 규정(LTV 50%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 11억 2,250만이에요. 2025-06-28~2025-09-07 전매로 산 분양권은 6억 한도가 붙고, 2025-09-08 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요."
+      "첫 모집공고 2024-08-16 — 규제지역 LTV 강화(2025-09-08) 전 공고라 금융사 심사에 따라 종전 규정(LTV 50%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 11억 2,250만이에요. 2025-06-28~2025-09-07 전매로 산 분양권은 6억 한도가 붙고, 2025-09-08 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료 각주에는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적혀 있어요. 그 금액이 될지는 금융사에 꼭 확인하세요."
     );
     resetDetail();
   });
@@ -347,7 +353,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     withFirst("2021-05-04");
     render(<FundingPlanner apt={regulated({ price: 96140 })} rates={RATES} />);
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(
-      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요."
+      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료 각주에는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적혀 있어요. 그 금액이 될지는 금융사에 꼭 확인하세요."
     );
     resetDetail();
   });
@@ -448,8 +454,13 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(`${base} ${MOVEIN_TAIL}`);
     r.unmount();
     withFirst("2021-05-04");
-    // 이번 달 입주(moveInStarted 는 이번 달 = 아직) — 경계 회귀(`<` → `<=`)를 이 파일에서도 잡게(세션709 검사 🟡1)
-    for (const mi of ["2099-12", "미정", kstYearMonth()]) {
+    // 이번 달 입주도 「시작」(세션711 ㉑ — moveInStarted 는 이번 달 포함) · 다음 달은 아직 — 경계 회귀를 이 파일에서도 잡게
+    r = render(<FundingPlanner apt={regulated({ presaleMoveIn: kstYearMonth() })} rates={RATES} />);
+    expect(screen.getByTestId("fp-grandfather").textContent).toBe(`${base} ${MOVEIN_TAIL}`);
+    r.unmount();
+    const [ny, nm] = kstYearMonth().split("-").map(Number);
+    const nextMonth = nm === 12 ? `${ny + 1}-01` : `${ny}-${String(nm + 1).padStart(2, "0")}`;
+    for (const mi of ["2099-12", "미정", nextMonth]) {
       r = render(<FundingPlanner apt={regulated({ presaleMoveIn: mi })} rates={RATES} />);
       expect(screen.getByTestId("fp-grandfather").textContent).toBe(base);
       r.unmount();
@@ -468,7 +479,7 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     withFirst("2021-05-04");
     render(<FundingPlanner apt={regulated({ price: 96140, presaleMoveIn: "2000-01" })} rates={RATES} />);
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(
-      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요. 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요."
+      "첫 모집공고 2021-05-04 (최근 공고 2022-12-19) — 규제지역 지정(2025-10-16) 전 공고라 금융사 심사에 따라 종전 규정(LTV 70%, 2025-06-27까지 공고라 수도권 6억 한도 없이)이 적용될 수 있어요. 그 경우 최대 6억 7,298만이에요. 2025-06-28~2025-10-15 전매로 산 분양권은 6억 한도가 붙고, 2025-10-16 이후 전매는 종전 규정 대상이 아니에요. 다만 2025-06-27 첫 발표 자료 각주에는 잔금대출로 바꿀 때 6억 한도를 적용한다고 적혀 있어요. 그 금액이 될지는 금융사에 꼭 확인하세요. 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요."
     );
     resetDetail();
   });
@@ -499,6 +510,53 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     );
     expect(screen.queryByTestId("fp-grandfather")).toBeNull();
     expect(screen.getByTestId("fp-region-limit").textContent).toContain("LTV 40%");
+  });
+
+  // 세션711 A-26 ⑫-② — 위 막대의 「잔금 카드로 잇는 문장」은 이 함수(grandfatherNotice)로 판정한다. 카드 줄과 같은 함수라
+  // 둘이 어긋나지 않는다 — 판정과 카드 줄 유무가 단지마다 같은지 본다(보이는 경우·숨는 경우 둘 다).
+  // ⚠️ 변이 대상: 카드가 함수 대신 다른 조건을 쓰거나 함수의 비주택·사전청약·금액 비교를 지우면 빨강.
+  it("grandfatherNotice().show = 카드 종전 줄 유무 (보임 2 · 숨김 4)", () => {
+    withFirst(null);
+    const cases: [Record<string, unknown>, boolean][] = [
+      [{ presaleRecruitDate: "2021-05-04" }, true],
+      [{ region: "경기", gu: "평택시", isRegulated: false, price: 100000, presaleRecruitDate: "2025-05-20" }, true],
+      [{ presaleRecruitDate: "2026-06-12" }, false],
+      [{ presaleRecruitDate: "2021-05-04", presaleHousingType: "오피스텔" }, false],
+      [{ presaleRecruitDate: "2021-05-04", name: "어떤 사전청약 A1" }, false],
+      [{ region: "경기", gu: "평택시", isRegulated: false, price: 50000, presaleRecruitDate: "2025-05-20" }, false],
+    ];
+    for (const [o, want] of cases) {
+      const a = regulated(o);
+      const n = grandfatherNotice(a, { price: a.price, schedule: null, firstRecruitDate: null });
+      expect(n.show).toBe(want);
+      const r = render(<FundingPlanner apt={a} rates={RATES} />);
+      expect(screen.queryByTestId("fp-grandfather") != null).toBe(want);
+      if (want) expect(screen.getByTestId("fp-grandfather").textContent).toContain(`첫 모집공고 ${n.firstDate}`);
+      r.unmount();
+    }
+    resetDetail();
+  });
+
+  // 세션711 #7 — 위 막대는 「자세한 금액은 아래 잔금 카드에 있어요」를 비율과 상관없이 말하므로, 비율 합이 틀려 계산이 멈춰도
+  // 카드의 종전 줄은 남아야 한다(한 번만). 종전 대상이 아닌 단지는 그때도 없음.
+  // ⚠️ 변이 대상: plan 이 없을 때 종전 줄을 안 그리면(옛 꼴) 빨강.
+  it("비율 합이 틀려 계산이 멈춰도 종전 대상이면 카드 종전 줄은 그대로(1개) · 대상 아니면 없음", () => {
+    withFirst("2021-05-04");
+    const r = render(<FundingPlanner apt={regulated()} rates={RATES} />);
+    fireEvent.click(screen.getByRole("button", { name: /더 자세히/ }));
+    type("fp-split-balance", "20");
+    expect(screen.getByTestId("fp-split-error")).toBeTruthy();
+    expect(screen.queryByTestId("fp-region-limit")).toBeNull();
+    expect(screen.getAllByTestId("fp-grandfather")).toHaveLength(1);
+    expect(screen.getByTestId("fp-grandfather").textContent).toContain("첫 모집공고 2021-05-04");
+    r.unmount();
+    withFirst(null);
+    render(<FundingPlanner apt={regulated({ presaleRecruitDate: "2026-06-12" })} rates={RATES} />);
+    fireEvent.click(screen.getByRole("button", { name: /더 자세히/ }));
+    type("fp-split-balance", "20");
+    expect(screen.getByTestId("fp-split-error")).toBeTruthy();
+    expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+    resetDetail();
   });
 });
 

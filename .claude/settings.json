@@ -69,6 +69,15 @@
             "command": "\"${CLAUDE_PROJECT_DIR}\"/.claude/hooks/guard-dangerous-bash.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash|PowerShell|EnterWorktree",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"${CLAUDE_PROJECT_DIR}/.claude/hooks/warn-worktree-location.mjs\""
+          }
+        ]
       }
     ],
     "SessionStart": [

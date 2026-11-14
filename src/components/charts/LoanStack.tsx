@@ -59,6 +59,13 @@ export const METRO_TIER_TEXT = [
   }),
 ].join(" · ");
 
+/**
+ * 막대 아래 글 끝(DSR 문장 앞)에서 바로 아래 잔금 카드의 종전 규정 줄로 잇는 한 문장(A-26 ⑫-② · 세션711 👤 안 1).
+ * 막대 금액은 늘 지금 규정(결정 18)이라 숫자는 그대로 두고, 카드에 종전 줄이 보일 때만 그 사실을 알린다.
+ */
+export const grandfatherBridgeText = (firstDate: string) =>
+  `이 단지는 첫 공고 날짜(${firstDate})에 따라 종전 규정이 적용될 수도 있어요. 자세한 금액은 아래 잔금 카드에 있어요.`;
+
 export const LoanStack = memo(function LoanStack({
   price,
   region,
@@ -66,6 +73,7 @@ export const LoanStack = memo(function LoanStack({
   isRegulated,
   dsr40pass,
   basisLabel,
+  grandfatherDate,
 }: {
   /** 계산에 쓸 분양가 — 금융 탭에서 손님이 고른 평수 값(세션675 결정 나 · 단추가 없으면 대표 분양가) */
   price?: number | null;
@@ -76,6 +84,11 @@ export const LoanStack = memo(function LoanStack({
   dsr40pass?: boolean | null;
   /** 제목 옆 배지 — "59B 기준"·"대표 분양가 기준". 없으면 배지를 안 그린다 */
   basisLabel?: string | null;
+  /**
+   * 바로 아래 잔금 카드에 종전 규정 줄이 보이면 그 첫 공고일 — 부모(`LoanAnalysis`)가 카드와 같은 판정
+   * (`grandfatherNotice`)으로 넘긴다. 없으면(null) 잇는 문장을 안 붙인다.
+   */
+  grandfatherDate?: string | null;
 }) {
   const calc = useMemo(() => {
     if (price == null || !Number.isFinite(price) || price <= 0) return null;
@@ -91,10 +104,16 @@ export const LoanStack = memo(function LoanStack({
   // 분양가가 없으면 막대를 통째로 그리지 않는다 — 빈 상자·"못 모았어요" 문구 없음(결정 마 원칙 · 세션675 검사 F9)
   if (!calc) return null;
   const regulatedMetro = calc.zone !== "normal" && isMetroRegion(region);
+  // 막대 금액은 지금 규정 — 공고일에 따라 종전 규정이 될 수 있는 단지가 있어 「지금 규정」을 밝힌다(A-26 ⑫-② · 세션711)
+  const zoneText = calc.metroCapped
+    ? `${ZONE_TYPE[calc.zone]}이지만 지금 규정에서 수도권 주택구입 대출은 분양가로 계산하면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요. 실제 한도는 대출 받을 때 시세로 정해져요(${METRO_TIER_TEXT}).`
+    : `지금 규정으로 ${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`;
+  const bridgeText = grandfatherDate ? grandfatherBridgeText(grandfatherDate) : null;
 
   const aria =
     `분양가 ${fmtPrice(price as number)} 중 대출 가능액 ${fmtPrice(calc.loan)}, 직접 준비할 돈 ${fmtPrice(calc.own)}. ` +
-    `대출 비중 ${calc.loanPct} 퍼센트.` +
+    `대출 비중 ${calc.loanPct} 퍼센트. ${zoneText}` +
+    (bridgeText ? ` ${bridgeText}` : "") +
     (dsr40pass === true ? ` ${DSR_PASS_TEXT}` : "") +
     (dsr40pass === false ? ` ${DSR_FAIL_TEXT}` : "") +
     (regulatedMetro ? ` ${REGULATED_BALANCE_TAIL}` : "");
@@ -170,9 +189,8 @@ export const LoanStack = memo(function LoanStack({
         </div>
         <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
           {`분양가 ${fmtPrice(price as number)} · `}
-          {calc.metroCapped
-            ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 분양가로 계산하면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요. 실제 한도는 대출 받을 때 시세로 정해져요(${METRO_TIER_TEXT}).`
-            : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
+          {zoneText}
+          {bridgeText && <span data-testid="loan-stack-grandfather">{` ${bridgeText}`}</span>}
           {dsr40pass === true && <span style={{ color: C.green }}>{` ${DSR_PASS_TEXT}`}</span>}
           {dsr40pass === false && <span style={{ color: C.amberText }}>{` ${DSR_FAIL_TEXT}`}</span>}
           {regulatedMetro && <span data-testid="loan-stack-regulated">{` ${REGULATED_BALANCE_TAIL}`}</span>}
