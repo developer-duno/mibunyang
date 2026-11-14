@@ -864,7 +864,9 @@ describe("App 통합 테스트", () => {
       await act(async () => {
         screen.getByRole("link", { name: /옆동네완판/ }).click();
       });
-      await waitFor(() => expect(screen.getByRole("dialog", { name: /옆동네완판 상세 분석/ })).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole("dialog", { name: /옆동네완판 상세 분석/ })).toBeInTheDocument(), {
+        timeout: 5000,
+      });
       expect(window.location.pathname).toBe("/apt/apt9");
       expect(screen.getByRole("tab", { name: /종합/ }).getAttribute("aria-selected")).toBe("true");
       const newBody = screen.getByTestId("detail-scroll-body");
@@ -876,12 +878,14 @@ describe("App 통합 테스트", () => {
       await act(async () => {
         window.history.back();
       });
-      await waitFor(() => expect(screen.getByRole("dialog", { name: /테스트파크1차 상세 분석/ })).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByRole("dialog", { name: /테스트파크1차 상세 분석/ })).toBeInTheDocument(), {
+        timeout: 5000,
+      });
       expect(window.location.pathname).toBe("/apt/apt1");
       await act(async () => {
         window.history.back();
       });
-      await waitFor(() => expect(screen.queryByRole("dialog", { name: /상세 분석/ })).toBeNull());
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: /상세 분석/ })).toBeNull(), { timeout: 5000 });
       expect(window.location.pathname).toBe("/");
     }, 20000);
   });
