@@ -757,31 +757,48 @@ describe("App 통합 테스트", () => {
       expect(screen.queryByRole("dialog", { name: "로그인 안내" })).not.toBeInTheDocument();
     });
 
-    // 세션594 S6 — 문의 버튼이 상세 위에 뜨는 조건(fabVisible && !isPC)을 App 이 DetailModal 에 넘기는지(fabOverlaps).
-    //   빈 칸(detail-fab-spacer)은 휴대폰 폭에서만 1개, PC 폭에서는 0개. DetailModal 은 lazy → 넉넉히 기다린다.
-    describe("상세 맨 아래 빈 칸 (세션594 S6)", () => {
+    // 세션714 A-26 ⑳(사장님 결정) — 휴대폰(!isPC)에서 상세 창이 열려 있으면 떠 있는 문의 버튼을 그리지 않는다.
+    //   입구는 상세 창 아래 「이 단지 문의하기」(같은 문의 창). 옛 세션594 S6 「상세 맨 아래 빈 칸」 시험은
+    //   버튼째 없어져 빈 칸(detail-fab-spacer)도 지웠으므로 이 묶음으로 바꿨다. DetailModal 은 lazy → 넉넉히 기다린다.
+    // ⚠️ 변이 대상: App 의 fabVisible 에서 휴대폰·상세 조건을 지우거나 isPC 쪽으로 뒤집으면 빨강.
+    describe("휴대폰 상세 창에서는 문의 버튼 숨김 (세션714 ⑳)", () => {
       afterEach(() => {
         window.history.replaceState(null, "", "/");
       });
 
-      it("휴대폰 폭에서 상세를 열면 문의 버튼 높이만큼 빈 칸이 1개 생긴다", async () => {
+      it("휴대폰 폭에서 상세를 열면 문의 버튼이 없고, 닫으면 다시 있다", async () => {
         responsive.isPC = false;
         mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
         window.history.replaceState(null, "", "/?detail=apt1");
         render(<App />);
         await waitFor(() => expect(screen.getByTestId("detail-cta-bar")).toBeInTheDocument(), { timeout: 5000 });
+        expect(screen.queryByTestId("feedback-fab")).not.toBeInTheDocument();
+        await act(async () => {
+          screen.getByRole("button", { name: "닫기" }).click();
+        });
+        await waitFor(() => expect(screen.queryByTestId("detail-cta-bar")).not.toBeInTheDocument());
         expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
-        expect(screen.getAllByTestId("detail-fab-spacer")).toHaveLength(1);
-      });
+      }, 15000);
 
-      it("PC 폭에서 상세를 열면 빈 칸이 없다 (문의 버튼이 모달과 겹치지 않음)", async () => {
+      it("휴대폰 폭 상세 창의 「이 단지 문의하기」를 누르면 문의 창이 열린다", async () => {
+        responsive.isPC = false;
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        window.history.replaceState(null, "", "/?detail=apt1");
+        render(<App />);
+        await waitFor(() => expect(screen.getByTestId("detail-cta-bar")).toBeInTheDocument(), { timeout: 5000 });
+        await act(async () => {
+          screen.getByText("이 단지 문의하기").click();
+        });
+        await waitFor(() => expect(screen.getByTestId("feedback-form")).toBeInTheDocument());
+      }, 15000);
+
+      it("PC(태블릿 포함 isPC) 폭에서 상세를 열면 문의 버튼은 지금처럼 있다", async () => {
         mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
         window.history.replaceState(null, "", "/?detail=apt1");
         render(<App />);
         await waitFor(() => expect(screen.getByTestId("detail-cta-bar")).toBeInTheDocument(), { timeout: 5000 });
         expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
-        expect(screen.queryAllByTestId("detail-fab-spacer")).toHaveLength(0);
-      });
+      }, 15000);
     });
   });
 

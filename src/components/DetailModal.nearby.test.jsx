@@ -109,14 +109,13 @@ describe("DetailModal — 경로 줄 + 같은 구 가까운 단지 (세션671)",
   });
 
   it("휴대폰: 탭 패널 뒤 · CTA 바 앞, 칩 2열 · 새 링크는 마지막 포커서블이 아니다", () => {
-    render(<DetailModal {...props({ fabOverlaps: true })} />);
+    // (세션714 ⑳: 문의 버튼 빈 칸 detail-fab-spacer 를 없애 그 순서 확인은 뺐다 — CTA 바 앞인지만 본다)
+    render(<DetailModal {...props()} />);
     const block = screen.getByTestId("detail-nearby");
     const panels = document.querySelectorAll("[data-tab-panel]");
     const lastPanel = panels[panels.length - 1];
     expect(lastPanel.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    const spacer = screen.getByTestId("detail-fab-spacer");
     const cta = screen.getByTestId("detail-cta-bar");
-    expect(block.compareDocumentPosition(spacer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(block.compareDocumentPosition(cta) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(normGrid(screen.getByTestId("detail-nearby-chips").style.gridTemplateColumns)).toBe(
       "repeat(2, minmax(0, 1fr))"

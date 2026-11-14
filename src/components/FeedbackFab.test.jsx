@@ -37,15 +37,6 @@ describe("FeedbackFab (세션574)", () => {
     expect(desktop.style.bottom).toBe("24px");
     expect(desktop.style.right).toBe("24px");
   });
-
-  it("휴대폰 상세 모달이 열려 있으면 하단 CTA 바(119px) 위 12px = 131px 로 올라간다", () => {
-    const { unmount } = render(<FeedbackFab onClick={vi.fn()} isDesktop={false} detailOpen />);
-    expect(screen.getByTestId("feedback-fab").getAttribute("style")).toContain(
-      "calc(131px + env(safe-area-inset-bottom, 0px))"
-    );
-    unmount();
-    // 데스크톱은 상세가 열려 있어도 그대로 바닥 24px
-    render(<FeedbackFab onClick={vi.fn()} isDesktop detailOpen />);
-    expect(/** @type {HTMLElement} */ (screen.getByTestId("feedback-fab")).style.bottom).toBe("24px");
-  });
+  // (세션714 ⑳: 「휴대폰 상세 모달이 열리면 131px 로 올라간다」 시험은 지웠다 — 그때는 App 이 버튼을 아예 안 그려
+  //  detailOpen prop 이 없어졌다. 새 동작 시험 = App.test.jsx 「휴대폰 상세 창에서는 문의 버튼 숨김」)
 });
