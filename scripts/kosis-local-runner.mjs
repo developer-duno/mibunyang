@@ -48,6 +48,10 @@
  *
  * 실패 처리: 하나라도 exit!=0 이면 텔레그램 best-effort 알림 + exit 1 (silent fail 금지).
  * 수집기 자체가 collector_runs 를 기록하므로 모니터의 데이터0건·외부API stale 감시 유지.
+ *
+ * GitHub 예약 워크플로 꺼짐 감시(세션716): 예약 실행마다 1회 공개 REST 로 워크플로 state 를 보고 active 아닌 것이
+ * 있으면 텔레그램(`runGithubWorkflowWatch` — 던지지 않음 · 실패는 로그 한 줄). 「확인 못 함」이 3회차 연속이면 1회, 그 뒤 7회차마다
+ * 1회 알린다(연속 회차는 상태 파일의 ghUnknownStreak 칸 · 확인에 성공하면 0).
  */
 import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -122,6 +126,21 @@ export function isCatchupStale(/** @type {number} */ missedCount, warnDays = CAT
   return missedCount > warnDays;
 }
 
+/**
+ * 상태 파일 전체를 객체로 읽기 — 없거나 깨졌으면 `{}`(던지지 않음). 칸을 하나 쓸 때 다른 칸을 지우지 않으려고 쓴다.
+ * @param {string} [statePath]
+ * @returns {Record<string, unknown>}
+ */
+function readStateObject(statePath = STATE_PATH) {
+  try {
+    if (!existsSync(statePath)) return {};
+    const j = JSON.parse(readFileSync(statePath, "utf8"));
+    return j && typeof j === "object" && !Array.isArray(j) ? j : {};
+  } catch {
+    return {};
+  }
+}
+
 /** 상태 파일에서 마지막 처리일 읽기. 깨져 있으면 없는 셈 친다(소급만 못 할 뿐). */
 export function readLastProcessed(statePath = STATE_PATH) {
   try {
@@ -136,7 +155,8 @@ export function readLastProcessed(statePath = STATE_PATH) {
 /** 마지막 처리일 기록. 실패해도 러너를 죽이지 않는다 — 다음 실행이 소급을 못 할 뿐이다. */
 export function writeLastProcessed(/** @type {string} */ dateStr, statePath = STATE_PATH) {
   try {
-    writeFileSync(statePath, JSON.stringify({ lastProcessed: dateStr }, null, 2), "utf8");
+    // 같은 파일의 다른 칸(ghUnknownStreak · 세션716)을 지우지 않게 합쳐 쓴다.
+    writeFileSync(statePath, JSON.stringify({ ...readStateObject(statePath), lastProcessed: dateStr }, null, 2), "utf8");
     return true;
   } catch (e) {
     logError(PHASE, `상태 파일 기록 실패(${statePath}): ${e instanceof Error ? e.message : String(e)}`);
@@ -338,6 +358,194 @@ export function planEntryRun(entry, scriptPath, dryRun) {
   return { args: [scriptPath, ...(entry.args ?? []), ...(dryRun ? ["--dry-run"] : [])] };
 }
 
+// ── GitHub 예약 워크플로 꺼짐 감시(세션716 M1 · 👤 11/14 「집 PC 가 GitHub 예약 작업 꺼짐을 감시」) ─────────────
+// 공개 레포는 60일 동안 활동이 없으면 GitHub 가 예약(schedule) 워크플로를 스스로 끈다(state = disabled_inactivity).
+// 그러면 감시(monitor-collectors.yml)도 함께 꺼져 아무도 알리지 못한다 — 그래서 GitHub 밖(집 PC 러너)이 하루 1회 본다.
+// 공개 레포라 토큰 없이 읽는다(시간당 60회 한도 — 하루 1회라 충분). 조회 실패는 러너 본 작업을 막지 않는다(로그 한 줄).
+/** 워크플로 목록 주소 — 공개 레포 REST(토큰 없음). 35개(2026-11-14 실측)라 한 쪽(100개)에 다 들어온다. */
+export const GH_WORKFLOWS_URL = "https://api.github.com/repos/developer-duno/mibunyang/actions/workflows?per_page=100";
+/**
+ * 일부러 꺼 둔 워크플로의 `path`(예: ".github/workflows/x.yml") — 여기 든 것은 꺼져 있어도 알리지 않는다.
+ * 2026-11-14 실측(`gh api …/actions/workflows --paginate`): 35개 전부 active → 빈 명단.
+ * @type {readonly string[]}
+ */
+export const GH_WORKFLOW_STATE_ALLOWLIST = [];
+
+/** 텔레그램 HTML 모드용 — 워크플로 이름에 `&`·`<` 가 들어가도 메시지가 깨지지 않게. */
+function escapeTelegramHtml(/** @type {string} */ s) {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+/**
+ * 워크플로 목록 응답(글자 그대로)을 판정한다 — DB·네트워크 없는 순수 함수.
+ *   ok       = 받은 워크플로가 1개 이상이고 허용 명단 밖에 active 아닌 것이 없다
+ *   disabled = 허용 명단 밖에 active 아닌 워크플로가 있다(items = 그 목록)
+ *   unknown  = 깨진 JSON·모양이 다름·워크플로 0개 — 「꺼짐 0」으로 읽지 않는다
+ * @param {string} text
+ * @param {readonly string[]} [allowlist]
+ * @returns {{ status: "ok", count: number } | { status: "disabled", count: number, items: Array<{ name: string, path: string, state: string }> } | { status: "unknown", reason: string }}
+ */
+export function judgeWorkflowStates(text, allowlist = GH_WORKFLOW_STATE_ALLOWLIST) {
+  /** @type {any} */
+  let body;
+  try {
+    body = JSON.parse(text);
+  } catch {
+    return { status: "unknown", reason: "응답이 JSON 이 아님" };
+  }
+  const list = body?.workflows;
+  if (!Array.isArray(list)) return { status: "unknown", reason: "응답에 workflows 목록이 없음" };
+  if (list.length === 0) return { status: "unknown", reason: "워크플로 0개 — 확인 못 함" };
+  const allow = new Set(allowlist);
+  const items = list
+    .map((w) => ({ name: String(w?.name ?? ""), path: String(w?.path ?? ""), state: String(w?.state ?? "") }))
+    .filter((w) => w.state !== "active" && !allow.has(w.path));
+  if (items.length === 0) return { status: "ok", count: list.length };
+  return { status: "disabled", count: list.length, items };
+}
+
+/**
+ * 꺼진 워크플로 알림 문장(텔레그램 HTML).
+ * @param {Array<{ name: string, path: string, state: string }>} items
+ * @returns {string}
+ */
+export function buildWorkflowDisabledMessage(items) {
+  const rows = items.map((w) => `· ${escapeTelegramHtml(w.name || w.path)} (${escapeTelegramHtml(w.path)}) — ${escapeTelegramHtml(w.state)}`);
+  return [
+    `⚠️ [kosis-local-runner] GitHub 예약 워크플로 꺼짐 ${items.length}개`,
+    ...rows,
+    "disabled_inactivity = 공개 레포 60일 무활동으로 GitHub 가 끈 것 — 감시(monitor-collectors)도 꺼졌을 수 있습니다.",
+    "다시 켜기: GitHub → Actions → 그 워크플로 → 「Enable workflow」",
+  ].join("\n");
+}
+
+/**
+ * 하루 1회 GitHub 워크플로 상태를 보고, 꺼진 것이 있으면 텔레그램으로 알린다.
+ * **절대 던지지 않는다** — 조회·판정·전송 어디서 실패해도 로그 한 줄만 남기고 결과를 돌려준다(러너 본 작업 보호).
+ * @param {{ fetchImpl?: typeof fetch, send?: (text: string) => Promise<{ sent: boolean, reason?: string }>, allowlist?: readonly string[] }} [deps]
+ * @returns {Promise<{ status: "ok" | "disabled" | "unknown", sent?: boolean, reason?: string }>}
+ */
+export async function checkGithubWorkflowStates(deps = {}) {
+  try {
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const res = await fetchImpl(GH_WORKFLOWS_URL, {
+      headers: { "User-Agent": "mibunyang-local-runner", Accept: "application/vnd.github+json" },
+      signal: AbortSignal.timeout(20000),
+    });
+    if (!res.ok) {
+      log(PHASE, `GitHub 워크플로 상태 확인 못 함: HTTP ${res.status}(본 작업은 계속)`);
+      return { status: "unknown", reason: `HTTP ${res.status}` };
+    }
+    const judged = judgeWorkflowStates(await res.text(), deps.allowlist ?? GH_WORKFLOW_STATE_ALLOWLIST);
+    if (judged.status === "unknown") {
+      log(PHASE, `GitHub 워크플로 상태 확인 못 함: ${judged.reason}(본 작업은 계속)`);
+      return judged;
+    }
+    if (judged.status === "ok") {
+      log(PHASE, `GitHub 워크플로 ${judged.count}개 전부 켜짐`);
+      return { status: "ok" };
+    }
+    logError(PHASE, `GitHub 예약 워크플로 꺼짐 ${judged.items.length}개: ${judged.items.map((w) => `${w.path}(${w.state})`).join(", ")}`);
+    // 전송 실패는 「확인 못 함」이 아니다(확인은 됐다) — 따로 잡아 disabled 로 돌려준다(연속 셈이 섞이지 않게 · 세션716 보완 F3).
+    const sent = await sendSafely(deps.send, buildWorkflowDisabledMessage(judged.items), "워크플로 꺼짐 알림");
+    return { status: "disabled", sent };
+  } catch (e) {
+    const reason = e instanceof Error ? e.message : String(e);
+    try {
+      log(PHASE, `GitHub 워크플로 상태 확인 실패: ${reason}(본 작업은 계속)`);
+    } catch {
+      /* 로그도 실패하면 조용히 — 본 작업 보호가 우선 */
+    }
+    return { status: "unknown", reason };
+  }
+}
+
+/** 텔레그램 1통 — 던지지 않는다. @param {((text: string) => Promise<{ sent: boolean, reason?: string }>) | undefined} send @param {string} text @param {string} label */
+async function sendSafely(send, text, label) {
+  try {
+    const r = await (send ?? sendTelegram)(text);
+    if (!r.sent) logError(PHASE, `텔레그램 미전송(${label}): ${r.reason ?? "unknown"}`);
+    return r.sent;
+  } catch (e) {
+    try {
+      logError(PHASE, `텔레그램 전송 실패(${label}): ${e instanceof Error ? e.message : String(e)}`);
+    } catch {
+      /* 본 작업 보호가 우선 */
+    }
+    return false;
+  }
+}
+
+// ── 「확인 못 함」 연속 셈(세션716 보완 F3) — 레포가 비공개로 바뀌었거나 조회가 막히면 위 감시가 조용히 죽는다 ─────
+/** 이 회차째 연속이면 첫 알림(3일 = 일시 장애 아님). */
+export const GH_UNKNOWN_ALERT_AT = 3;
+/** 첫 알림 뒤엔 이 회차마다 한 번(3 → 10 → 17 …). */
+export const GH_UNKNOWN_REPEAT_EVERY = 7;
+
+/**
+ * 다음 연속 회차 수 — 「확인 못 함」이면 +1, 확인에 성공(ok·disabled)하면 0. 순수 함수.
+ * @param {number} prev
+ * @param {"ok" | "disabled" | "unknown"} status
+ * @returns {number}
+ */
+export function nextGhUnknownStreak(prev, status) {
+  return status === "unknown" ? Math.max(0, Math.floor(prev) || 0) + 1 : 0;
+}
+
+/**
+ * 이 연속 회차에서 알릴지 — 3회차에 처음, 그 뒤 7회차마다(10·17·…). 순수 함수.
+ * @param {number} streak
+ * @returns {boolean}
+ */
+export function shouldAlertGhUnknown(streak) {
+  return streak >= GH_UNKNOWN_ALERT_AT && (streak - GH_UNKNOWN_ALERT_AT) % GH_UNKNOWN_REPEAT_EVERY === 0;
+}
+
+/** 상태 파일(`.kosis-local-runner-state.json` — 마지막 처리일과 같은 파일)의 연속 회차 칸 읽기. 없거나 깨졌으면 0. */
+export function readGhUnknownStreak(statePath = STATE_PATH) {
+  const v = readStateObject(statePath).ghUnknownStreak;
+  return typeof v === "number" && Number.isInteger(v) && v >= 0 ? v : 0;
+}
+
+/** 연속 회차 칸 쓰기(다른 칸은 합쳐 둔다). 실패해도 던지지 않는다 — 셈을 못 남길 뿐. */
+export function writeGhUnknownStreak(/** @type {number} */ n, statePath = STATE_PATH) {
+  try {
+    writeFileSync(statePath, JSON.stringify({ ...readStateObject(statePath), ghUnknownStreak: n }, null, 2), "utf8");
+    return true;
+  } catch (e) {
+    try {
+      logError(PHASE, `상태 파일 기록 실패(ghUnknownStreak · ${statePath}): ${e instanceof Error ? e.message : String(e)}`);
+    } catch {
+      /* 본 작업 보호가 우선 */
+    }
+    return false;
+  }
+}
+
+/**
+ * 하루 1회 GitHub 워크플로 상태 확인 + 「확인 못 함」 연속 셈. **절대 던지지 않는다.**
+ * main 은 이것만 부른다(probe 는 `checkGithubWorkflowStates`).
+ * @param {{ fetchImpl?: typeof fetch, send?: (text: string) => Promise<{ sent: boolean, reason?: string }>, allowlist?: readonly string[], statePath?: string }} [deps]
+ * @returns {Promise<{ status: "ok" | "disabled" | "unknown", sent?: boolean, reason?: string, unknownStreak?: number, streakAlertSent?: boolean }>}
+ */
+export async function runGithubWorkflowWatch(deps = {}) {
+  const result = await checkGithubWorkflowStates(deps);
+  try {
+    const statePath = deps.statePath ?? STATE_PATH;
+    const streak = nextGhUnknownStreak(readGhUnknownStreak(statePath), result.status);
+    writeGhUnknownStreak(streak, statePath);
+    if (!shouldAlertGhUnknown(streak)) return { ...result, unknownStreak: streak };
+    const text =
+      `⚠️ [kosis-local-runner] GitHub 워크플로 상태를 ${streak}일째(연속 ${streak}회차) 확인 못 함 — 레포가 비공개로 바뀌었거나 조회가 막혔습니다\n` +
+      `마지막 이유: ${escapeTelegramHtml(result.reason ?? "알 수 없음")}\n` +
+      `이 상태가 이어지면 ${GH_UNKNOWN_REPEAT_EVERY}일마다 다시 알립니다.`;
+    const streakAlertSent = await sendSafely(deps.send, text, "워크플로 확인 못 함 알림");
+    return { ...result, unknownStreak: streak, streakAlertSent };
+  } catch {
+    return result;
+  }
+}
+
 async function main() {
   loadEnv();
   const dryRun = process.argv.includes("--dry-run");
@@ -366,6 +574,9 @@ async function main() {
         `하루에 ${MAX_CATCHUP_PER_RUN}일씩만 메웁니다. 급하면 --date=YYYY-MM-DD 로 직접 보충하세요.`,
     );
   }
+
+  // 예약 실행(소급 포함)일 때만 하루 1회 — 수동 `--date=`·`--dry-run` 은 건너뛴다. 던지지 않는 함수라 본 작업을 막지 않는다(세션716 M1).
+  if (!dryRun && !dateArg) await runGithubWorkflowWatch();
 
   /** @type {string[]} */
   const failures = [];

@@ -26,6 +26,10 @@
  *      + ㉔ 재료 조회가 실패하면 ㉔-d 도 실행 실패 1건(침묵하지 않음 · 세션696)
  *   ㉕ 기준일 상수 만료 — src/constants/loanRules.ts STRESS_RATE_LOCAL_UNTIL 만료 14일 전부터 고칠 때까지 매일(kind rule-expiry · 파일 글자로 읽음 · 세션696)
  *   ㉖ 명단 총분양 상한 새 단지 — kosis-unsold 최근 실행의 KOSIS_LISTED_CAP 표식 id 중 그 전 실행 표식에 없던 것만(kind kosis-listed-cap · 같은 실행은 한 번만 · 세션697)
+ *   ㉗ DSR 40% 통과 칸 모양 — apartments.dsr40pass 가 전부 빈칸·전부 통과·전부 미통과면(kind dsr-shape · 매일 · 세션716)
+ *   ㉘ 카카오 첫 사이클 — (a) 11/17~12/02 에 끝난 infra 최근 실행의 INFRA_DEFERRED>0(한 번만) · (b) 11/18 부터 카카오 시계 빈 좌표 있는 단지(만든 지 5일 넘음 · 같은 명단은 주 1회)(세션716)
+ *   ㉙ 2u 대출 거르기 글 링크 — FundingPlanner.tsx LOAN_FILTER_POST.href 를 GET, 재시도 1회 뒤에도 200+본문 글자가 아니면(kind link-dead · 같은 상태는 주 1회 · 세션716)
+ *   ⑤-b 미발화는 같은 사고(마지막 실행 시각 그대로)면 첫 발견 뒤 월요일마다 한 번(remindWeek · 세션716)
  *   ⑫(i) 미래 기준일 — applyhome·govlist 인데 unsold_as_of 가 오늘(KST) 뒤인 행(⑫ 안 · 세션697 👤 결정 ① 「무시+경보」)
  *   ⑥-c 시세 범위 빈칸 — trade_stats 적정가(cmp_fair_price) 있음 + 최저가(cmp_min) 빈칸 > 0(⑥-b 바로 뒤 · 세션696)
  *
@@ -289,13 +293,14 @@ const KO_FIELD = {
 
 /**
  * @typedef {object} Issue
- * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"|"seo-body-error"|"seo-built-at"} kind
+ * @property {"fail"|"empty"|"stale"|"nulls"|"outage"|"region-unresolved"|"applyhome-unsold"|"check-failed"|"local-failure"|"kapt-window"|"trade-deals-dup"|"trade-deals-hwaseong"|"trade-deals-ratio"|"trade-deals-norun"|"trade-links-stale"|"trade-links-sibling"|"trade-links-hold-aging"|"sgis-map-pending"|"sgis-map-sido-mismatch"|"ownership-drift"|"notice-cross-bundle"|"notice-markers"|"price-history-floor"|"seo-thin"|"govlist-health"|"rule-expiry"|"kosis-listed-cap"|"seo-body-error"|"seo-built-at"|"dsr-shape"|"kakao-cycle-deferred"|"kakao-cycle-null"|"link-dead"} kind
  * @property {string} collector
  * @property {string} detail 한 줄 요약 (콘솔 로그·하위호환용)
  * @property {"failure"|"cancelled"|"timed_out"} [conclusion] fail 일 때만 — 워크플로 conclusion
  * @property {string} [url]
  * @property {string[]} [lines] 본문에 펼칠 상세 줄 (점검 함수가 만든 사람 말 문장)
  * @property {string} [at] 이슈 발생 ISO 시각 (formatIssue 가 KST 로 변환)
+ * @property {string} [remindWeek] 있으면 daily 에서도 dedup + 열쇠에 이 주(월요일 KST 날짜)를 더함 — ⑤-b 미발화 주 1회(세션716 M4)
  */
 
 /**
@@ -530,7 +535,20 @@ export const VIEW_REGION_STALE_TARGETS = [
  * @returns {string}
  */
 export function dedupKey(issue) {
-  return `${issue.kind}|${issue.collector}|${issue.at ?? ""}`;
+  // remindWeek(⑤-b 미발화, 세션716 M4)가 있으면 주(월요일 KST 날짜)를 열쇠에 더한다 — 같은 사고는 한 주에 한 번.
+  return `${issue.kind}|${issue.collector}|${issue.at ?? ""}${issue.remindWeek ? `|w:${issue.remindWeek}` : ""}`;
+}
+
+/**
+ * KST 기준 이번 주 월요일 날짜 "YYYY-MM-DD"(⑤-b 주 1회 열쇠 · 세션716 M4). 시각은 밖에서 넣는다.
+ * @param {Date} [now]
+ * @returns {string}
+ */
+export function kstWeekStart(now = new Date()) {
+  const kst = new Date(now.getTime() + 9 * 3600 * 1000);
+  const back = (kst.getUTCDay() + 6) % 7; // 월=0 … 일=6
+  const mon = new Date(Date.UTC(kst.getUTCFullYear(), kst.getUTCMonth(), kst.getUTCDate() - back));
+  return mon.toISOString().slice(0, 10);
 }
 
 /**
@@ -974,8 +992,12 @@ export function checkExternalApiStale(targets, runsByCollector, now = new Date()
           lines: [
             `최근 collector_runs 행: ${toKst(latest.finished_at) ?? latest.finished_at} — ${stale_days}일 주기를 넘겼습니다.`,
             ...staleActionLines(collector),
+            "같은 미발화가 이어지는 동안 이 알림은 주 1회(월요일)만 다시 보냅니다 — 새 실행 기록이 생기면 다시 매번 판정합니다.",
           ],
           at: latest.finished_at,
+          // 세션716 M4(BACKLOG 427 — 택지정보시스템 점검으로 lhzone 「미발화」가 매일 같은 줄로 다른 미발화를 묻었다):
+          //   열쇠 = 마지막 실행 시각(같은 사고면 그대로) + 이번 주 월요일(KST) → 첫 발견일에 한 번, 그 뒤엔 월요일마다 한 번.
+          remindWeek: kstWeekStart(now),
         });
         continue; // 미발화면 아래 outage 판정은 같은 원인 이중 알림 — skip
       }
@@ -3476,6 +3498,299 @@ export async function runListedCapCheck(deps = {}) {
   });
 }
 
+// ── ㉗ DSR 40% 통과 칸 모양(세션716 M2 · BACKLOG 411 ⑱ — 11/22 01:00 trade-stats 가 고친 regulations.ts 로 처음 도는 회차 대비) ─────
+// trade-stats 는 apartments.dsr40pass 를 단지마다 다시 굽지만 그 칸만의 시각이 없어(updated_at 은 모든 수집기가 올리는 공유 시계)
+// 「다시 구워졌나」는 감시가 판정할 수 없다. 판정할 수 있는 가장 좁은 것 = 칸 전체가 한 값으로 쏠렸나(전부 빈칸 · 전부 통과 · 전부 미통과) —
+// 규정 계산(calcDsr40pass)이 통째로 깨진 날의 모양이다. 3곳 기대값은 문서에 값이 없어 넣지 않는다.
+/**
+ * ㉗ 재료 — apartments.dsr40pass 통과·미통과·전체 행 수(count head 3회). null·오류는 던진다(fail-open 이 실행 실패 1건).
+ * @param {any} [sb]
+ * @returns {Promise<{ trueN: number, falseN: number, total: number }>}
+ */
+export async function fetchDsrShapeCounts(sb = getSupabase()) {
+  /** @param {any} r @param {string} label */
+  const need = (r, label) => {
+    if (r.error) throw new Error(`apartments ${label} 조회 실패: ${r.error.message}`);
+    if (r.count == null) throw new Error(`apartments ${label} 개수를 못 받음(count=null)`);
+    return /** @type {number} */ (r.count);
+  };
+  const trueN = need(await sb.from("apartments").select("*", { count: "exact", head: true }).eq("dsr40pass", true), "dsr40pass=true");
+  const falseN = need(await sb.from("apartments").select("*", { count: "exact", head: true }).eq("dsr40pass", false), "dsr40pass=false");
+  const total = need(await sb.from("apartments").select("*", { count: "exact", head: true }), "전체");
+  return { trueN, falseN, total };
+}
+
+/**
+ * ㉗ 판정 — 표가 비면 침묵. 채워진 칸이 0 이거나, 채워진 칸이 전부 한 값이면 1건(고칠 때까지 매일 — ⑥-c 처럼).
+ * @param {{ trueN: number, falseN: number, total: number }} c
+ * @returns {Issue[]}
+ */
+export function checkDsrShape({ trueN, falseN, total }) {
+  if (total === 0) return [];
+  const filled = trueN + falseN;
+  /** @type {string | null} */
+  let what = null;
+  if (filled === 0) what = `전부 빈칸(채워진 단지 0 / ${total})`;
+  else if (trueN === 0) what = `전부 미통과(통과 0 · 미통과 ${falseN} / ${total})`;
+  else if (falseN === 0) what = `전부 통과(통과 ${trueN} · 미통과 0 / ${total})`;
+  if (!what) return [];
+  return [{
+    kind: "dsr-shape",
+    collector: "trade-stats",
+    detail: `apartments.dsr40pass 가 ${what} — DSR 규정 계산(calcDsr40pass)이 통째로 깨졌을 수 있음`,
+    lines: [
+      `지금 통과 ${trueN} · 미통과 ${falseN} · 빈칸 ${total - filled} (전체 ${total}).`,
+      "trade-stats(매월 8·22일 01시 KST)가 대출 규정(src/constants/regulations.ts)으로 다시 굽는 칸입니다 — 「DSR 통과만」 거르기가 이 값을 씁니다.",
+    ],
+  }];
+}
+
+/**
+ * ㉗ 한 번 돌리기 — main 이 매일 부른다(㉕·㉖ 와 같은 자리). 예외는 fail-open 이 실행 실패 1건으로 알린다.
+ * @param {{ fetchCounts?: () => Promise<{ trueN: number, falseN: number, total: number }> }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runDsrShapeCheck(deps = {}) {
+  return runFailOpenCheck("㉗ DSR 통과 칸 모양", async () => {
+    const c = await (deps.fetchCounts ?? fetchDsrShapeCounts)();
+    const is = checkDsrShape(c);
+    console.log(`[monitor] ㉗ DSR 통과 칸: 통과 ${c.trueN} · 미통과 ${c.falseN} · 전체 ${c.total} → 이상 ${is.length}건`);
+    return is;
+  });
+}
+
+// ── ㉘ 카카오 첫 사이클 결과(세션716 M3 · BACKLOG A-27 「11/17(화) 5회차 뒤 DEFERRED 0 · count(not null) = 좌표 있는 단지 전부」) ─────
+/** ㉘ 대상 수집기 — `infra-kakao.mjs` 의 PHASE 상수 그대로(`recordCollectorRun` 첫 인자). */
+export const INFRA_COLLECTOR = "infra";
+/** 「다음 회차로 넘김」 표식 — `infra-kakao.mjs` `INFRA_DEFERRED_MARKER` 와 같은 글자(감시는 수집기를 import 하지 않는다 · 시험이 맞댄다). */
+const INFRA_DEFERRED_RE = /INFRA_DEFERRED=(\d+)/;
+/** 첫 사이클 5회차 = 11/17(화) 05:30 KST 회차. 이 시각 뒤에 끝난 infra 실행부터 본다. */
+export const KAKAO_CYCLE_DONE_FROM = "2026-11-17T05:00:00+09:00";
+/**
+ * 「넘김 0」을 기대하는 마지막 시각 — 11/03 첫 묶음이 30일(infra-kakao.mjs FRESH_DAYS) 재확인으로 다시 대상이 되는 12/03 전까지만.
+ * 그 뒤는 800 묶음이 다시 돌며 넘김이 생길 수 있어(BACKLOG A-27 (d)) 이 점검은 조용해진다.
+ */
+export const KAKAO_DEFERRED_CHECK_UNTIL = "2026-12-03T00:00:00+09:00";
+/** 시계 빈칸 점검을 켜는 시각 — 5회차 다음 날 감시(11/18 09:00 KST)부터. 시계는 한 번 채우면 다시 비지 않아 그 뒤로 계속 본다. */
+export const KAKAO_NULL_CHECK_FROM = "2026-11-18T00:00:00+09:00";
+/** 만든 지 이 일수 안 된 단지는 빼고 센다 — 다음 화·금 회차(최대 4일 간격)가 맨 먼저 집는다(0순위). */
+export const KAKAO_NULL_GRACE_DAYS = 5;
+
+/**
+ * ㉘(a) 판정 — infra 최근 실행 중 [KAKAO_CYCLE_DONE_FROM, KAKAO_DEFERRED_CHECK_UNTIL) 에 끝난 **가장 최근 1행**에
+ * `INFRA_DEFERRED=N`(N>0)이 있으면 1건. 창 밖·창 안 실행 없음·표식 없음이면 침묵. 같은 실행은 한 번만(at = finished_at + 항상 dedup).
+ * @param {ReadonlyArray<{ status?: string|null, error_message?: string|null, finished_at?: string|null }>} runs finished_at DESC
+ * @param {Date} [now]
+ * @returns {Issue[]}
+ */
+export function checkKakaoDeferred(runs, now = new Date()) {
+  const from = new Date(KAKAO_CYCLE_DONE_FROM).getTime();
+  const until = new Date(KAKAO_DEFERRED_CHECK_UNTIL).getTime();
+  if (now.getTime() < from || now.getTime() >= until + 86400000) return [];
+  const inWindow = runs.find((r) => {
+    const t = r.finished_at ? new Date(r.finished_at).getTime() : NaN;
+    return Number.isFinite(t) && t >= from && t < until;
+  });
+  if (!inWindow) return [];
+  const m = INFRA_DEFERRED_RE.exec(inWindow.error_message ?? "");
+  const n = m ? Number(m[1]) : 0;
+  if (n === 0) return [];
+  return [{
+    kind: "kakao-cycle-deferred",
+    collector: INFRA_COLLECTOR,
+    detail: `카카오 첫 사이클(11/17 5회차) 뒤에도 다음 회차로 넘긴 단지 ${n}곳(INFRA_DEFERRED=${n}) — 기대 0`,
+    lines: [
+      "좌표 있는 단지 3,440곳(10/31)을 800곳씩 5회차(11/03~11/17)에 한 바퀴 돌 계획이었습니다 — 넘김이 남으면 단지 수가 늘었거나 상한이 바뀐 것입니다.",
+      `최근 회차: ${toKst(inWindow.finished_at) ?? inWindow.finished_at}${inWindow.status === "success" ? "" : ` (${inWindow.status ?? "상태 없음"})`}`,
+    ],
+    at: inWindow.finished_at ?? undefined,
+  }];
+}
+
+/**
+ * ㉘(b) 재료 — 카카오 시계(infra.kakao_updated_at)가 빈 infra 행의 단지 중 **좌표 있는**(infra-kakao 의 `a.lat && a.lng` 와 같은 잣대) 단지.
+ * 빈 행 수는 count head 로 정확히, 단지 목록은 앞 1,000개(apartment_id 순)만 가져와 좌표·만든 날을 본다(빈 행이 1,000을 넘으면 `truncated`).
+ * @param {any} [sb]
+ * @returns {Promise<{ nullTotal: number, truncated: boolean, apts: Array<{ id: string, lat: number|null, lng: number|null, created_at: string|null }> }>}
+ */
+export async function fetchKakaoNullApts(sb = getSupabase()) {
+  const head = await sb.from("infra").select("*", { count: "exact", head: true }).is("kakao_updated_at", null);
+  if (head.error) throw new Error(`infra 카카오 시계 빈칸 수 조회 실패: ${head.error.message}`);
+  if (head.count == null) throw new Error("infra 카카오 시계 빈칸 수를 못 받음(count=null)");
+  if (head.count === 0) return { nullTotal: 0, truncated: false, apts: [] };
+  const rows = await sb.from("infra").select("apartment_id").is("kakao_updated_at", null).order("apartment_id", { ascending: true }).limit(1000);
+  if (rows.error) throw new Error(`infra 카카오 시계 빈칸 행 조회 실패: ${rows.error.message}`);
+  const ids = [...new Set((rows.data ?? []).map((/** @type {any} */ r) => String(r.apartment_id)))];
+  /** @type {Array<{ id: string, lat: number|null, lng: number|null, created_at: string|null }>} */
+  const apts = [];
+  for (let i = 0; i < ids.length; i += 200) {
+    const part = ids.slice(i, i + 200);
+    const r = await sb.from("apartments").select("id,lat,lng,created_at").in("id", part);
+    if (r.error) throw new Error(`apartments 좌표 조회 실패: ${r.error.message}`);
+    apts.push(...(r.data ?? []));
+  }
+  return { nullTotal: head.count, truncated: (rows.data ?? []).length >= 1000, apts };
+}
+
+/**
+ * ㉘(b) 판정 — KAKAO_NULL_CHECK_FROM 부터, 카카오 시계가 빈 infra 행 중 좌표 있고 만든 지 KAKAO_NULL_GRACE_DAYS 일 넘은 단지가 있으면 1건
+ * (같은 명단은 첫날 + 월요일마다 · 명단이 바뀌면 그날 — remindWeek, 세션716 보완 F1). 좌표 없는 단지(카카오가 못 도는 곳)·아직 0순위 대기인 새 단지는 뺀다.
+ * @param {{ nullTotal: number, truncated: boolean, apts: Array<{ id: string, lat: number|null, lng: number|null, created_at: string|null }> }} input
+ * @param {Date} [now]
+ * @returns {Issue[]}
+ */
+export function checkKakaoNullAfterCycle(input, now = new Date()) {
+  if (now.getTime() < new Date(KAKAO_NULL_CHECK_FROM).getTime()) return [];
+  const cutoff = now.getTime() - KAKAO_NULL_GRACE_DAYS * 86400000;
+  const hit = input.apts
+    .filter((a) => a.lat && a.lng)
+    .filter((a) => {
+      const t = a.created_at ? new Date(a.created_at).getTime() : NaN;
+      return !Number.isFinite(t) || t < cutoff; // 만든 날을 모르면 오래된 단지로 친다(조용히 빼지 않는다)
+    })
+    .map((a) => a.id)
+    .sort();
+  if (hit.length === 0) return [];
+  const shown = hit.slice(0, 10);
+  return [{
+    kind: "kakao-cycle-null",
+    collector: INFRA_COLLECTOR,
+    detail: `카카오 시계(infra.kakao_updated_at)가 빈 좌표 있는 단지 ${hit.length}곳${input.truncated ? "+(앞 1,000행만 봄)" : ""} — 첫 사이클 뒤 기대 0`,
+    lines: [
+      `빈 시계 infra 행 ${input.nullTotal}개 중 좌표 있고 만든 지 ${KAKAO_NULL_GRACE_DAYS}일 넘은 단지: ${shown.join(", ")}${hit.length > shown.length ? ` 외 ${hit.length - shown.length}곳` : ""}`,
+      "한 번 채운 시계는 다시 비지 않습니다 — 남은 곳은 카카오 회차가 못 집었거나(오류) 좌표를 최근에 받은 단지입니다.",
+      "같은 명단이 이어지는 동안 이 알림은 주 1회(월요일)만 다시 보냅니다 — 명단이 바뀌면 그날 바로 보냅니다.",
+    ],
+    // 세션716 보완 F1: 카카오가 늘 실패하는 단지 하나가 휴면 내내 매일 울리지 않게 — 열쇠 = 걸린 단지 명단(정렬) 지문 + 이번 주.
+    at: `ids:${fingerprintIds(hit)}`,
+    remindWeek: kstWeekStart(now),
+  }];
+}
+
+/**
+ * ㉘ 한 번 돌리기 — (a) 넘김 표식(창 안에서만) + (b) 시계 빈칸(11/18 부터). 둘은 따로 fail-open(한쪽 실패가 다른 쪽을 막지 않는다).
+ * @param {{ now?: Date, fetchRuns?: (names: readonly string[]) => ReturnType<typeof fetchRegionUnresolvedRuns>, fetchNullApts?: () => ReturnType<typeof fetchKakaoNullApts> }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runKakaoCycleCheck(deps = {}) {
+  const now = deps.now ?? new Date();
+  const a = await runFailOpenCheck("㉘(a) 카카오 첫 사이클 넘김", async () => {
+    if (now.getTime() < new Date(KAKAO_CYCLE_DONE_FROM).getTime()) return [];
+    const runs = (await (deps.fetchRuns ?? fetchRegionUnresolvedRuns)([INFRA_COLLECTOR]))[INFRA_COLLECTOR] ?? [];
+    const is = checkKakaoDeferred(runs, now);
+    console.log(`[monitor] ㉘(a) 카카오 첫 사이클 넘김: 최근 실행 ${runs.length}행 → 이상 ${is.length}건`);
+    return is;
+  });
+  const b = await runFailOpenCheck("㉘(b) 카카오 시계 빈칸", async () => {
+    if (now.getTime() < new Date(KAKAO_NULL_CHECK_FROM).getTime()) return [];
+    const input = await (deps.fetchNullApts ?? fetchKakaoNullApts)();
+    const is = checkKakaoNullAfterCycle(input, now);
+    console.log(`[monitor] ㉘(b) 카카오 시계 빈칸: infra 빈 행 ${input.nullTotal} · 좌표 확인 ${input.apts.length}곳 → 이상 ${is.length}건`);
+    return is;
+  });
+  return [...a, ...b];
+}
+
+// ── ㉙ 2u 「불법·고금리 대출 거르기」 글 링크 생존(세션716 M5 · BACKLOG 439 — 금융 탭이 거는 바깥 링크 1개) ─────
+/**
+ * ㉙ 주소가 사는 파일 — **import 하지 않고 글자로 읽는다**(㉕ 와 같은 이유: 감시는 로더 없는 node 로 돌아 .tsx 를 못 연다).
+ * 주소를 여기 손으로 다시 적지 않는다 — 화면 상수가 바뀌면 감시도 그 주소를 본다(글자와 실제 상수가 같은지는 시험이 맞댄다).
+ */
+const FUNDING_PLANNER_URL = new URL("../src/components/detail/FundingPlanner.tsx", import.meta.url);
+const LOAN_FILTER_HREF_RE = /const LOAN_FILTER_POST = \{\r?\n\s*href: "(https:\/\/[^"\s]+)",/;
+/**
+ * 그 글이 맞는지 보는 글자 — 2026-11-15 실제 응답 제목 「대출이 급할 때, 불법·고금리 대출 걸러 내는 법 …」에서 골랐다.
+ * 2u 는 없는 주소에 404 를 주지만(같은 날 실측) 홈으로 넘기는 식의 「200 인데 다른 장」도 잡으려고 본문 글자를 같이 본다.
+ */
+export const LOAN_FILTER_POST_MARKER = "불법·고금리 대출";
+/** 첫 시도가 이상하면 이만큼 쉬고 한 번 더 — 일시 오류 1회로 알리지 않는다. */
+export const LINK_RETRY_DELAY_MS = 5000;
+
+/**
+ * `FundingPlanner.tsx` 의 `LOAN_FILTER_POST.href` 를 글자로 읽는다 — 못 찾으면 던진다(이름·꼴이 바뀐 날 침묵하지 않게).
+ * @param {string} [text] 시험 주입용
+ * @returns {string}
+ */
+export function readLoanFilterPostHref(text) {
+  const src = text ?? readFileSync(FUNDING_PLANNER_URL, "utf8");
+  const m = LOAN_FILTER_HREF_RE.exec(src);
+  if (!m) throw new Error("src/components/detail/FundingPlanner.tsx 에서 LOAN_FILTER_POST.href 를 못 찾음(이름·꼴이 바뀌었으면 ㉙ 도 같이 고칠 것)");
+  return m[1];
+}
+
+/**
+ * ㉙ 응답 1회 판정 — 200 이고 본문에 표식 글자가 있으면 null(정상), 아니면 이유 글자.
+ * @param {{ status: number, text: string } | { error: string }} r
+ * @returns {string | null}
+ */
+export function judgeLinkResponse(r) {
+  if ("error" in r) return `요청 실패(${r.error})`;
+  if (r.status !== 200) return `HTTP ${r.status}`;
+  if (!r.text.includes(LOAN_FILTER_POST_MARKER)) return `200 인데 본문에 「${LOAN_FILTER_POST_MARKER}」 없음(다른 장으로 넘어갔을 수 있음)`;
+  return null;
+}
+
+/**
+ * ㉙ 응답 1회의 「상태」 — 알림 열쇠용(세션716 보완 F2). 오류 글자(시간 초과 문구 등)가 매번 달라도 같은 상태로 묶는다.
+ * @param {{ status: number, text: string } | { error: string }} r
+ * @returns {string} "ok" | "http:<코드>" | "no-marker" | "error"
+ */
+export function linkStateOf(r) {
+  if ("error" in r) return "error";
+  if (r.status !== 200) return `http:${r.status}`;
+  return r.text.includes(LOAN_FILTER_POST_MARKER) ? "ok" : "no-marker";
+}
+
+/**
+ * ㉙ 한 번 돌리기 — 주소를 상수에서 읽어 GET, 이상하면 LINK_RETRY_DELAY_MS 뒤 한 번 더. 두 번 다 이상하면 1건.
+ * 주소 읽기 실패 등 예외는 fail-open 이 실행 실패 1건으로 알린다.
+ * 같은 상태(주소 + 2차 상태 `linkStateOf`)는 첫날 1회 + 월요일마다 1회, 상태가 바뀌면 그날 바로(remindWeek · 세션716 보완 F2).
+ * @param {{ readHref?: () => string, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>, now?: Date }} [deps]
+ * @returns {Promise<Issue[]>}
+ */
+export async function runLoanFilterLinkCheck(deps = {}) {
+  return runFailOpenCheck("㉙ 2u 대출 거르기 글 링크", async () => {
+    const href = (deps.readHref ?? (() => readLoanFilterPostHref()))();
+    const fetchImpl = deps.fetchImpl ?? fetch;
+    const wait = deps.sleep ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)));
+    /** @returns {Promise<{ reason: string | null, state: string }>} */
+    const once = async () => {
+      /** @type {{ status: number, text: string } | { error: string }} */
+      let r;
+      try {
+        const res = await fetchImpl(href, { redirect: "follow", headers: { "User-Agent": "mibunyang-monitor" }, signal: AbortSignal.timeout(20000) });
+        r = { status: res.status, text: await res.text() };
+      } catch (e) {
+        r = { error: e instanceof Error ? e.message : String(e) };
+      }
+      return { reason: judgeLinkResponse(r), state: linkStateOf(r) };
+    };
+    const first = (await once()).reason;
+    let second = null;
+    let secondState = "ok";
+    if (first) {
+      await wait(LINK_RETRY_DELAY_MS);
+      const s = await once();
+      second = s.reason;
+      secondState = s.state;
+    }
+    console.log(`[monitor] ㉙ 2u 대출 거르기 글 링크: ${href} → ${first ? `1차 ${first} · 2차 ${second ?? "정상"}` : "정상"}`);
+    if (!first || !second) return [];
+    return [{
+      // 세션716 보완 F2: 죽은 링크를 고칠 사람이 없는 동안 매일 울리지 않게 — 같은 상태(주소·2차 상태)는 첫날 + 월요일마다, 바뀌면 그날.
+      at: `link:${href}|${secondState}`,
+      remindWeek: kstWeekStart(deps.now ?? new Date()),
+      kind: "link-dead",
+      collector: "2u 블로그 글 링크(금융 탭)",
+      detail: `${href} — 두 번 다 이상: ${second}`,
+      lines: [
+        `1차: ${first} · ${LINK_RETRY_DELAY_MS / 1000}초 뒤 2차: ${second}`,
+        "금융 탭 「대출이 급할 때 불법·고금리 대출 걸러 내는 법」 링크가 죽은 글을 가리키고 있을 수 있습니다.",
+      ],
+    }];
+  });
+}
+
 /**
  * ⑦ VIEW 의 시군구 조인(`rg`)으로 노출되는 컬럼 목록.
  *
@@ -3593,14 +3908,16 @@ export const ALWAYS_DEDUP_COLLECTORS = new Set(["coord-shared"]);
 // ⑱ sgis-map-* 도 at=그 실행의 finished_at — 같은 화요일 행은 한 번만, 다음 화요일 행이 또 그러면 새로 울린다(세션614 보완 W2).
 // ㉑ notice-markers 는 ⑪ 과 같은 지문(표식 이름+값 해시 @ 구간 시작) — 같은 내용이 이어지면 다음 날부터 침묵(세션632).
 // ㉖ kosis-listed-cap 은 at=그 KOSIS 실행의 finished_at — 같은 회차는 한 번만, 다음 회차가 또 새 단지를 걸면 새로 울린다(세션697).
-export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers", "govlist-health", "kosis-listed-cap"]);
+// ㉘(a) kakao-cycle-deferred 도 at=그 infra 실행의 finished_at — 같은 회차는 한 번만(세션716 M3).
+export const ALWAYS_DEDUP_KINDS = new Set(["region-unresolved", "applyhome-unsold", "local-failure", "kapt-window", "sgis-map-pending", "sgis-map-sido-mismatch", "notice-markers", "govlist-health", "kosis-listed-cap", "kakao-cycle-deferred"]);
 
 /**
  * @param {Issue} issue
  * @returns {boolean} daily 에서도 dedup 대상인가
  */
 export function isAlwaysDedup(issue) {
-  return ALWAYS_DEDUP_COLLECTORS.has(issue.collector) || ALWAYS_DEDUP_KINDS.has(issue.kind);
+  // remindWeek 가 붙은 ⑤-b 미발화도 daily 에서 dedup — 열쇠에 주가 들어 있어 월요일마다 한 번 다시 울린다(세션716 M4).
+  return ALWAYS_DEDUP_COLLECTORS.has(issue.collector) || ALWAYS_DEDUP_KINDS.has(issue.kind) || Boolean(issue.remindWeek);
 }
 
 /**
@@ -5498,6 +5815,10 @@ async function main() {
     issues = issues.concat(await runRuleExpiryCheck());
     // ㉖ 명단 총분양 상한에 새로 걸린 단지 — kosis-unsold 최근 실행 표식 중 처음 보는 id 만(세션697 👤 결정 ②). 같은 실행은 한 번만(항상 dedup). fail-open.
     issues = issues.concat(await runListedCapCheck());
+    // ㉗ DSR 40% 통과 칸 모양 · ㉘ 카카오 첫 사이클 결과(날짜 걸린 확인) · ㉙ 2u 글 링크 생존 — 세션716(휴면 전 감시 보강). 전부 fail-open.
+    issues = issues.concat(await runDsrShapeCheck());
+    issues = issues.concat(await runKakaoCycleCheck());
+    issues = issues.concat(await runLoanFilterLinkCheck());
 
     // ⑩ 주 1회 DB 권한 실측 점검 — 매일 도는 감시 안에 KST 월요일에만 발화(세션567).
     //    anon key 가 공개된 이 DB 에서 "코드가 이렇게 짜였으니 안전할 것"이 아니라 pg_catalog 를
