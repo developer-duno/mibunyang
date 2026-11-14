@@ -8,13 +8,49 @@
 
 // `git … worktree add [옵션] <경로>` 의 <경로>(첫 위치 인자)가 .claude/worktrees 아래일 때만 참.
 // 명령 글자 어딘가에 두 낱말이 따로 있는 것(커밋 메시지 printf 등)은 헛경고였다(세션714 · ㉔ 남은 것).
+// 따옴표 안 글자(커밋 메시지 `-m '… git worktree add .claude/worktrees …'`·echo)는 낱말 하나로 읽어
+// 명령으로 치지 않는다 — 검사관 rv-s714 🟠 지적으로 정규식 대신 작은 셸 낱말 쪼개기.
 const OPT_WITH_VALUE = new Set(["-b", "-B", "--reason"]);
+const GIT_OPT_WITH_VALUE = new Set(["-C", "-c", "--git-dir", "--work-tree", "--namespace"]);
+
+/** 셸 글자를 명령 조각(낱말 배열)들로 — 따옴표·역슬래시·줄 이음을 알고, ; & | 줄바꿈 ( ) $( 에서 조각을 끊는다 */
+function shellSegments(cmd) {
+  const segs = [];
+  let seg = [];
+  let tok = null;
+  let q = null;
+  const endTok = () => { if (tok !== null) seg.push(tok); tok = null; };
+  const endSeg = () => { endTok(); if (seg.length) segs.push(seg); seg = []; };
+  const s = cmd.replace(/\\\r?\n/g, " ");
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) {
+      if (c === q) q = null;
+      else if (c === "\\" && q === '"' && i + 1 < s.length) tok += s[++i];
+      else tok += c;
+      continue;
+    }
+    if (c === "'" || c === '"') { q = c; tok = tok ?? ""; continue; }
+    // 역슬래시는 따옴표·공백·구분자 앞에서만 이스케이프 — 그 밖엔 글자 그대로(PowerShell·Windows 경로 `.claude\worktrees`)
+    if (c === "\\" && i + 1 < s.length && /[\s'"\\;&|()$]/.test(s[i + 1])) { tok = (tok ?? "") + s[++i]; continue; }
+    if (/\s/.test(c) && c !== "\n") { endTok(); continue; }
+    if (c === "$" && s[i + 1] === "(") { endSeg(); i++; continue; }
+    if (";&|\n()".includes(c)) { endSeg(); continue; }
+    tok = (tok ?? "") + c;
+  }
+  endSeg();
+  return segs;
+}
+
 function gitAddsUnderClaudeWorktrees(cmd) {
-  for (const seg of cmd.split(/&&|\|\||[;|\n]/)) {
-    const m = seg.match(/(?:^|\s)git\b.*?\bworktree\s+add\s+(.*)$/i);
-    if (!m) continue;
-    const toks = m[1].trim().split(/\s+/).map((t) => t.replace(/^["']|["']$/g, ""));
-    for (let i = 0; i < toks.length; i++) {
+  for (const toks of shellSegments(cmd)) {
+    let i = 0;
+    while (i < toks.length && /^[A-Za-z_][A-Za-z0-9_]*=/.test(toks[i])) i++; // 앞 환경 변수 대입
+    if (!/(?:^|[\\/])git(?:\.exe)?$/i.test(toks[i] ?? "")) continue;
+    i++;
+    while (i < toks.length && toks[i].startsWith("-")) i += GIT_OPT_WITH_VALUE.has(toks[i]) ? 2 : 1;
+    if (toks[i] !== "worktree" || toks[i + 1] !== "add") continue;
+    for (i += 2; i < toks.length; i++) {
       const t = toks[i];
       if (OPT_WITH_VALUE.has(t)) { i++; continue; }
       if (t.startsWith("-")) continue;

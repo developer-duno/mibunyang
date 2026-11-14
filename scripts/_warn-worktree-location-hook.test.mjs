@@ -19,6 +19,14 @@ describe("warn-worktree-location 훅", () => {
     "git worktree add -b s714/x .claude/worktrees/s714-x origin/main",
     'cd /f/mibunyang && git worktree add "F:/mibunyang/.claude/worktrees/s714-x" main',
     "git worktree add --detach .claude\\worktrees\\s714-x",
+    // 검사관 rv-s714 지적 — 따옴표 안 공백·괄호·줄 이음·줄바꿈 뒤·git 앞 옵션
+    'git worktree add --lock --reason "a b" .claude/worktrees/s714-x',
+    "git worktree add --lock --reason 'a b' .claude/worktrees/s714-x",
+    "(git worktree add .claude/worktrees/s714-x)",
+    "x=$(git worktree add .claude/worktrees/s714-x)",
+    "git worktree add \\\n  .claude/worktrees/s714-x",
+    "git status\ngit worktree add .claude/worktrees/s714-x",
+    "git -C F:/mibunyang worktree add .claude/worktrees/s714-x",
   ])("규칙 밖 위치에 만들면 경고: %s", (cmd) => {
     expect(bash(cmd)).toEqual({ code: 0, warned: true });
   });
@@ -29,6 +37,11 @@ describe("warn-worktree-location 훅", () => {
     'printf "훅: git worktree add 를 .claude/worktrees 에 쓰면 경고\\n" > msg.txt && git commit -F msg.txt',
     "git worktree add .omc/wt/s714-x main && ls .claude/worktrees",
     "git worktree list && rm -r .claude/worktrees/old",
+    // 검사관 rv-s714 지적 — 따옴표 안 글자·echo 는 명령이 아니다
+    "git commit -m 'use git worktree add .claude/worktrees/x'",
+    'git commit -m "docs: git worktree add .claude/worktrees 금지"',
+    'git commit -m "a && git worktree add .claude/worktrees/x"',
+    "echo git worktree add .claude/worktrees/x",
   ])("헛경고 안 함: %s", (cmd) => {
     expect(bash(cmd)).toEqual({ code: 0, warned: false });
   });
