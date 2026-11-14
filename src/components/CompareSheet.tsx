@@ -370,7 +370,13 @@ export const CompareSheet = memo(function CompareSheet({
               ))}
             </tr>
             <tr style={{ borderBottom: `1px solid ${C.border}` }}>
-              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>LTV한도</td>
+              <td style={{ padding: "8px 6px", color: C.sub, fontSize: F.xs }}>
+                LTV한도
+                {/* 계산은 지금 규정·분양가(공고일 분기 없음) — 상세 금융 탭과 달리 종전 규정을 안 본다는 사실(A-26 ㉒ · 세션711) */}
+                <div data-testid="compare-ltv-basis" style={{ fontSize: F.micro, color: C.muted, fontWeight: 400 }}>
+                  지금 규정·분양가 기준
+                </div>
+              </td>
               {zoneData.map((d: { zone: keyof typeof ZONE_TYPE; ltv: number; needCash: number }, i: number) => (
                 <td
                   key={items[i].apt.id}

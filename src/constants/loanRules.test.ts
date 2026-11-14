@@ -107,7 +107,7 @@ describe("날짜 도우미 — new Date(문자열) 없이", () => {
     expect(METRO_CAP_CUTOFF).toBe("2025-06-27");
   });
 
-  it("입주월 — 형식 이상은 모름(null), 이번 달보다 앞일 때만 '시작됨', KST 이번 달", () => {
+  it("입주월 — 형식 이상은 모름(null), 이번 달 또는 그 앞이면 '시작됨', KST 이번 달", () => {
     expect(normalizeYearMonth("2026-09")).toBe("2026-09");
     expect(normalizeYearMonth("202609")).toBe("2026-09");
     expect(normalizeYearMonth("미정")).toBeNull();
@@ -115,7 +115,9 @@ describe("날짜 도우미 — new Date(문자열) 없이", () => {
     expect(normalizeYearMonth("2026-13")).toBeNull();
     expect(moveInStarted(["2026-09", null], "2026-10")).toBe(true);
     expect(moveInStarted([null, "202609"], "2026-10")).toBe(true);
-    expect(moveInStarted(["2026-10"], "2026-10")).toBe(false); // 이번 달은 아직 아님
+    // 세션711 ㉑ — 경계 3개(앞달·이번 달·다음 달). 이번 달 입주도 「시작」(⚠️ 변이 대상: `<=` → `<` 면 빨강)
+    expect(moveInStarted(["2026-10"], "2026-10")).toBe(true);
+    expect(moveInStarted(["2026-11"], "2026-10")).toBe(false);
     expect(moveInStarted(["미정", undefined], "2026-10")).toBe(false);
     // 2026-10-31 15:30 UTC = KST 11-01 00:30
     expect(kstYearMonth(new Date(Date.UTC(2026, 9, 31, 15, 30)))).toBe("2026-11");

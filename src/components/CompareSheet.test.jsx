@@ -115,6 +115,10 @@ describe("CompareSheet", () => {
     const ltvRow = screen.getByText("LTV한도").closest("tr");
     const cells = [...(ltvRow?.querySelectorAll("td") ?? [])].slice(1).map((td) => td.textContent);
     expect(cells).toEqual(["6억", "4억"]);
+    // 세션711 A-26 ㉒ — 이름 칸 아래 계산 기준 둘째 줄(공고일 분기 없음 · 상세 금융 탭과 달리 종전 규정을 안 본다)
+    // ⚠️ 변이 대상: 둘째 줄을 지우면 빨강.
+    expect(ltvRow?.querySelector("td")?.textContent).toBe("LTV한도지금 규정·분양가 기준");
+    expect(screen.getByTestId("compare-ltv-basis").closest("tr")).toBe(ltvRow);
     const zoneRow = screen.getByText("규제현황").closest("tr");
     const zones = [...(zoneRow?.querySelectorAll("td") ?? [])].slice(1).map((td) => td.textContent);
     expect(zones).toEqual(["비규제지역", "규제지역"]);

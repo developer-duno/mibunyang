@@ -315,14 +315,14 @@ export function kstYearMonth(now: Date = new Date()): string {
 }
 
 /**
- * 입주가 이미 시작됐나 — 입주월 중 하나라도 이번 달(KST)보다 앞이면 참. 형식을 모르는 값은 무시(모름 = 숨기지 않음).
+ * 입주가 이미 시작됐나 — 입주월 중 하나라도 이번 달(KST) 또는 그 앞이면 참(이번 달 입주 포함 · 세션711 ㉑). 형식을 모르는 값은 무시(모름 = 숨기지 않음).
  * 입주 뒤 계약하는 세대가 경과규정 대상인지는 원문에 없다(2025~2026 원문은 사업장 단위 · 2020-07-02 해명은 세대 단위)
  * → 화면은 줄을 보이고 금융사 확인 꼬리를 붙인다(세션709 👤 결정 ⑪ · 질의서 질의 9 ⑥ 회신 대기).
  */
 export function moveInStarted(moveIns: readonly unknown[], thisMonth: string): boolean {
   return moveIns.some((v) => {
     const ym = normalizeYearMonth(v);
-    return ym != null && ym < thisMonth;
+    return ym != null && ym <= thisMonth;
   });
 }
 

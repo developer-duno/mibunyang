@@ -235,7 +235,7 @@ export function buildRegulationTimeline(input: {
     if (ym != null && (moveIn == null || ym < moveIn)) moveIn = ym;
   }
   if (moveIn != null) {
-    // 이번 달 입주는 아직 시작 전(moveInStarted 의 `<` 와 같은 쪽) → 「입주 예정」 · 정렬도 「오늘」 뒤(보완 7-1)
+    // 이번 달 입주 사건은 「입주 예정」 · 정렬도 「오늘」 뒤(보완 7-1) — 결론 꼬리의 moveInStarted 는 세션711 부터 이번 달 포함(제목은 그대로 · 👤 결정)
     const future = moveIn >= thisMonth;
     events.push({
       date: moveIn,
