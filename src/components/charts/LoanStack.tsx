@@ -1,7 +1,7 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
-import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE } from "@/constants/regulations";
+import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE, METRO_LOAN_CAP, REGULATED_LTV_CAPS } from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
 /**
@@ -42,6 +42,22 @@ export const DSR_FAIL_TEXT =
  * 별표 18 「5. 담보가치 산정」 다목 · 잔금 카드 `REGULATED_BALANCE_BASIS` 와 같은 조건 · 세션675 사장님 결정 1)
  */
 export const REGULATED_BALANCE_TAIL = "잔금 때는 감정가·시세로 다시 재요.";
+
+/**
+ * 수도권 주택구입 대출의 실제 한도는 분양가가 아니라 대출 신청일 시세(부동산원·KB)로 정해진다(10·15 FAQ 3-2) —
+ * 「15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억」(10·15 보도자료 · 8·13 대책 「확고하게 유지」). 상수에서 만든다(세션709 A1).
+ */
+const METRO_TIERS = [...REGULATED_LTV_CAPS].sort((a, b) => a.overPrice - b.overPrice);
+const eok = (man: number) => `${man / 10000}억`;
+export const METRO_TIER_TEXT = [
+  `${eok(METRO_TIERS[0].overPrice)} 이하 ${eok(METRO_LOAN_CAP)}`,
+  ...METRO_TIERS.map((t, i) => {
+    const next = METRO_TIERS[i + 1];
+    return next
+      ? `${t.overPrice / 10000}~${eok(next.overPrice)} ${eok(t.cap)}`
+      : `${eok(t.overPrice)} 넘으면 ${eok(t.cap)}`;
+  }),
+].join(" · ");
 
 export const LoanStack = memo(function LoanStack({
   price,
@@ -155,7 +171,7 @@ export const LoanStack = memo(function LoanStack({
         <div style={{ marginTop: 6, fontSize: F.micro, color: C.muted, lineHeight: 1.5 }}>
           {`분양가 ${fmtPrice(price as number)} · `}
           {calc.metroCapped
-            ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 이 집값이면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요.`
+            ? `${ZONE_TYPE[calc.zone]}이지만 수도권 주택구입 대출은 분양가로 계산하면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요. 실제 한도는 대출 받을 때 시세로 정해져요(${METRO_TIER_TEXT}).`
             : `${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`}
           {dsr40pass === true && <span style={{ color: C.green }}>{` ${DSR_PASS_TEXT}`}</span>}
           {dsr40pass === false && <span style={{ color: C.amberText }}>{` ${DSR_FAIL_TEXT}`}</span>}

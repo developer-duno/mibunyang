@@ -375,17 +375,18 @@ export const FundingPlanner = memo(function FundingPlanner({
   const cur = plan?.ltv.current;
   const ltvPct = cur ? Math.round(cur.rate * 100) : 0;
   const ltvCapped = cur ? cur.amount < Math.round(price * cur.rate) : false;
-  // 종전 규정 사실 줄 — 종전 값이 지금보다 클 때만. 주택이 아닌 유형(비주택 담보)·입주가 이미 시작된 단지(개인 주담대)는
-  // 집단대출 경과규정 대상이 아니라 숨긴다(부풀림 0 · 세션659 검사관 🔴·🟠). 입주월 형식을 모르면 숨기지 않는다.
+  // 종전 규정 사실 줄 — 종전 값이 지금보다 클 때만. 주택이 아닌 유형(비주택 담보)은 숨긴다(부풀림 0 · 세션659 검사관 🔴·🟠).
   // 사전청약 단지도 숨긴다 — 첫 공고가 사전당첨자모집공고라 경과규정의 "입주자모집공고"가 아니다(세션660 사장님 결정).
+  // 입주 뒤 계약 세대 해당 여부는 원문에 없음(2025~2026 원문은 사업장 단위 · 2020-07-02 해명은 세대 단위) → 줄은 보이고
+  // 금융사 확인 문구 · 질의서 질의 9 ⑥ 회신 대기(세션709 👤 결정 ⑪).
   const gf = plan?.ltv.grandfathered ?? null;
+  const moveInBegun = moveInStarted([apt.presaleMoveIn, schedule?.move_in_ym], kstYearMonth());
   const showGrandfather =
     gf != null &&
     cur != null &&
     gf.amount > cur.amount &&
     !isNonHousing(apt.presaleHousingType as string | null | undefined, apt.name as string | null | undefined) &&
-    !isPreSubscription(apt.name as string | null | undefined) &&
-    !moveInStarted([apt.presaleMoveIn, schedule?.move_in_ym], kstYearMonth());
+    !isPreSubscription(apt.name as string | null | undefined);
   // 규제지역 종전 금액이 6억을 넘는 것은 첫 공고가 수도권 6억 한도 시행 전이라 그 한도가 빠졌기 때문 — 그 사실과
   // 전매 시점별 차이(6억 한도 시행일~효력일 전날 전매 = 6억 한도 · 효력일 뒤 전매 = 종전 대상 아님)를 문장에 같이 적는다.
   // 6억 면제 근거 = 금융위 2026-10-15 가계부채 점검회의 보도자료 경과규정(세션706 · 10·15 FAQ 13쪽은 시가별 한도 쪽 근거).
@@ -397,8 +398,13 @@ export const FundingPlanner = memo(function FundingPlanner({
       ? ""
       : `첫 모집공고 ${gf.firstDate}${gf.latestDate !== gf.firstDate ? ` (최근 공고 ${gf.latestDate})` : ""} — ${gf.eventLabel}(${gf.effectiveDate}) 전 공고라 금융사 심사에 따라 종전 규정(LTV ${Math.round(gf.rate * 100)}%${capFree ? `, ${METRO_CAP_CUTOFF}까지 공고라 수도권 ${metroCap}억 한도 없이` : ""})이 적용될 수 있어요. 그 경우 최대 ${fmtPrice(gf.amount)}이에요. ` +
         (capFree
-          ? `${METRO_LOAN_CAP_SINCE}~${gf.cutoff} 전매로 산 분양권은 ${metroCap}억 한도가 붙고, ${gf.effectiveDate} 이후 전매는 종전 규정 대상이 아니에요.`
-          : `${gf.effectiveDate} 이후 전매로 산 분양권은 제외예요.`);
+          ? `${METRO_LOAN_CAP_SINCE}~${gf.cutoff} 전매로 산 분양권은 ${metroCap}억 한도가 붙고, ${gf.effectiveDate} 이후 전매는 종전 규정 대상이 아니에요.` +
+            // 6/27 보도자료 각주는 「잔금대출로 전환시에는 6억원 한도 적용」 — 2026-10-15 보도자료(종전규정 적용)와 엇갈린다(세션709 C1)
+            ` 다만 ${METRO_CAP_CUTOFF} 첫 발표 자료는 잔금대출로 바꿀 때 ${metroCap}억 한도를 적용한다고 적어 금융위 자료끼리 말이 달라요. 그 금액이 될지는 금융사에 꼭 확인하세요.`
+          : `${gf.effectiveDate} 이후 전매로 산 분양권은 제외예요.`) +
+        (moveInBegun
+          ? " 입주가 시작된 뒤 계약하는 세대도 해당되는지는 금융위 자료에 없어 금융사 확인이 꼭 필요해요."
+          : "");
   const cashNum = toNumber(cash);
   const metroOrRegulated = plan ? plan.stressAdd === STRESS_RATE_METRO : false;
   // 수도권 투기과열지구 잔금대출은 분양가가 아니라 입주 때 감정가·시세로 잰다(결정 나 · 위 REGULATED_BALANCE_BASIS)
