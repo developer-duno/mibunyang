@@ -38,6 +38,11 @@ import {
   buildWorkflowDisabledMessage,
   GH_WORKFLOWS_URL,
   GH_WORKFLOW_STATE_ALLOWLIST,
+  nextGhUnknownStreak,
+  shouldAlertGhUnknown,
+  readGhUnknownStreak,
+  writeGhUnknownStreak,
+  runGithubWorkflowWatch,
 } from "./kosis-local-runner.mjs";
 
 /** @param {number} y @param {number} m @param {number} d */
@@ -670,13 +675,72 @@ describe("GitHub 예약 워크플로 꺼짐 감시 — 세션716 M1", () => {
     await expect(checkGithubWorkflowStates({
       fetchImpl: /** @type {any} */ (async () => fakeRes(200, body([{ name: "n", path: "p", state: "disabled_inactivity" }]))),
       send: /** @type {any} */ (throwingSend),
-    })).resolves.toMatchObject({ status: "unknown", reason: "telegram down" });
+    })).resolves.toEqual({ status: "disabled", sent: false }); // 전송 실패는 「확인 못 함」이 아니다(세션716 보완 F3)
   });
-  it("main 은 예약 실행(--dry-run·--date 아님)에서만, 수집기 루프 앞에서 await 로 부른다", () => {
+  it("main 은 예약 실행(--dry-run·--date 아님)에서만, 수집기 루프 앞에서 await 로 부른다(연속 셈 포함 진입점)", () => {
     const src = readFileSync(new URL("./kosis-local-runner.mjs", import.meta.url), "utf8").replace(/\r\n/g, "\n");
     const mainSrc = src.slice(src.indexOf("async function main()"));
-    const callIdx = mainSrc.search(/\n\s*if \(!dryRun && !dateArg\) await checkGithubWorkflowStates\(\);/);
+    const callIdx = mainSrc.search(/\n\s*if \(!dryRun && !dateArg\) await runGithubWorkflowWatch\(\);/);
     expect(callIdx).toBeGreaterThan(0);
     expect(callIdx).toBeLessThan(mainSrc.indexOf("for (const targetStr of targets)"));
+  });
+});
+
+describe("GitHub 「확인 못 함」 연속 셈 — 세션716 보완 F3", () => {
+  it("nextGhUnknownStreak — 확인 못 함이면 +1, 확인 성공(ok·disabled)이면 0", () => {
+    expect(nextGhUnknownStreak(0, "unknown")).toBe(1);
+    expect(nextGhUnknownStreak(2, "unknown")).toBe(3);
+    expect(nextGhUnknownStreak(9, "ok")).toBe(0);
+    expect(nextGhUnknownStreak(9, "disabled")).toBe(0);
+  });
+  it("shouldAlertGhUnknown — 2 조용 · 3 알림 · 4~9 조용 · 10 알림 · 17 알림", () => {
+    const loud = Array.from({ length: 18 }, (_, i) => i).filter((n) => shouldAlertGhUnknown(n));
+    expect(loud).toEqual([3, 10, 17]);
+  });
+  it("연속 칸은 마지막 처리일과 같은 상태 파일에 — 서로 지우지 않는다 · 깨졌으면 0 · 못 써도 던지지 않음", () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "runner-gh-"));
+    const f = path.join(dir, "state.json");
+    try {
+      expect(readGhUnknownStreak(f)).toBe(0);
+      expect(writeLastProcessed("2026-11-15", f)).toBe(true);
+      expect(writeGhUnknownStreak(4, f)).toBe(true);
+      expect(readLastProcessed(f)).toBe("2026-11-15");
+      expect(writeLastProcessed("2026-11-16", f)).toBe(true);
+      expect(readGhUnknownStreak(f)).toBe(4);
+      writeFileSync(f, JSON.stringify({ ghUnknownStreak: "x" }), "utf8");
+      expect(readGhUnknownStreak(f)).toBe(0);
+      expect(writeGhUnknownStreak(1, path.join(tmpdir(), "없는폴더", "y", "state.json"))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("runGithubWorkflowWatch — 확인 못 함 1·2회차 조용 · 3회차 알림 1통 · 성공하면 0 으로", async () => {
+    const dir = mkdtempSync(path.join(tmpdir(), "runner-gh-"));
+    const statePath = path.join(dir, "state.json");
+    const send = vi.fn(async () => ({ sent: true }));
+    const down = /** @type {any} */ (async () => ({ ok: false, status: 403, text: async () => "{}" }));
+    const up = /** @type {any} */ (async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ workflows: [{ name: "a", path: "a", state: "active" }] }) }));
+    try {
+      expect(await runGithubWorkflowWatch({ fetchImpl: down, send, statePath })).toMatchObject({ status: "unknown", unknownStreak: 1 });
+      expect(await runGithubWorkflowWatch({ fetchImpl: down, send, statePath })).toMatchObject({ unknownStreak: 2 });
+      expect(send).not.toHaveBeenCalled();
+      expect(await runGithubWorkflowWatch({ fetchImpl: down, send, statePath })).toMatchObject({ unknownStreak: 3, streakAlertSent: true });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(String(/** @type {any} */ (send.mock.calls[0])[0])).toContain("3일째");
+      expect(await runGithubWorkflowWatch({ fetchImpl: down, send, statePath })).toMatchObject({ unknownStreak: 4 });
+      expect(send).toHaveBeenCalledTimes(1);
+      expect(await runGithubWorkflowWatch({ fetchImpl: up, send, statePath })).toMatchObject({ status: "ok", unknownStreak: 0 });
+      expect(readGhUnknownStreak(statePath)).toBe(0);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+  it("상태 파일을 못 써도 던지지 않는다(본 작업 보호)", async () => {
+    const r = await runGithubWorkflowWatch({
+      fetchImpl: /** @type {any} */ (async () => { throw new Error("net"); }),
+      send: vi.fn(async () => ({ sent: true })),
+      statePath: path.join(tmpdir(), "없는폴더", "z", "state.json"),
+    });
+    expect(r).toMatchObject({ status: "unknown", unknownStreak: 1 });
   });
 });

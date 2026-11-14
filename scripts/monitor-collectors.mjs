@@ -27,8 +27,8 @@
  *   ㉕ 기준일 상수 만료 — src/constants/loanRules.ts STRESS_RATE_LOCAL_UNTIL 만료 14일 전부터 고칠 때까지 매일(kind rule-expiry · 파일 글자로 읽음 · 세션696)
  *   ㉖ 명단 총분양 상한 새 단지 — kosis-unsold 최근 실행의 KOSIS_LISTED_CAP 표식 id 중 그 전 실행 표식에 없던 것만(kind kosis-listed-cap · 같은 실행은 한 번만 · 세션697)
  *   ㉗ DSR 40% 통과 칸 모양 — apartments.dsr40pass 가 전부 빈칸·전부 통과·전부 미통과면(kind dsr-shape · 매일 · 세션716)
- *   ㉘ 카카오 첫 사이클 — (a) 11/17~12/02 에 끝난 infra 최근 실행의 INFRA_DEFERRED>0(한 번만) · (b) 11/18 부터 카카오 시계 빈 좌표 있는 단지(만든 지 5일 넘음)(세션716)
- *   ㉙ 2u 대출 거르기 글 링크 — FundingPlanner.tsx LOAN_FILTER_POST.href 를 GET, 재시도 1회 뒤에도 200+본문 글자가 아니면(kind link-dead · 매일 · 세션716)
+ *   ㉘ 카카오 첫 사이클 — (a) 11/17~12/02 에 끝난 infra 최근 실행의 INFRA_DEFERRED>0(한 번만) · (b) 11/18 부터 카카오 시계 빈 좌표 있는 단지(만든 지 5일 넘음 · 같은 명단은 주 1회)(세션716)
+ *   ㉙ 2u 대출 거르기 글 링크 — FundingPlanner.tsx LOAN_FILTER_POST.href 를 GET, 재시도 1회 뒤에도 200+본문 글자가 아니면(kind link-dead · 같은 상태는 주 1회 · 세션716)
  *   ⑤-b 미발화는 같은 사고(마지막 실행 시각 그대로)면 첫 발견 뒤 월요일마다 한 번(remindWeek · 세션716)
  *   ⑫(i) 미래 기준일 — applyhome·govlist 인데 unsold_as_of 가 오늘(KST) 뒤인 행(⑫ 안 · 세션697 👤 결정 ① 「무시+경보」)
  *   ⑥-c 시세 범위 빈칸 — trade_stats 적정가(cmp_fair_price) 있음 + 최저가(cmp_min) 빈칸 > 0(⑥-b 바로 뒤 · 세션696)
@@ -3634,7 +3634,7 @@ export async function fetchKakaoNullApts(sb = getSupabase()) {
 
 /**
  * ㉘(b) 판정 — KAKAO_NULL_CHECK_FROM 부터, 카카오 시계가 빈 infra 행 중 좌표 있고 만든 지 KAKAO_NULL_GRACE_DAYS 일 넘은 단지가 있으면 1건
- * (고칠 때까지 매일). 좌표 없는 단지(카카오가 못 도는 곳)·아직 0순위 대기인 새 단지는 뺀다.
+ * (같은 명단은 첫날 + 월요일마다 · 명단이 바뀌면 그날 — remindWeek, 세션716 보완 F1). 좌표 없는 단지(카카오가 못 도는 곳)·아직 0순위 대기인 새 단지는 뺀다.
  * @param {{ nullTotal: number, truncated: boolean, apts: Array<{ id: string, lat: number|null, lng: number|null, created_at: string|null }> }} input
  * @param {Date} [now]
  * @returns {Issue[]}
@@ -3659,7 +3659,11 @@ export function checkKakaoNullAfterCycle(input, now = new Date()) {
     lines: [
       `빈 시계 infra 행 ${input.nullTotal}개 중 좌표 있고 만든 지 ${KAKAO_NULL_GRACE_DAYS}일 넘은 단지: ${shown.join(", ")}${hit.length > shown.length ? ` 외 ${hit.length - shown.length}곳` : ""}`,
       "한 번 채운 시계는 다시 비지 않습니다 — 남은 곳은 카카오 회차가 못 집었거나(오류) 좌표를 최근에 받은 단지입니다.",
+      "같은 명단이 이어지는 동안 이 알림은 주 1회(월요일)만 다시 보냅니다 — 명단이 바뀌면 그날 바로 보냅니다.",
     ],
+    // 세션716 보완 F1: 카카오가 늘 실패하는 단지 하나가 휴면 내내 매일 울리지 않게 — 열쇠 = 걸린 단지 명단(정렬) 지문 + 이번 주.
+    at: `ids:${fingerprintIds(hit)}`,
+    remindWeek: kstWeekStart(now),
   }];
 }
 
@@ -3727,9 +3731,21 @@ export function judgeLinkResponse(r) {
 }
 
 /**
- * ㉙ 한 번 돌리기 — 주소를 상수에서 읽어 GET, 이상하면 LINK_RETRY_DELAY_MS 뒤 한 번 더. 두 번 다 이상하면 1건(고칠 때까지 매일).
+ * ㉙ 응답 1회의 「상태」 — 알림 열쇠용(세션716 보완 F2). 오류 글자(시간 초과 문구 등)가 매번 달라도 같은 상태로 묶는다.
+ * @param {{ status: number, text: string } | { error: string }} r
+ * @returns {string} "ok" | "http:<코드>" | "no-marker" | "error"
+ */
+export function linkStateOf(r) {
+  if ("error" in r) return "error";
+  if (r.status !== 200) return `http:${r.status}`;
+  return r.text.includes(LOAN_FILTER_POST_MARKER) ? "ok" : "no-marker";
+}
+
+/**
+ * ㉙ 한 번 돌리기 — 주소를 상수에서 읽어 GET, 이상하면 LINK_RETRY_DELAY_MS 뒤 한 번 더. 두 번 다 이상하면 1건.
  * 주소 읽기 실패 등 예외는 fail-open 이 실행 실패 1건으로 알린다.
- * @param {{ readHref?: () => string, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void> }} [deps]
+ * 같은 상태(주소 + 2차 상태 `linkStateOf`)는 첫날 1회 + 월요일마다 1회, 상태가 바뀌면 그날 바로(remindWeek · 세션716 보완 F2).
+ * @param {{ readHref?: () => string, fetchImpl?: typeof fetch, sleep?: (ms: number) => Promise<void>, now?: Date }} [deps]
  * @returns {Promise<Issue[]>}
  */
 export async function runLoanFilterLinkCheck(deps = {}) {
@@ -3737,23 +3753,33 @@ export async function runLoanFilterLinkCheck(deps = {}) {
     const href = (deps.readHref ?? (() => readLoanFilterPostHref()))();
     const fetchImpl = deps.fetchImpl ?? fetch;
     const wait = deps.sleep ?? ((/** @type {number} */ ms) => new Promise((r) => setTimeout(r, ms)));
+    /** @returns {Promise<{ reason: string | null, state: string }>} */
     const once = async () => {
+      /** @type {{ status: number, text: string } | { error: string }} */
+      let r;
       try {
         const res = await fetchImpl(href, { redirect: "follow", headers: { "User-Agent": "mibunyang-monitor" }, signal: AbortSignal.timeout(20000) });
-        return judgeLinkResponse({ status: res.status, text: await res.text() });
+        r = { status: res.status, text: await res.text() };
       } catch (e) {
-        return judgeLinkResponse({ error: e instanceof Error ? e.message : String(e) });
+        r = { error: e instanceof Error ? e.message : String(e) };
       }
+      return { reason: judgeLinkResponse(r), state: linkStateOf(r) };
     };
-    const first = await once();
+    const first = (await once()).reason;
     let second = null;
+    let secondState = "ok";
     if (first) {
       await wait(LINK_RETRY_DELAY_MS);
-      second = await once();
+      const s = await once();
+      second = s.reason;
+      secondState = s.state;
     }
     console.log(`[monitor] ㉙ 2u 대출 거르기 글 링크: ${href} → ${first ? `1차 ${first} · 2차 ${second ?? "정상"}` : "정상"}`);
     if (!first || !second) return [];
     return [{
+      // 세션716 보완 F2: 죽은 링크를 고칠 사람이 없는 동안 매일 울리지 않게 — 같은 상태(주소·2차 상태)는 첫날 + 월요일마다, 바뀌면 그날.
+      at: `link:${href}|${secondState}`,
+      remindWeek: kstWeekStart(deps.now ?? new Date()),
       kind: "link-dead",
       collector: "2u 블로그 글 링크(금융 탭)",
       detail: `${href} — 두 번 다 이상: ${second}`,

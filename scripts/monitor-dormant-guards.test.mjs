@@ -24,6 +24,7 @@ import {
   KAKAO_NULL_GRACE_DAYS,
   readLoanFilterPostHref,
   judgeLinkResponse,
+  linkStateOf,
   runLoanFilterLinkCheck,
   LOAN_FILTER_POST_MARKER,
   LINK_RETRY_DELAY_MS,
@@ -185,7 +186,7 @@ describe("㉘ 카카오 첫 사이클 결과(세션716 M3 · BACKLOG A-27)", () 
     expect(is.map((i) => i.kind)).toEqual(["kakao-cycle-null"]);
     expect(is[0].detail).toContain("2곳");
     expect(is[0].lines?.[0]).toContain("a-old, d-nodate");
-    expect(isAlwaysDedup(is[0])).toBe(false);
+    expect(isAlwaysDedup(is[0])).toBe(true); // 보완 F1 뒤 — 같은 명단은 주 1회(remindWeek)
   });
   it("시계 빈칸 — 걸리는 단지 0 이면 침묵 · 1,000행 넘게 비면 「앞 1,000행만」 표기", () => {
     expect(checkKakaoNullAfterCycle({ nullTotal: 0, truncated: false, apts: [] }, atKst("2026-11-20T09:00"))).toEqual([]);
@@ -312,5 +313,65 @@ describe("main 배선 — ㉗·㉘·㉙ 를 daily 에서 부른다", () => {
     expect(main).toMatch(/\n\s*issues = issues\.concat\(await runDsrShapeCheck\(\)\);/);
     expect(main).toMatch(/\n\s*issues = issues\.concat\(await runKakaoCycleCheck\(\)\);/);
     expect(main).toMatch(/\n\s*issues = issues\.concat\(await runLoanFilterLinkCheck\(\)\);/);
+  });
+});
+
+// ── 세션716 보완 F1·F2 — 휴면 중 같은 알림이 매일 울려 진짜 알림을 묻지 않게(주 1회 · 바뀌면 즉시) ─────
+describe("보완 F1 ㉘(b) 같은 명단은 주 1회 · 명단이 바뀌면 즉시", () => {
+  const old = "2026-10-01T00:00:00Z";
+  const apt = (/** @type {string} */ id) => ({ id, lat: 37.5, lng: 127.0, created_at: old });
+  const input = (/** @type {string[]} */ ids) => ({ nullTotal: ids.length, truncated: false, apts: ids.map(apt) });
+  const keyOn = (/** @type {string[]} */ ids, /** @type {string} */ kst) => dedupKey(checkKakaoNullAfterCycle(input(ids), atKst(kst))[0]);
+
+  it("이슈는 daily dedup 대상이고 열쇠에 명단 지문이 들어간다(시각 아님)", () => {
+    const [is] = checkKakaoNullAfterCycle(input(["a", "b"]), atKst("2026-11-18T09:00"));
+    expect(isAlwaysDedup(is)).toBe(true);
+    expect(is.at).toMatch(/^ids:[0-9a-f]{8}$/);
+    expect(is.remindWeek).toBe("2026-11-16");
+  });
+  it("같은 명단 이틀 연속 → 둘째 날 조용(이미 보낸 열쇠)", () => {
+    const sent = new Set([keyOn(["a", "b"], "2026-11-18T09:00")]);
+    const thu = checkKakaoNullAfterCycle(input(["a", "b"]), atKst("2026-11-19T09:00"));
+    expect(filterUnsent(dedupScope(thu, "daily"), sent)).toEqual([]);
+  });
+  it("다음 월요일 → 다시 알림", () => {
+    expect(keyOn(["a", "b"], "2026-11-23T09:00")).not.toBe(keyOn(["a", "b"], "2026-11-18T09:00"));
+  });
+  it("명단에 단지 1곳 추가 → 그날 바로 알림(열쇠 다름)", () => {
+    expect(keyOn(["a", "b", "c"], "2026-11-19T09:00")).not.toBe(keyOn(["a", "b"], "2026-11-19T09:00"));
+  });
+  it("명단 순서만 다름 → 같은 열쇠", () => {
+    expect(keyOn(["b", "a"], "2026-11-19T09:00")).toBe(keyOn(["a", "b"], "2026-11-19T09:00"));
+  });
+});
+
+describe("보완 F2 ㉙ 같은 상태는 주 1회 · 상태가 바뀌면 즉시", () => {
+  /** @param {number} status @param {string} text */
+  const res = (status, text) => /** @type {any} */ ({ status, text: async () => text });
+  const sleep = async () => {};
+  /** @param {() => Promise<any>} f @param {string} kst */
+  const run = async (f, kst) => (await runLoanFilterLinkCheck({ readHref: () => "https://x/y", fetchImpl: /** @type {any} */ (f), sleep, now: atKst(kst) }))[0];
+
+  it("죽은 링크 이슈는 daily dedup 대상 · 열쇠 = 주소 + 2차 상태", async () => {
+    const is = await run(async () => res(404, ""), "2026-11-18T09:00");
+    expect(isAlwaysDedup(is)).toBe(true);
+    expect(is.at).toBe("link:https://x/y|http:404");
+    expect(linkStateOf({ status: 404, text: "" })).toBe("http:404");
+    expect(linkStateOf({ status: 200, text: "x" })).toBe("no-marker");
+    expect(linkStateOf({ error: "a" })).toBe("error");
+  });
+  it("같은 상태 이틀 연속 → 같은 열쇠(둘째 날 조용) · 다음 월요일 → 다른 열쇠", async () => {
+    const wed = dedupKey(await run(async () => res(404, ""), "2026-11-18T09:00"));
+    const thu = await run(async () => res(404, ""), "2026-11-19T09:00");
+    expect(filterUnsent(dedupScope([thu], "daily"), new Set([wed]))).toEqual([]);
+    expect(dedupKey(await run(async () => res(404, ""), "2026-11-23T09:00"))).not.toBe(wed);
+  });
+  it("상태가 바뀌면 같은 주라도 그날 바로(404 → 다른 장) · 오류 글자만 다르면 같은 상태", async () => {
+    const a = dedupKey(await run(async () => res(404, ""), "2026-11-18T09:00"));
+    const b = dedupKey(await run(async () => res(200, "home"), "2026-11-19T09:00"));
+    expect(b).not.toBe(a);
+    const e1 = dedupKey(await run(async () => { throw new Error("timeout after 20000ms"); }, "2026-11-18T09:00"));
+    const e2 = dedupKey(await run(async () => { throw new Error("ECONNRESET"); }, "2026-11-19T09:00"));
+    expect(e2).toBe(e1);
   });
 });
