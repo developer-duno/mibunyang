@@ -128,6 +128,40 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
     expect(screen.getByText(/규제지역 기준 최대 40%/)).toBeInTheDocument();
   });
 
+  // A-26 ⑮ (세션713 👤) — 규제 수도권은 시도 없이 재도 구간 금액 한도가 걸려 metroCapped 가 거짓이다.
+  // 비율(40%)보다 금액 한도가 먼저 걸리면 「규제지역 기준 최대 22%」가 규칙처럼 읽히므로 금액 한도 문장으로.
+  // 기대값: 18억 × 40% = 7.2억 → 15억 초과 4억 한도(10·15 FAQ) → 4억 = 22%.
+  // ⚠️ 변이 대상: 조건을 metroCapped 만으로 되돌리면 18억 단언이 빨강 · 비율 비교를 지우면 5.3억 단언이 빨강.
+  it("서울 규제 18억 → 4억 · 「규제지역이라 지금 규정에서 주택구입 대출은 … 최대 4억이라 분양가의 22%」", () => {
+    render(<LoanStack price={180000} region="서울" gu="강남구" isRegulated />);
+    expect(screen.getByText("빌릴 수 있는 돈 4억")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "규제지역이라 지금 규정에서 주택구입 대출은 분양가로 계산하면 최대 4억이라 분양가의 22%까지 빌릴 수 있어요. 실제 한도는 대출 받을 때 시세로 정해져요(15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억).",
+        { exact: false }
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/규제지역 기준 최대 22%/)).toBeNull();
+  });
+
+  it("서울 규제 5.3억 → 비율 40% 그대로라 옛 문장 「지금 규정으로 규제지역 기준 최대 40%」", () => {
+    render(<LoanStack price={53000} region="서울" gu="강남구" isRegulated />);
+    expect(screen.getByText(/지금 규정으로 규제지역 기준 최대 40%까지 빌릴 수 있어요\./)).toBeInTheDocument();
+    expect(screen.queryByText(/규제지역이라 지금 규정에서/)).toBeNull();
+    expect(screen.queryByText(/실제 한도는 대출 받을 때 시세로/)).toBeNull();
+  });
+
+  it("경기 비규제 16억 → 4억 · 수도권 한도 문장(「비규제지역이지만」) 그대로 — 새 문장 아님", () => {
+    render(<LoanStack price={160000} region="경기" gu="평택시" isRegulated={false} />);
+    expect(screen.getByText("빌릴 수 있는 돈 4억")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /비규제지역이지만 지금 규정에서 수도권 주택구입 대출은 분양가로 계산하면 최대 4억이라 분양가의 25%까지/
+      )
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/규제지역이라 지금 규정에서/)).toBeNull();
+  });
+
   it("DB 거짓이면 이름이 규제여도 비규제 — 서울 + isRegulated 거짓 → 70%(서울이라 6억 한도)", () => {
     render(<LoanStack price={50000} region="서울" gu="강남구" isRegulated={false} />);
     expect(screen.getByText("빌릴 수 있는 돈 3억 5,000만")).toBeInTheDocument();

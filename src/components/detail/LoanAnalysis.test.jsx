@@ -1,5 +1,5 @@
 // @ts-check
-import { describe, it, expect, vi, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
 import { LoanAnalysis } from "./LoanAnalysis";
 import { makeApt } from "@/__tests__/factories";
@@ -87,11 +87,38 @@ describe("LoanAnalysis", () => {
     expect(screen.getByText("LTV: 70% (무주택자 기준)")).toBeTruthy();
   });
 
-  it("경기 비규제 10억 → 대출한도 6억 (수도권 주택구입 대출 최대 6억) + 요약에 한도 문장", () => {
+  // A-26 ⑬ (세션713 👤) — 머리 줄 수도권 한도는 막대 문장과 같은 구간 글자(METRO_TIER_TEXT) · 옛 「최대 6억」 하나는 16억 단지에서 거짓
+  // ⚠️ 변이 대상: 옛 「최대 6억」을 되살리면 비규제+수도권 단언이 빨강 · 규제+수도권을 옛 글자로 두면 그 단언이 빨강.
+  const TIERS = "15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억";
+  it("경기 비규제 10억 → 대출한도 6억 + 머리 줄 「수도권 대출한도 15억 이하 6억 · 15~25억 4억 · 25억 넘으면 2억」", () => {
     const apt = /** @type {any} */ (makeApt({ price: 100000, region: "경기", gu: "평택시", isRegulated: false }));
     render(<LoanAnalysis apt={/** @type {any} */ (apt)} />);
     expect(loanLine("6억")).toBeTruthy();
-    expect(screen.getByText("LTV: 70% (무주택자 기준) · 수도권 대출한도 최대 6억")).toBeTruthy();
+    expect(screen.getByText(`LTV: 70% (무주택자 기준) · 수도권 대출한도 ${TIERS}`)).toBeTruthy();
+    expect(screen.queryByText(/수도권 대출한도 최대 6억/)).toBeNull();
+  });
+
+  it("머리 줄 네 갈래 — 규제+수도권 · 규제+지방 · 비규제+지방 · 긴 시도 이름(경기도)", () => {
+    const line = (/** @type {Record<string, unknown>} */ o) => {
+      const r = render(<LoanAnalysis apt={/** @type {any} */ (makeApt({ price: 100000, ...o }))} />);
+      const t = r.container.textContent ?? "";
+      r.unmount();
+      return t;
+    };
+    expect(line({ region: "서울", gu: "중구", isRegulated: true })).toContain(
+      `LTV: 40% (무주택자 기준) · 대출한도 ${TIERS}`
+    );
+    // 규제+지방(DB 규제 표시만 참인 가짜 단지) — 지금 글자 그대로
+    const regLocal = line({ region: "부산", gu: "해운대구", isRegulated: true });
+    expect(regLocal).toContain("LTV: 40% (무주택자 기준) · 대출한도 15억 초과 4억 / 25억 초과 2억");
+    expect(regLocal).not.toContain(TIERS);
+    const normalLocal = line({ region: "부산", gu: "해운대구", isRegulated: false });
+    expect(normalLocal).toContain("LTV: 70% (무주택자 기준)");
+    expect(normalLocal).not.toContain("LTV: 70% (무주택자 기준) · ");
+    // A-26 ⑭ — 긴 이름 「경기도」도 수도권(isMetroRegion 줄임)
+    expect(line({ region: "경기도", gu: "평택시", isRegulated: false })).toContain(
+      `LTV: 70% (무주택자 기준) · 수도권 대출한도 ${TIERS}`
+    );
   });
 
   it("DB 규제 표시가 이름보다 먼저 — 화성시 + isRegulated 참 → 규제지역 배지·40%", () => {
@@ -446,6 +473,35 @@ describe("LoanAnalysis", () => {
         expect(r.container.textContent).not.toContain("종전 규정이 적용될 수도");
         r.unmount();
       }
+    });
+
+    // A-26 ⑫ (세션713) — 한 번 그린 화면에서 막대 잇는 문장과 진짜 잔금 카드의 종전 줄(fp-grandfather)이
+    // 같이 있다/같이 없다를 맞댄다(위 시험들은 카드를 모킹해 두 부품이 같은 판정을 쓰는지 못 본다).
+    // ⚠️ 변이 대상: LoanAnalysis 가 grandfatherDate 를 안 넘기면 「같이 있다」가 빨강(카드만 있고 문장이 없다).
+    describe("진짜 잔금 카드와 맞대기 (세션713)", () => {
+      /** @type {any} */
+      let RealFundingPlanner;
+      beforeAll(async () => {
+        RealFundingPlanner = /** @type {any} */ (await vi.importActual("./FundingPlanner")).FundingPlanner;
+      });
+      beforeEach(() => {
+        vi.mocked(FundingPlanner).mockImplementation((p) => <RealFundingPlanner {...p} />);
+      });
+      afterEach(() => {
+        vi.mocked(FundingPlanner).mockImplementation(() => <div data-testid="funding-planner" />);
+      });
+
+      it("종전 대상 단지(경기 비규제 10억 · 첫 공고 2025-05-20) → 막대 잇는 문장과 카드 종전 줄이 같이 있다", () => {
+        rendered({ presaleRecruitDate: "2025-05-20" });
+        expect(screen.getByTestId("fp-grandfather")).toBeTruthy();
+        expect(screen.getByTestId("loan-stack-grandfather").textContent).toBe(` ${BRIDGE("2025-05-20")}`);
+      });
+
+      it("2025-10-16 뒤 공고 단지(2025-10-20) → 둘 다 없다", () => {
+        rendered({ presaleRecruitDate: "2025-10-20" });
+        expect(screen.queryByTestId("fp-grandfather")).toBeNull();
+        expect(screen.queryByTestId("loan-stack-grandfather")).toBeNull();
+      });
     });
   });
 });

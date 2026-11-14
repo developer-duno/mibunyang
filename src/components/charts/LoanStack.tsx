@@ -1,7 +1,15 @@
 import { memo, useMemo } from "react";
 import { C, F } from "@/theme";
 import { ChartFrame } from "./ChartFrame";
-import { zoneOf, calcLTV, isMetroRegion, ZONE_TYPE, METRO_LOAN_CAP, REGULATED_LTV_CAPS } from "@/constants/regulations";
+import {
+  zoneOf,
+  calcLTV,
+  isMetroRegion,
+  ZONE_TYPE,
+  METRO_LOAN_CAP,
+  REGULATED_LTV_CAPS,
+  REGULATED_LTV_RATE,
+} from "@/constants/regulations";
 import { fmtPrice } from "@/lib/format";
 
 /**
@@ -105,9 +113,15 @@ export const LoanStack = memo(function LoanStack({
   if (!calc) return null;
   const regulatedMetro = calc.zone !== "normal" && isMetroRegion(region);
   // 막대 금액은 지금 규정 — 공고일에 따라 종전 규정이 될 수 있는 단지가 있어 「지금 규정」을 밝힌다(A-26 ⑫-② · 세션711)
+  // 규제 수도권은 시도 없이 재도 구간 금액 한도가 걸려 metroCapped 가 거짓이다 — 비율(40%)보다 금액 한도가 먼저
+  // 걸렸으면(18억 → 4억 = 22%) 「규제지역 기준 최대 22%」가 규칙처럼 읽히지 않게 금액 한도 문장을 쓴다(A-26 ⑮ · 세션713)
+  const regulatedTierCapped =
+    !calc.metroCapped && regulatedMetro && calc.loan < Math.round((price as number) * REGULATED_LTV_RATE);
   const zoneText = calc.metroCapped
     ? `${ZONE_TYPE[calc.zone]}이지만 지금 규정에서 수도권 주택구입 대출은 분양가로 계산하면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요. 실제 한도는 대출 받을 때 시세로 정해져요(${METRO_TIER_TEXT}).`
-    : `지금 규정으로 ${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`;
+    : regulatedTierCapped
+      ? `${ZONE_TYPE[calc.zone]}이라 지금 규정에서 주택구입 대출은 분양가로 계산하면 최대 ${fmtPrice(calc.loan)}이라 분양가의 ${calc.loanPct}%까지 빌릴 수 있어요. 실제 한도는 대출 받을 때 시세로 정해져요(${METRO_TIER_TEXT}).`
+      : `지금 규정으로 ${ZONE_TYPE[calc.zone]} 기준 최대 ${calc.loanPct}%까지 빌릴 수 있어요.`;
   const bridgeText = grandfatherDate ? grandfatherBridgeText(grandfatherDate) : null;
 
   const aria =
