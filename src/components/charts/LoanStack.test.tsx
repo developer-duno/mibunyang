@@ -144,6 +144,14 @@ describe("LoanStack — 대출 한도 숫자 (세션592 규정 정정)", () => {
     expect(screen.queryByText(/규제지역 기준 최대 22%/)).toBeNull();
   });
 
+  // 세션713 검사관 🟡2 — 새 문장의 구간표(「15억 이하 6억」)는 수도권 규정이라 규제 비수도권엔 붙이면 안 된다.
+  // 지금 규제 단지는 서울·경기뿐이라 실제 해당 0곳이지만, 조건에서 regulatedMetro 를 빼는 변이를 이 시험이 잡는다.
+  it("대구 규제 18억(규제 비수도권) → 금액 한도 문장 안 나옴 · 옛 비율 문장", () => {
+    render(<LoanStack price={180000} region="대구" isRegulated />);
+    expect(screen.queryByText(/규제지역이라 지금 규정에서/)).toBeNull();
+    expect(screen.getByText(/지금 규정으로 규제지역 기준 최대 22%까지 빌릴 수 있어요\./)).toBeInTheDocument();
+  });
+
   it("서울 규제 5.3억 → 비율 40% 그대로라 옛 문장 「지금 규정으로 규제지역 기준 최대 40%」", () => {
     render(<LoanStack price={53000} region="서울" gu="강남구" isRegulated />);
     expect(screen.getByText(/지금 규정으로 규제지역 기준 최대 40%까지 빌릴 수 있어요\./)).toBeInTheDocument();

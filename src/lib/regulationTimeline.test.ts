@@ -372,7 +372,7 @@ describe("buildRegulationTimeline — 종전 대상 제외(A-6)", () => {
       text: `첫 공고가 지정보다 앞서요 → 집단대출은 종전 50% 가 될 수 있어요(금융사 심사) · 2025-06-27까지 공고라 6억 한도 없이${MOVEIN_TAIL}`,
     });
     expect(t.metroCapWaived).toBe(true);
-    // 이번 달(2026-11) 입주는 꼬리 있음(세션711 ㉑ — 잔금 카드와 같은 moveInStarted · 사건 제목은 그대로 「입주 예정」)
+    // 이번 달(2026-11) 입주는 꼬리 있음(세션711 ㉑ — 잔금 카드와 같은 moveInStarted · 사건 제목은 세션713 부터 「입주 시작(이번 달)」)
     expect(buildRegulationTimeline({ ...g4, moveIns: ["2026-11"] }).verdict.text).toContain(MOVEIN_TAIL);
     // 입주 전(2027-03·다음 달 2026-12)·모름은 꼬리 없음
     for (const mi of ["2027-03", "2026-12", "미정"]) {
