@@ -473,7 +473,9 @@ export default function App() {
   // 문의 버튼(FeedbackFab)을 그리는 조건 — 관리자 대시보드·지도 탭에서는 숨김(세션574 사장님 결정).
   // 휴대폰(!isPC)에서 상세 창이 열려 있으면 숨김 — 상세 창 아래 「이 단지 문의하기」가 같은 문의 창의 입구다
   // (A-26 ⑳ · 세션714 사장님 결정 — 떠 있는 버튼이 탭 맨 아래 줄을 덮던 일을 버튼째 없앰 · 옛 세션594 S6 빈 칸 대체).
-  const fabVisible = tab !== "admin" && tab !== "map" && !(detail.detailAptId && !isPC);
+  // 번호가 목록에 있을 때만 숨긴다 — 없는 단지 주소(`/apt/없는번호`)는 창이 안 뜨고 목록이 보이므로 버튼이 있어야 한다(세션715).
+  const fabVisible =
+    tab !== "admin" && tab !== "map" && !(detail.detailAptId && scoredMap.has(detail.detailAptId) && !isPC);
 
   // 상세 창 로딩 뼈대 — DetailModal(lazy) 받는 중 + 단지 주소 직접 진입의 데이터 받는 중(세션641) 두 자리가 함께 쓴다
   const detailSkeleton = (

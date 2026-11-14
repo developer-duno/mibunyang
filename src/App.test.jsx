@@ -780,6 +780,19 @@ describe("App 통합 테스트", () => {
         expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
       }, 15000);
 
+      // 세션715 ⑳ 🟡 — 지워졌거나 합쳐진 단지의 옛 링크(`/apt/없는번호`)로 들어오면 상세 창은 안 뜨고 목록이 보이는데,
+      //   숨김 조건이 번호만 봐서 문의 버튼까지 사라졌다(운영 390px 재현 · .omc/artifacts/session715/repro.log).
+      // ⚠️ 변이 대상: fabVisible 의 `scoredMap.has(...)` 를 지우면 빨강.
+      it("휴대폰 폭에서 없는 단지 주소로 들어오면 창이 없으니 문의 버튼은 있다", async () => {
+        responsive.isPC = false;
+        mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
+        window.history.replaceState(null, "", "/apt/nope");
+        render(<App />);
+        await waitFor(() => expect(screen.getAllByTestId("apt-card").length).toBeGreaterThan(0), { timeout: 5000 });
+        expect(screen.queryByTestId("detail-cta-bar")).not.toBeInTheDocument();
+        expect(screen.getByTestId("feedback-fab")).toBeInTheDocument();
+      }, 15000);
+
       it("휴대폰 폭 상세 창의 「이 단지 문의하기」를 누르면 문의 창이 열린다", async () => {
         responsive.isPC = false;
         mockFetch.mockResolvedValue({ data: makeTestApartments(), dataUpdatedAt: null });
