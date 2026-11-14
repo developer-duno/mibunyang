@@ -3,6 +3,7 @@
 # minor/patch 는 그룹 1 PR 로 묶어 PR 폭주 방지, major 만 개별(호환성 검토 필요).
 # 참고: 프로젝트는 npm `--legacy-peer-deps`(eslint^10 등 peer 미지원, 세션 439 박제) —
 #       Dependabot 이 peer 충돌로 일부 PR 을 스킵할 수 있음. major PR 은 머지 전 CI 확인 의무.
+# 휴면 중(2026-11-14~) open-pull-requests-limit 0 = 버전 업데이트 PR 만 멈춤(보안 업데이트 PR 은 별도 한도라 그대로) · 돌아오면 5 로 되돌린다.
 version: 2
 updates:
   - package-ecosystem: "npm"
@@ -12,7 +13,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Asia/Seoul"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
     # eslint 10 은 eslint-plugin-react 7.37.5 가 아직 못 받는다(peer ^9.7 · context.getFilename 오류) → major PR 만 끈다(세션644, #746 닫음).
@@ -34,7 +35,7 @@ updates:
       day: "monday"
       time: "06:00"
       timezone: "Asia/Seoul"
-    open-pull-requests-limit: 5
+    open-pull-requests-limit: 0
     labels:
       - "dependencies"
       - "github-actions"

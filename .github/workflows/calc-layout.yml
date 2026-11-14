@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   calc-layout:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # ⚠️ 세션 491 적대검증 후속: 10 → 30.
     #    같은 세션에서 PostgREST max_rows=1000 상한을 풀면서 complexes 가 1,000 → 63,838건이 됐고,
     #    이름 유사도 비교가 **8,720만 쌍**(실측)으로 늘었다. 로컬 순수 CPU 벤치 140초이고

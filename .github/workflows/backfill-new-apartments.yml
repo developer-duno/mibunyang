@@ -18,7 +18,7 @@ concurrency:
 # ── Phase 1: 좌표 확보 (순차 — reverse-geocode는 geocode 이후) ──
 jobs:
   phase1-coords:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -66,7 +66,7 @@ jobs:
   phase2-calc:
     needs: phase1-coords
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # sync-naver-complex 가 articles 전건(46만) fetch — articles 1.5배 성장 마진 포함 60분
     # (세션 356: 통합 fetch 로 28→~17분 단축했으나 미래 증가 대비. core 경로 collect-naver-listings.yml 은 90분)
     timeout-minutes: 60

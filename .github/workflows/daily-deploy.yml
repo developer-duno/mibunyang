@@ -29,7 +29,7 @@ jobs:
   # checkout 옵션은 push 가 필요한 refresh-data 쪽(persist-credentials: true)을 채택.
   # timeout 은 두 잡의 합(30+10)으로 잡는다.
   scoring-and-refresh:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v7

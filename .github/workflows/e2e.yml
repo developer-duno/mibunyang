@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # 세션663: 15 → 20 — 설치 재시도(최대 5분×2)가 들어가도 시험(평소 2분 40초)이 돌 자리를 남긴다.
     timeout-minutes: 20
     steps:

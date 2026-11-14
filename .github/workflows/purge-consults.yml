@@ -5,7 +5,7 @@ name: Purge Old Consults
 
 on:
   schedule:
-    - cron: '0 19 * * *' # 매일 UTC 19:00 = KST 04:30 (상담 적은 새벽)
+    - cron: '0 19 * * *' # 매일 UTC 19:00 = KST 04:00 (상담 적은 새벽)
   workflow_dispatch:
     inputs:
       dry_run:
@@ -20,7 +20,7 @@ concurrency:
 
 jobs:
   purge-consults:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     steps:

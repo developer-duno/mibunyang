@@ -95,7 +95,7 @@ jobs:
     # daily 전체 스윕(①②③④⑤)이 최대 24h 안에 동일하게 잡는다. 빈 성공은 며칠~몇 주 단위로 굳는
     # 유형(housing-permits 3개월 연속 ok=0)이라 하루 지연의 실질 손해가 없다.
     if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion != 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
