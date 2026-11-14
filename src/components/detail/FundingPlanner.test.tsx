@@ -474,8 +474,8 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     resetDetail();
   });
 
-  // 세션709 C1 → B1 순서 — 6/27까지 공고(capFree)이고 입주도 시작된 단지는 6/27 자료 엇갈림 꼬리 뒤에 입주 꼬리.
-  it("capFree + 입주 시작 — 꼬리 순서 C1(6/27 자료 엇갈림) → B1(입주 뒤 계약 세대)", () => {
+  // 세션709 C1 → B1 순서 — 6/27까지 공고(capFree)이고 입주도 시작된 단지는 6/27 각주 꼬리 뒤에 입주 꼬리.
+  it("capFree + 입주 시작 — 꼬리 순서 C1(6/27 각주) → B1(입주 뒤 계약 세대)", () => {
     withFirst("2021-05-04");
     render(<FundingPlanner apt={regulated({ price: 96140, presaleMoveIn: "2000-01" })} rates={RATES} />);
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(
