@@ -5,6 +5,7 @@ import { usePresaleDetail } from "@/hooks/usePresaleDetail";
 import { useUnitChoice } from "@/hooks/useUnitChoice";
 import { trackEvent } from "@/lib/analytics";
 import { makeApt } from "@/__tests__/factories";
+import { kstYearMonth } from "@/constants/loanRules";
 
 vi.mock("@/lib/analytics", () => ({ trackEvent: vi.fn() }));
 // 평형표·첫 공고일 — 기본은 없음(jsdom 에서 fetch 대신). 시험마다 갈아 끼운다.
@@ -447,7 +448,8 @@ describe("FundingPlanner — 지역 갈래 문구", () => {
     expect(screen.getByTestId("fp-grandfather").textContent).toBe(`${base} ${MOVEIN_TAIL}`);
     r.unmount();
     withFirst("2021-05-04");
-    for (const mi of ["2099-12", "미정"]) {
+    // 이번 달 입주(moveInStarted 는 이번 달 = 아직) — 경계 회귀(`<` → `<=`)를 이 파일에서도 잡게(세션709 검사 🟡1)
+    for (const mi of ["2099-12", "미정", kstYearMonth()]) {
       r = render(<FundingPlanner apt={regulated({ presaleMoveIn: mi })} rates={RATES} />);
       expect(screen.getByTestId("fp-grandfather").textContent).toBe(base);
       r.unmount();
