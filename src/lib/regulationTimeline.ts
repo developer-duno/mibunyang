@@ -183,8 +183,9 @@ export function buildRegulationTimeline(input: {
         title: `수도권 주택구입 대출 최대 ${cap}억 시행`,
         note: metroCapWaived
           ? `이 단지는 그 전에 공고 → ${cap}억 한도 없이 종전 규정이 될 수 있어요(금융사 심사)` +
-            // 6/27 보도자료 각주 「잔금대출로 전환시에는 6억원 한도 적용」 — 2026-10-15 보도자료와 엇갈린다(세션709 C2)
-            ` · 다만 ${slashDay(METRO_CAP_CUTOFF)} 첫 발표 자료는 잔금 전환 때 ${cap}억 한도라고 적어 금융위 자료끼리 말이 달라요(금융사 확인)`
+            // 6/27 보도자료 각주 「잔금대출로 전환시에는 6억원 한도 적용」(새 규칙 범위 설명) — 엇갈린다는 판단은 우리 해석이라
+            // 화면엔 사실만(세션711 👤 · 잔금 카드 `FundingPlanner` 꼬리와 같은 말투)
+            ` · 다만 ${slashDay(METRO_CAP_CUTOFF)} 첫 발표 자료 각주에는 잔금 전환 때 ${cap}억 한도라고 적혀 있어요(금융사 확인)`
           : // 6·27 당시엔 집값과 상관없이 6억이었지만 10·15(시행 10-16)부터 시가별 — 결론 줄과 같은 tierText(세션706 재검사 🟠)
             `최대 ${cap}억 (서울·경기·인천) · ${dayAfter(GRANDFATHER_RULES.default.cutoff)}부터 ${tierText}`,
         mine: false,
